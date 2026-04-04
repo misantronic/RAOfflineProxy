@@ -5,3 +5,6 @@ local.properties
 app/release/
 *.apk
 *.dm
+
+node_modules
+docs/.vitepress/dist
