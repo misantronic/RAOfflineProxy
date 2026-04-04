@@ -3,12 +3,12 @@ import { defineConfig } from 'vitepress'
 export default defineConfig({
   title: 'RAOfflineProxy',
   description: 'Play RetroAchievements offline on Android — documentation',
-  base: '/RAOfflineProxy/',
+  base: '/',
 
   appearance: 'dark',
 
   head: [
-    ['link', { rel: 'icon', type: 'image/png', href: '/RAOfflineProxy/logo.png' }],
+    ['link', { rel: 'icon', type: 'image/png', href: '/logo.png' }],
   ],
 
   themeConfig: {
