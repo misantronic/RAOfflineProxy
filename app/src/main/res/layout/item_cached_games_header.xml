@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:paddingStart="16dp"
+    android:paddingEnd="8dp"
+    android:paddingBottom="24dp">
+
+    <TextView
+        android:id="@+id/tv_scan_hint"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textSize="12sp"
+        android:layout_marginTop="16dp"
+        android:text="@string/cached_games_scan_hint"
+        android:visibility="gone" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="end"
+        android:layout_marginBottom="4dp">
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btn_refresh_games"
+            style="@style/Widget.Material3.Button.IconButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:contentDescription="@string/cached_games_refresh"
+            android:tooltipText="@string/cached_games_refresh"
+            app:icon="@drawable/ic_refresh"
+            app:iconTint="?attr/colorOnSurface" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btn_add_rom"
+            style="@style/Widget.Material3.Button.IconButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:contentDescription="@string/cached_games_add_rom"
+            android:tooltipText="@string/cached_games_add_rom"
+            app:icon="@drawable/ic_add"
+            app:iconTint="?attr/colorOnSurface" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btn_scan_roms"
+            style="@style/Widget.Material3.Button.IconButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:contentDescription="@string/cached_games_scan_folder"
+            android:tooltipText="@string/cached_games_scan_folder"
+            app:icon="@drawable/ic_folder"
+            app:iconTint="?attr/colorOnSurface" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btn_clear_cache"
+            style="@style/Widget.Material3.Button.IconButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:contentDescription="@string/cached_games_clear_all"
+            android:tooltipText="@string/cached_games_clear_all"
+            app:icon="@drawable/ic_delete_sweep"
+            app:iconTint="?attr/colorOnSurface" />
+
+    </LinearLayout>
+
+    <TextView
+        android:id="@+id/tv_no_cached_games"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="@string/cached_games_empty"
+        android:textSize="13sp"
+        android:alpha="0.6"
+        android:layout_marginTop="12dp"
+        android:paddingStart="16dp"
+        android:paddingEnd="16dp"
+        android:visibility="gone" />
+
+</LinearLayout>

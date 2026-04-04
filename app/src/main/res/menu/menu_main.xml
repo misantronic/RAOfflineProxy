@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <item
+        android:id="@+id/action_toggle_proxy"
+        android:title="@string/proxy_menu_title"
+        app:actionLayout="@layout/action_proxy_button"
+        app:showAsAction="always" />
+
+</menu>
