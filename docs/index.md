@@ -21,21 +21,18 @@ hero:
 
 features:
   - icon: 📡
-    title: Transparent Proxy
-    details: Runs a local HTTP proxy on 127.0.0.1:8080 that intercepts RetroArch's RetroAchievements API calls — no app modifications required.
+    title: Works in the Background
+    details: Sets itself up quietly — no changes to RetroArch needed beyond a one-tap setup.
   - icon: 💾
-    title: Offline Cache
-    details: Game data, patch responses, and unlock lists are cached locally in a Room database so RetroArch works normally even with no connectivity.
+    title: Play Offline
+    details: Your game and achievement data is saved to your device so everything works without Wi-Fi or mobile data.
   - icon: 🏆
-    title: Award Queue
-    details: Softcore achievement unlocks earned offline are queued and automatically flushed to RetroAchievements when you reconnect.
-  - icon: 🔒
-    title: Anti-Tamper Hash Chain
-    details: Every queued award is cryptographically chained and signed with a non-exportable ECDSA key stored in Android Keystore — providing tamper evidence.
+    title: Achievements Sync Automatically
+    details: Unlocks earned while offline are saved and sent to RetroAchievements the next time you go online.
   - icon: ⚙️
-    title: Auto-Patcher
-    details: Automatically patches and reverts your retroarch.cfg to point at the local proxy — via direct file write, SAF, or a staging fallback.
+    title: Easy Setup
+    details: A one-tap setup points RetroArch at the app automatically — and can be undone just as easily.
   - icon: 🚀
-    title: Auto-start on Boot
-    details: Optionally starts the proxy service automatically at device boot so you never have to launch the app manually.
+    title: Always Ready
+    details: Optionally starts in the background when your device boots, so you never have to think about it.
 ---
