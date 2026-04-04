@@ -20,9 +20,6 @@ hero:
       link: https://github.com/misantronic/RAOfflineProxy
 
 features:
-  - icon: 📡
-    title: Works in the Background
-    details: Sets itself up quietly — no changes to RetroArch needed beyond a one-tap setup.
   - icon: 💾
     title: Play Offline
     details: Your game and achievement data is saved to your device so everything works without Wi-Fi or mobile data.
