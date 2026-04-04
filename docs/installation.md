@@ -49,6 +49,10 @@ Before going offline you need to cache game and achievement data for each game y
 
 The app will compute each ROM's MD5 hash, look up its Game ID on RA, then cache the patch data, unlocks, and session data for that game.
 
+::: tip Automatic caching when launching games
+Caching also happens automatically when you open a game in RetroArch while the proxy is running and you are online — the proxy intercepts and caches the `patch`, `unlocks`, and `gameid` responses in the background. Manual scanning is only needed if you want to pre-cache games before going offline without launching them first.
+:::
+
 See [Caching Games](./caching-games) for full details.
 
 ## Step 5 — Play Offline
