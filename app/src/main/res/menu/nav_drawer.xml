@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+    <group android:id="@+id/group_main">
+        <item
+            android:id="@+id/nav_home"
+            android:title="@string/title_home" />
+        <item
+            android:id="@+id/nav_retro_arch_setup"
+            android:title="@string/title_retro_arch_setup" />
+        <item
+            android:id="@+id/nav_cached_games"
+            android:title="@string/title_cached_games"
+            app:actionLayout="@layout/nav_item_count" />
+        <item
+            android:id="@+id/nav_pending_awards"
+            android:title="@string/title_pending_awards"
+            app:actionLayout="@layout/nav_item_count" />
+    </group>
+    <group
+        android:id="@+id/group_bottom"
+        android:menuCategory="secondary">
+        <item
+            android:id="@+id/nav_settings"
+            android:title="@string/title_settings" />
+    </group>
+</menu>
