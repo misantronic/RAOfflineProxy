@@ -8,3 +8,5 @@ app/release/
 
 node_modules
 docs/.vitepress/dist
+raofflineproxy-release.jks
+keystore.properties
