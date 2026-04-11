@@ -3,20 +3,22 @@ package com.raofflineproxy.ui
 import android.content.Context
 import android.net.Uri
 import android.os.Build
+import android.os.Environment
 import androidx.documentfile.provider.DocumentFile
 import com.raofflineproxy.PROXY_VALUE
 import com.raofflineproxy.R
 import java.io.File
 
-private const val WORK_DIR = "/sdcard/RAOfflineProxy"
-private const val WORK_CFG = "$WORK_DIR/retroarch.cfg"
+private val EXT_STORAGE = Environment.getExternalStorageDirectory().path
+private val WORK_DIR = "$EXT_STORAGE/RAOfflineProxy"
+private val WORK_CFG = "$WORK_DIR/retroarch.cfg"
 
 private val SOURCE_CANDIDATES = listOf(
-    "/sdcard/Android/data/com.retroarch.aarch64/files/retroarch.cfg",
+    "$EXT_STORAGE/Android/data/com.retroarch.aarch64/files/retroarch.cfg",
     "/storage/emulated/0/Android/data/com.retroarch.aarch64/files/retroarch.cfg",
-    "/sdcard/Android/data/com.retroarch/files/retroarch.cfg",
+    "$EXT_STORAGE/Android/data/com.retroarch/files/retroarch.cfg",
     "/storage/emulated/0/Android/data/com.retroarch/files/retroarch.cfg",
-    "/sdcard/RetroArch/retroarch.cfg",
+    "$EXT_STORAGE/RetroArch/retroarch.cfg",
     "/storage/emulated/0/RetroArch/retroarch.cfg"
 )
 
