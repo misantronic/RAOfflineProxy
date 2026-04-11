@@ -4,8 +4,8 @@
 
 When you earn a softcore achievement while offline, RAOfflineProxy intercepts the award request from RetroArch and:
 
-1. Stores it in a local queue (the `pending_awards` database table)
-2. Returns a synthetic success response to RetroArch so the unlock registers in-game immediately
+1. Stores it in a local queue
+2. Returns a success response to RetroArch so the unlock registers in-game immediately
 
 When you come back online, the proxy automatically sends all queued awards to RetroAchievements.
 
@@ -15,60 +15,48 @@ Navigate to **Pending Awards** in the drawer to see all queued awards. For each 
 
 - Game title and icon
 - Achievement title, badge image, and points value
-- Any error from the last flush attempt
+- Any error from the last sync attempt
 
-## Automatic Flush
+## Automatic Sync
 
-The proxy flushes the award queue automatically whenever connectivity is restored. You can see flush progress in a snackbar at the bottom of the **Pending Awards** screen.
+The proxy sends queued awards automatically whenever connectivity is restored. You can see sync progress in a snackbar at the bottom of the **Pending Awards** screen.
 
-Flush events:
-- **Started** — flush has begun
+Sync events:
+- **Started** — sync has begun
 - **Progress (N / Total)** — awards sent so far
-- **Completed (N flushed of Total)** — flush finished
+- **Completed (N sent of Total)** — sync finished
 
-## Flush Logic
+## Sync Logic
 
-Awards are flushed in the order they were queued (oldest first).
+Awards are sent in the order they were queued (oldest first).
 
 | Outcome | Behaviour |
 |---|---|
-| **Success** | Award is deleted from the queue |
-| **Auth error** (invalid token / 401 / 403) | `lastError` is set on the award, retry is stopped — you need to re-authenticate |
-| **Network error** | `retryCount` is incremented, `lastError` is updated. After **5 failures** the award is no longer retried (stays in queue) |
-| **Chain broken** | Entire flush is blocked — see [Anti-Tamper Hash Chain](./hash-chain) |
+| **Success** | Award is removed from the queue |
+| **Authentication error** (invalid token) | Error is shown on the award, no further retries — you need to re-authenticate |
+| **Network error** | Retried up to **5 times**. After that, the award stays in the queue with an error message |
+| **Chain broken** | Entire sync is blocked — see [Anti-Tamper Hash Chain](./hash-chain) |
 
 ::: warning Hardcore awards
-If a hardcore award (`h=1`) somehow ends up in the queue (from an older version), it is silently deleted during flush rather than sent to RA.
+If a hardcore award somehow ends up in the queue (from an older version), it is silently removed during sync rather than sent to RA.
 :::
 
 ## Stale Award Filtering
 
-Before flushing, the proxy checks each queued achievement ID against your cached game data. If an achievement has been retired or removed from RetroAchievements since you earned it, the award is flagged as stale and skipped during flush. Stale awards remain in the queue with an error message so you can see which ones were affected — they are not silently deleted.
+Before syncing, the proxy checks each queued achievement against your cached game data. If an achievement has been retired or removed from RetroAchievements since you earned it, the award is flagged as stale and skipped during sync. Stale awards remain in the queue with an error message so you can see which ones were affected — they are not silently deleted.
 
 ## Authentication Errors
 
-If you see a red error message on a pending award saying something like "Invalid token" or "Invalid credentials", your RetroAchievements session has expired. To fix this:
+If you see a red error message on a pending award saying something like "Invalid token" or "Invalid credentials", your RetroAchievements session may need to be refreshed. To fix this:
 
 1. Open RetroArch
 2. Go to **Settings → Achievements** and log in again
-3. Return to RAOfflineProxy — the next flush attempt should succeed
+3. Return to RAOfflineProxy — the next sync attempt should succeed
 
-## Synthetic Success Response
+## What RetroArch Sees When You're Offline
 
-When an award is queued offline, RetroArch receives:
-
-```json
-{
-  "Success": true,
-  "Score": <your_cached_score>,
-  "SoftcoreScore": 0,
-  "AchievementID": 0,
-  "Error": "queued_offline"
-}
-```
-
-RetroArch treats this as a successful unlock and marks the achievement as earned in-session. The actual submission to RA happens when you reconnect.
+When an award is queued offline, RetroArch receives a response that looks like a normal successful unlock. RetroArch marks the achievement as earned in-game immediately. The actual submission to RA happens when you reconnect.
 
 ## Duplicate Awards
 
-Award entries use the achievement ID as a unique key (`UNIQUE` index in the database). If you earn the same achievement offline multiple times (e.g., after a save-state restore), only the most recent entry is kept — the previous one is replaced.
+If you earn the same achievement offline multiple times (e.g., after a save-state restore), only the most recent entry is kept — the previous one is replaced.
