@@ -146,7 +146,7 @@ class ProxyServer(
     }
 
     private fun isHardcoreRequest(path: String, rawBody: String): Boolean =
-        extractParam("h", path, rawBody) == "1"
+        proxyIsHardcoreRequest(path, rawBody)
 
     private fun handleAwardRequest(path: String, rawBody: String, headers: Map<String, String>): String {
         if (isHardcoreRequest(path, rawBody)) {
@@ -305,46 +305,64 @@ class ProxyServer(
         return score
     }
 
-    private fun extractAction(path: String, body: String): String? {
-        val fromPath = "http://x$path".toHttpUrlOrNull()?.queryParameter("r")
-        if (fromPath != null) return fromPath
-        return extractFormParam(body, "r")
+    private fun extractAction(path: String, body: String): String? =
+        proxyExtractAction(path, body)
+
+    private fun cacheKey(path: String, body: String): String =
+        proxyCacheKey(path, body)
+
+    private fun extractParam(param: String, path: String, body: String): String? =
+        proxyExtractParam(param, path, body)
+
+    private fun httpOk(body: String): String = proxyHttpOk(body)
+
+    private fun httpGameIdCacheMiss(): String = proxyHttpGameIdCacheMiss()
+
+    private fun httpError(code: Int, message: String): String = proxyHttpError(code, message)
+}
+
+internal fun proxyIsHardcoreRequest(path: String, rawBody: String): Boolean =
+    proxyExtractParam("h", path, rawBody) == "1"
+
+internal fun proxyExtractAction(path: String, body: String): String? {
+    val fromPath = "http://x$path".toHttpUrlOrNull()?.queryParameter("r")
+    if (fromPath != null) return fromPath
+    return extractFormParam(body, "r")
+}
+
+internal fun proxyCacheKey(path: String, body: String): String {
+    val action = proxyExtractAction(path, body) ?: "unknown"
+    val gameId = proxyExtractParam("g", path, body) ?: proxyExtractParam("i", path, body) ?: ""
+    val hash = proxyExtractParam("m", path, body) ?: ""
+    val user = proxyExtractParam("u", path, body) ?: ""
+    val hardcore = proxyExtractParam("h", path, body) ?: ""
+    return when (action) {
+        "gameid" -> "$action:$hash"
+        else -> if (hardcore.isNotEmpty()) "$action:$gameId:$user:$hardcore" else "$action:$gameId:$user"
     }
+}
 
-    private fun cacheKey(path: String, body: String): String {
-        val action = extractAction(path, body) ?: "unknown"
-        val gameId = extractParam("g", path, body) ?: extractParam("i", path, body) ?: ""
-        val hash = extractParam("m", path, body) ?: ""
-        val user = extractParam("u", path, body) ?: ""
-        val hardcore = extractParam("h", path, body) ?: ""
-        return when (action) {
-            "gameid" -> "$action:$hash"
-            else -> if (hardcore.isNotEmpty()) "$action:$gameId:$user:$hardcore" else "$action:$gameId:$user"
-        }
-    }
+internal fun proxyExtractParam(param: String, path: String, body: String): String? {
+    val fromPath = "http://x$path".toHttpUrlOrNull()?.queryParameter(param)
+    if (fromPath != null) return fromPath
+    return extractFormParam(body, param)
+}
 
-    private fun extractParam(param: String, path: String, body: String): String? {
-        val fromPath = "http://x$path".toHttpUrlOrNull()?.queryParameter(param)
-        if (fromPath != null) return fromPath
-        return extractFormParam(body, param)
-    }
+internal fun proxyHttpOk(body: String): String =
+    "HTTP/1.1 200 OK\r\n" +
+    "Content-Type: application/json\r\n" +
+    "Content-Length: ${body.toByteArray().size}\r\n" +
+    "Connection: close\r\n\r\n" +
+    body
 
-    private fun httpOk(body: String): String =
-        "HTTP/1.1 200 OK\r\n" +
-        "Content-Type: application/json\r\n" +
-        "Content-Length: ${body.toByteArray().size}\r\n" +
-        "Connection: close\r\n\r\n" +
-        body
+internal fun proxyHttpGameIdCacheMiss(): String =
+    proxyHttpOk("""{"Success":false,"Error":"Game not cached. Launch this game while online first.","GameID":0}""")
 
-    private fun httpGameIdCacheMiss(): String =
-        httpOk("""{"Success":false,"Error":"Game not cached. Launch this game while online first.","GameID":0}""")
-
-    private fun httpError(code: Int, message: String): String {
-        val body = """{"Success":false,"Error":"$message"}"""
-        return "HTTP/1.1 $code $message\r\n" +
-               "Content-Type: application/json\r\n" +
-               "Content-Length: ${body.toByteArray().size}\r\n" +
-               "Connection: close\r\n\r\n" +
-               body
-    }
+internal fun proxyHttpError(code: Int, message: String): String {
+    val body = """{"Success":false,"Error":"$message"}"""
+    return "HTTP/1.1 $code $message\r\n" +
+           "Content-Type: application/json\r\n" +
+           "Content-Length: ${body.toByteArray().size}\r\n" +
+           "Connection: close\r\n\r\n" +
+           body
 }

@@ -9,18 +9,20 @@ import com.raofflineproxy.PROXY_VALUE
 import com.raofflineproxy.R
 import java.io.File
 
-private val EXT_STORAGE = Environment.getExternalStorageDirectory().path
-private val WORK_DIR = "$EXT_STORAGE/RAOfflineProxy"
-private val WORK_CFG = "$WORK_DIR/retroarch.cfg"
+private val EXT_STORAGE by lazy { Environment.getExternalStorageDirectory().path }
+private val WORK_DIR by lazy { "$EXT_STORAGE/RAOfflineProxy" }
+private val WORK_CFG by lazy { "$WORK_DIR/retroarch.cfg" }
 
-private val SOURCE_CANDIDATES = listOf(
-    "$EXT_STORAGE/Android/data/com.retroarch.aarch64/files/retroarch.cfg",
-    "/storage/emulated/0/Android/data/com.retroarch.aarch64/files/retroarch.cfg",
-    "$EXT_STORAGE/Android/data/com.retroarch/files/retroarch.cfg",
-    "/storage/emulated/0/Android/data/com.retroarch/files/retroarch.cfg",
-    "$EXT_STORAGE/RetroArch/retroarch.cfg",
-    "/storage/emulated/0/RetroArch/retroarch.cfg"
-)
+private val SOURCE_CANDIDATES by lazy {
+    listOf(
+        "$EXT_STORAGE/Android/data/com.retroarch.aarch64/files/retroarch.cfg",
+        "/storage/emulated/0/Android/data/com.retroarch.aarch64/files/retroarch.cfg",
+        "$EXT_STORAGE/Android/data/com.retroarch/files/retroarch.cfg",
+        "/storage/emulated/0/Android/data/com.retroarch/files/retroarch.cfg",
+        "$EXT_STORAGE/RetroArch/retroarch.cfg",
+        "/storage/emulated/0/RetroArch/retroarch.cfg"
+    )
+}
 
 // Paths to try relative to whatever tree root the user granted.
 // Covers: granted Android/data/ → full path needed
@@ -261,7 +263,7 @@ fun buildPatchedContent(content: String): String {
     }
 }
 
-private fun buildRevertedContent(content: String, restoreHardcore: Boolean = false): String {
+internal fun buildRevertedContent(content: String, restoreHardcore: Boolean = false): String {
     val hostRegex = Regex("""^(\s*cheevos_custom_host\s*=\s*).*$""", RegexOption.MULTILINE)
     val withHost = hostRegex.replace(content) { mr -> "${mr.groupValues[1]}\"\"" }
 
@@ -275,7 +277,7 @@ private fun buildRevertedContent(content: String, restoreHardcore: Boolean = fal
     }
 }
 
-private fun isPatchedContent(content: String): Boolean {
+internal fun isPatchedContent(content: String): Boolean {
     val escaped = Regex.escape(PROXY_VALUE)
     val hostRegex = Regex("""^\s*cheevos_custom_host\s*=\s*"$escaped"\s*$""", RegexOption.MULTILINE)
     return hostRegex.containsMatchIn(content)
