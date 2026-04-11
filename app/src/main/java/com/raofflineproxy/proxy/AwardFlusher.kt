@@ -247,7 +247,7 @@ class AwardFlusher(private val db: AppDatabase) {
             Log.d(TAG, "→ RA POST body: ${redactFormBody(body)}")
 
             sharedHttpClient.newCall(request).execute().use { resp ->
-                val responseBody = resp.body?.string() ?: ""
+                val responseBody = resp.body.string()
 
                 Log.d(TAG, "← RA ${resp.code} for ${redactTokens(award.queryString)} body=${responseBody.take(500)}")
 
