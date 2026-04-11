@@ -5,6 +5,8 @@ import android.util.Log
 import com.raofflineproxy.PROXY_PORT
 import com.raofflineproxy.RA_HOST
 import com.raofflineproxy.proxyUserAgent
+import com.raofflineproxy.redactFormBody
+import com.raofflineproxy.redactTokens
 import com.raofflineproxy.data.AppDatabase
 import com.raofflineproxy.data.CacheEntry
 import com.raofflineproxy.data.CacheKeys
@@ -119,7 +121,7 @@ class ProxyServer(
 
     private fun processRequest(method: String, path: String, rawBody: String, headers: Map<String, String>): String {
         val action = extractAction(path, rawBody)
-        Log.i(TAG, "Request: $method $path body=$rawBody action=$action online=${isOnline()}")
+        Log.i(TAG, "Request: $method ${redactTokens(path)} body=${redactFormBody(rawBody)} action=$action online=${isOnline()}")
 
         val userAgent = headers["user-agent"]
         if (!userAgent.isNullOrEmpty()) {
@@ -239,15 +241,15 @@ class ProxyServer(
                 builder.get().build()
             }
 
-            Log.d(TAG, "→ RA $method $url")
+            Log.d(TAG, "→ RA $method ${redactTokens(url)}")
             request.headers.forEach { (name, value) -> Log.d(TAG, "→ RA header: $name: $value") }
-            if (method == "POST") Log.d(TAG, "→ RA POST body: $rawBody")
+            if (method == "POST") Log.d(TAG, "→ RA POST body: ${redactFormBody(rawBody)}")
 
             httpClient.newCall(request).execute().use { resp ->
                 val body = resp.body?.string()
-                Log.d(TAG, "← RA ${resp.code} for $path body=${body?.take(500)}")
+                Log.d(TAG, "← RA ${resp.code} for ${redactTokens(path)} body=${body?.take(500)}")
                 if (!resp.isSuccessful) {
-                    Log.w(TAG, "Upstream returned ${resp.code} for $path")
+                    Log.w(TAG, "Upstream returned ${resp.code} for ${redactTokens(path)}")
                     return null
                 }
                 body

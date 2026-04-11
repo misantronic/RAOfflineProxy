@@ -71,4 +71,5 @@ dependencies {
     implementation(libs.coil)
     implementation(libs.documentfile)
     implementation(libs.recyclerview)
+    testImplementation(libs.junit)
 }

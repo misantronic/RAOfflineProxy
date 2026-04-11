@@ -6,6 +6,8 @@ import com.raofflineproxy.data.AppDatabase
 import com.raofflineproxy.data.CacheKeys
 import com.raofflineproxy.data.PendingAward
 import com.raofflineproxy.proxyUserAgent
+import com.raofflineproxy.redactFormBody
+import com.raofflineproxy.redactTokens
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
@@ -256,14 +258,14 @@ class AwardFlusher(private val db: AppDatabase) {
                 .post(body.toRequestBody("application/x-www-form-urlencoded".toMediaType()))
                 .build()
 
-            Log.d(TAG, "→ RA POST $url")
+            Log.d(TAG, "→ RA POST ${redactTokens(url)}")
             request.headers.forEach { (name, value) -> Log.d(TAG, "→ RA header: $name: $value") }
-            Log.d(TAG, "→ RA POST body: $body")
+            Log.d(TAG, "→ RA POST body: ${redactFormBody(body)}")
 
             httpClient.newCall(request).execute().use { resp ->
                 val responseBody = resp.body?.string() ?: ""
 
-                Log.d(TAG, "← RA ${resp.code} for ${award.queryString} body=${responseBody.take(500)}")
+                Log.d(TAG, "← RA ${resp.code} for ${redactTokens(award.queryString)} body=${responseBody.take(500)}")
 
                 if (resp.code == 401 || resp.code == 403) {
                     return FlushResult.AuthError("Token rejected by server (HTTP ${resp.code})")
