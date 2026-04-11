@@ -35,6 +35,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
+import androidx.core.content.edit
 
 enum class AuthState { Unknown, Valid, Invalid }
 
@@ -69,10 +70,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun str(resId: Int): String = getApplication<Application>().getString(resId)
     private fun str(resId: Int, vararg args: Any): String = getApplication<Application>().getString(resId, *args)
-
-    companion object {
-        private const val TAG = "RAProxy/ViewModel"
-    }
 
     private val networkCallback = object : ConnectivityManager.NetworkCallback() {
         override fun onAvailable(network: Network) {
@@ -256,7 +253,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 return@launch
             }
             val prefs = app.getSharedPreferences(PrefsConstants.PREFS_NAME, Context.MODE_PRIVATE)
-            prefs.edit().putBoolean(PrefsConstants.KEY_HARDCORE_WAS_ENABLED, result.hardcoreWasEnabled).apply()
+            prefs.edit {
+                putBoolean(
+                    PrefsConstants.KEY_HARDCORE_WAS_ENABLED,
+                    result.hardcoreWasEnabled
+                )
+            }
             ProxyService.start(app)
             _state.value = _state.value.copy(
                 proxyRunning = true,
@@ -272,7 +274,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             val prefs = app.getSharedPreferences(PrefsConstants.PREFS_NAME, Context.MODE_PRIVATE)
             val restoreHardcore = prefs.getBoolean(PrefsConstants.KEY_HARDCORE_WAS_ENABLED, false)
             val result = withContext(Dispatchers.IO) { revertRetroArchCfg(app, treeUri, restoreHardcore) }
-            prefs.edit().remove(PrefsConstants.KEY_HARDCORE_WAS_ENABLED).apply()
+            prefs.edit { remove(PrefsConstants.KEY_HARDCORE_WAS_ENABLED) }
             _state.value = _state.value.copy(
                 proxyRunning = false,
                 cfgIsPatched = if (result.success) false else _state.value.cfgIsPatched,
@@ -428,7 +430,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun setAutostartProxy(enabled: Boolean) {
         getApplication<Application>()
             .getSharedPreferences(PrefsConstants.PREFS_NAME, Context.MODE_PRIVATE)
-            .edit().putBoolean(PrefsConstants.KEY_AUTOSTART_PROXY, enabled).apply()
+            .edit { putBoolean(PrefsConstants.KEY_AUTOSTART_PROXY, enabled) }
         _state.value = _state.value.copy(autostartProxy = enabled)
     }
 
