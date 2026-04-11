@@ -6,9 +6,6 @@
             android:id="@+id/nav_home"
             android:title="@string/title_home" />
         <item
-            android:id="@+id/nav_retro_arch_setup"
-            android:title="@string/title_retro_arch_setup" />
-        <item
             android:id="@+id/nav_cached_games"
             android:title="@string/title_cached_games"
             app:actionLayout="@layout/nav_item_count" />

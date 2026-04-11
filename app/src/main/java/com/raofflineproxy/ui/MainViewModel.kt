@@ -23,6 +23,7 @@ import com.raofflineproxy.proxy.cacheGame
 import com.raofflineproxy.proxy.loadLoginCredentials
 import com.raofflineproxy.proxy.loadUserAgent
 import com.raofflineproxy.proxy.scanRomFolder
+import com.raofflineproxy.service.ProxyService
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -48,7 +49,6 @@ data class MainUiState(
     val needsSafGrant: Boolean = false,
     val cfgCopyBackPath: String? = null,
     val cfgIsPatched: Boolean? = null,
-    val cfgHardcoreWasEnabled: Boolean = false,
     val scanInProgress: Boolean = false,
     val scanProgress: String? = null,
     val flushInProgress: Boolean = false,
@@ -68,6 +68,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun str(resId: Int): String = getApplication<Application>().getString(resId)
     private fun str(resId: Int, vararg args: Any): String = getApplication<Application>().getString(resId, *args)
+
+    companion object {
+        private const val PREFS_NAME = "ra_proxy_prefs"
+        private const val PREF_HARDCORE_WAS_ENABLED = "hardcore_was_enabled"
+    }
 
     private val networkCallback = object : ConnectivityManager.NetworkCallback() {
         override fun onAvailable(network: Network) {
@@ -216,12 +221,60 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             _state.value = _state.value.copy(authState = if (valid) AuthState.Valid else AuthState.Invalid)
         }
     }
-    fun onProxyStarted() {
-        _state.value = _state.value.copy(proxyRunning = true)
+    fun startProxy(treeUri: Uri? = null) {
+        val app = getApplication<Application>()
+        viewModelScope.launch {
+            val result = withContext(Dispatchers.IO) { patchRetroArchCfg(app, treeUri) }
+            if (result.needsSafGrant) {
+                _state.value = _state.value.copy(
+                    needsSafGrant = true,
+                    cfgPatchMessage = result.message,
+                    cfgPatchSuccess = false
+                )
+                return@launch
+            }
+            if (result.copyBackPath != null) {
+                _state.value = _state.value.copy(
+                    cfgPatchMessage = result.message,
+                    cfgPatchSuccess = result.success,
+                    cfgCopyBackPath = result.copyBackPath
+                )
+                return@launch
+            }
+            if (!result.success) {
+                _state.value = _state.value.copy(
+                    cfgPatchMessage = result.message,
+                    cfgPatchSuccess = false
+                )
+                return@launch
+            }
+            val prefs = app.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            prefs.edit().putBoolean(PREF_HARDCORE_WAS_ENABLED, result.hardcoreWasEnabled).apply()
+            ProxyService.start(app)
+            _state.value = _state.value.copy(
+                proxyRunning = true,
+                cfgIsPatched = true
+            )
+        }
     }
 
-    fun onProxyStopped() {
-        _state.value = _state.value.copy(proxyRunning = false)
+    fun stopProxy(treeUri: Uri? = null) {
+        val app = getApplication<Application>()
+        viewModelScope.launch {
+            ProxyService.stop(app)
+            val prefs = app.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            val restoreHardcore = prefs.getBoolean(PREF_HARDCORE_WAS_ENABLED, false)
+            val result = withContext(Dispatchers.IO) { revertRetroArchCfg(app, treeUri, restoreHardcore) }
+            prefs.edit().remove(PREF_HARDCORE_WAS_ENABLED).apply()
+            _state.value = _state.value.copy(
+                proxyRunning = false,
+                cfgIsPatched = if (result.success) false else _state.value.cfgIsPatched,
+                cfgPatchMessage = if (result.success) null else result.message,
+                cfgPatchSuccess = if (result.success) null else false,
+                needsSafGrant = result.needsSafGrant,
+                cfgCopyBackPath = result.copyBackPath
+            )
+        }
     }
 
     override fun onCleared() {
@@ -234,34 +287,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             val patched = withContext(Dispatchers.IO) { checkIsPatched(app, treeUri) }
             _state.value = _state.value.copy(cfgIsPatched = patched)
-        }
-    }
-
-    fun patchCfg(treeUri: Uri? = null) {
-        val app = getApplication<Application>()
-        viewModelScope.launch {
-            val result = withContext(Dispatchers.IO) { patchRetroArchCfg(app, treeUri) }
-            _state.value = _state.value.copy(
-                cfgPatchMessage = result.message,
-                cfgPatchSuccess = result.success,
-                needsSafGrant = result.needsSafGrant,
-                cfgCopyBackPath = result.copyBackPath,
-                cfgIsPatched = if (result.success) true else _state.value.cfgIsPatched
-            )
-        }
-    }
-
-    fun revertCfg(treeUri: Uri? = null) {
-        val app = getApplication<Application>()
-        viewModelScope.launch {
-            val result = withContext(Dispatchers.IO) { revertRetroArchCfg(app, treeUri) }
-            _state.value = _state.value.copy(
-                cfgPatchMessage = result.message,
-                cfgPatchSuccess = result.success,
-                needsSafGrant = result.needsSafGrant,
-                cfgCopyBackPath = result.copyBackPath,
-                cfgIsPatched = if (result.success) false else _state.value.cfgIsPatched
-            )
         }
     }
 
@@ -418,19 +443,19 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun setAutostartProxy(enabled: Boolean) {
         getApplication<Application>()
-            .getSharedPreferences("ra_proxy_prefs", Context.MODE_PRIVATE)
+            .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .edit().putBoolean("autostart_proxy", enabled).apply()
         _state.value = _state.value.copy(autostartProxy = enabled)
     }
 
     private fun loadAutostartPref(): Boolean =
         getApplication<Application>()
-            .getSharedPreferences("ra_proxy_prefs", Context.MODE_PRIVATE)
+            .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .getBoolean("autostart_proxy", false)
 
     private fun loadSafUri(): Uri? =
         getApplication<Application>()
-            .getSharedPreferences("ra_proxy_prefs", Context.MODE_PRIVATE)
+            .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .getString("saf_tree_uri", null)
             ?.let { Uri.parse(it) }
 }

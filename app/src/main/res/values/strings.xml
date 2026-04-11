@@ -7,7 +7,6 @@
 
     <!-- Navigation titles -->
     <string name="title_home">Home</string>
-    <string name="title_retro_arch_setup">RetroArch Setup</string>
     <string name="title_cached_games">Cached Games</string>
     <string name="title_pending_awards">Pending Awards</string>
     <string name="title_settings">Settings</string>
@@ -25,18 +24,14 @@
     <!-- Home fragment -->
     <string name="home_description">This app acts as a local proxy between RetroArch and RetroAchievements. It caches game data so you can play offline and earn achievements, then syncs them when you go back online.</string>
     <string name="home_proxy_hint">Use the Start proxy button in the toolbar to start or stop the proxy service.</string>
-    <string name="home_setup_hint">RetroArch is not yet configured to use this proxy.</string>
-    <string name="home_go_setup">Go to RetroArch Setup</string>
-    <string name="home_token_warning">Your RetroAchievements session has expired or no login data was found.\nStart proxy and launch RetroArch while online and log in to RetroAchievements to refresh your session.</string>
+    <string name="home_token_warning">Your RetroAchievements session has expired or no login data was found.\nPlease launch RetroArch while online and log in to RetroAchievements to refresh your session.</string>
 
-    <!-- RetroArch setup fragment -->
-    <string name="setup_cfg_patched">retroarch.cfg is patched.</string>
-    <string name="setup_cfg_description">Tap below to patch retroarch.cfg. The app will try to do this automatically; if it can\u2019t, it will tell you exactly what to do.</string>
-    <string name="setup_btn_patch">Patch retroarch.cfg</string>
-    <string name="setup_btn_revert">Revert retroarch.cfg</string>
-    <string name="setup_btn_grant_folder">Grant Folder Access</string>
-    <string name="setup_copy_back_instructions">Now copy /sdcard/RAOfflineProxy/retroarch.cfg back to:\n%s\n\nUse a file manager that can access Android/data/ (e.g. MiXplorer, Solid Explorer).</string>
+    <!-- SAF grant dialog -->
+    <string name="saf_dialog_title">Folder Access Required</string>
+    <string name="saf_dialog_message">This app needs access to the Android/data folder to patch retroarch.cfg. Please grant access to the folder containing RetroArch\'s data.</string>
+    <string name="saf_dialog_grant">Grant Access</string>
     <string name="action_ok">OK</string>
+    <string name="setup_copy_back_instructions">Now copy /sdcard/RAOfflineProxy/retroarch.cfg back to:\n%s\n\nUse a file manager that can access Android/data/ (e.g. MiXplorer, Solid Explorer).</string>
 
     <!-- CFG patcher messages -->
     <string name="patch_cfg_not_found">retroarch.cfg not found.</string>
