@@ -17,21 +17,9 @@ In RetroArch:
 2. Enter your RetroAchievements **Username** and **Password** (or API Token)
 3. Save and confirm the login succeeds
 
-## Step 3 — Patch RetroArch's config
+## Step 3 — Start the Proxy and Cache Your Games
 
-RAOfflineProxy needs to redirect RetroArch's achievement traffic to the local proxy. This is done by changing a setting in RetroArch's config file.
-
-1. Open RAOfflineProxy
-2. Navigate to **RetroArch Setup** in the drawer
-3. Tap **Patch retroarch.cfg**
-
-The app will attempt to patch the file automatically using several strategies, from direct file access to a manual staging copy.
-
-See [RetroArch CFG Patching](./cfg-patching) for full details and manual fallback instructions.
-
-## Step 4 — Cache Your Games
-
-Before going offline you need to save game and achievement data for each game you want to play.
+Starting the proxy automatically patches RetroArch's config file to redirect achievement traffic to the local proxy. You do not need to patch the config manually.
 
 1. Make sure you are **online**
 2. Start the proxy (press **Start proxy** in the action bar)
@@ -48,7 +36,7 @@ Caching also happens automatically when you open a game in RetroArch while the p
 
 See [Caching Games](./caching-games) for full details.
 
-## Step 5 — Play Offline
+## Step 4 — Play Offline
 
 1. Start the proxy service (press **Start proxy** in the action bar, or enable auto-start)
 2. Launch RetroArch and load a cached game
@@ -64,7 +52,6 @@ The [SNES Burn-in Test Cartridge Test Kit](https://retroachievements.org/game/10
 ```
 1. Install APK
 2. Log in to RA inside RetroArch (while online)
-3. Open RAOfflineProxy → RetroArch Setup → Patch retroarch.cfg
-4. Open RAOfflineProxy → Cached Games → scan your ROM folder
-5. Start the proxy and play!
+3. Open RAOfflineProxy → Start proxy → Cached Games → scan your ROM folder
+4. Play!
 ```

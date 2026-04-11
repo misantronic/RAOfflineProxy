@@ -7,15 +7,17 @@ RetroArch stores its configuration in a file called `retroarch.cfg`. To redirect
 - The **custom achievement server** is pointed at the proxy on your device
 - **Hardcore mode** is disabled (since it is not supported)
 
-The **RetroArch Setup** screen in the app manages patching and reverting this file.
+Patching and reverting happen **automatically** when you start and stop the proxy — there is no separate setup step.
 
-## Patching
+## Automatic Patching (Start Proxy)
 
-Tap **Patch retroarch.cfg** on the RetroArch Setup screen. The app tries four strategies in order:
+When you press **Start proxy** in the action bar, the app patches `retroarch.cfg` before starting the proxy service. If the app needs folder access to write the file, it shows a dialog prompting you to grant access.
+
+The app tries four strategies in order:
 
 ### Strategy 1 — Folder Access (preferred)
 
-If you have previously granted folder access via **Grant Folder Access**, the app uses the saved permission to read and write the file directly. No extra prompts.
+If you have previously granted folder access, the app uses the saved permission to read and write the file directly. No extra prompts.
 
 ### Strategy 2 — Direct File Write
 
@@ -23,23 +25,21 @@ The app checks common RetroArch installation paths for a writable `retroarch.cfg
 
 ### Strategy 3 — Folder Access Prompt (Android 12 and below)
 
-On Android 12 and below, if the file is found but not directly writable, the app shows a **Grant Folder Access** button. Tapping it opens the system folder picker. Grant access to the folder containing `retroarch.cfg` (typically inside the RetroArch data folder). After granting, the app retries automatically.
+On Android 12 and below, if the file is found but not directly writable, the app shows a dialog asking you to grant folder access. Tapping **Grant** opens the system folder picker. Grant access to the folder containing `retroarch.cfg` (typically inside the RetroArch data folder). After granting, the app retries automatically.
 
 ### Strategy 4 — Staging Copy
 
 If all else fails, the app copies `retroarch.cfg` to a temporary folder, patches it there, and attempts to copy it back. If the copy-back fails, you are shown the file path and must manually copy it.
 
-## Reverting
+## Automatic Reverting (Stop Proxy)
 
-Tap **Revert retroarch.cfg** on the RetroArch Setup screen. This clears the custom server setting so RetroArch connects directly to RetroAchievements again.
+When you press **Stop proxy**, the app reverts `retroarch.cfg` to clear the custom server setting so RetroArch connects directly to RetroAchievements again.
 
-::: warning
-The **Revert** button is disabled while the proxy service is running. Stop the proxy first.
-:::
+If hardcore mode was enabled before you started the proxy, it is automatically restored when you stop the proxy. The app records the original hardcore setting when patching and saves it so it survives process restarts.
 
 ## Checking Patch Status
 
-The Home screen shows whether `retroarch.cfg` is currently patched. A warning is shown if the config is not patched while the proxy is running.
+The app checks the patch status on startup. The action bar proxy button reflects whether the proxy is running.
 
 ## Manual Patching (adb fallback)
 
@@ -53,3 +53,5 @@ To revert manually, clear the custom achievement server value (set it to empty).
 ## Why Hardcore Mode is Disabled
 
 The patcher disables hardcore mode because **hardcore mode is not supported** by RAOfflineProxy. Any hardcore award request is rejected by the proxy. Keeping hardcore enabled in RetroArch while using the proxy would result in silent unlock failures.
+
+When you stop the proxy, hardcore mode is restored to its original state — so if you had it enabled before, it will be re-enabled automatically.
