@@ -35,6 +35,7 @@ private const val TAG = "ProxyService"
 private const val CHANNEL_ID = "proxy_service"
 private const val NOTIFICATION_ID = 1
 private const val REFRESH_INTERVAL_MS = 60L * 60 * 1000 // 1 hour
+private const val CACHE_TTL_MS = 7L * 24 * 60 * 60 * 1000 // 7 days
 
 class ProxyService : Service() {
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
@@ -115,6 +116,7 @@ class ProxyService : Service() {
             for (gameId in gameIds) {
                 cacheGame(gameId, credentials, userAgent, db)
             }
+            db.cacheDao().evictOlderThan(System.currentTimeMillis() - CACHE_TTL_MS)
             Log.i(TAG, "Periodic refresh complete")
         }
     }

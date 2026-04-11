@@ -12,6 +12,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.raofflineproxy.R
 import com.raofflineproxy.RA_HOST
+import com.raofflineproxy.proxyUserAgent
 import com.raofflineproxy.data.AppDatabase
 import com.raofflineproxy.data.CacheKeys
 import com.raofflineproxy.data.CachedGame
@@ -103,10 +104,17 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     is FlushEvent.Progress -> _state.value = _state.value.copy(
                         flushProgress = str(R.string.flush_progress, event.current, event.total)
                     )
-                    is FlushEvent.Completed -> _state.value = _state.value.copy(
-                        flushInProgress = false,
-                        flushProgress = str(R.string.flush_completed, event.flushed, event.total)
-                    )
+                    is FlushEvent.Completed -> {
+                        val msg = if (event.skippedStale > 0) {
+                            str(R.string.flush_completed_with_stale, event.flushed, event.total, event.skippedStale)
+                        } else {
+                            str(R.string.flush_completed, event.flushed, event.total)
+                        }
+                        _state.value = _state.value.copy(
+                            flushInProgress = false,
+                            flushProgress = msg
+                        )
+                    }
                     is FlushEvent.ChainBroken -> _state.value = _state.value.copy(
                         flushInProgress = false,
                         flushProgress = str(R.string.flush_chain_broken, event.index + 1, event.reason)
@@ -190,7 +198,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             }
             val valid = withContext(Dispatchers.IO) {
                 try {
-                    val userAgent = loadUserAgent(db)
+                    val userAgent = proxyUserAgent(loadUserAgent(db))
                     val url = "$RA_HOST/dorequest.php?r=patch&g=$gameId&u=${credentials.user}&t=${credentials.token}"
                     val connection = URL(url).openConnection() as HttpURLConnection
                     connection.connectTimeout = 10_000

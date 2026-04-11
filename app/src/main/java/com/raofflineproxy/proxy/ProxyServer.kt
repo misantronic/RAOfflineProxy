@@ -4,6 +4,7 @@ import android.util.Base64
 import android.util.Log
 import com.raofflineproxy.PROXY_PORT
 import com.raofflineproxy.RA_HOST
+import com.raofflineproxy.proxyUserAgent
 import com.raofflineproxy.data.AppDatabase
 import com.raofflineproxy.data.CacheEntry
 import com.raofflineproxy.data.CacheKeys
@@ -225,11 +226,11 @@ class ProxyServer(
             val url = "$RA_HOST$path"
             val builder = Request.Builder().url(url)
 
-            // Forward headers that the RA server cares about.
-            // Critically: User-Agent — the RA server 403s requests without the rcheevos UA.
-            // Skip Host (OkHttp sets it), Content-Length (OkHttp calculates it).
             headers.forEach { (k, v) ->
-                if (k !in SKIP_HEADERS) builder.header(k, v)
+                if (k !in SKIP_HEADERS) {
+                    val headerValue = if (k == "user-agent") proxyUserAgent(v) else v
+                    builder.header(k, headerValue)
+                }
             }
 
             val request = if (method == "POST") {
@@ -237,12 +238,19 @@ class ProxyServer(
             } else {
                 builder.get().build()
             }
+
+            Log.d(TAG, "→ RA $method $url")
+            request.headers.forEach { (name, value) -> Log.d(TAG, "→ RA header: $name: $value") }
+            if (method == "POST") Log.d(TAG, "→ RA POST body: $rawBody")
+
             httpClient.newCall(request).execute().use { resp ->
+                val body = resp.body?.string()
+                Log.d(TAG, "← RA ${resp.code} for $path body=${body?.take(500)}")
                 if (!resp.isSuccessful) {
                     Log.w(TAG, "Upstream returned ${resp.code} for $path")
                     return null
                 }
-                resp.body?.string()
+                body
             }
         } catch (e: Exception) {
             Log.e(TAG, "Upstream request failed: ${e.message}")

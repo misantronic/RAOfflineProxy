@@ -3,7 +3,9 @@ package com.raofflineproxy.proxy
 import android.util.Log
 import com.raofflineproxy.RA_HOST
 import com.raofflineproxy.data.AppDatabase
+import com.raofflineproxy.data.CacheKeys
 import com.raofflineproxy.data.PendingAward
+import com.raofflineproxy.proxyUserAgent
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
@@ -22,7 +24,7 @@ private const val GENESIS_HASH = "genesis"
 sealed interface FlushEvent {
     data object Started : FlushEvent
     data class Progress(val current: Int, val total: Int) : FlushEvent
-    data class Completed(val flushed: Int, val total: Int) : FlushEvent
+    data class Completed(val flushed: Int, val total: Int, val skippedStale: Int = 0) : FlushEvent
     data class ChainBroken(val index: Int, val reason: String) : FlushEvent
 }
 
@@ -96,6 +98,22 @@ class AwardFlusher(private val db: AppDatabase) {
         val events = _events.asSharedFlow()
     }
 
+    private suspend fun loadKnownAchievementIds(): Set<Int> {
+        val patchEntries = db.cacheDao().getAllByPrefix(CacheKeys.PREFIX_PATCH)
+        val ids = mutableSetOf<Int>()
+        for (entry in patchEntries) {
+            runCatching {
+                val json = JSONObject(entry.responseBody)
+                val patchData = json.optJSONObject("PatchData") ?: return@runCatching
+                val achievements = patchData.optJSONArray("Achievements") ?: return@runCatching
+                for (i in 0 until achievements.length()) {
+                    ids.add(achievements.getJSONObject(i).getInt("ID"))
+                }
+            }
+        }
+        return ids
+    }
+
     suspend fun flush() = withContext(Dispatchers.IO) {
         val pending = db.pendingAwardDao().getAll()
         if (pending.isEmpty()) return@withContext
@@ -112,15 +130,27 @@ class AwardFlusher(private val db: AppDatabase) {
             }
         }
 
+        val knownAchievementIds = loadKnownAchievementIds()
+        Log.i(TAG, "Loaded ${knownAchievementIds.size} known achievement IDs from cache")
+
         _events.emit(FlushEvent.Started)
 
         var flushed = 0
+        var skippedStale = 0
         pending.forEachIndexed { index, award ->
             _events.emit(FlushEvent.Progress(index + 1, pending.size))
             if (isHardcoreAward(award)) {
                 Log.w(TAG, "Deleting stale hardcore award ${award.id} — hardcore mode is not supported")
                 db.pendingAwardDao().delete(award)
                 flushed++
+                return@forEachIndexed
+            }
+            if (knownAchievementIds.isNotEmpty() && award.achievementId !in knownAchievementIds) {
+                Log.w(TAG, "Skipping stale award ${award.id} — achievement ${award.achievementId} not found in cached patch data")
+                db.pendingAwardDao().update(
+                    award.copy(lastError = "Achievement ${award.achievementId} not found in cached data — may have been retired or modified")
+                )
+                skippedStale++
                 return@forEachIndexed
             }
             when (val result = sendAward(award)) {
@@ -147,7 +177,7 @@ class AwardFlusher(private val db: AppDatabase) {
                 }
             }
         }
-        _events.emit(FlushEvent.Completed(flushed, pending.size))
+        _events.emit(FlushEvent.Completed(flushed, pending.size, skippedStale))
     }
 
     private fun sendAward(award: PendingAward): FlushResult {
@@ -156,11 +186,19 @@ class AwardFlusher(private val db: AppDatabase) {
             val body = buildRequestBody(award)
             val request = Request.Builder()
                 .url(url)
-                .header("User-Agent", award.userAgent)
+                .header("User-Agent", proxyUserAgent(award.userAgent))
                 .post(body.toRequestBody("application/x-www-form-urlencoded".toMediaType()))
                 .build()
+
+            Log.d(TAG, "→ RA POST $url")
+            request.headers.forEach { (name, value) -> Log.d(TAG, "→ RA header: $name: $value") }
+            Log.d(TAG, "→ RA POST body: $body")
+
             httpClient.newCall(request).execute().use { resp ->
                 val responseBody = resp.body?.string() ?: ""
+
+                Log.d(TAG, "← RA ${resp.code} for ${award.queryString} body=${responseBody.take(500)}")
+
                 if (resp.code == 401 || resp.code == 403) {
                     return FlushResult.AuthError("Token rejected by server (HTTP ${resp.code})")
                 }
@@ -187,7 +225,8 @@ class AwardFlusher(private val db: AppDatabase) {
     }
 
     private fun buildRequestBody(award: PendingAward): String {
-        if (award.payloadHash.isEmpty()) return award.requestBody
+        val timestampField = "&ra_offline_unlocked_at=${award.queuedAt}"
+        if (award.payloadHash.isEmpty()) return award.requestBody + timestampField
         val pubKey = runCatching { AwardKeyManager.getPublicKeyBase64() }.getOrElse { "" }
         val chainFields = buildString {
             append("&ra_chain_payload_hash=").append(award.payloadHash)
@@ -195,6 +234,6 @@ class AwardFlusher(private val db: AppDatabase) {
             append("&ra_chain_sig=").append(award.signature)
             append("&ra_chain_pubkey=").append(pubKey)
         }
-        return award.requestBody + chainFields
+        return award.requestBody + timestampField + chainFields
     }
 }

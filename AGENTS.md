@@ -14,7 +14,7 @@ RAOfflineProxy is an Android app that acts as a local HTTP proxy between **Retro
 - **compileSdk / targetSdk**: 34 — **minSdk**: 26 (Android 8.0)
 - **Language**: Kotlin 1.9.23, JVM target 17
 - **Build system**: Gradle 9.2.1, AGP 8.4.1, KSP 1.9.23-1.0.19
-- **Build feature**: `viewBinding = true`
+- **Build feature**: `viewBinding = true`, `buildConfig = true`
 - **Daemon JVM**: JetBrains JDK 21
 - **Build command**: `export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" && ./gradlew assembleDebug`
 - **Release builds**: R8 minification enabled (`isMinifyEnabled = true`) with `proguard-android-optimize.txt` + project `proguard-rules.pro`
@@ -84,7 +84,8 @@ val signedAt: Long = 0L
 
 - `verifyChain(awards)` — walks awards in `queuedAt ASC` order (same as flush order), recomputes each `payloadHash` from the canonical payload string, and checks each `prevHash` link. Awards with empty `payloadHash` (legacy, pre-chain) are skipped transparently. Returns `Valid` or `Broken(index, reason)`.
 - `flush()` — runs `verifyChain()` **before** emitting `Started`. A `Broken` result emits `FlushEvent.ChainBroken` and returns immediately without flushing a single award.
-- `buildRequestBody()` — appends the four chain fields to every outbound POST body:
+- `buildRequestBody()` — appends the following fields to every outbound POST body:
+  - `ra_offline_unlocked_at` — epoch ms from `award.queuedAt`
   - `ra_chain_payload_hash`
   - `ra_chain_prev_hash`
   - `ra_chain_sig`
@@ -154,7 +155,7 @@ The proxy approach is one layer weaker: a determined attacker with root access o
 
 ### `NetworkConstants.kt`
 
-Top-level constants (no class, package root `com.raofflineproxy`):
+Top-level constants and helper function (no class, package root `com.raofflineproxy`):
 
 ```kotlin
 const val RA_HOST     = "https://retroachievements.org"
@@ -162,6 +163,9 @@ const val PROXY_PORT  = 8080
 const val PROXY_HOST  = "127.0.0.1"
 const val PROXY_BASE  = "http://127.0.0.1:8080"
 const val PROXY_VALUE = "127.0.0.1:8080"   // written into retroarch.cfg
+const val PROXY_UA_TAG = "RAOfflineProxy"
+
+fun proxyUserAgent(original: String): String  // appends " RAOfflineProxy/<versionName>" to User-Agent, idempotent
 ```
 
 ### `data/CacheKeys.kt`
@@ -422,7 +426,7 @@ On every request, the user-agent header is cached to `ua::last` via coroutine la
 
 ### Header Forwarding (`forwardToRA`)
 
-All request headers are forwarded to RA except those in `SKIP_HEADERS`. This is critical because RA's server 403s requests without the `rcheevos` User-Agent.
+All request headers are forwarded to RA except those in `SKIP_HEADERS`. The `User-Agent` header is appended with a proxy identifier suffix via `proxyUserAgent()` (e.g., `rcheevos/11.4.0 RAOfflineProxy/1.0.0`) so RA can distinguish proxied requests from direct connections. This is critical because RA's server 403s requests without the `rcheevos` UA prefix.
 
 POST bodies are sent with `Content-Type: application/x-www-form-urlencoded`.
 
@@ -458,7 +462,7 @@ Both methods check URL query parameters first (via OkHttp's `HttpUrl.queryParame
 sealed interface FlushEvent {
     data object Started
     data class Progress(val current: Int, val total: Int)
-    data class Completed(val flushed: Int, val total: Int)
+    data class Completed(val flushed: Int, val total: Int, val skippedStale: Int = 0)
 }
 ```
 
@@ -476,13 +480,27 @@ private sealed interface FlushResult {
 
 - `flush()` runs on `Dispatchers.IO`
 - Gets all pending awards from DB (ordered by queuedAt ASC)
+- Runs chain verification; if broken, emits `ChainBroken` and returns
+- Loads all known achievement IDs from cached `patch:*` entries via `loadKnownAchievementIds()`
 - Emits `Started`, then for each award:
   1. **Hardcore check** (`isHardcoreAward`) — if `h=1` in queryString or requestBody, silently deletes + counts as flushed (stale cleanup)
-  2. **`sendAward()`** → POSTs to `$RA_HOST${award.queryString}` with `award.requestBody` and `award.userAgent`
-  3. On `Success` → deletes award from DB
-  4. On `AuthError` → updates `lastError` on award, **does not retry** (keywords: `"Invalid"`, `"token"`, `"credentials"`, `"user"` in error string, or HTTP 401/403)
-  5. On `NetworkError` → increments `retryCount`, updates `lastError`. If `retryCount >= MAX_RETRIES (5)`, stops retrying (award remains in DB)
-- Emits `Completed(flushed, total)`
+  2. **Staleness check** — if `knownAchievementIds` is non-empty and `award.achievementId` is not in the set, sets `lastError` and skips (counts as `skippedStale`). Award remains in DB for user review.
+  3. **`sendAward()`** → POSTs to `$RA_HOST${award.queryString}` with `award.requestBody` and `proxyUserAgent(award.userAgent)` (appends proxy UA suffix)
+  4. On `Success` → deletes award from DB
+  5. On `AuthError` → updates `lastError` on award, **does not retry** (keywords: `"Invalid"`, `"token"`, `"credentials"`, `"user"` in error string, or HTTP 401/403)
+  6. On `NetworkError` → increments `retryCount`, updates `lastError`. If `retryCount >= MAX_RETRIES (5)`, stops retrying (award remains in DB)
+- Emits `Completed(flushed, total, skippedStale)`
+
+### Flushed Request Body
+
+`buildRequestBody()` appends the following fields to every outbound POST body:
+- `ra_offline_unlocked_at` — epoch ms from `award.queuedAt` (when the achievement was actually earned)
+- `ra_chain_payload_hash` — SHA-256 hash of the canonical payload
+- `ra_chain_prev_hash` — links to previous award in chain
+- `ra_chain_sig` — ECDSA signature
+- `ra_chain_pubkey` — Base64 DER-encoded public key
+
+The `ra_offline_unlocked_at` field is always included (even for legacy pre-chain awards), since `queuedAt` is always populated.
 
 ### Flush Triggers
 
@@ -633,6 +651,7 @@ Foreground service that owns `ProxyServer` + `AwardFlusher`.
 private const val CHANNEL_ID = "proxy_service"
 private const val NOTIFICATION_ID = 1
 private const val REFRESH_INTERVAL_MS = 3_600_000  // 1 hour
+private const val CACHE_TTL_MS = 604_800_000       // 7 days
 ```
 
 ### Lifecycle
@@ -655,6 +674,7 @@ Infinite loop: delays 1 hour, then if online:
 1. Loads credentials and user agent from cache
 2. Gets all `patch:*` cache keys, extracts distinct gameIds
 3. Calls `cacheGame()` for each gameId (refreshes patch, unlocks, startsession data)
+4. Evicts cache entries older than 7 days via `evictOlderThan()` (login and UA entries are exempt)
 
 ### Notifications
 
@@ -1007,5 +1027,3 @@ The proxy server implements raw HTTP/1.1 parsing and response building with manu
 - `cfgHardcoreWasEnabled` is declared in `MainUiState` but not populated (reserved)
 - `pending_awards_color` (`#FFB300`) is defined in `colors.xml` but not referenced in code or layouts
 - `PendingAwardDao.observeCount()` is defined but not called anywhere
-- `PendingAwardDao.getLatest()` is defined but not called anywhere
-- `CacheDao.evictOlderThan()` is defined but not called from any scheduled cleanup — old cache entries are never automatically evicted
