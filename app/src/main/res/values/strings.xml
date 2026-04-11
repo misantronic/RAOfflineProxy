@@ -118,8 +118,7 @@
     <string name="cd_delete_cache">Delete cache</string>
     <string name="cd_delete_cached_game">Delete cached game</string>
 
-    <!-- Hardcore warning -->
-    <string name="hardcore_warning">Hardcore mode is not supported. Achievements earned while this proxy is active will only count as softcore.</string>
+    <!-- Softcore note -->
     <string name="home_hardcore_note">Only softcore achievements are supported. Hardcore mode is disabled while this proxy is active.</string>
 
     <!-- Notification -->

@@ -22,7 +22,4 @@ interface PendingAwardDao {
 
     @Update
     suspend fun update(award: PendingAward)
-
-    @Query("SELECT COUNT(*) FROM pending_awards")
-    fun observeCount(): Flow<Int>
 }

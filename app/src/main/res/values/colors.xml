@@ -3,8 +3,5 @@
     <color name="primary">#FF2C97FA</color>
     <color name="primary_dark">#FF1A7DD4</color>
     <color name="white">#FFFFFFFF</color>
-    <color name="pending_awards_color">#FFB300</color>
-    <color name="error_red">#D32F2F</color>
-    <color name="success_green">#388E3C</color>
     <color name="ic_launcher_background">#FF1A1A2E</color>
 </resources>

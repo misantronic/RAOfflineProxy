@@ -28,7 +28,6 @@ import java.io.InputStreamReader
 import java.io.PrintWriter
 import java.net.ServerSocket
 import java.net.Socket
-import java.net.URLDecoder
 import java.util.concurrent.Executors
 
 private const val TAG = "RAProxy"

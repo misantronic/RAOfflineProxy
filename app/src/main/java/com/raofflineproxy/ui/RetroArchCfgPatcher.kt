@@ -106,10 +106,6 @@ private fun applyCfgTransform(
         return transformViaFile(context, directCandidate, transform, strings, detectHardcore)
     }
 
-    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M && detectHardcore) {
-        return PatchResult(success = false, message = context.getString(R.string.patch_cfg_not_found))
-    }
-
     if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.S_V2) {
         if (directCandidate != null || treeUri == null) {
             return PatchResult(
