@@ -169,7 +169,7 @@ class ProxyServer(
             val key = cacheKey(path, rawBody)
             val userAgent = headers["user-agent"] ?: ""
             scope.launch(Dispatchers.IO) {
-                db.cacheDao().upsert(CacheEntry(cacheKey = key, responseBody = upstream!!))
+                db.cacheDao().upsert(CacheEntry(cacheKey = key, responseBody = upstream))
                 Log.i(TAG, "Cached: $key")
                 if (action == "patch") {
                     val gameId = extractParam("g", path, rawBody)?.toIntOrNull()
@@ -180,7 +180,7 @@ class ProxyServer(
                     }
                 }
             }
-            return httpOk(upstream!!)
+            return httpOk(upstream)
         }
         if (upstream != null) {
             Log.i(TAG, "Forwarded (not cached) action=$action")
@@ -238,7 +238,7 @@ class ProxyServer(
             if (method == "POST") Log.d(TAG, "→ RA POST body: ${redactFormBody(rawBody)}")
 
             sharedHttpClient.newCall(request).execute().use { resp ->
-                val body = resp.body?.string()
+                val body = resp.body.string()
                 Log.d(TAG, "← RA ${resp.code} for ${redactTokens(path)} body=${body?.take(500)}")
                 if (!resp.isSuccessful) {
                     Log.w(TAG, "Upstream returned ${resp.code} for ${redactTokens(path)}")
