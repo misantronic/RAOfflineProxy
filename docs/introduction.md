@@ -46,5 +46,5 @@ RAOfflineProxy (local proxy)
 RetroArch supports a `cheevos_custom_host` setting in `retroarch.cfg`. RAOfflineProxy writes `127.0.0.1:8080` into that field. RetroArch then sends all achievement API traffic to the local proxy instead of directly to `retroachievements.org`. No RetroArch modification is needed — it is a built-in setting.
 
 ::: tip
-The proxy forwards your RetroArch `User-Agent` header verbatim to RA. This is required because RA's server rejects requests that do not carry the `rcheevos` user-agent.
+The proxy forwards your RetroArch `User-Agent` header to RA with an added `RAOfflineProxy/<version>` suffix. The original `rcheevos` user-agent prefix is preserved, which is required because RA's server rejects requests without it.
 :::

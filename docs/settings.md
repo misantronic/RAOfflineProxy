@@ -63,3 +63,5 @@ Tapping the notification opens the app. The notification cannot be dismissed whi
 ## Background Refresh
 
 While the proxy is running and the device is online, all cached games are automatically refreshed **every 60 minutes**. This keeps achievement lists and unlock counts up to date without any manual action.
+
+During each refresh cycle, cache entries older than **7 days** are automatically evicted to free up storage. Login credentials are exempt from eviction — you will not be logged out by this process.
