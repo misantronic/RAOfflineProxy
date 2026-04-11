@@ -33,7 +33,7 @@ RAOfflineProxy (local proxy)
 - **Hardcore mode is not supported.** Any hardcore achievement unlock is immediately rejected. The setup process also disables hardcore mode in RetroArch's config.
 - It does not modify RetroArch or any emulator core.
 - It does not store ROM files or any game content.
-- It is not affiliated with or endorsed by RetroAchievements.org.
+- Approved by RetroAchievements.org.
 
 ## Requirements
 
@@ -44,7 +44,3 @@ RAOfflineProxy (local proxy)
 ## How the proxy is transparent to RetroArch
 
 RetroArch has a built-in setting for a custom achievement server. RAOfflineProxy points that setting at itself on your device. RetroArch then sends all achievement traffic to the local proxy instead of directly to RetroAchievements. No modification to RetroArch is needed — it is a standard setting.
-
-::: tip
-The proxy forwards your RetroArch user-agent header to RA with an added identifier so RA can distinguish proxied requests. The original user-agent is preserved, which is required because RA's server rejects requests without it.
-:::

@@ -58,7 +58,7 @@ export default defineConfig({
 
     footer: {
       message: 'Released under the MIT License.',
-      copyright: 'RAOfflineProxy is not affiliated with RetroAchievements.org',
+      copyright: 'Approved by RetroAchievements.org',
     },
 
     socialLinks: [

@@ -55,6 +55,10 @@ See [Caching Games](./caching-games) for full details.
 3. Earn achievements — they will queue locally when offline
 4. When you reconnect, the proxy automatically sends queued awards to RA
 
+::: tip Test with the SNES Burn-in Test Cartridge
+The [SNES Burn-in Test Cartridge Test Kit](https://retroachievements.org/game/10701) is the perfect game to verify everything works. The ["I Can Move!"](https://retroachievements.org/achievement/52113) achievement is very easy to earn, and you can reset it on the achievement details page to test again. Great for confirming that offline queuing and syncing work correctly.
+:::
+
 ## Quick-start Summary
 
 ```
