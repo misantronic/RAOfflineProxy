@@ -1,8 +1,8 @@
 import java.util.Properties
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
     alias(libs.plugins.android.application)
-    alias(libs.plugins.kotlin.android)
     alias(libs.plugins.ksp)
 }
 
@@ -13,7 +13,7 @@ val keystoreProperties = Properties().also { props ->
 
 android {
     namespace = "com.raofflineproxy"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.raofflineproxy"
@@ -45,8 +45,10 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    kotlinOptions {
-        jvmTarget = "17"
+    kotlin {
+        compilerOptions {
+            jvmTarget.set(JvmTarget.JVM_17)
+        }
     }
 
     buildFeatures {
