@@ -1,5 +1,6 @@
 package com.raofflineproxy.ui
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -20,10 +21,11 @@ import com.raofflineproxy.PrefsConstants
 import com.raofflineproxy.R
 import com.raofflineproxy.databinding.ActivityMainBinding
 import kotlinx.coroutines.launch
+import androidx.core.net.toUri
 
-private val ANDROID_DATA_URI: Uri = Uri.parse(
-    "content://com.android.externalstorage.documents/document/primary%3AAndroid%2Fdata"
-)
+@SuppressLint("UseKtx")
+private val ANDROID_DATA_URI: Uri =
+    "content://com.android.externalstorage.documents/document/primary%3AAndroid%2Fdata".toUri()
 
 class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
