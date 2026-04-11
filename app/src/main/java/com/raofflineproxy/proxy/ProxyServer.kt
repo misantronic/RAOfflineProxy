@@ -239,7 +239,7 @@ class ProxyServer(
 
             sharedHttpClient.newCall(request).execute().use { resp ->
                 val body = resp.body.string()
-                Log.d(TAG, "← RA ${resp.code} for ${redactTokens(path)} body=${body?.take(500)}")
+                Log.d(TAG, "← RA ${resp.code} for ${redactTokens(path)} body=${body.take(500)}")
                 if (!resp.isSuccessful) {
                     Log.w(TAG, "Upstream returned ${resp.code} for ${redactTokens(path)}")
                     return null
