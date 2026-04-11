@@ -35,7 +35,8 @@ data class PatchResult(
     val success: Boolean,
     val message: String,
     val needsSafGrant: Boolean = false,
-    val copyBackPath: String? = null
+    val copyBackPath: String? = null,
+    val hardcoreWasEnabled: Boolean = false
 )
 
 fun patchRetroArchCfg(context: Context, treeUri: Uri?): PatchResult {
@@ -82,14 +83,15 @@ private fun patchViaSaf(context: Context, treeUri: Uri): PatchResult? {
                 ?.bufferedReader()?.use { it.readText() }
                 ?: return PatchResult(success = false, message = context.getString(R.string.patch_could_not_read, cfgFile.name))
 
+            val hardcoreWas = detectHardcoreEnabled(original)
             val patched = buildPatchedContent(original)
             if (patched == original) {
-                PatchResult(success = true, message = context.getString(R.string.patch_already_configured))
+                PatchResult(success = true, message = context.getString(R.string.patch_already_configured), hardcoreWasEnabled = hardcoreWas)
             } else {
                 context.contentResolver.openOutputStream(cfgFile.uri, "wt")
                     ?.use { it.write(patched.toByteArray()) }
                     ?: return PatchResult(success = false, message = context.getString(R.string.patch_could_not_write, cfgFile.name))
-                PatchResult(success = true, message = context.getString(R.string.patch_success_saf))
+                PatchResult(success = true, message = context.getString(R.string.patch_success_saf), hardcoreWasEnabled = hardcoreWas)
             }
         } catch (e: Exception) {
             PatchResult(success = false, message = context.getString(R.string.patch_error_saf, e.message))
@@ -130,12 +132,13 @@ private fun stagingPatch(context: Context, directCandidate: File?): PatchResult 
     if (directCandidate != null) {
         return try {
             workCfg.copyTo(directCandidate, overwrite = true)
-            PatchResult(success = true, message = context.getString(R.string.patch_success))
+            PatchResult(success = true, message = context.getString(R.string.patch_success), hardcoreWasEnabled = patchResult.hardcoreWasEnabled)
         } catch (_: Exception) {
             PatchResult(
                 success = true,
                 message = context.getString(R.string.patch_staged_no_copy_back, WORK_CFG),
-                copyBackPath = directCandidate.path
+                copyBackPath = directCandidate.path,
+                hardcoreWasEnabled = patchResult.hardcoreWasEnabled
             )
         }
     }
@@ -143,19 +146,21 @@ private fun stagingPatch(context: Context, directCandidate: File?): PatchResult 
     return PatchResult(
         success = true,
         message = context.getString(R.string.patch_staged_with_copy_back, WORK_CFG),
-        copyBackPath = SOURCE_CANDIDATES.first()
+        copyBackPath = SOURCE_CANDIDATES.first(),
+        hardcoreWasEnabled = patchResult.hardcoreWasEnabled
     )
 }
 
 private fun writeViaFile(context: Context, target: File): PatchResult =
     try {
         val original = target.readText()
+        val hardcoreWas = detectHardcoreEnabled(original)
         val patched = buildPatchedContent(original)
         if (patched == original) {
-            PatchResult(success = true, message = context.getString(R.string.patch_already_configured))
+            PatchResult(success = true, message = context.getString(R.string.patch_already_configured), hardcoreWasEnabled = hardcoreWas)
         } else {
             target.writeText(patched)
-            PatchResult(success = true, message = context.getString(R.string.patch_success))
+            PatchResult(success = true, message = context.getString(R.string.patch_success), hardcoreWasEnabled = hardcoreWas)
         }
     } catch (e: Exception) {
         PatchResult(success = false, message = context.getString(R.string.patch_error_file, target.path, e.message))
@@ -163,6 +168,10 @@ private fun writeViaFile(context: Context, target: File): PatchResult =
 
 private fun manualCopyInstructions(context: Context, sourcePath: String): String =
     context.getString(R.string.patch_manual_copy_instructions, sourcePath, WORK_CFG)
+
+fun detectHardcoreEnabled(content: String): Boolean =
+    Regex("""^\s*cheevos_hardcore_mode_enable\s*=\s*"true"\s*$""", RegexOption.MULTILINE)
+        .containsMatchIn(content)
 
 fun buildPatchedContent(content: String): String {
     val hostRegex = Regex("""^(\s*cheevos_custom_host\s*=\s*).*$""", RegexOption.MULTILINE)
@@ -181,9 +190,18 @@ fun buildPatchedContent(content: String): String {
     }
 }
 
-private fun buildRevertedContent(content: String): String {
+private fun buildRevertedContent(content: String, restoreHardcore: Boolean = false): String {
     val hostRegex = Regex("""^(\s*cheevos_custom_host\s*=\s*).*$""", RegexOption.MULTILINE)
-    return hostRegex.replace(content) { mr -> "${mr.groupValues[1]}\"\"" }
+    val withHost = hostRegex.replace(content) { mr -> "${mr.groupValues[1]}\"\"" }
+
+    if (!restoreHardcore) return withHost
+
+    val hardcoreRegex = Regex("""^(\s*cheevos_hardcore_mode_enable\s*=\s*).*$""", RegexOption.MULTILINE)
+    return if (hardcoreRegex.containsMatchIn(withHost)) {
+        hardcoreRegex.replace(withHost) { mr -> "${mr.groupValues[1]}\"true\"" }
+    } else {
+        withHost
+    }
 }
 
 private fun isPatchedContent(content: String): Boolean {
@@ -216,16 +234,16 @@ fun checkIsPatched(context: Context, treeUri: Uri?): Boolean {
     return false
 }
 
-fun revertRetroArchCfg(context: Context, treeUri: Uri?): PatchResult {
+fun revertRetroArchCfg(context: Context, treeUri: Uri?, restoreHardcore: Boolean = false): PatchResult {
     if (treeUri != null) {
-        val safResult = revertViaSaf(context, treeUri)
+        val safResult = revertViaSaf(context, treeUri, restoreHardcore)
         if (safResult != null) return safResult
     }
 
     val directCandidate = SOURCE_CANDIDATES.map(::File).firstOrNull { it.exists() }
 
     if (directCandidate != null && directCandidate.canWrite()) {
-        return revertViaFile(context, directCandidate)
+        return revertViaFile(context, directCandidate, restoreHardcore)
     }
 
     if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.S_V2) {
@@ -241,10 +259,10 @@ fun revertRetroArchCfg(context: Context, treeUri: Uri?): PatchResult {
         }
     }
 
-    return stagingRevert(context, directCandidate)
+    return stagingRevert(context, directCandidate, restoreHardcore)
 }
 
-private fun revertViaSaf(context: Context, treeUri: Uri): PatchResult? {
+private fun revertViaSaf(context: Context, treeUri: Uri, restoreHardcore: Boolean): PatchResult? {
     val tree = DocumentFile.fromTreeUri(context, treeUri) ?: return null
 
     for (segments in SAF_CFG_PATHS) {
@@ -256,7 +274,7 @@ private fun revertViaSaf(context: Context, treeUri: Uri): PatchResult? {
                 ?.bufferedReader()?.use { it.readText() }
                 ?: return PatchResult(success = false, message = context.getString(R.string.patch_could_not_read, cfgFile.name))
 
-            val reverted = buildRevertedContent(original)
+            val reverted = buildRevertedContent(original, restoreHardcore)
             if (reverted == original) {
                 PatchResult(success = true, message = context.getString(R.string.revert_already_reverted))
             } else {
@@ -276,10 +294,10 @@ private fun revertViaSaf(context: Context, treeUri: Uri): PatchResult? {
     )
 }
 
-private fun revertViaFile(context: Context, target: File): PatchResult =
+private fun revertViaFile(context: Context, target: File, restoreHardcore: Boolean): PatchResult =
     try {
         val original = target.readText()
-        val reverted = buildRevertedContent(original)
+        val reverted = buildRevertedContent(original, restoreHardcore)
         if (reverted == original) {
             PatchResult(success = true, message = context.getString(R.string.revert_already_reverted))
         } else {
@@ -290,7 +308,7 @@ private fun revertViaFile(context: Context, target: File): PatchResult =
         PatchResult(success = false, message = context.getString(R.string.revert_error_file, target.path, e.message))
     }
 
-private fun stagingRevert(context: Context, directCandidate: File?): PatchResult {
+private fun stagingRevert(context: Context, directCandidate: File?, restoreHardcore: Boolean): PatchResult {
     File(WORK_DIR).mkdirs()
     val workCfg = File(WORK_CFG)
 
@@ -306,7 +324,7 @@ private fun stagingRevert(context: Context, directCandidate: File?): PatchResult
         return PatchResult(success = false, message = manualCopyInstructions(context, SOURCE_CANDIDATES.first()))
     }
 
-    val revertResult = revertViaFile(context, workCfg)
+    val revertResult = revertViaFile(context, workCfg, restoreHardcore)
     if (!revertResult.success) return revertResult
 
     if (directCandidate != null) {
