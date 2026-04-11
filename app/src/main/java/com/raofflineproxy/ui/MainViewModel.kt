@@ -124,6 +124,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         flushInProgress = false,
                         flushProgress = str(R.string.flush_chain_broken, event.index + 1, event.reason)
                     )
+                    is FlushEvent.RefreshFailed -> _state.value = _state.value.copy(
+                        flushInProgress = false,
+                        flushProgress = str(R.string.flush_refresh_failed, event.reason)
+                    )
                 }
             }
         }

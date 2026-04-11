@@ -66,6 +66,7 @@
     <string name="flush_completed">Flushed %1$d of %2$d award(s).</string>
     <string name="flush_completed_with_stale">Flushed %1$d of %2$d award(s). %3$d skipped (stale).</string>
     <string name="flush_chain_broken">Flush blocked: award #%1$d failed integrity check (%2$s). Your pending awards may have been tampered with.</string>
+    <string name="flush_refresh_failed">Flush blocked: could not refresh achievement data from server. %1$s</string>
 
     <!-- Scan / add ROM messages -->
     <string name="scan_no_login">No login data found. Please launch RetroArch and log in to RetroAchievements while online first.</string>
