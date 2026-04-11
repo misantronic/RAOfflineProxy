@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import com.raofflineproxy.PrefsConstants
 import com.raofflineproxy.ui.patchRetroArchCfg
+import androidx.core.content.edit
 
 class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
@@ -14,7 +15,12 @@ class BootReceiver : BroadcastReceiver() {
         val treeUri = PrefsConstants.loadSafUri(context)
         val result = patchRetroArchCfg(context, treeUri)
         if (result.success) {
-            prefs.edit().putBoolean(PrefsConstants.KEY_HARDCORE_WAS_ENABLED, result.hardcoreWasEnabled).apply()
+            prefs.edit {
+                putBoolean(
+                    PrefsConstants.KEY_HARDCORE_WAS_ENABLED,
+                    result.hardcoreWasEnabled
+                )
+            }
             ProxyService.start(context)
         }
     }
