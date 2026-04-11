@@ -8,12 +8,17 @@ import android.os.Bundle
 import android.view.Menu
 import android.view.MenuItem
 import androidx.activity.OnBackPressedCallback
+import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContract
 import androidx.activity.viewModels
 import androidx.appcompat.app.ActionBarDrawerToggle
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.net.toUri
 import androidx.core.view.GravityCompat
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.updatePadding
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import com.google.android.material.navigation.NavigationView
@@ -22,7 +27,6 @@ import com.raofflineproxy.PrefsConstants
 import com.raofflineproxy.R
 import com.raofflineproxy.databinding.ActivityMainBinding
 import kotlinx.coroutines.launch
-import androidx.core.net.toUri
 
 @SuppressLint("UseKtx")
 private val ANDROID_DATA_URI: Uri =
@@ -46,9 +50,16 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
+
+        ViewCompat.setOnApplyWindowInsetsListener(binding.fragmentContainer) { v, insets ->
+            val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+            v.updatePadding(bottom = bars.bottom)
+            insets
+        }
 
         val drawerLayout = binding.drawerLayout
         val navView = binding.navView
@@ -213,13 +224,13 @@ class MainActivity : AppCompatActivity() {
             }
             copyBackMsg != null || state.cfgPatchSuccess == false -> {
                 snackbar?.dismiss()
-                snackbar = Snackbar.make(binding.root, msg, Snackbar.LENGTH_INDEFINITE)
+                snackbar = Snackbar.make(binding.fragmentContainer, msg, Snackbar.LENGTH_INDEFINITE)
                     .setAction(R.string.action_ok) { viewModel.clearTransientMessages() }
                     .also { it.show() }
             }
             else -> {
                 snackbar?.dismiss()
-                snackbar = Snackbar.make(binding.root, msg, Snackbar.LENGTH_LONG)
+                snackbar = Snackbar.make(binding.fragmentContainer, msg, Snackbar.LENGTH_LONG)
                     .also { it.show() }
             }
         }
