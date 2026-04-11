@@ -4,9 +4,14 @@ build/
 local.properties
 app/release/
 *.apk
+*.aab
 *.dm
+*.hprof
+*.log
+*.jks
+*.keystore
 
 node_modules
 docs/.vitepress/dist
-raofflineproxy-release.jks
 keystore.properties
+AGENTS.md
