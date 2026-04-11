@@ -41,6 +41,10 @@ Awards are flushed in the order they were queued (oldest first).
 If a hardcore award (`h=1`) somehow ends up in the queue (from an older version), it is silently deleted during flush rather than sent to RA.
 :::
 
+## Stale Award Filtering
+
+Before flushing, the proxy checks each queued achievement ID against your cached game data. If an achievement has been retired or removed from RetroAchievements since you earned it, the award is flagged as stale and skipped during flush. Stale awards remain in the queue with an error message so you can see which ones were affected — they are not silently deleted.
+
 ## Authentication Errors
 
 If you see a red error message on a pending award saying something like "Invalid token" or "Invalid credentials", your RetroAchievements session has expired. To fix this:

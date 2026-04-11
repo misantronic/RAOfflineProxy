@@ -63,6 +63,10 @@ The **Cached Games** screen shows a list of all games currently in the cache. Fo
 
 Tap the **refresh icon** to re-fetch data for all cached games while online. This updates achievement lists and your unlock counts. The proxy also runs an **automatic background refresh every 60 minutes** while the service is running and you are online.
 
+## Cache Expiration
+
+Cache entries older than **7 days** are automatically removed during each background refresh cycle. If you plan to go offline for longer than a week, refresh your cache manually before disconnecting. Login credentials are not affected by cache expiration.
+
 ## Deleting a Cached Game
 
 Tap the **trash icon** next to a game to remove it from the cache.
