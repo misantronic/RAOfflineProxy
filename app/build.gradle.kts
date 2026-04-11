@@ -13,12 +13,12 @@ val keystoreProperties = Properties().also { props ->
 
 android {
     namespace = "com.raofflineproxy"
-    compileSdk = 36
+    compileSdk = 35
 
     defaultConfig {
         applicationId = "com.raofflineproxy"
         minSdk = 26
-        targetSdk = 36
+        targetSdk = 34
         versionCode = 1
         versionName = "1.0.0"
     }
