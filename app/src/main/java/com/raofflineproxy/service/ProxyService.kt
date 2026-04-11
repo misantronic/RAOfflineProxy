@@ -66,7 +66,7 @@ class ProxyService : Service() {
         db = AppDatabase.getInstance(this)
         awardFlusher = AwardFlusher(db)
         proxyServer = ProxyServer(db, serviceScope) { isOnline }
-        connectivityManager = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        connectivityManager = getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager
     }
 
     @RequiresPermission(Manifest.permission.ACCESS_NETWORK_STATE)
