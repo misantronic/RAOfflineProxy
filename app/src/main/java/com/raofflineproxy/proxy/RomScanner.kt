@@ -5,6 +5,7 @@ import android.net.Uri
 import android.util.Log
 import androidx.documentfile.provider.DocumentFile
 import com.raofflineproxy.PROXY_BASE
+import com.raofflineproxy.RA_HOST
 import com.raofflineproxy.data.AppDatabase
 import com.raofflineproxy.data.CacheEntry
 import com.raofflineproxy.data.CacheKeys
@@ -38,6 +39,37 @@ suspend fun loadLoginCredentials(db: AppDatabase): LoginCredentials? {
 suspend fun loadUserAgent(db: AppDatabase): String =
     db.cacheDao().get(CacheKeys.USER_AGENT)?.responseBody?.takeIf { it.isNotEmpty() }
         ?: FALLBACK_USER_AGENT
+
+suspend fun refreshGamePatch(
+    gameId: Int,
+    creds: LoginCredentials,
+    userAgent: String,
+    db: AppDatabase
+): String? {
+    val url = "$RA_HOST/dorequest.php?r=patch&g=$gameId&u=${creds.user}&t=${creds.token}"
+    val responseBody = try {
+        val connection = URL(url).openConnection() as HttpURLConnection
+        connection.connectTimeout = 10_000
+        connection.readTimeout = 10_000
+        connection.setRequestProperty("User-Agent", userAgent)
+        connection.setRequestProperty("Accept-Encoding", "identity")
+        connection.inputStream.bufferedReader().use { it.readText() }
+    } catch (e: Exception) {
+        Log.e("RAProxy", "refreshGamePatch failed for gameId=$gameId: ${e.message}")
+        return null
+    }
+    val json = runCatching { JSONObject(responseBody) }.getOrNull()
+    if (json == null || !json.optBoolean("Success", false)) {
+        Log.e("RAProxy", "refreshGamePatch returned invalid response for gameId=$gameId")
+        return null
+    }
+    db.cacheDao().upsert(CacheEntry(
+        cacheKey = CacheKeys.patch(gameId, creds.user),
+        responseBody = responseBody
+    ))
+    Log.i("RAProxy", "refreshGamePatch: updated cache for gameId=$gameId")
+    return responseBody
+}
 
 suspend fun scanRomFolder(
     context: Context,

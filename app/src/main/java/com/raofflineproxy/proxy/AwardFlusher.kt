@@ -26,6 +26,7 @@ sealed interface FlushEvent {
     data class Progress(val current: Int, val total: Int) : FlushEvent
     data class Completed(val flushed: Int, val total: Int, val skippedStale: Int = 0) : FlushEvent
     data class ChainBroken(val index: Int, val reason: String) : FlushEvent
+    data class RefreshFailed(val reason: String) : FlushEvent
 }
 
 private sealed interface FlushResult {
@@ -60,6 +61,39 @@ private fun sha256Hex(input: String): String {
 
 private fun canonicalPayload(award: PendingAward): String =
     "${award.achievementId}|${award.queryString}|${award.requestBody}|${award.queuedAt}"
+
+private fun extractFormParam(body: String, name: String): String? =
+    body.split("&").firstNotNullOfOrNull { part ->
+        val eq = part.indexOf('=')
+        if (eq < 0 || part.substring(0, eq) != name) null
+        else java.net.URLDecoder.decode(part.substring(eq + 1), "UTF-8")
+    }
+
+private fun replaceOrAppendFormParam(body: String, name: String, value: String): String {
+    val encoded = java.net.URLEncoder.encode(value, "UTF-8")
+    val parts = body.split("&").toMutableList()
+    val idx = parts.indexOfFirst { it.startsWith("$name=") }
+    if (idx >= 0) parts[idx] = "$name=$encoded" else parts.add("$name=$encoded")
+    return parts.joinToString("&")
+}
+
+private fun computeValidationHash(
+    achievementId: Int,
+    username: String,
+    hardcore: Int,
+    secondsSinceUnlock: Long
+): String {
+    val md = MessageDigest.getInstance("MD5")
+    val aidStr = achievementId.toUInt().toString()
+    md.update(aidStr.toByteArray())
+    md.update(username.toByteArray())
+    md.update(hardcore.toString().toByteArray())
+    if (secondsSinceUnlock != 0L) {
+        md.update(aidStr.toByteArray())
+        md.update(secondsSinceUnlock.toUInt().toString().toByteArray())
+    }
+    return md.digest().joinToString("") { "%02x".format(it) }
+}
 
 private fun verifyChain(awards: List<PendingAward>): ChainVerificationResult {
     awards.forEachIndexed { index, award ->
@@ -98,17 +132,36 @@ class AwardFlusher(private val db: AppDatabase) {
         val events = _events.asSharedFlow()
     }
 
-    private suspend fun loadKnownAchievementIds(): Set<Int> {
+    private suspend fun refreshAndLoadAchievementIds(
+        creds: LoginCredentials,
+        userAgent: String
+    ): Set<Int>? {
         val patchEntries = db.cacheDao().getAllByPrefix(CacheKeys.PREFIX_PATCH)
+        val gameIds = patchEntries.mapNotNull { entry ->
+            entry.cacheKey.removePrefix(CacheKeys.PREFIX_PATCH).split(":").firstOrNull()?.toIntOrNull()
+        }.distinct()
+
+        if (gameIds.isEmpty()) {
+            Log.w(TAG, "No cached patch entries — cannot determine game IDs for staleness check")
+            return emptySet()
+        }
+
         val ids = mutableSetOf<Int>()
-        for (entry in patchEntries) {
+        val ua = proxyUserAgent(userAgent)
+        for (gameId in gameIds) {
+            val responseBody = refreshGamePatch(gameId, creds, ua, db)
+                ?: return null
+
             runCatching {
-                val json = JSONObject(entry.responseBody)
+                val json = JSONObject(responseBody)
                 val patchData = json.optJSONObject("PatchData") ?: return@runCatching
                 val achievements = patchData.optJSONArray("Achievements") ?: return@runCatching
                 for (i in 0 until achievements.length()) {
                     ids.add(achievements.getJSONObject(i).getInt("ID"))
                 }
+            }.onFailure { e ->
+                Log.e(TAG, "Live refresh parse error for gameId=$gameId: ${e.message}")
+                return null
             }
         }
         return ids
@@ -130,8 +183,21 @@ class AwardFlusher(private val db: AppDatabase) {
             }
         }
 
-        val knownAchievementIds = loadKnownAchievementIds()
-        Log.i(TAG, "Loaded ${knownAchievementIds.size} known achievement IDs from cache")
+        val creds = loadLoginCredentials(db)
+        if (creds == null) {
+            Log.e(TAG, "Flush blocked — no login credentials available")
+            _events.emit(FlushEvent.RefreshFailed("No login credentials available"))
+            return@withContext
+        }
+        val userAgent = loadUserAgent(db)
+
+        val knownAchievementIds = refreshAndLoadAchievementIds(creds, userAgent)
+        if (knownAchievementIds == null) {
+            Log.e(TAG, "Flush blocked — could not refresh achievement data from server")
+            _events.emit(FlushEvent.RefreshFailed("Could not refresh achievement data from server. Try again later."))
+            return@withContext
+        }
+        Log.i(TAG, "Live refresh complete: ${knownAchievementIds.size} known achievement IDs")
 
         _events.emit(FlushEvent.Started)
 
@@ -146,9 +212,9 @@ class AwardFlusher(private val db: AppDatabase) {
                 return@forEachIndexed
             }
             if (knownAchievementIds.isNotEmpty() && award.achievementId !in knownAchievementIds) {
-                Log.w(TAG, "Skipping stale award ${award.id} — achievement ${award.achievementId} not found in cached patch data")
+                Log.w(TAG, "Skipping stale award ${award.id} — achievement ${award.achievementId} not found in live patch data")
                 db.pendingAwardDao().update(
-                    award.copy(lastError = "Achievement ${award.achievementId} not found in cached data — may have been retired or modified")
+                    award.copy(lastError = "Achievement ${award.achievementId} not found in live server data — may have been retired or modified")
                 )
                 skippedStale++
                 return@forEachIndexed
@@ -225,8 +291,21 @@ class AwardFlusher(private val db: AppDatabase) {
     }
 
     private fun buildRequestBody(award: PendingAward): String {
-        val timestampField = "&ra_offline_unlocked_at=${award.queuedAt}"
-        if (award.payloadHash.isEmpty()) return award.requestBody + timestampField
+        var body = award.requestBody
+
+        val offsetSeconds = (System.currentTimeMillis() - award.queuedAt) / 1000
+        if (offsetSeconds > 0) {
+            val achievementId = extractFormParam(body, "a")?.toIntOrNull() ?: award.achievementId
+            val username = extractFormParam(body, "u") ?: ""
+            val hardcore = extractFormParam(body, "h")?.toIntOrNull() ?: 0
+            val newHash = computeValidationHash(achievementId, username, hardcore, offsetSeconds)
+            body = replaceOrAppendFormParam(body, "v", newHash)
+            body = replaceOrAppendFormParam(body, "o", offsetSeconds.toString())
+            Log.d(TAG, "Injected offset: o=$offsetSeconds, recomputed v=$newHash for achievement $achievementId")
+        }
+
+        if (award.payloadHash.isEmpty()) return body
+
         val pubKey = runCatching { AwardKeyManager.getPublicKeyBase64() }.getOrElse { "" }
         val chainFields = buildString {
             append("&ra_chain_payload_hash=").append(award.payloadHash)
@@ -234,6 +313,6 @@ class AwardFlusher(private val db: AppDatabase) {
             append("&ra_chain_sig=").append(award.signature)
             append("&ra_chain_pubkey=").append(pubKey)
         }
-        return award.requestBody + timestampField + chainFields
+        return body + chainFields
     }
 }
