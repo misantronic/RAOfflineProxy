@@ -5,10 +5,9 @@
 **Cause:** RetroArch's config is not patched, or RetroArch loaded a config from a different location.
 
 **Fix:**
-1. Open RAOfflineProxy → **RetroArch Setup** and check the patch status indicator.
-2. If not patched, tap **Patch retroarch.cfg**.
-3. Restart RetroArch after patching — it only reads the custom server setting at startup.
-4. If the app can't patch automatically, see [manual patching](./cfg-patching#manual-patching-adb-fallback).
+1. Stop and restart the proxy — starting the proxy automatically patches RetroArch's config.
+2. Restart RetroArch after starting the proxy — it only reads the custom server setting at startup.
+3. If the app can't patch automatically, see [manual patching](./cfg-patching#manual-patching-adb-fallback).
 
 ---
 
@@ -24,7 +23,7 @@
 
 **Cause 3:** Hardcore mode is enabled in RetroArch.
 
-**Fix:** RAOfflineProxy does not support hardcore mode. The setup process disables it, but if it was re-enabled manually, achievements will be rejected. Disable hardcore mode in RetroArch → Settings → Achievements.
+**Fix:** RAOfflineProxy does not support hardcore mode. Starting the proxy disables it automatically, but if it was re-enabled manually, achievements will be rejected. Disable hardcore mode in RetroArch → Settings → Achievements.
 
 ---
 
@@ -46,11 +45,11 @@
 
 ---
 
-## "Grant Folder Access" button appears after tapping Patch
+## A dialog asks me to grant folder access when starting the proxy
 
 **Cause:** On Android 12 and below, the app found `retroarch.cfg` but cannot write to it directly due to storage restrictions.
 
-**Fix:** Tap **Grant Folder Access** and navigate to the folder that contains `retroarch.cfg` (usually inside the RetroArch data folder). Grant read + write access. The app will re-patch automatically.
+**Fix:** Tap **Grant** in the dialog and navigate to the folder that contains `retroarch.cfg` (usually inside the RetroArch data folder). Grant read + write access. The app will patch the config and start the proxy automatically.
 
 ---
 
@@ -90,14 +89,14 @@ RAOfflineProxy works at the network level — it is transparent to all RetroArch
 ## What happens if I uninstall RAOfflineProxy without reverting the config?
 
 RetroArch will keep trying to connect to the proxy, which will fail since nothing is listening. Achievement features in RetroArch will not work until you either:
-- Reinstall RAOfflineProxy and revert the config via the app, or
+- Reinstall RAOfflineProxy, start the proxy, then stop it (which reverts the config), or
 - Manually clear the custom server setting in `retroarch.cfg`
 
 ---
 
 ## Is hardcore mode supported?
 
-**No.** Hardcore mode is permanently unsupported. Any hardcore award request is rejected by the proxy. The setup process also disables hardcore mode in RetroArch's config. This is an intentional design decision — the integrity guarantees required for hardcore mode cannot be provided by a local proxy.
+**No.** Hardcore mode is permanently unsupported. Any hardcore achievement unlock is immediately rejected. Starting the proxy also disables hardcore mode in RetroArch's config (and restores it when you stop the proxy). This is an intentional design decision — the integrity guarantees required for hardcore mode cannot be provided by a local proxy.
 
 ---
 

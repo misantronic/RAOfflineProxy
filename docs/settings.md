@@ -11,9 +11,9 @@ Navigate to **Settings** in the drawer to access the following options.
 ::: warning Both conditions must be met
 Auto-start only works when **both** of the following are true:
 1. The "Autostart" checkbox is checked
-2. RetroArch's config is currently patched (pointing at the proxy)
+2. RetroArch's config can be patched successfully on boot
 
-The checkbox alone is not sufficient. If the config is not patched, the service will not start on boot.
+If the config cannot be patched (e.g. folder access was never granted and the file is not directly writable), the service will not start on boot.
 :::
 
 ### Clear Cache
@@ -40,12 +40,11 @@ The action bar at the top of every screen has a **Start proxy / Stop proxy** but
 
 | State | Button label | Tooltip |
 |---|---|---|
-| Proxy stopped, config not patched | Start proxy (disabled) | — |
-| Proxy stopped, config patched | Start proxy | — |
+| Proxy stopped | Start proxy | Start proxy |
 | Proxy running, online | Stop proxy | Proxy running — online |
 | Proxy running, offline | Stop proxy | Proxy running — offline |
 
-The button is disabled (greyed out) if RetroArch's config is not patched and the proxy is not already running.
+Starting the proxy automatically patches RetroArch's config. Stopping it reverts the config and restores any previous hardcore mode setting. See [RetroArch CFG Patching](./cfg-patching) for details.
 
 ## Persistent Notification
 

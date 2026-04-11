@@ -11,7 +11,7 @@ RAOfflineProxy runs a tiny local proxy on your device. It sits between RetroArch
 - **Play offline** — game data, achievement lists, and unlock history are cached locally so everything works without Wi-Fi or mobile data
 - **Automatic award sync** — achievements earned offline are queued and submitted to RetroAchievements as soon as you go online
 - **Offline timestamps** — each queued award records the actual time you earned it, so your RA profile shows the real unlock time
-- **Easy setup** — a one-tap patcher points RetroArch at the proxy automatically, and can be reverted just as easily
+- **Easy setup** — starting the proxy automatically patches RetroArch's config; stopping it reverts the change. If hardcore mode was enabled, it is restored on revert
 - **ROM scanning** — scan a folder or add individual ROMs to pre-cache everything you need before going offline
 - **Auto-start on boot** — optionally starts in the background when your device boots
 - **Background refresh** — cached data is refreshed hourly while you are online; stale entries older than 7 days are cleaned up automatically
@@ -26,10 +26,9 @@ RAOfflineProxy runs a tiny local proxy on your device. It sits between RetroArch
 ## Quick Start
 
 1. Install RAOfflineProxy and open it
-2. Go to **RetroArch Setup** and tap **Patch** — this points RetroArch at the local proxy
-3. Start the proxy using the button in the action bar
-4. Go to **Cached Games** and scan your ROM folder or add individual ROMs while online
-5. You are ready to play offline
+2. Start the proxy using the button in the action bar — this automatically patches RetroArch's config
+3. Go to **Cached Games** and scan your ROM folder or add individual ROMs while online
+4. You are ready to play offline
 
 For detailed setup instructions, see the [documentation](https://raofflineproxy.com/installation).
 
