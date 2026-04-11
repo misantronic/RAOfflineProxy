@@ -2,6 +2,8 @@ package com.raofflineproxy
 
 import android.content.Context
 import android.net.Uri
+import androidx.core.net.toUri
+import androidx.core.content.edit
 
 object PrefsConstants {
     const val PREFS_NAME = "ra_proxy_prefs"
@@ -11,11 +13,10 @@ object PrefsConstants {
 
     fun loadSafUri(context: Context): Uri? =
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .getString(KEY_SAF_TREE_URI, null)
-            ?.let { Uri.parse(it) }
+                .getString(KEY_SAF_TREE_URI, null)?.toUri()
 
     fun saveSafUri(context: Context, uri: Uri) {
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .edit().putString(KEY_SAF_TREE_URI, uri.toString()).apply()
+            .edit { putString(KEY_SAF_TREE_URI, uri.toString()) }
     }
 }
