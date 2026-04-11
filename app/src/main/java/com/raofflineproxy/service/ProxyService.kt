@@ -108,9 +108,7 @@ class ProxyService : Service() {
             }
             val userAgent = loadUserAgent(db)
             val gameIds = db.cacheDao().getAllByPrefix(CacheKeys.PREFIX_PATCH)
-                .mapNotNull { entry ->
-                    entry.cacheKey.removePrefix(CacheKeys.PREFIX_PATCH).split(":").firstOrNull()?.toIntOrNull()
-                }
+                .mapNotNull { entry -> CacheKeys.parseGameIdFromPatchKey(entry.cacheKey) }
                 .distinct()
             Log.i(TAG, "Periodic refresh: ${gameIds.size} game(s)")
             for (gameId in gameIds) {

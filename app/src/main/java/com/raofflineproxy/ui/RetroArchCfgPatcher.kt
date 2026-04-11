@@ -39,19 +39,74 @@ data class PatchResult(
     val hardcoreWasEnabled: Boolean = false
 )
 
+private class CfgStrings(
+    val noOpMessage: Int,
+    val successSaf: Int,
+    val errorSaf: Int,
+    val successFile: Int,
+    val errorFile: Int,
+    val noWriteGrantFolder: Int,
+    val notFoundGrantFolder: Int,
+    val successDirect: Int,
+    val stagedNoCopyBack: Int,
+    val stagedWithCopyBack: Int
+)
+
+private val PATCH_STRINGS = CfgStrings(
+    noOpMessage = R.string.patch_already_configured,
+    successSaf = R.string.patch_success_saf,
+    errorSaf = R.string.patch_error_saf,
+    successFile = R.string.patch_success,
+    errorFile = R.string.patch_error_file,
+    noWriteGrantFolder = R.string.patch_cfg_no_write_grant_folder,
+    notFoundGrantFolder = R.string.patch_cfg_not_found_grant_folder,
+    successDirect = R.string.patch_success,
+    stagedNoCopyBack = R.string.patch_staged_no_copy_back,
+    stagedWithCopyBack = R.string.patch_staged_with_copy_back
+)
+
+private val REVERT_STRINGS = CfgStrings(
+    noOpMessage = R.string.revert_already_reverted,
+    successSaf = R.string.revert_success_saf,
+    errorSaf = R.string.revert_error_saf,
+    successFile = R.string.revert_success,
+    errorFile = R.string.revert_error_file,
+    noWriteGrantFolder = R.string.revert_cfg_no_write_grant_folder,
+    notFoundGrantFolder = R.string.revert_cfg_not_found_grant_folder,
+    successDirect = R.string.revert_success,
+    stagedNoCopyBack = R.string.revert_staged_no_copy_back,
+    stagedWithCopyBack = R.string.revert_staged_with_copy_back
+)
+
 fun patchRetroArchCfg(context: Context, treeUri: Uri?): PatchResult {
+    val transform: (String) -> String = { buildPatchedContent(it) }
+    return applyCfgTransform(context, treeUri, transform, PATCH_STRINGS, detectHardcore = true)
+}
+
+fun revertRetroArchCfg(context: Context, treeUri: Uri?, restoreHardcore: Boolean = false): PatchResult {
+    val transform: (String) -> String = { buildRevertedContent(it, restoreHardcore) }
+    return applyCfgTransform(context, treeUri, transform, REVERT_STRINGS, detectHardcore = false)
+}
+
+private fun applyCfgTransform(
+    context: Context,
+    treeUri: Uri?,
+    transform: (String) -> String,
+    strings: CfgStrings,
+    detectHardcore: Boolean
+): PatchResult {
     if (treeUri != null) {
-        val safResult = patchViaSaf(context, treeUri)
+        val safResult = transformViaSaf(context, treeUri, transform, strings, detectHardcore)
         if (safResult != null) return safResult
     }
 
     val directCandidate = SOURCE_CANDIDATES.map(::File).firstOrNull { it.exists() }
 
     if (directCandidate != null && directCandidate.canWrite()) {
-        return writeViaFile(context, directCandidate)
+        return transformViaFile(context, directCandidate, transform, strings, detectHardcore)
     }
 
-    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M && detectHardcore) {
         return PatchResult(success = false, message = context.getString(R.string.patch_cfg_not_found))
     }
 
@@ -60,18 +115,24 @@ fun patchRetroArchCfg(context: Context, treeUri: Uri?): PatchResult {
             return PatchResult(
                 success = false,
                 message = if (directCandidate != null)
-                    context.getString(R.string.patch_cfg_no_write_grant_folder)
+                    context.getString(strings.noWriteGrantFolder)
                 else
-                    context.getString(R.string.patch_cfg_not_found_grant_folder),
+                    context.getString(strings.notFoundGrantFolder),
                 needsSafGrant = true
             )
         }
     }
 
-    return stagingPatch(context, directCandidate)
+    return stagingTransform(context, directCandidate, transform, strings, detectHardcore)
 }
 
-private fun patchViaSaf(context: Context, treeUri: Uri): PatchResult? {
+private fun transformViaSaf(
+    context: Context,
+    treeUri: Uri,
+    transform: (String) -> String,
+    strings: CfgStrings,
+    detectHardcore: Boolean
+): PatchResult? {
     val tree = DocumentFile.fromTreeUri(context, treeUri) ?: return null
 
     for (segments in SAF_CFG_PATHS) {
@@ -83,18 +144,18 @@ private fun patchViaSaf(context: Context, treeUri: Uri): PatchResult? {
                 ?.bufferedReader()?.use { it.readText() }
                 ?: return PatchResult(success = false, message = context.getString(R.string.patch_could_not_read, cfgFile.name))
 
-            val hardcoreWas = detectHardcoreEnabled(original)
-            val patched = buildPatchedContent(original)
-            if (patched == original) {
-                PatchResult(success = true, message = context.getString(R.string.patch_already_configured), hardcoreWasEnabled = hardcoreWas)
+            val hardcoreWas = if (detectHardcore) detectHardcoreEnabled(original) else false
+            val transformed = transform(original)
+            if (transformed == original) {
+                PatchResult(success = true, message = context.getString(strings.noOpMessage), hardcoreWasEnabled = hardcoreWas)
             } else {
                 context.contentResolver.openOutputStream(cfgFile.uri, "wt")
-                    ?.use { it.write(patched.toByteArray()) }
+                    ?.use { it.write(transformed.toByteArray()) }
                     ?: return PatchResult(success = false, message = context.getString(R.string.patch_could_not_write, cfgFile.name))
-                PatchResult(success = true, message = context.getString(R.string.patch_success_saf), hardcoreWasEnabled = hardcoreWas)
+                PatchResult(success = true, message = context.getString(strings.successSaf), hardcoreWasEnabled = hardcoreWas)
             }
         } catch (e: Exception) {
-            PatchResult(success = false, message = context.getString(R.string.patch_error_saf, e.message))
+            PatchResult(success = false, message = context.getString(strings.errorSaf, e.message))
         }
     }
 
@@ -104,7 +165,34 @@ private fun patchViaSaf(context: Context, treeUri: Uri): PatchResult? {
     )
 }
 
-private fun stagingPatch(context: Context, directCandidate: File?): PatchResult {
+private fun transformViaFile(
+    context: Context,
+    target: File,
+    transform: (String) -> String,
+    strings: CfgStrings,
+    detectHardcore: Boolean
+): PatchResult =
+    try {
+        val original = target.readText()
+        val hardcoreWas = if (detectHardcore) detectHardcoreEnabled(original) else false
+        val transformed = transform(original)
+        if (transformed == original) {
+            PatchResult(success = true, message = context.getString(strings.noOpMessage), hardcoreWasEnabled = hardcoreWas)
+        } else {
+            target.writeText(transformed)
+            PatchResult(success = true, message = context.getString(strings.successFile), hardcoreWasEnabled = hardcoreWas)
+        }
+    } catch (e: Exception) {
+        PatchResult(success = false, message = context.getString(strings.errorFile, target.path, e.message))
+    }
+
+private fun stagingTransform(
+    context: Context,
+    directCandidate: File?,
+    transform: (String) -> String,
+    strings: CfgStrings,
+    detectHardcore: Boolean
+): PatchResult {
     File(WORK_DIR).mkdirs()
     val workCfg = File(WORK_CFG)
 
@@ -126,45 +214,30 @@ private fun stagingPatch(context: Context, directCandidate: File?): PatchResult 
         )
     }
 
-    val patchResult = writeViaFile(context, workCfg)
-    if (!patchResult.success) return patchResult
+    val fileResult = transformViaFile(context, workCfg, transform, strings, detectHardcore)
+    if (!fileResult.success) return fileResult
 
     if (directCandidate != null) {
         return try {
             workCfg.copyTo(directCandidate, overwrite = true)
-            PatchResult(success = true, message = context.getString(R.string.patch_success), hardcoreWasEnabled = patchResult.hardcoreWasEnabled)
+            PatchResult(success = true, message = context.getString(strings.successDirect), hardcoreWasEnabled = fileResult.hardcoreWasEnabled)
         } catch (_: Exception) {
             PatchResult(
                 success = true,
-                message = context.getString(R.string.patch_staged_no_copy_back, WORK_CFG),
+                message = context.getString(strings.stagedNoCopyBack, WORK_CFG),
                 copyBackPath = directCandidate.path,
-                hardcoreWasEnabled = patchResult.hardcoreWasEnabled
+                hardcoreWasEnabled = fileResult.hardcoreWasEnabled
             )
         }
     }
 
     return PatchResult(
         success = true,
-        message = context.getString(R.string.patch_staged_with_copy_back, WORK_CFG),
+        message = context.getString(strings.stagedWithCopyBack, WORK_CFG),
         copyBackPath = SOURCE_CANDIDATES.first(),
-        hardcoreWasEnabled = patchResult.hardcoreWasEnabled
+        hardcoreWasEnabled = fileResult.hardcoreWasEnabled
     )
 }
-
-private fun writeViaFile(context: Context, target: File): PatchResult =
-    try {
-        val original = target.readText()
-        val hardcoreWas = detectHardcoreEnabled(original)
-        val patched = buildPatchedContent(original)
-        if (patched == original) {
-            PatchResult(success = true, message = context.getString(R.string.patch_already_configured), hardcoreWasEnabled = hardcoreWas)
-        } else {
-            target.writeText(patched)
-            PatchResult(success = true, message = context.getString(R.string.patch_success), hardcoreWasEnabled = hardcoreWas)
-        }
-    } catch (e: Exception) {
-        PatchResult(success = false, message = context.getString(R.string.patch_error_file, target.path, e.message))
-    }
 
 private fun manualCopyInstructions(context: Context, sourcePath: String): String =
     context.getString(R.string.patch_manual_copy_instructions, sourcePath, WORK_CFG)
@@ -232,117 +305,4 @@ fun checkIsPatched(context: Context, treeUri: Uri?): Boolean {
     }
 
     return false
-}
-
-fun revertRetroArchCfg(context: Context, treeUri: Uri?, restoreHardcore: Boolean = false): PatchResult {
-    if (treeUri != null) {
-        val safResult = revertViaSaf(context, treeUri, restoreHardcore)
-        if (safResult != null) return safResult
-    }
-
-    val directCandidate = SOURCE_CANDIDATES.map(::File).firstOrNull { it.exists() }
-
-    if (directCandidate != null && directCandidate.canWrite()) {
-        return revertViaFile(context, directCandidate, restoreHardcore)
-    }
-
-    if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.S_V2) {
-        if (directCandidate != null || treeUri == null) {
-            return PatchResult(
-                success = false,
-                message = if (directCandidate != null)
-                    context.getString(R.string.revert_cfg_no_write_grant_folder)
-                else
-                    context.getString(R.string.revert_cfg_not_found_grant_folder),
-                needsSafGrant = true
-            )
-        }
-    }
-
-    return stagingRevert(context, directCandidate, restoreHardcore)
-}
-
-private fun revertViaSaf(context: Context, treeUri: Uri, restoreHardcore: Boolean): PatchResult? {
-    val tree = DocumentFile.fromTreeUri(context, treeUri) ?: return null
-
-    for (segments in SAF_CFG_PATHS) {
-        val cfgFile = segments.fold(tree as DocumentFile?) { dir, seg -> dir?.findFile(seg) }
-        if (cfgFile == null || !cfgFile.exists()) continue
-
-        return try {
-            val original = context.contentResolver.openInputStream(cfgFile.uri)
-                ?.bufferedReader()?.use { it.readText() }
-                ?: return PatchResult(success = false, message = context.getString(R.string.patch_could_not_read, cfgFile.name))
-
-            val reverted = buildRevertedContent(original, restoreHardcore)
-            if (reverted == original) {
-                PatchResult(success = true, message = context.getString(R.string.revert_already_reverted))
-            } else {
-                context.contentResolver.openOutputStream(cfgFile.uri, "wt")
-                    ?.use { it.write(reverted.toByteArray()) }
-                    ?: return PatchResult(success = false, message = context.getString(R.string.patch_could_not_write, cfgFile.name))
-                PatchResult(success = true, message = context.getString(R.string.revert_success_saf))
-            }
-        } catch (e: Exception) {
-            PatchResult(success = false, message = context.getString(R.string.revert_error_saf, e.message))
-        }
-    }
-
-    return PatchResult(
-        success = false,
-        message = context.getString(R.string.patch_cfg_not_in_folder)
-    )
-}
-
-private fun revertViaFile(context: Context, target: File, restoreHardcore: Boolean): PatchResult =
-    try {
-        val original = target.readText()
-        val reverted = buildRevertedContent(original, restoreHardcore)
-        if (reverted == original) {
-            PatchResult(success = true, message = context.getString(R.string.revert_already_reverted))
-        } else {
-            target.writeText(reverted)
-            PatchResult(success = true, message = context.getString(R.string.revert_success))
-        }
-    } catch (e: Exception) {
-        PatchResult(success = false, message = context.getString(R.string.revert_error_file, target.path, e.message))
-    }
-
-private fun stagingRevert(context: Context, directCandidate: File?, restoreHardcore: Boolean): PatchResult {
-    File(WORK_DIR).mkdirs()
-    val workCfg = File(WORK_CFG)
-
-    if (directCandidate != null && !workCfg.exists()) {
-        try {
-            directCandidate.copyTo(workCfg, overwrite = true)
-        } catch (_: Exception) {
-            return PatchResult(success = false, message = manualCopyInstructions(context, directCandidate.path))
-        }
-    }
-
-    if (!workCfg.exists()) {
-        return PatchResult(success = false, message = manualCopyInstructions(context, SOURCE_CANDIDATES.first()))
-    }
-
-    val revertResult = revertViaFile(context, workCfg, restoreHardcore)
-    if (!revertResult.success) return revertResult
-
-    if (directCandidate != null) {
-        return try {
-            workCfg.copyTo(directCandidate, overwrite = true)
-            PatchResult(success = true, message = context.getString(R.string.revert_success))
-        } catch (_: Exception) {
-            PatchResult(
-                success = true,
-                message = context.getString(R.string.revert_staged_no_copy_back, WORK_CFG),
-                copyBackPath = directCandidate.path
-            )
-        }
-    }
-
-    return PatchResult(
-        success = true,
-        message = context.getString(R.string.revert_staged_with_copy_back, WORK_CFG),
-        copyBackPath = SOURCE_CANDIDATES.first()
-    )
 }

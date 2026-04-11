@@ -4,9 +4,12 @@ import android.util.Base64
 import android.util.Log
 import com.raofflineproxy.PROXY_PORT
 import com.raofflineproxy.RA_HOST
+import com.raofflineproxy.extractFormParam
 import com.raofflineproxy.proxyUserAgent
 import com.raofflineproxy.redactFormBody
 import com.raofflineproxy.redactTokens
+import com.raofflineproxy.sha256Hex
+import com.raofflineproxy.sharedHttpClient
 import com.raofflineproxy.data.AppDatabase
 import com.raofflineproxy.data.CacheEntry
 import com.raofflineproxy.data.CacheKeys
@@ -16,7 +19,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONException
@@ -27,7 +29,6 @@ import java.io.PrintWriter
 import java.net.ServerSocket
 import java.net.Socket
 import java.net.URLDecoder
-import java.security.MessageDigest
 import java.util.concurrent.Executors
 
 private const val TAG = "RAProxy"
@@ -50,7 +51,6 @@ class ProxyServer(
     private val isOnline: () -> Boolean
 ) {
     private val executor = Executors.newCachedThreadPool()
-    private val httpClient = OkHttpClient.Builder().build()
 
     @Volatile private var serverSocket: ServerSocket? = null
     @Volatile var running = false
@@ -154,20 +154,13 @@ class ProxyServer(
             Log.w(TAG, "Rejecting hardcore award — hardcore mode is not supported by this proxy")
             return httpError(403, "hardcore_not_supported")
         }
-        return if (isOnline()) {
+        if (isOnline()) {
             val upstream = forwardToRA("POST", path, rawBody, headers)
-            if (upstream != null) {
-                httpOk(upstream)
-            } else {
-                queueAward(path, rawBody, headers)
-                val score = fetchCachedScore(path, rawBody)
-                httpOk("""{"Success":true,"Score":$score,"SoftcoreScore":0,"AchievementID":0,"Error":"queued_offline"}""")
-            }
-        } else {
-            queueAward(path, rawBody, headers)
-            val score = fetchCachedScore(path, rawBody)
-            httpOk("""{"Success":true,"Score":$score,"SoftcoreScore":0,"AchievementID":0,"Error":"queued_offline"}""")
+            if (upstream != null) return httpOk(upstream)
         }
+        queueAward(path, rawBody, headers)
+        val score = fetchCachedScore(path, rawBody)
+        return httpOk("""{"Success":true,"Score":$score,"SoftcoreScore":0,"AchievementID":0,"Error":"queued_offline"}""")
     }
 
     private fun handleOnlineRequest(method: String, path: String, rawBody: String, action: String?, headers: Map<String, String>): String {
@@ -245,7 +238,7 @@ class ProxyServer(
             request.headers.forEach { (name, value) -> Log.d(TAG, "→ RA header: $name: $value") }
             if (method == "POST") Log.d(TAG, "→ RA POST body: ${redactFormBody(rawBody)}")
 
-            httpClient.newCall(request).execute().use { resp ->
+            sharedHttpClient.newCall(request).execute().use { resp ->
                 val body = resp.body?.string()
                 Log.d(TAG, "← RA ${resp.code} for ${redactTokens(path)} body=${body?.take(500)}")
                 if (!resp.isSuccessful) {
@@ -293,11 +286,6 @@ class ProxyServer(
         }
     }
 
-    private fun sha256Hex(input: String): String {
-        val digest = MessageDigest.getInstance("SHA-256").digest(input.toByteArray(Charsets.UTF_8))
-        return digest.joinToString("") { "%02x".format(it) }
-    }
-
     private fun fetchCachedScore(path: String, rawBody: String): Int {
         val user = extractParam("u", path, rawBody) ?: return 0
         val key = CacheKeys.login(user)
@@ -321,14 +309,7 @@ class ProxyServer(
     private fun extractAction(path: String, body: String): String? {
         val fromPath = "http://x$path".toHttpUrlOrNull()?.queryParameter("r")
         if (fromPath != null) return fromPath
-        return body.split("&")
-            .mapNotNull { part ->
-                val eq = part.indexOf('=')
-                if (eq < 0) null else part.substring(0, eq) to part.substring(eq + 1)
-            }
-            .firstOrNull { it.first == "r" }
-            ?.second
-            ?.let { URLDecoder.decode(it, "UTF-8") }
+        return extractFormParam(body, "r")
     }
 
     private fun cacheKey(path: String, body: String): String {
@@ -346,14 +327,7 @@ class ProxyServer(
     private fun extractParam(param: String, path: String, body: String): String? {
         val fromPath = "http://x$path".toHttpUrlOrNull()?.queryParameter(param)
         if (fromPath != null) return fromPath
-        return body.split("&")
-            .mapNotNull { part ->
-                val eq = part.indexOf('=')
-                if (eq < 0) null else part.substring(0, eq) to part.substring(eq + 1)
-            }
-            .firstOrNull { it.first == param }
-            ?.second
-            ?.let { URLDecoder.decode(it, "UTF-8") }
+        return extractFormParam(body, param)
     }
 
     private fun httpOk(body: String): String =
@@ -363,14 +337,8 @@ class ProxyServer(
         "Connection: close\r\n\r\n" +
         body
 
-    private fun httpGameIdCacheMiss(): String {
-        val body = """{"Success":false,"Error":"Game not cached. Launch this game while online first.","GameID":0}"""
-        return "HTTP/1.1 200 OK\r\n" +
-               "Content-Type: application/json\r\n" +
-               "Content-Length: ${body.toByteArray().size}\r\n" +
-               "Connection: close\r\n\r\n" +
-               body
-    }
+    private fun httpGameIdCacheMiss(): String =
+        httpOk("""{"Success":false,"Error":"Game not cached. Launch this game while online first.","GameID":0}""")
 
     private fun httpError(code: Int, message: String): String {
         val body = """{"Success":false,"Error":"$message"}"""

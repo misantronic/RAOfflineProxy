@@ -16,12 +16,10 @@ import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import com.google.android.material.navigation.NavigationView
 import com.google.android.material.snackbar.Snackbar
+import com.raofflineproxy.PrefsConstants
 import com.raofflineproxy.R
 import com.raofflineproxy.databinding.ActivityMainBinding
 import kotlinx.coroutines.launch
-
-private const val PREFS_NAME = "ra_proxy_prefs"
-private const val PREF_SAF_URI = "saf_tree_uri"
 
 private val ANDROID_DATA_URI: Uri = Uri.parse(
     "content://com.android.externalstorage.documents/document/primary%3AAndroid%2Fdata"
@@ -39,7 +37,7 @@ class MainActivity : AppCompatActivity() {
             uri,
             Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
         )
-        saveSafUri(uri)
+        PrefsConstants.saveSafUri(this, uri)
         viewModel.clearTransientMessages()
         viewModel.startProxy(treeUri = uri)
     }
@@ -69,7 +67,7 @@ class MainActivity : AppCompatActivity() {
             showFragment(HomeFragment(), R.id.nav_home)
             if (viewModel.state.value.autostartProxy) {
                 lifecycleScope.launch {
-                    viewModel.startProxy(treeUri = loadSafUri())
+                    viewModel.startProxy(treeUri = PrefsConstants.loadSafUri(this@MainActivity))
                 }
             }
         }
@@ -177,9 +175,9 @@ class MainActivity : AppCompatActivity() {
 
     private fun toggleProxy() {
         if (viewModel.state.value.proxyRunning) {
-            viewModel.stopProxy(treeUri = loadSafUri())
+            viewModel.stopProxy(treeUri = PrefsConstants.loadSafUri(this))
         } else {
-            viewModel.startProxy(treeUri = loadSafUri())
+            viewModel.startProxy(treeUri = PrefsConstants.loadSafUri(this))
         }
     }
 
@@ -220,14 +218,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun saveSafUri(uri: Uri) {
-        getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .edit().putString(PREF_SAF_URI, uri.toString()).apply()
-    }
-
-    private fun loadSafUri(): Uri? =
-        getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .getString(PREF_SAF_URI, null)?.let { Uri.parse(it) }
 }
 
 private class OpenAndroidDataTree : ActivityResultContract<Unit, Uri?>() {

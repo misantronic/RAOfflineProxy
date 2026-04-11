@@ -14,9 +14,11 @@ private const val ANDROID_KEYSTORE = "AndroidKeyStore"
 
 object AwardKeyManager {
 
+    private fun loadKeyStore(): KeyStore =
+        KeyStore.getInstance(ANDROID_KEYSTORE).also { it.load(null) }
+
     private fun ensureKey() {
-        val keyStore = KeyStore.getInstance(ANDROID_KEYSTORE).also { it.load(null) }
-        if (keyStore.containsAlias(KEY_ALIAS)) return
+        if (loadKeyStore().containsAlias(KEY_ALIAS)) return
 
         val spec = KeyGenParameterSpec.Builder(
             KEY_ALIAS,
@@ -36,8 +38,7 @@ object AwardKeyManager {
 
     fun sign(data: ByteArray): ByteArray {
         ensureKey()
-        val keyStore = KeyStore.getInstance(ANDROID_KEYSTORE).also { it.load(null) }
-        val privateKey = keyStore.getKey(KEY_ALIAS, null)
+        val privateKey = loadKeyStore().getKey(KEY_ALIAS, null)
         return Signature.getInstance("SHA256withECDSA")
             .also {
                 it.initSign(privateKey as java.security.PrivateKey)
@@ -48,8 +49,7 @@ object AwardKeyManager {
 
     fun getPublicKeyBase64(): String {
         ensureKey()
-        val keyStore = KeyStore.getInstance(ANDROID_KEYSTORE).also { it.load(null) }
-        val cert = keyStore.getCertificate(KEY_ALIAS)
+        val cert = loadKeyStore().getCertificate(KEY_ALIAS)
         return Base64.encodeToString(cert.publicKey.encoded, Base64.NO_WRAP)
     }
 }

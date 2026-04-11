@@ -87,19 +87,7 @@ class CachedGamesFragment : Fragment() {
                 )
 
                 val msg = state.scanProgress
-                when {
-                    msg == null -> snackbar?.dismiss().also { snackbar = null }
-                    state.scanInProgress -> {
-                        val sb = snackbar ?: Snackbar.make(view, msg, Snackbar.LENGTH_INDEFINITE)
-                            .also { snackbar = it }
-                        sb.setText(msg)
-                        sb.show()
-                    }
-                    else -> {
-                        snackbar?.dismiss()
-                        snackbar = Snackbar.make(view, msg, Snackbar.LENGTH_LONG).also { it.show() }
-                    }
-                }
+                snackbar = updateSnackbar(view, msg, state.scanInProgress, snackbar)
             }
         }
     }

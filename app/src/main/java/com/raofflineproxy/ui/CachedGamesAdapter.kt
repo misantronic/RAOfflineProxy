@@ -1,17 +1,40 @@
 package com.raofflineproxy.ui
 
 import android.view.LayoutInflater
+import android.view.View
 import android.view.ViewGroup
+import android.widget.ImageView
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import coil.load
+import com.google.android.material.snackbar.Snackbar
 import com.raofflineproxy.R
 import com.raofflineproxy.data.CachedGame
 import com.raofflineproxy.databinding.ItemCachedGameBinding
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+
+fun ImageView.loadOrClear(url: String?) {
+    if (url != null) load(url) { crossfade(true) }
+    else setImageDrawable(null)
+}
+
+fun updateSnackbar(view: View, msg: String?, inProgress: Boolean, current: Snackbar?): Snackbar? =
+    when {
+        msg == null -> { current?.dismiss(); null }
+        inProgress -> {
+            val sb = current ?: Snackbar.make(view, msg, Snackbar.LENGTH_INDEFINITE)
+            sb.setText(msg)
+            sb.show()
+            sb
+        }
+        else -> {
+            current?.dismiss()
+            Snackbar.make(view, msg, Snackbar.LENGTH_LONG).also { it.show() }
+        }
+    }
 
 class CachedGamesAdapter(
     private val onDelete: (CachedGame) -> Unit
@@ -31,12 +54,7 @@ class CachedGamesAdapter(
                 dateFormat.format(Date(game.cachedAt))
             )
             binding.btnDeleteGame.setOnClickListener { onDelete(game) }
-
-            if (game.imageIconUrl != null) {
-                binding.ivGameIcon.load(game.imageIconUrl) { crossfade(true) }
-            } else {
-                binding.ivGameIcon.setImageDrawable(null)
-            }
+            binding.ivGameIcon.loadOrClear(game.imageIconUrl)
         }
     }
 

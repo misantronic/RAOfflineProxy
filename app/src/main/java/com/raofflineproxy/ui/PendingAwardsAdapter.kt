@@ -5,7 +5,6 @@ import android.view.ViewGroup
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
-import coil.load
 import com.raofflineproxy.R
 import com.raofflineproxy.data.PendingAwardUi
 import com.raofflineproxy.databinding.ItemPendingAwardBinding
@@ -23,16 +22,8 @@ class PendingAwardsAdapter : ListAdapter<PendingAwardUi, PendingAwardsAdapter.Vi
             else
                 award.achievementTitle
             binding.tvPoints.text = ctx.getString(R.string.points_format, award.points)
-            if (award.gameIconUrl != null) {
-                binding.ivGameIcon.load(award.gameIconUrl)
-            } else {
-                binding.ivGameIcon.setImageDrawable(null)
-            }
-            if (award.badgeUrl != null) {
-                binding.ivBadge.load(award.badgeUrl)
-            } else {
-                binding.ivBadge.setImageDrawable(null)
-            }
+            binding.ivGameIcon.loadOrClear(award.gameIconUrl)
+            binding.ivBadge.loadOrClear(award.badgeUrl)
             if (award.lastError != null) {
                 binding.tvLastError.text = award.lastError
                 binding.tvLastError.visibility = android.view.View.VISIBLE

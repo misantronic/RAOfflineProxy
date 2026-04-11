@@ -18,4 +18,10 @@ object CacheKeys {
     fun unlocks(gameId: String, user: String) = "unlocks:$gameId:$user:0"
     fun startSession(gameId: Int, user: String) = "startsession:$gameId:$user:0"
     fun startSession(gameId: String, user: String) = "startsession:$gameId:$user:0"
+
+    fun parseGameIdFromPatchKey(cacheKey: String): Int? =
+        cacheKey.removePrefix(PREFIX_PATCH).split(":").firstOrNull()?.toIntOrNull()
+
+    fun parseGameIdStringFromPatchKey(cacheKey: String): String? =
+        cacheKey.removePrefix(PREFIX_PATCH).split(":").firstOrNull()?.takeIf { it.isNotEmpty() }
 }
