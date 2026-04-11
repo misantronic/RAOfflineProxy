@@ -11,7 +11,7 @@ import com.raofflineproxy.databinding.ItemPendingAwardBinding
 
 class PendingAwardsAdapter : ListAdapter<PendingAwardUi, PendingAwardsAdapter.ViewHolder>(DIFF) {
 
-    inner class ViewHolder(private val binding: ItemPendingAwardBinding) :
+    class ViewHolder(private val binding: ItemPendingAwardBinding) :
         RecyclerView.ViewHolder(binding.root) {
 
         fun bind(award: PendingAwardUi) {
