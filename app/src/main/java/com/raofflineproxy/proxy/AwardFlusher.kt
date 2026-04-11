@@ -41,22 +41,22 @@ private sealed interface FlushResult {
     data class NetworkError(val message: String) : FlushResult
 }
 
-private sealed interface ChainVerificationResult {
+internal sealed interface ChainVerificationResult {
     data object Valid : ChainVerificationResult
     data class Broken(val index: Int, val reason: String) : ChainVerificationResult
 }
 
-private fun isHardcoreAward(award: PendingAward): Boolean {
+internal fun isHardcoreAward(award: PendingAward): Boolean {
     val queryParams = parseFormParams(award.queryString.substringAfter("?", ""))
     val fromQuery = queryParams["h"]
     if (fromQuery != null) return fromQuery == "1"
     return parseFormParams(award.requestBody)["h"] == "1"
 }
 
-private fun canonicalPayload(award: PendingAward): String =
+internal fun canonicalPayload(award: PendingAward): String =
     "${award.achievementId}|${award.queryString}|${award.requestBody}|${award.queuedAt}"
 
-private fun replaceOrAppendFormParam(body: String, name: String, value: String): String {
+internal fun replaceOrAppendFormParam(body: String, name: String, value: String): String {
     val encoded = java.net.URLEncoder.encode(value, "UTF-8")
     val parts = body.split("&").toMutableList()
     val idx = parts.indexOfFirst { it.startsWith("$name=") }
@@ -64,7 +64,7 @@ private fun replaceOrAppendFormParam(body: String, name: String, value: String):
     return parts.joinToString("&")
 }
 
-private fun computeValidationHash(
+internal fun computeValidationHash(
     achievementId: Int,
     username: String,
     hardcore: Int,
@@ -82,7 +82,7 @@ private fun computeValidationHash(
     return md.digest().toHexString()
 }
 
-private fun verifyChain(awards: List<PendingAward>): ChainVerificationResult {
+internal fun verifyChain(awards: List<PendingAward>): ChainVerificationResult {
     awards.forEachIndexed { index, award ->
         // Legacy awards queued before anti-tamper was added have empty payloadHash — skip chain checks
         if (award.payloadHash.isEmpty()) return@forEachIndexed
