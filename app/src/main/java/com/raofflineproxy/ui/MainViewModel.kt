@@ -10,8 +10,10 @@ import android.net.Uri
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.raofflineproxy.PrefsConstants
 import com.raofflineproxy.R
 import com.raofflineproxy.RA_HOST
+import com.raofflineproxy.parseFormParams
 import com.raofflineproxy.proxyUserAgent
 import com.raofflineproxy.data.AppDatabase
 import com.raofflineproxy.data.CacheKeys
@@ -20,6 +22,7 @@ import com.raofflineproxy.data.PendingAwardUi
 import com.raofflineproxy.proxy.AwardFlusher
 import com.raofflineproxy.proxy.FlushEvent
 import com.raofflineproxy.proxy.cacheGame
+import com.raofflineproxy.proxy.httpGet
 import com.raofflineproxy.proxy.loadLoginCredentials
 import com.raofflineproxy.proxy.loadUserAgent
 import com.raofflineproxy.proxy.scanRomFolder
@@ -32,8 +35,6 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
-import java.net.HttpURLConnection
-import java.net.URL
 
 enum class AuthState { Unknown, Valid, Invalid }
 
@@ -70,8 +71,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private fun str(resId: Int, vararg args: Any): String = getApplication<Application>().getString(resId, *args)
 
     companion object {
-        private const val PREFS_NAME = "ra_proxy_prefs"
-        private const val PREF_HARDCORE_WAS_ENABLED = "hardcore_was_enabled"
+        private const val TAG = "RAProxy/ViewModel"
     }
 
     private val networkCallback = object : ConnectivityManager.NetworkCallback() {
@@ -171,6 +171,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    private suspend fun requireCredentials(): com.raofflineproxy.proxy.LoginCredentials? {
+        val credentials = withContext(Dispatchers.IO) { loadLoginCredentials(db) }
+        if (credentials == null) {
+            _state.value = _state.value.copy(scanProgress = str(R.string.scan_no_login))
+        }
+        return credentials
+    }
+
     fun clearTransientMessages() {
         _state.value = _state.value.copy(
             scanProgress = null,
@@ -198,7 +206,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             }
             val gameId = withContext(Dispatchers.IO) {
                 db.cacheDao().getAllByPrefix(CacheKeys.PREFIX_PATCH).firstOrNull()
-                    ?.cacheKey?.split(":")?.getOrNull(1)
+                    ?.let { CacheKeys.parseGameIdStringFromPatchKey(it.cacheKey) }
             }
             if (gameId == null) {
                 Log.i("RAProxy/Auth", "validateToken: online but no cached games — trusting cache for user=${credentials.user}")
@@ -209,12 +217,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 try {
                     val userAgent = proxyUserAgent(loadUserAgent(db))
                     val url = "$RA_HOST/dorequest.php?r=patch&g=$gameId&u=${credentials.user}&t=${credentials.token}"
-                    val connection = URL(url).openConnection() as HttpURLConnection
-                    connection.connectTimeout = 10_000
-                    connection.readTimeout = 10_000
-                    connection.setRequestProperty("User-Agent", userAgent)
-                    connection.setRequestProperty("Accept-Encoding", "identity")
-                    val body = connection.inputStream.bufferedReader().use { it.readText() }
+                    val body = httpGet(url, userAgent)
                     JSONObject(body).optBoolean("Success", false)
                 } catch (e: Exception) {
                     Log.w("RAProxy/Auth", "validateToken: live check failed — ${e.message}")
@@ -252,8 +255,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 )
                 return@launch
             }
-            val prefs = app.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            prefs.edit().putBoolean(PREF_HARDCORE_WAS_ENABLED, result.hardcoreWasEnabled).apply()
+            val prefs = app.getSharedPreferences(PrefsConstants.PREFS_NAME, Context.MODE_PRIVATE)
+            prefs.edit().putBoolean(PrefsConstants.KEY_HARDCORE_WAS_ENABLED, result.hardcoreWasEnabled).apply()
             ProxyService.start(app)
             _state.value = _state.value.copy(
                 proxyRunning = true,
@@ -266,10 +269,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val app = getApplication<Application>()
         viewModelScope.launch {
             ProxyService.stop(app)
-            val prefs = app.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            val restoreHardcore = prefs.getBoolean(PREF_HARDCORE_WAS_ENABLED, false)
+            val prefs = app.getSharedPreferences(PrefsConstants.PREFS_NAME, Context.MODE_PRIVATE)
+            val restoreHardcore = prefs.getBoolean(PrefsConstants.KEY_HARDCORE_WAS_ENABLED, false)
             val result = withContext(Dispatchers.IO) { revertRetroArchCfg(app, treeUri, restoreHardcore) }
-            prefs.edit().remove(PREF_HARDCORE_WAS_ENABLED).apply()
+            prefs.edit().remove(PrefsConstants.KEY_HARDCORE_WAS_ENABLED).apply()
             _state.value = _state.value.copy(
                 proxyRunning = false,
                 cfgIsPatched = if (result.success) false else _state.value.cfgIsPatched,
@@ -297,13 +300,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun addRom(fileUris: List<Uri>) {
         val app = getApplication<Application>()
         viewModelScope.launch {
-            val credentials = withContext(Dispatchers.IO) { loadLoginCredentials(db) }
-            if (credentials == null) {
-                _state.value = _state.value.copy(
-                    scanProgress = str(R.string.scan_no_login)
-                )
-                return@launch
-            }
+            val credentials = requireCredentials() ?: return@launch
             val total = fileUris.size
             var matched = 0
             val userAgent = withContext(Dispatchers.IO) { loadUserAgent(db) }
@@ -344,13 +341,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun scanRoms(treeUri: Uri) {
         val app = getApplication<Application>()
         viewModelScope.launch {
-            val credentials = withContext(Dispatchers.IO) { loadLoginCredentials(db) }
-            if (credentials == null) {
-                _state.value = _state.value.copy(
-                    scanProgress = str(R.string.scan_no_login)
-                )
-                return@launch
-            }
+            val credentials = requireCredentials() ?: return@launch
             _state.value = _state.value.copy(scanInProgress = true, scanProgress = str(R.string.scan_starting))
             withContext(Dispatchers.IO) { db.cacheDao().deleteByKeyPrefix(CacheKeys.PREFIX_GAMEID) }
             val userAgent = withContext(Dispatchers.IO) { loadUserAgent(db) }
@@ -376,13 +367,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun refreshGames() {
         viewModelScope.launch {
-            val credentials = withContext(Dispatchers.IO) { loadLoginCredentials(db) }
-            if (credentials == null) {
-                _state.value = _state.value.copy(
-                    scanProgress = str(R.string.scan_no_login)
-                )
-                return@launch
-            }
+            val credentials = requireCredentials() ?: return@launch
             val games = _state.value.cachedGames.reversed()
             _state.value = _state.value.copy(scanInProgress = true, scanProgress = str(R.string.refresh_progress, 0, games.size))
             val userAgent = withContext(Dispatchers.IO) { loadUserAgent(db) }
@@ -401,12 +386,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private suspend fun resolvePendingAward(award: com.raofflineproxy.data.PendingAward): PendingAwardUi {
-        val params = (award.queryString + "&" + award.requestBody)
-            .split("&")
-            .mapNotNull { part ->
-                val eq = part.indexOf('=')
-                if (eq < 0) null else part.substring(0, eq) to java.net.URLDecoder.decode(part.substring(eq + 1), "UTF-8")
-            }.toMap()
+        val params = parseFormParams(award.queryString.substringAfter("?", "") + "&" + award.requestBody)
         val achievementId = params["a"]?.toIntOrNull()
         val hardcore = params["h"] == "1"
         var gameTitle = str(R.string.unknown_game)
@@ -447,19 +427,16 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun setAutostartProxy(enabled: Boolean) {
         getApplication<Application>()
-            .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .edit().putBoolean("autostart_proxy", enabled).apply()
+            .getSharedPreferences(PrefsConstants.PREFS_NAME, Context.MODE_PRIVATE)
+            .edit().putBoolean(PrefsConstants.KEY_AUTOSTART_PROXY, enabled).apply()
         _state.value = _state.value.copy(autostartProxy = enabled)
     }
 
     private fun loadAutostartPref(): Boolean =
         getApplication<Application>()
-            .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .getBoolean("autostart_proxy", false)
+            .getSharedPreferences(PrefsConstants.PREFS_NAME, Context.MODE_PRIVATE)
+            .getBoolean(PrefsConstants.KEY_AUTOSTART_PROXY, false)
 
     private fun loadSafUri(): Uri? =
-        getApplication<Application>()
-            .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .getString("saf_tree_uri", null)
-            ?.let { Uri.parse(it) }
+        PrefsConstants.loadSafUri(getApplication())
 }

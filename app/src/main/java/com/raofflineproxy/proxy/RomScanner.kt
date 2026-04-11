@@ -6,6 +6,7 @@ import android.util.Log
 import androidx.documentfile.provider.DocumentFile
 import com.raofflineproxy.PROXY_BASE
 import com.raofflineproxy.RA_HOST
+import com.raofflineproxy.toHexString
 import com.raofflineproxy.data.AppDatabase
 import com.raofflineproxy.data.CacheEntry
 import com.raofflineproxy.data.CacheKeys
@@ -48,12 +49,7 @@ suspend fun refreshGamePatch(
 ): String? {
     val url = "$RA_HOST/dorequest.php?r=patch&g=$gameId&u=${creds.user}&t=${creds.token}"
     val responseBody = try {
-        val connection = URL(url).openConnection() as HttpURLConnection
-        connection.connectTimeout = 10_000
-        connection.readTimeout = 10_000
-        connection.setRequestProperty("User-Agent", userAgent)
-        connection.setRequestProperty("Accept-Encoding", "identity")
-        connection.inputStream.bufferedReader().use { it.readText() }
+        httpGet(url, userAgent)
     } catch (e: Exception) {
         Log.e("RAProxy", "refreshGamePatch failed for gameId=$gameId: ${e.message}")
         return null
@@ -117,26 +113,26 @@ private fun md5File(context: Context, uri: Uri): String? =
                 read = stream.read(buffer)
             }
         }
-        digest.digest().joinToString("") { "%02x".format(it) }
+        digest.digest().toHexString()
     } catch (_: Exception) { null }
 
 private fun fetchGameId(hash: String, creds: LoginCredentials, userAgent: String): Int? =
     try {
         val url = "$PROXY_BASE/dorequest.php?r=gameid&m=$hash&u=${creds.user}&t=${creds.token}"
-        val body = get(url, userAgent)
+        val body = httpGet(url, userAgent)
         val gameId = JSONObject(body).optInt("GameID", 0)
         if (gameId > 0) gameId else null
     } catch (_: Exception) { null }
 
 internal suspend fun cacheGame(gameId: Int, creds: LoginCredentials, userAgent: String, db: AppDatabase) {
-    try { get("$PROXY_BASE/dorequest.php?r=patch&g=$gameId&u=${creds.user}&t=${creds.token}", userAgent) } catch (_: Exception) { }
+    try { httpGet("$PROXY_BASE/dorequest.php?r=patch&g=$gameId&u=${creds.user}&t=${creds.token}", userAgent) } catch (_: Exception) { }
     cacheUnlocks(gameId, creds, userAgent)
     cacheSession(gameId, creds, db)
     Log.i("RAProxy", "cacheGame complete for gameId=$gameId user=${creds.user}")
 }
 
 internal fun cacheUnlocks(gameId: Int, creds: LoginCredentials, userAgent: String) {
-    try { get("$PROXY_BASE/dorequest.php?r=unlocks&g=$gameId&h=0&u=${creds.user}&t=${creds.token}", userAgent) } catch (_: Exception) { }
+    try { httpGet("$PROXY_BASE/dorequest.php?r=unlocks&g=$gameId&h=0&u=${creds.user}&t=${creds.token}", userAgent) } catch (_: Exception) { }
     Log.i("RAProxy", "Cached unlocks for gameId=$gameId user=${creds.user}")
 }
 
@@ -172,7 +168,7 @@ private suspend fun buildUnlocksArray(db: AppDatabase, gameId: Int, user: String
     }
 }
 
-private fun get(url: String, userAgent: String): String {
+internal fun httpGet(url: String, userAgent: String): String {
     val connection = URL(url).openConnection() as HttpURLConnection
     connection.connectTimeout = 10_000
     connection.readTimeout = 10_000

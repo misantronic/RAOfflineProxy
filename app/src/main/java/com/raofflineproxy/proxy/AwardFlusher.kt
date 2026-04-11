@@ -5,15 +5,19 @@ import com.raofflineproxy.RA_HOST
 import com.raofflineproxy.data.AppDatabase
 import com.raofflineproxy.data.CacheKeys
 import com.raofflineproxy.data.PendingAward
+import com.raofflineproxy.extractFormParam
+import com.raofflineproxy.parseFormParams
 import com.raofflineproxy.proxyUserAgent
 import com.raofflineproxy.redactFormBody
 import com.raofflineproxy.redactTokens
+import com.raofflineproxy.sha256Hex
+import com.raofflineproxy.sharedHttpClient
+import com.raofflineproxy.toHexString
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
@@ -43,33 +47,14 @@ private sealed interface ChainVerificationResult {
 }
 
 private fun isHardcoreAward(award: PendingAward): Boolean {
-    val queryParts = award.queryString.split("?", "&").mapNotNull { part ->
-        val eq = part.indexOf('=')
-        if (eq < 0) null else part.substring(0, eq) to part.substring(eq + 1)
-    }
-    val fromQuery = queryParts.firstOrNull { it.first == "h" }?.second
+    val queryParams = parseFormParams(award.queryString.substringAfter("?", ""))
+    val fromQuery = queryParams["h"]
     if (fromQuery != null) return fromQuery == "1"
-
-    return award.requestBody.split("&").mapNotNull { part ->
-        val eq = part.indexOf('=')
-        if (eq < 0) null else part.substring(0, eq) to part.substring(eq + 1)
-    }.firstOrNull { it.first == "h" }?.second == "1"
-}
-
-private fun sha256Hex(input: String): String {
-    val digest = MessageDigest.getInstance("SHA-256").digest(input.toByteArray(Charsets.UTF_8))
-    return digest.joinToString("") { "%02x".format(it) }
+    return parseFormParams(award.requestBody)["h"] == "1"
 }
 
 private fun canonicalPayload(award: PendingAward): String =
     "${award.achievementId}|${award.queryString}|${award.requestBody}|${award.queuedAt}"
-
-private fun extractFormParam(body: String, name: String): String? =
-    body.split("&").firstNotNullOfOrNull { part ->
-        val eq = part.indexOf('=')
-        if (eq < 0 || part.substring(0, eq) != name) null
-        else java.net.URLDecoder.decode(part.substring(eq + 1), "UTF-8")
-    }
 
 private fun replaceOrAppendFormParam(body: String, name: String, value: String): String {
     val encoded = java.net.URLEncoder.encode(value, "UTF-8")
@@ -94,7 +79,7 @@ private fun computeValidationHash(
         md.update(aidStr.toByteArray())
         md.update(secondsSinceUnlock.toUInt().toString().toByteArray())
     }
-    return md.digest().joinToString("") { "%02x".format(it) }
+    return md.digest().toHexString()
 }
 
 private fun verifyChain(awards: List<PendingAward>): ChainVerificationResult {
@@ -127,7 +112,6 @@ private fun verifyChain(awards: List<PendingAward>): ChainVerificationResult {
 }
 
 class AwardFlusher(private val db: AppDatabase) {
-    private val httpClient = OkHttpClient.Builder().build()
 
     companion object {
         private val _events = MutableSharedFlow<FlushEvent>(extraBufferCapacity = 8)
@@ -140,7 +124,7 @@ class AwardFlusher(private val db: AppDatabase) {
     ): Set<Int>? {
         val patchEntries = db.cacheDao().getAllByPrefix(CacheKeys.PREFIX_PATCH)
         val gameIds = patchEntries.mapNotNull { entry ->
-            entry.cacheKey.removePrefix(CacheKeys.PREFIX_PATCH).split(":").firstOrNull()?.toIntOrNull()
+            CacheKeys.parseGameIdFromPatchKey(entry.cacheKey)
         }.distinct()
 
         if (gameIds.isEmpty()) {
@@ -262,7 +246,7 @@ class AwardFlusher(private val db: AppDatabase) {
             request.headers.forEach { (name, value) -> Log.d(TAG, "→ RA header: $name: $value") }
             Log.d(TAG, "→ RA POST body: ${redactFormBody(body)}")
 
-            httpClient.newCall(request).execute().use { resp ->
+            sharedHttpClient.newCall(request).execute().use { resp ->
                 val responseBody = resp.body?.string() ?: ""
 
                 Log.d(TAG, "← RA ${resp.code} for ${redactTokens(award.queryString)} body=${responseBody.take(500)}")
