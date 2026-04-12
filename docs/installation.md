@@ -19,7 +19,7 @@ In RetroArch:
 
 ## Step 3 — Start the Proxy and Cache Your Games
 
-Starting the proxy automatically patches RetroArch's config file to redirect achievement traffic to the local proxy. You do not need to patch the config manually.
+Starting the proxy automatically patches RetroArch's config file to redirect achievement traffic to the local proxy. You do not need to patch the config manually. If direct file access is unavailable, the app falls back to a saved SAF folder grant or asks you to grant folder access.
 
 1. Make sure you are **online**
 2. Start the proxy (press **Start proxy** in the action bar)

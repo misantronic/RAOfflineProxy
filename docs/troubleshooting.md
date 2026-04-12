@@ -74,7 +74,7 @@
 
 ## How do I know if my token is valid?
 
-The **Home** screen shows an orange warning if your token is invalid. The app validates the token by making a live request to RA for one of your cached games when you open the Home screen while online.
+The **Home** screen shows an orange warning if your token is invalid. The app validates the token by making a live request to RA for one of your cached games while online.
 
 If you have no cached games, the token is assumed valid.
 
