@@ -58,4 +58,4 @@ Released under the [MIT License](LICENSE).
 
 ---
 
-RAOfflineProxy is not affiliated with or endorsed by [RetroAchievements.org](https://retroachievements.org).
+RAOfflineProxy is approved by [RetroAchievements.org](https://retroachievements.org).

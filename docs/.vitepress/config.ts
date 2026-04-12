@@ -57,7 +57,7 @@ export default defineConfig({
     },
 
     footer: {
-      message: 'Released under the MIT License.',
+      message: 'Released under the GNU GENERAL PUBLIC License.',
       copyright: 'Approved by RetroAchievements.org',
     },
 
