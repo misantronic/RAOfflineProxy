@@ -345,6 +345,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             _state.value = _state.value.copy(
                 proxyRunning = true,
                 cfgIsPatched = true,
+                cfgPatchMessage = str(R.string.proxy_started_success),
+                cfgPatchSuccess = true,
                 authState = AuthState.Unknown
             )
             validateToken()
@@ -369,8 +371,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             _state.value = _state.value.copy(
                 proxyRunning = false,
                 cfgIsPatched = if (revertedTarget) false else _state.value.cfgIsPatched,
-                cfgPatchMessage = if (revertedTarget) null else result.message,
-                cfgPatchSuccess = if (revertedTarget) null else false,
+                cfgPatchMessage = if (revertedTarget) str(R.string.proxy_stopped_success) else result.message,
+                cfgPatchSuccess = if (revertedTarget) true else false,
                 needsSafGrant = result.needsSafGrant,
                 cfgCopyBackPath = result.copyBackPath
             )
