@@ -38,6 +38,7 @@ private const val TAG = "RAProxy"
 private const val MAX_WORKER_THREADS = 8
 private const val SOCKET_TIMEOUT_MS = 30_000
 private const val MAX_REQUEST_BODY_BYTES = 1_048_576 // 1 MiB — rcheevos requests are small
+private val SUCCESS_TRUE_REGEX = Regex("\"Success\"\\s*:\\s*true(?=\\s*[,}])")
 
 // These requests mutate state on the RA server — do not serve from cache offline
 private val AWARD_ACTIONS = setOf("awardachievement", "submitlbentry")
@@ -487,14 +488,8 @@ internal fun proxyExtractParam(param: String, path: String, body: String): Strin
 
 internal fun shouldQueueAward(result: UpstreamResult): Boolean = result is UpstreamResult.NetworkError
 
-internal fun shouldCacheResponse(responseBody: String): Boolean {
-    return try {
-        val json = JSONObject(responseBody)
-        json.has("Success") && json.getBoolean("Success")
-    } catch (_: Exception) {
-        false
-    }
-}
+internal fun shouldCacheResponse(responseBody: String): Boolean =
+    SUCCESS_TRUE_REGEX.containsMatchIn(responseBody)
 
 internal fun sanitizeHttpReasonPhrase(message: String?, code: Int): String {
     val sanitized = message
