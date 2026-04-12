@@ -52,6 +52,11 @@ private val CACHEABLE_ACTIONS = setOf("patch", "gameid", "achievements", "hashli
 // Headers OkHttp manages itself — never forward these
 private val SKIP_HEADERS = setOf("host", "content-length", "connection", "transfer-encoding", "accept-encoding")
 
+internal sealed interface ParsedRequestLineResult {
+    data class Valid(val method: String, val path: String) : ParsedRequestLineResult
+    data class Invalid(val statusCode: Int, val message: String) : ParsedRequestLineResult
+}
+
 class ProxyServer(
     private val db: AppDatabase,
     private val scope: CoroutineScope,
@@ -119,41 +124,32 @@ class ProxyServer(
                     line = reader.readLine()
                 }
 
-                val parts = requestLine.trim().split(" ", limit = 3).filter { it.isNotEmpty() }
-                if (parts.size < 2) {
-                    writer.print(httpError(400, "bad request"))
+                val parsedRequestLine = parseRequestLine(requestLine)
+                if (parsedRequestLine is ParsedRequestLineResult.Invalid) {
+                    writer.print(httpError(parsedRequestLine.statusCode, parsedRequestLine.message))
                     writer.flush()
                     return
                 }
+                parsedRequestLine as ParsedRequestLineResult.Valid
+                val method = parsedRequestLine.method
+                val path = parsedRequestLine.path
 
-                val method = parts[0].uppercase()
-                val path = parts[1]
-                if (method != "GET" && method != "POST") {
-                    writer.print(httpError(405, "method not allowed"))
-                    writer.flush()
-                    return
-                }
-                if (!path.startsWith('/')) {
-                    writer.print(httpError(400, "bad request"))
-                    writer.flush()
-                    return
-                }
                 val transferEncoding = headers["transfer-encoding"]
-                if (!transferEncoding.isNullOrBlank() && !transferEncoding.equals("identity", ignoreCase = true)) {
-                    writer.print(httpError(501, "transfer encoding not supported"))
+                val transferEncodingError = validateTransferEncoding(transferEncoding)
+                if (transferEncodingError != null) {
+                    writer.print(httpError(transferEncodingError.first, transferEncodingError.second))
                     writer.flush()
                     return
                 }
 
                 val contentLengthHeader = headers["content-length"]
-                val contentLength = when {
-                    contentLengthHeader == null -> 0
-                    else -> contentLengthHeader.toIntOrNull() ?: run {
-                        writer.print(httpError(400, "bad content length"))
-                        writer.flush()
-                        return
-                    }
+                val parsedContentLength = parseContentLength(contentLengthHeader)
+                if (parsedContentLength == null) {
+                    writer.print(httpError(400, "bad content length"))
+                    writer.flush()
+                    return
                 }
+                val contentLength = parsedContentLength
                 if (contentLength < 0 || contentLength > MAX_REQUEST_BODY_BYTES) {
                     val response = httpError(413, "request body too large")
                     writer.print(response)
@@ -167,8 +163,9 @@ class ProxyServer(
                     if (read == -1) break
                     totalRead += read
                 }
-                if (totalRead != contentLength) {
-                    writer.print(httpError(400, "incomplete request body"))
+                val bodyReadError = validateBodyRead(contentLength, totalRead)
+                if (bodyReadError != null) {
+                    writer.print(httpError(bodyReadError.first, bodyReadError.second))
                     writer.flush()
                     return
                 }
@@ -389,6 +386,41 @@ class ProxyServer(
 
 internal fun proxyIsHardcoreRequest(path: String, rawBody: String): Boolean =
     proxyExtractParam("h", path, rawBody) == "1"
+
+internal fun parseRequestLine(requestLine: String): ParsedRequestLineResult {
+    val parts = requestLine.trim().split(Regex("\\s+"), limit = 3)
+    if (parts.size < 2) {
+        return ParsedRequestLineResult.Invalid(400, "bad request")
+    }
+
+    val method = parts[0].uppercase()
+    val path = parts[1]
+    if (method != "GET" && method != "POST") {
+        return ParsedRequestLineResult.Invalid(405, "method not allowed")
+    }
+    if (!path.startsWith('/')) {
+        return ParsedRequestLineResult.Invalid(400, "bad request")
+    }
+
+    return ParsedRequestLineResult.Valid(method, path)
+}
+
+internal fun validateTransferEncoding(transferEncoding: String?): Pair<Int, String>? =
+    if (!transferEncoding.isNullOrBlank() && !transferEncoding.equals("identity", ignoreCase = true)) {
+        501 to "transfer encoding not supported"
+    } else {
+        null
+    }
+
+internal fun parseContentLength(contentLengthHeader: String?): Int? =
+    if (contentLengthHeader == null) 0 else contentLengthHeader.toIntOrNull()
+
+internal fun validateBodyRead(expectedLength: Int, actualLength: Int): Pair<Int, String>? =
+    if (actualLength != expectedLength) {
+        400 to "incomplete request body"
+    } else {
+        null
+    }
 
 internal fun proxyExtractAction(path: String, body: String): String? {
     val fromPath = "http://x$path".toHttpUrlOrNull()?.queryParameter("r")

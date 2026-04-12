@@ -199,6 +199,24 @@ class NetworkConstantsTest {
         assertTrue(result.startsWith(" RAOfflineProxy/"))
     }
 
+    @Test
+    fun buildApiUrl_encodesQueryParams() {
+        val url = buildApiUrl(
+            PROXY_BASE,
+            "awardachievement",
+            mapOf(
+                "u" to "player one",
+                "t" to "a+b/c=",
+                "g" to "42"
+            )
+        )
+
+        assertEquals(
+            "http://127.0.0.1:8080/dorequest.php?r=awardachievement&u=player%20one&t=a%2Bb%2Fc%3D&g=42",
+            url
+        )
+    }
+
     // ── Constants ──
 
     @Test
