@@ -2,17 +2,7 @@
 
 Questions, bug reports, and general feedback are welcome.
 
-## Email
-
-Send email to [misantronic@posteo.se](mailto:misantronic@posteo.se).
-
-## Good things to include
-
-- Your Android version
-- Your RAOfflineProxy version
-- What you were trying to do
-- What happened instead
-- Whether you were online or offline when it happened
+[Open the Contact / Feedback Form](https://forms.gle/XPRfWe2hAqzYy3JX9)
 
 ## GitHub Issues
 
