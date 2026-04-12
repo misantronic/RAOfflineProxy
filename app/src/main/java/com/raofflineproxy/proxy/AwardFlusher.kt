@@ -16,6 +16,7 @@ import com.raofflineproxy.sha256Hex
 import com.raofflineproxy.sharedHttpClient
 import com.raofflineproxy.toHexString
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.withContext
@@ -28,6 +29,7 @@ import java.security.MessageDigest
 private const val TAG = "RAProxy/AwardFlusher"
 private const val MAX_RETRIES = 5
 private const val GENESIS_HASH = "genesis"
+private const val POST_FLUSH_REFRESH_DELAY_MS = 3_000L
 
 sealed interface FlushEvent {
     data object Started : FlushEvent
@@ -160,10 +162,15 @@ class AwardFlusher(
         val events = _events.asSharedFlow()
     }
 
+    private data class LiveRefreshResult(
+        val achievementIds: Set<Int>,
+        val gameIds: List<Int>
+    )
+
     private suspend fun refreshAndLoadAchievementIds(
         creds: LoginCredentials,
         userAgent: String
-    ): Set<Int>? {
+    ): LiveRefreshResult? {
         val patchEntries = db.cacheDao().getAllByPrefix(CacheKeys.PREFIX_PATCH)
         val gameIds = patchEntries.mapNotNull { entry ->
             CacheKeys.parseGameIdFromPatchKey(entry.cacheKey)
@@ -171,7 +178,7 @@ class AwardFlusher(
 
         if (gameIds.isEmpty()) {
             Log.w(TAG, "No cached patch entries — cannot determine game IDs for staleness check")
-            return emptySet()
+            return LiveRefreshResult(emptySet(), emptyList())
         }
 
         val ids = mutableSetOf<Int>()
@@ -192,7 +199,7 @@ class AwardFlusher(
                 return null
             }
         }
-        return ids
+        return LiveRefreshResult(ids, gameIds)
     }
 
     suspend fun flush() = withContext(Dispatchers.IO) {
@@ -219,12 +226,13 @@ class AwardFlusher(
         }
         val userAgent = loadUserAgent(db)
 
-        val knownAchievementIds = refreshAndLoadAchievementIds(creds, userAgent)
-        if (knownAchievementIds == null) {
+        val liveRefresh = refreshAndLoadAchievementIds(creds, userAgent)
+        if (liveRefresh == null) {
             Log.e(TAG, "Flush blocked — could not refresh achievement data from server")
             _events.emit(FlushEvent.RefreshFailed("Could not refresh achievement data from server. Try again later."))
             return@withContext
         }
+        val knownAchievementIds = liveRefresh.achievementIds
         Log.i(TAG, "Live refresh complete: ${knownAchievementIds.size} known achievement IDs")
 
         _events.emit(FlushEvent.Started)
@@ -271,6 +279,17 @@ class AwardFlusher(
                 }
             }
         }
+
+        if (flushed > 0) {
+            Log.i(TAG, "Post-flush unlocks/session refresh in ${POST_FLUSH_REFRESH_DELAY_MS}ms for ${liveRefresh.gameIds.size} game(s)")
+            delay(POST_FLUSH_REFRESH_DELAY_MS)
+            for (gameId in liveRefresh.gameIds) {
+                cacheUnlocks(context, gameId, creds, proxyUserAgent(userAgent))
+                cacheSession(gameId, creds, db)
+            }
+            Log.i(TAG, "Post-flush refresh complete")
+        }
+
         _events.emit(FlushEvent.Completed(flushed, pending.size, skippedStale))
     }
 
