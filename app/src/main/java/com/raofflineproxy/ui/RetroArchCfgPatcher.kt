@@ -10,8 +10,6 @@ import com.raofflineproxy.R
 import java.io.File
 
 private val EXT_STORAGE by lazy { Environment.getExternalStorageDirectory().path }
-private val WORK_DIR by lazy { "$EXT_STORAGE/RAOfflineProxy" }
-private val WORK_CFG by lazy { "$WORK_DIR/retroarch.cfg" }
 
 private val SOURCE_CANDIDATES by lazy {
     listOf(
@@ -51,9 +49,7 @@ private class CfgStrings(
     val errorFile: Int,
     val noWriteGrantFolder: Int,
     val notFoundGrantFolder: Int,
-    val successDirect: Int,
-    val stagedNoCopyBack: Int,
-    val stagedWithCopyBack: Int
+    val manualEditRequired: Int
 )
 
 private val PATCH_STRINGS = CfgStrings(
@@ -64,9 +60,7 @@ private val PATCH_STRINGS = CfgStrings(
     errorFile = R.string.patch_error_file,
     noWriteGrantFolder = R.string.patch_cfg_no_write_grant_folder,
     notFoundGrantFolder = R.string.patch_cfg_not_found_grant_folder,
-    successDirect = R.string.patch_success,
-    stagedNoCopyBack = R.string.patch_staged_no_copy_back,
-    stagedWithCopyBack = R.string.patch_staged_with_copy_back
+    manualEditRequired = R.string.patch_manual_edit_required
 )
 
 private val REVERT_STRINGS = CfgStrings(
@@ -77,10 +71,20 @@ private val REVERT_STRINGS = CfgStrings(
     errorFile = R.string.revert_error_file,
     noWriteGrantFolder = R.string.revert_cfg_no_write_grant_folder,
     notFoundGrantFolder = R.string.revert_cfg_not_found_grant_folder,
-    successDirect = R.string.revert_success,
-    stagedNoCopyBack = R.string.revert_staged_no_copy_back,
-    stagedWithCopyBack = R.string.revert_staged_with_copy_back
+    manualEditRequired = R.string.revert_manual_edit_required
 )
+
+internal fun patchManualEditInstructions(proxyAddress: String): String =
+    "Could not patch retroarch.cfg automatically.\n\n" +
+    "Grant Folder Access, or edit retroarch.cfg manually and set these exact lines:\n\n" +
+    "cheevos_custom_host = \"$proxyAddress\"\n" +
+    "cheevos_hardcore_mode_enable = \"false\""
+
+internal fun revertManualEditInstructions(): String =
+    "Could not revert retroarch.cfg automatically.\n\n" +
+    "Grant Folder Access, or edit retroarch.cfg manually and set these exact lines:\n\n" +
+    "cheevos_custom_host = \"\"\n" +
+    "cheevos_hardcore_mode_enable = \"true\" if you want to restore hardcore mode."
 
 fun patchRetroArchCfg(context: Context, treeUri: Uri?): PatchResult {
     val transform: (String) -> String = { buildPatchedContent(it, proxyValue(context)) }
@@ -123,7 +127,14 @@ private fun applyCfgTransform(
         }
     }
 
-    return stagingTransform(context, directCandidate, transform, strings, detectHardcore)
+    return PatchResult(
+        success = false,
+        message = when (strings.manualEditRequired) {
+            R.string.patch_manual_edit_required -> patchManualEditInstructions(proxyValue(context))
+            R.string.revert_manual_edit_required -> revertManualEditInstructions()
+            else -> context.getString(strings.manualEditRequired, proxyValue(context))
+        }
+    )
 }
 
 private fun transformViaSaf(
@@ -185,62 +196,6 @@ private fun transformViaFile(
     } catch (e: Exception) {
         PatchResult(success = false, message = context.getString(strings.errorFile, target.path, e.message))
     }
-
-private fun stagingTransform(
-    context: Context,
-    directCandidate: File?,
-    transform: (String) -> String,
-    strings: CfgStrings,
-    detectHardcore: Boolean
-): PatchResult {
-    File(WORK_DIR).mkdirs()
-    val workCfg = File(WORK_CFG)
-
-    if (directCandidate != null && !workCfg.exists()) {
-        try {
-            directCandidate.copyTo(workCfg, overwrite = true)
-        } catch (_: Exception) {
-            return PatchResult(
-                success = false,
-                message = manualCopyInstructions(context, directCandidate.path)
-            )
-        }
-    }
-
-    if (!workCfg.exists()) {
-        return PatchResult(
-            success = false,
-            message = manualCopyInstructions(context, SOURCE_CANDIDATES.first())
-        )
-    }
-
-    val fileResult = transformViaFile(context, workCfg, transform, strings, detectHardcore)
-    if (!fileResult.success) return fileResult
-
-    if (directCandidate != null) {
-        return try {
-            workCfg.copyTo(directCandidate, overwrite = true)
-            PatchResult(success = true, message = context.getString(strings.successDirect), hardcoreWasEnabled = fileResult.hardcoreWasEnabled)
-        } catch (_: Exception) {
-            PatchResult(
-                success = true,
-                message = context.getString(strings.stagedNoCopyBack, WORK_CFG),
-                copyBackPath = directCandidate.path,
-                hardcoreWasEnabled = fileResult.hardcoreWasEnabled
-            )
-        }
-    }
-
-    return PatchResult(
-        success = true,
-        message = context.getString(strings.stagedWithCopyBack, WORK_CFG),
-        copyBackPath = SOURCE_CANDIDATES.first(),
-        hardcoreWasEnabled = fileResult.hardcoreWasEnabled
-    )
-}
-
-private fun manualCopyInstructions(context: Context, sourcePath: String): String =
-    context.getString(R.string.patch_manual_copy_instructions, sourcePath, WORK_CFG)
 
 fun detectHardcoreEnabled(content: String): Boolean =
     Regex("""^\s*cheevos_hardcore_mode_enable\s*=\s*"true"\s*$""", RegexOption.MULTILINE)
