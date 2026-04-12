@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Legacy auto-backup rules (API < 31). Exclude the Room DB and prefs that hold credentials. -->
+<full-backup-content>
+    <exclude domain="database" path="raofflineproxy.db" />
+    <exclude domain="database" path="raofflineproxy.db-wal" />
+    <exclude domain="database" path="raofflineproxy.db-shm" />
+    <exclude domain="sharedpref" path="ra_proxy_prefs.xml" />
+</full-backup-content>

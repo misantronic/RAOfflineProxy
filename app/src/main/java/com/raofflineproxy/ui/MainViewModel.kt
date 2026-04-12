@@ -10,6 +10,7 @@ import android.net.Uri
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.raofflineproxy.buildApiUrl
 import com.raofflineproxy.PrefsConstants
 import com.raofflineproxy.R
 import com.raofflineproxy.RA_HOST
@@ -138,7 +139,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             db.cacheDao().observePatchEntries()
                 .map { entries ->
                     val sessionKeys = db.cacheDao().getAllByPrefix(CacheKeys.PREFIX_UNLOCKS).map { it.cacheKey }
-                        Log.d("RAProxy/Games", "patch entries=${entries.size}, unlocks keys in DB=$sessionKeys")
+                        Log.d("RAProxy/Games", "patch entries=${entries.size}, unlocks keys in DB=${sessionKeys.size}")
                         entries.mapNotNull { entry ->
                         val parts = entry.cacheKey.split(":")
                         if (parts.size < 3) return@mapNotNull null
@@ -157,7 +158,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                             json.optJSONArray("UserUnlocks")?.length() ?: 0
                         }.getOrDefault(0)
                         val totalAchievements = patchData?.optJSONArray("Achievements")?.length() ?: 0
-                        Log.d("RAProxy/Games", "game=$gameId user=$user unlocksBody=${unlocksBody?.take(200)} unlockedCount=$unlockedCount total=$totalAchievements")
+                        Log.d("RAProxy/Games", "game=$gameId unlockedCount=$unlockedCount total=$totalAchievements")
                         CachedGame(gameId = gameId, title = title, user = user, cachedAt = entry.cachedAt, imageIconUrl = imageIconUrl, unlockedCount = unlockedCount, totalAchievements = totalAchievements)
                     }
                 }
@@ -197,7 +198,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 return@launch
             }
             if (!_state.value.isOnline) {
-                Log.i("RAProxy/Auth", "validateToken: offline — trusting cache for user=${credentials.user}")
+                Log.i("RAProxy/Auth", "validateToken: offline — trusting cached credentials")
                 _state.value = _state.value.copy(authState = AuthState.Valid)
                 return@launch
             }
@@ -206,14 +207,22 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     ?.let { CacheKeys.parseGameIdStringFromPatchKey(it.cacheKey) }
             }
             if (gameId == null) {
-                Log.i("RAProxy/Auth", "validateToken: online but no cached games — trusting cache for user=${credentials.user}")
+                Log.i("RAProxy/Auth", "validateToken: online but no cached games — trusting cached credentials")
                 _state.value = _state.value.copy(authState = AuthState.Valid)
                 return@launch
             }
             val valid = withContext(Dispatchers.IO) {
                 try {
                     val userAgent = proxyUserAgent(loadUserAgent(db))
-                    val url = "$RA_HOST/dorequest.php?r=patch&g=$gameId&u=${credentials.user}&t=${credentials.token}"
+                    val url = buildApiUrl(
+                        RA_HOST,
+                        "patch",
+                        mapOf(
+                            "g" to gameId,
+                            "u" to credentials.user,
+                            "t" to credentials.token
+                        )
+                    )
                     val body = httpGet(url, userAgent)
                     JSONObject(body).optBoolean("Success", false)
                 } catch (e: Exception) {
@@ -221,7 +230,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     false
                 }
             }
-            Log.i("RAProxy/Auth", "validateToken: live patch check for user=${credentials.user} valid=$valid")
+            Log.i("RAProxy/Auth", "validateToken: live patch check valid=$valid")
             _state.value = _state.value.copy(authState = if (valid) AuthState.Valid else AuthState.Invalid)
         }
     }
