@@ -59,4 +59,4 @@ When an award is queued offline, RetroArch receives a response that looks like a
 
 ## Duplicate Awards
 
-If you earn the same achievement offline multiple times (e.g., after a save-state restore), only the most recent entry is kept — the previous one is replaced.
+If you earn the same achievement offline multiple times (e.g., after a save-state restore), the first pending entry is kept and later duplicates are discarded while that award is still pending.

@@ -27,6 +27,8 @@ When an offline award is queued:
 3. The hash and chain reference are signed with the device's private key
 4. All signing data is stored on the award record
 
+If the same achievement is triggered again while it is already pending, the duplicate request is discarded instead of replacing the existing row. This preserves the chain linkage for later awards.
+
 ## Device Key
 
 The signing key is:
