@@ -41,6 +41,7 @@ Before sending any awards to RA, the app walks all pending awards in queue order
 
 1. Each hash matches the stored award data — ensuring nothing was modified
 2. Each chain reference correctly links to the previous award
+3. Each stored signature verifies against the device's keystore-backed public key
 
 If verification fails, the sync is **entirely blocked** — no awards are sent. A warning is shown in the UI with the position and reason for the broken link.
 
@@ -50,7 +51,7 @@ Awards queued before the hash chain was introduced are transparently skipped by 
 
 ## Extra Data on Synced Requests
 
-Every award sent to RA includes the chain data (hash, chain reference, signature, and public key) as extra fields. RA's server currently ignores these fields. They are included for potential future server-side validation.
+Every award sent to RA includes the chain data (hash, chain reference, signature, and public key) as extra form-encoded fields. RA's server currently ignores these fields. They are included for potential future server-side validation.
 
 ## Limitations
 
