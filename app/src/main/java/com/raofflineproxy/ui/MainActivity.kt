@@ -216,17 +216,14 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun handlePatchSnackbar(state: MainUiState) {
-        val copyBackMsg = state.cfgCopyBackPath?.let {
-            getString(R.string.setup_copy_back_instructions, it)
-        }
-        val msg = copyBackMsg ?: state.cfgPatchMessage
+        val msg = state.cfgPatchMessage
 
         when {
             msg == null -> {
                 snackbar?.dismiss()
                 snackbar = null
             }
-            copyBackMsg != null || state.cfgPatchSuccess == false -> {
+            state.cfgPatchSuccess == false -> {
                 snackbar?.dismiss()
                 snackbar = Snackbar.make(binding.fragmentContainer, msg, Snackbar.LENGTH_INDEFINITE)
                     .setAction(R.string.action_ok) { viewModel.clearTransientMessages() }

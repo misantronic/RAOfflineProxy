@@ -32,8 +32,6 @@
     <string name="saf_dialog_message">This app needs access to the Android/data folder to patch retroarch.cfg. Please grant access to the folder containing RetroArch\'s data.</string>
     <string name="saf_dialog_grant">Grant Access</string>
     <string name="action_ok">OK</string>
-    <string name="setup_copy_back_instructions">Now copy /sdcard/RAOfflineProxy/retroarch.cfg back to:\n%s\n\nUse a file manager that can access Android/data/ (e.g. MiXplorer, Solid Explorer).</string>
-
     <!-- CFG patcher messages -->
     <string name="patch_cfg_not_found">retroarch.cfg not found.</string>
     <string name="patch_cfg_no_write_grant_folder">retroarch.cfg found but cannot be written directly. Tap \'Grant Folder Access\' to allow in-place patching.</string>
@@ -45,10 +43,8 @@
     <string name="patch_error_saf">Error patching via folder access: %s</string>
     <string name="patch_cfg_not_in_folder">retroarch.cfg not found in the granted folder. Please grant access to Android/data/, Android/data/com.retroarch, or Android/data/com.retroarch/files.</string>
     <string name="patch_success">Patched successfully.</string>
-    <string name="patch_staged_no_copy_back">retroarch.cfg patched at %1$s but could not be copied back automatically.</string>
-    <string name="patch_staged_with_copy_back">retroarch.cfg patched at %s.</string>
     <string name="patch_error_file">Error patching %1$s: %2$s</string>
-    <string name="patch_manual_copy_instructions">Could not access retroarch.cfg automatically.\n\nPlease copy it manually using a file manager (e.g. MiXplorer, Solid Explorer):\n\n  From: %1$s\n  To:   %2$s\n\nThen tap \'Patch retroarch.cfg\' again.</string>
+    <string name="patch_manual_edit_required">Could not patch retroarch.cfg automatically.\n\nGrant Folder Access, or edit retroarch.cfg manually and set these exact lines:\n\ncheevos_custom_host = "%1$s"\ncheevos_hardcore_mode_enable = "false"</string>
 
     <!-- CFG revert messages -->
     <string name="revert_cfg_no_write_grant_folder">retroarch.cfg found but cannot be written directly. Tap \'Grant Folder Access\' to allow reverting.</string>
@@ -57,9 +53,8 @@
     <string name="revert_success_saf">Reverted successfully via folder access.</string>
     <string name="revert_error_saf">Error reverting via folder access: %s</string>
     <string name="revert_success">Reverted successfully.</string>
-    <string name="revert_staged_no_copy_back">retroarch.cfg reverted at %1$s but could not be copied back automatically.</string>
-    <string name="revert_staged_with_copy_back">retroarch.cfg reverted at %s.</string>
     <string name="revert_error_file">Error reverting %1$s: %2$s</string>
+    <string name="revert_manual_edit_required">Could not revert retroarch.cfg automatically.\n\nGrant Folder Access, or edit retroarch.cfg manually and set these exact lines:\n\ncheevos_custom_host = ""\ncheevos_hardcore_mode_enable = "true" if you want to restore hardcore mode.</string>
 
     <!-- Flush messages -->
     <string name="flush_started">Flushing awards…</string>
