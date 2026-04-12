@@ -250,8 +250,8 @@ class ProxyServer(
 
     private fun handleOnlineRequest(method: String, path: String, rawBody: String, action: String?, headers: Map<String, String>): String {
         val upstream = forwardToRA(method, path, rawBody, headers)
-        val isValidJson = upstream != null && runCatching { JSONObject(upstream).has("Success") }.getOrDefault(false)
-        if (isValidJson && action in CACHEABLE_ACTIONS) {
+        val shouldCache = upstream != null && shouldCacheResponse(upstream)
+        if (shouldCache && action in CACHEABLE_ACTIONS) {
             val key = cacheKey(path, rawBody)
             val userAgent = headers["user-agent"] ?: ""
             scope.launch(Dispatchers.IO) {
@@ -486,6 +486,15 @@ internal fun proxyExtractParam(param: String, path: String, body: String): Strin
 }
 
 internal fun shouldQueueAward(result: UpstreamResult): Boolean = result is UpstreamResult.NetworkError
+
+internal fun shouldCacheResponse(responseBody: String): Boolean {
+    return try {
+        val json = JSONObject(responseBody)
+        json.has("Success") && json.getBoolean("Success")
+    } catch (_: Exception) {
+        false
+    }
+}
 
 internal fun sanitizeHttpReasonPhrase(message: String?, code: Int): String {
     val sanitized = message
