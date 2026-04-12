@@ -13,9 +13,11 @@ import com.raofflineproxy.proxy.UpstreamResult
 import com.raofflineproxy.proxy.parseContentLength
 import com.raofflineproxy.proxy.parseRequestLine
 import com.raofflineproxy.proxy.sanitizeHttpReasonPhrase
+import com.raofflineproxy.proxy.shouldCacheResponse
 import com.raofflineproxy.proxy.shouldQueueAward
 import com.raofflineproxy.proxy.validateBodyRead
 import com.raofflineproxy.proxy.validateTransferEncoding
+import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -363,6 +365,23 @@ class ProxyServerTest {
         assertTrue(shouldQueueAward(UpstreamResult.NetworkError("timeout")))
         assertFalse(shouldQueueAward(UpstreamResult.Success(200, "OK", "{}")))
         assertFalse(shouldQueueAward(UpstreamResult.HttpError(401, "Unauthorized", "{}")))
+    }
+
+    @Test
+    fun shouldCacheResponse_requiresSuccessTrue() {
+        assertEquals(true, JSONObject("""{"Success":true}""").get("Success"))
+        assertTrue(shouldCacheResponse("""{"Success":true}"""))
+        assertFalse(shouldCacheResponse("""{"Success":false}"""))
+    }
+
+    @Test
+    fun shouldCacheResponse_falseWhenMissingSuccessField() {
+        assertFalse(shouldCacheResponse("""{"Error":"bad token"}"""))
+    }
+
+    @Test
+    fun shouldCacheResponse_falseForInvalidJson() {
+        assertFalse(shouldCacheResponse("not json"))
     }
 
     @Test
