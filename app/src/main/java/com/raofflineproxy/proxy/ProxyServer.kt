@@ -56,6 +56,12 @@ internal sealed interface ParsedRequestLineResult {
     data class Invalid(val statusCode: Int, val message: String) : ParsedRequestLineResult
 }
 
+internal sealed interface UpstreamResult {
+    data class Success(val statusCode: Int, val message: String, val body: String) : UpstreamResult
+    data class HttpError(val statusCode: Int, val message: String, val body: String) : UpstreamResult
+    data class NetworkError(val message: String) : UpstreamResult
+}
+
 class ProxyServer(
     private val context: android.content.Context,
     private val db: AppDatabase,
@@ -218,10 +224,25 @@ class ProxyServer(
             Log.w(TAG, "Rejecting hardcore award — hardcore mode is not supported by this proxy")
             return httpError(403, "hardcore_not_supported")
         }
+
         if (isOnline()) {
-            val upstream = forwardToRA("POST", path, rawBody, headers)
-            if (upstream != null) return httpOk(upstream)
+            return when (val upstream = forwardToRAResult("POST", path, rawBody, headers)) {
+                is UpstreamResult.Success -> httpResponse(upstream.statusCode, upstream.message, upstream.body)
+                is UpstreamResult.HttpError -> {
+                    Log.w(TAG, "Award request rejected by upstream: ${upstream.statusCode} ${upstream.message}")
+                    httpResponse(upstream.statusCode, upstream.message, upstream.body)
+                }
+                is UpstreamResult.NetworkError -> {
+                    Log.w(TAG, "Award request will be queued due to upstream network failure: ${upstream.message}")
+                    queueOfflineAward(path, rawBody, headers)
+                }
+            }
         }
+
+        return queueOfflineAward(path, rawBody, headers)
+    }
+
+    private fun queueOfflineAward(path: String, rawBody: String, headers: Map<String, String>): String {
         queueAward(path, rawBody, headers)
         val score = fetchCachedScore(path, rawBody)
         return httpOk("""{"Success":true,"Score":$score,"SoftcoreScore":0,"AchievementID":0,"Error":"queued_offline"}""")
@@ -280,7 +301,20 @@ class ProxyServer(
         }
     }
 
-    private fun forwardToRA(method: String, path: String, rawBody: String, headers: Map<String, String>): String? {
+    private fun forwardToRA(method: String, path: String, rawBody: String, headers: Map<String, String>): String? =
+        when (val result = forwardToRAResult(method, path, rawBody, headers)) {
+            is UpstreamResult.Success -> result.body
+            is UpstreamResult.HttpError -> {
+                Log.w(TAG, "Upstream returned ${result.statusCode} for ${redactTokens(path)}")
+                null
+            }
+            is UpstreamResult.NetworkError -> {
+                Log.e(TAG, "Upstream request failed: ${result.message}")
+                null
+            }
+        }
+
+    private fun forwardToRAResult(method: String, path: String, rawBody: String, headers: Map<String, String>): UpstreamResult {
         return try {
             val url = "$RA_HOST$path"
             val builder = Request.Builder().url(url)
@@ -304,15 +338,16 @@ class ProxyServer(
             sharedHttpClient.newCall(request).execute().use { resp ->
                 val body = resp.body.string()
                 Log.d(TAG, "← RA ${resp.code} for ${redactTokens(path)} (${body.length} bytes)")
-                if (!resp.isSuccessful) {
-                    Log.w(TAG, "Upstream returned ${resp.code} for ${redactTokens(path)}")
-                    return null
+                val message = sanitizeHttpReasonPhrase(resp.message, resp.code)
+
+                if (resp.isSuccessful) {
+                    UpstreamResult.Success(resp.code, message, body)
+                } else {
+                    UpstreamResult.HttpError(resp.code, message, body)
                 }
-                body
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Upstream request failed: ${e.message}")
-            null
+            UpstreamResult.NetworkError(e.message ?: "unknown network error")
         }
     }
 
@@ -383,6 +418,9 @@ class ProxyServer(
     private fun httpGameIdCacheMiss(): String = proxyHttpGameIdCacheMiss()
 
     private fun httpError(code: Int, message: String): String = proxyHttpError(code, message)
+
+    private fun httpResponse(code: Int, message: String, body: String): String =
+        proxyHttpResponse(code, message, body)
 }
 
 internal fun proxyIsHardcoreRequest(path: String, rawBody: String): Boolean =
@@ -447,21 +485,48 @@ internal fun proxyExtractParam(param: String, path: String, body: String): Strin
     return extractFormParam(body, param)
 }
 
+internal fun shouldQueueAward(result: UpstreamResult): Boolean = result is UpstreamResult.NetworkError
+
+internal fun sanitizeHttpReasonPhrase(message: String?, code: Int): String {
+    val sanitized = message
+        ?.replace("\r", " ")
+        ?.replace("\n", " ")
+        ?.replace(Regex("\\s+"), " ")
+        ?.trim()
+
+    if (!sanitized.isNullOrEmpty()) return sanitized
+
+    return when (code) {
+        200 -> "OK"
+        400 -> "Bad Request"
+        401 -> "Unauthorized"
+        403 -> "Forbidden"
+        404 -> "Not Found"
+        405 -> "Method Not Allowed"
+        413 -> "Payload Too Large"
+        500 -> "Internal Server Error"
+        501 -> "Not Implemented"
+        503 -> "Service Unavailable"
+        else -> "Response"
+    }
+}
+
+internal fun proxyHttpResponse(code: Int, message: String, body: String): String {
+    val safeMessage = sanitizeHttpReasonPhrase(message, code)
+    return "HTTP/1.1 $code $safeMessage\r\n" +
+           "Content-Type: application/json\r\n" +
+           "Content-Length: ${body.toByteArray().size}\r\n" +
+           "Connection: close\r\n\r\n" +
+           body
+}
+
 internal fun proxyHttpOk(body: String): String =
-    "HTTP/1.1 200 OK\r\n" +
-    "Content-Type: application/json\r\n" +
-    "Content-Length: ${body.toByteArray().size}\r\n" +
-    "Connection: close\r\n\r\n" +
-    body
+    proxyHttpResponse(200, "OK", body)
 
 internal fun proxyHttpGameIdCacheMiss(): String =
     proxyHttpOk("""{"Success":false,"Error":"Game not cached. Launch this game while online first.","GameID":0}""")
 
 internal fun proxyHttpError(code: Int, message: String): String {
     val body = """{"Success":false,"Error":"$message"}"""
-    return "HTTP/1.1 $code $message\r\n" +
-           "Content-Type: application/json\r\n" +
-           "Content-Length: ${body.toByteArray().size}\r\n" +
-           "Connection: close\r\n\r\n" +
-           body
+    return proxyHttpResponse(code, message, body)
 }
