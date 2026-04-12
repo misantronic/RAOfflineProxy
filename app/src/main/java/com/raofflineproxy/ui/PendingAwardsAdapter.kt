@@ -1,5 +1,8 @@
 package com.raofflineproxy.ui
 
+import android.graphics.Typeface
+import android.text.SpannableStringBuilder
+import android.text.style.StyleSpan
 import android.view.LayoutInflater
 import android.view.ViewGroup
 import androidx.recyclerview.widget.DiffUtil
@@ -8,19 +11,29 @@ import androidx.recyclerview.widget.RecyclerView
 import com.raofflineproxy.R
 import com.raofflineproxy.data.PendingAwardUi
 import com.raofflineproxy.databinding.ItemPendingAwardBinding
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 class PendingAwardsAdapter : ListAdapter<PendingAwardUi, PendingAwardsAdapter.ViewHolder>(DIFF) {
+
+    private val dateFormat = SimpleDateFormat("MMM d, HH:mm", Locale.getDefault())
 
     class ViewHolder(private val binding: ItemPendingAwardBinding) :
         RecyclerView.ViewHolder(binding.root) {
 
-        fun bind(award: PendingAwardUi) {
+        fun bind(award: PendingAwardUi, dateFormat: SimpleDateFormat) {
             val ctx = binding.root.context
             binding.tvGameTitle.text = award.gameTitle
-            binding.tvAchievementTitle.text = if (award.hardcore)
+            val achievementTitle = if (award.hardcore)
                 ctx.getString(R.string.achievement_title_hardcore, award.achievementTitle)
             else
                 award.achievementTitle
+            val queuedAt = dateFormat.format(Date(award.queuedAt))
+            val title = "$achievementTitle · $queuedAt"
+            binding.tvAchievementTitle.text = SpannableStringBuilder(title).apply {
+                setSpan(StyleSpan(Typeface.BOLD), 0, achievementTitle.length, 0)
+            }
             binding.tvPoints.text = ctx.getString(R.string.points_format, award.points)
             binding.ivGameIcon.loadOrClear(award.gameIconUrl)
             binding.ivBadge.loadOrClear(award.badgeUrl)
@@ -38,7 +51,7 @@ class PendingAwardsAdapter : ListAdapter<PendingAwardUi, PendingAwardsAdapter.Vi
     )
 
     override fun onBindViewHolder(holder: ViewHolder, position: Int) =
-        holder.bind(getItem(position))
+        holder.bind(getItem(position), dateFormat)
 
     companion object {
         private val DIFF = object : DiffUtil.ItemCallback<PendingAwardUi>() {

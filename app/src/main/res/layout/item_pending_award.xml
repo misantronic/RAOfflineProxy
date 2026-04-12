@@ -13,6 +13,7 @@
         android:layout_width="48dp"
         android:layout_height="48dp"
         android:layout_marginEnd="12dp"
+        android:background="?attr/colorControlHighlight"
         android:scaleType="centerCrop"
         android:contentDescription="@string/cd_game_icon" />
 
@@ -21,6 +22,7 @@
         android:layout_width="36dp"
         android:layout_height="36dp"
         android:layout_marginEnd="12dp"
+        android:background="?attr/colorControlHighlight"
         android:scaleType="centerCrop"
         android:contentDescription="@string/cd_badge" />
 
@@ -41,8 +43,7 @@
             android:id="@+id/tv_achievement_title"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:textSize="14sp"
-            android:textStyle="bold" />
+            android:textSize="14sp" />
 
         <TextView
             android:id="@+id/tv_last_error"
@@ -60,6 +61,7 @@
         android:layout_height="wrap_content"
         android:textSize="12sp"
         android:layout_marginStart="8dp"
+        android:paddingStart="8dp"
         android:paddingEnd="8dp"
         android:alpha="0.6" />
 

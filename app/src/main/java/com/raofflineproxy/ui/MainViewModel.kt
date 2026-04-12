@@ -485,6 +485,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             gameTitle = gameTitle,
             gameIconUrl = gameIconUrl,
             achievementTitle = achievementTitle,
+            queuedAt = award.queuedAt,
             points = points,
             badgeUrl = badgeUrl,
             hardcore = hardcore,
