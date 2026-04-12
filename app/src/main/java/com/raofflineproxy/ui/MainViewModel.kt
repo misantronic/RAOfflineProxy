@@ -150,8 +150,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             db.cacheDao().observePatchEntries()
                 .map { entries ->
                     val sessionKeys = db.cacheDao().getAllByPrefix(CacheKeys.PREFIX_UNLOCKS).map { it.cacheKey }
-                        Log.d("RAProxy/Games", "patch entries=${entries.size}, unlocks keys in DB=${sessionKeys.size}")
-                        entries.mapNotNull { entry ->
+                    Log.d("RAProxy/Games", "patch entries=${entries.size}, unlocks keys in DB=${sessionKeys.size}")
+                    entries.mapNotNull { entry ->
                         val parts = entry.cacheKey.split(":")
                         if (parts.size < 3) return@mapNotNull null
                         val gameId = parts[1]
@@ -166,7 +166,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                             ?.takeIf { it.isNotEmpty() }
                             ?.let { "$RA_HOST$it" }
                         val unlocksBody = db.cacheDao().get(CacheKeys.unlocks(gameId, user))?.responseBody
-                        val startSessionBody = db.cacheDao().get(CacheKeys.startSession(gameId, user))?.responseBody
                         val unlockedIds = runCatching {
                             val json = JSONObject(unlocksBody ?: return@runCatching emptySet())
                             val unlocks = json.optJSONArray("UserUnlocks") ?: return@runCatching emptySet()
@@ -179,15 +178,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         val unlockedCount = unlockedIds.size
                         val totalAchievements = patchData?.optJSONArray("Achievements")?.length() ?: 0
                         val unlockedAchievements = buildUnlockedAchievements(patchData, unlockedIds)
-                        logCachedUnlockData(
-                            gameId = gameId,
-                            user = user,
-                            patchData = patchData,
-                            unlocksBody = unlocksBody,
-                            startSessionBody = startSessionBody,
-                            unlockedIds = unlockedIds
-                        )
-                        Log.d("RAProxy/Games", "game=$gameId unlockedCount=$unlockedCount total=$totalAchievements")
                         CachedGame(
                             gameId = gameId,
                             title = title,
@@ -564,31 +554,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     )
                 )
             }
-        }
-    }
-
-    private fun logCachedUnlockData(
-        gameId: String,
-        user: String,
-        patchData: JSONObject?,
-        unlocksBody: String?,
-        startSessionBody: String?,
-        unlockedIds: Set<Int>
-    ) {
-        if (unlockedIds.isEmpty()) return
-
-        Log.d("RAProxy/Games", "cached unlocks game=$gameId user=$user unlocksBody=$unlocksBody")
-        Log.d("RAProxy/Games", "cached startsession game=$gameId user=$user startSessionBody=$startSessionBody")
-
-        val achievements = patchData?.optJSONArray("Achievements") ?: return
-        for (i in 0 until achievements.length()) {
-            val achievement = achievements.optJSONObject(i) ?: continue
-            val achievementId = achievement.optInt("ID")
-            if (!unlockedIds.contains(achievementId)) continue
-            Log.d(
-                "RAProxy/Games",
-                "cached unlocked achievement game=$gameId user=$user achievementId=$achievementId object=${achievement}"
-            )
         }
     }
 
