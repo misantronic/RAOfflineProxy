@@ -14,7 +14,6 @@ import androidx.core.net.toUri
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.lifecycleScope
-import com.google.android.material.snackbar.BaseTransientBottomBar
 import com.google.android.material.snackbar.Snackbar
 import com.google.android.material.textfield.TextInputEditText
 import com.google.android.material.textfield.TextInputLayout
@@ -100,15 +99,11 @@ class SettingsFragment : Fragment() {
                     inputProxyPort.error = null
                 }
                 state.clearCacheMessage?.let { msg ->
-                    Snackbar.make(view, msg, Snackbar.LENGTH_LONG)
-                        .setAnimationMode(BaseTransientBottomBar.ANIMATION_MODE_FADE)
-                        .show()
+                    Snackbar.make(view, msg, Snackbar.LENGTH_LONG).show()
                     viewModel.clearTransientMessages()
                 }
                 state.clearDatabaseMessage?.let { msg ->
-                    Snackbar.make(view, msg, Snackbar.LENGTH_LONG)
-                        .setAnimationMode(BaseTransientBottomBar.ANIMATION_MODE_FADE)
-                        .show()
+                    Snackbar.make(view, msg, Snackbar.LENGTH_LONG).show()
                     viewModel.clearTransientMessages()
                 }
             }
