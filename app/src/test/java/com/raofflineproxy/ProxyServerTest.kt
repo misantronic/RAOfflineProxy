@@ -119,6 +119,18 @@ class ProxyServerTest {
     }
 
     @Test
+    fun cacheKey_startsession_defaultsToSoftcoreSuffix() {
+        val key = proxyCacheKey("/dorequest.php?r=startsession&g=42&u=player", "")
+        assertEquals("startsession:42:player:0", key)
+    }
+
+    @Test
+    fun cacheKey_startsession_ignoresIncomingHardcoreFlag() {
+        val key = proxyCacheKey("/dorequest.php?r=startsession&g=42&u=player&h=1", "")
+        assertEquals("startsession:42:player:0", key)
+    }
+
+    @Test
     fun cacheKey_noHardcore_noHSuffix() {
         val key = proxyCacheKey("/dorequest.php?r=patch&g=42&u=player", "")
         assertFalse(key.endsWith(":0"))
