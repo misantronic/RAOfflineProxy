@@ -22,6 +22,7 @@ import androidx.core.view.GravityCompat
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import com.google.android.material.navigation.NavigationView
+import com.google.android.material.snackbar.BaseTransientBottomBar
 import com.google.android.material.snackbar.Snackbar
 import com.raofflineproxy.BuildConfig
 import com.raofflineproxy.PrefsConstants
@@ -264,12 +265,14 @@ class MainActivity : AppCompatActivity() {
             state.cfgPatchSuccess == false -> {
                 snackbar?.dismiss()
                 snackbar = Snackbar.make(binding.fragmentContainer, msg, Snackbar.LENGTH_INDEFINITE)
+                    .setAnimationMode(BaseTransientBottomBar.ANIMATION_MODE_FADE)
                     .setAction(R.string.action_ok) { viewModel.clearTransientMessages() }
                     .also { it.show() }
             }
             else -> {
                 snackbar?.dismiss()
                 snackbar = Snackbar.make(binding.fragmentContainer, msg, Snackbar.LENGTH_LONG)
+                    .setAnimationMode(BaseTransientBottomBar.ANIMATION_MODE_FADE)
                     .also { it.show() }
             }
         }
