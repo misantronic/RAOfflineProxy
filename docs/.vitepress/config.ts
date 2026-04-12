@@ -48,6 +48,7 @@ export default defineConfig({
       {
         text: 'Help',
         items: [
+          { text: 'Compatibility', link: '/compatibility' },
           { text: 'Troubleshooting / FAQ', link: '/troubleshooting' },
           { text: 'Contact / Feedback', link: '/contact' },
         ],
