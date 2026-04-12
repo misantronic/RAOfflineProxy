@@ -171,6 +171,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 .collect { games ->
                     _cachedGames.value = games
                     _state.value = _state.value.copy(cachedGames = games)
+                    if (_state.value.proxyRunning && games.isNotEmpty() && _state.value.authState != AuthState.Valid) {
+                        validateToken()
+                    }
                 }
         }
     }

@@ -38,6 +38,7 @@ class MainActivity : AppCompatActivity() {
     private val viewModel: MainViewModel by viewModels()
     private var proxyMenuItem: MenuItem? = null
     private var snackbar: Snackbar? = null
+    private var pendingStartTokenWarning = false
 
     private val safLauncher = registerForActivityResult(OpenAndroidDataTree()) { uri ->
         if (uri == null) return@registerForActivityResult
@@ -107,6 +108,7 @@ class MainActivity : AppCompatActivity() {
                 updateProxyMenuItem(state.proxyRunning, state.isOnline)
                 updateNavBadge(navView, R.id.nav_cached_games, state.cachedGames.size)
                 updateNavBadge(navView, R.id.nav_pending_awards, state.pendingAwards.size)
+                maybeShowStartTokenWarning(state)
 
                 if (state.needsSafGrant) {
                     showSafGrantDialog()
@@ -114,6 +116,13 @@ class MainActivity : AppCompatActivity() {
 
                 handlePatchSnackbar(state)
             }
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (viewModel.state.value.proxyRunning) {
+            viewModel.validateToken()
         }
     }
 
@@ -197,10 +206,33 @@ class MainActivity : AppCompatActivity() {
 
     private fun toggleProxy() {
         if (viewModel.state.value.proxyRunning) {
+            pendingStartTokenWarning = false
             viewModel.stopProxy(treeUri = PrefsConstants.loadSafUri(this))
         } else {
+            pendingStartTokenWarning = true
             viewModel.startProxy(treeUri = PrefsConstants.loadSafUri(this))
         }
+    }
+
+    private fun maybeShowStartTokenWarning(state: MainUiState) {
+        if (!pendingStartTokenWarning || !state.proxyRunning) return
+
+        when (state.authState) {
+            AuthState.Invalid -> {
+                pendingStartTokenWarning = false
+                showTokenWarningDialog()
+            }
+            AuthState.Valid -> pendingStartTokenWarning = false
+            AuthState.Unknown -> Unit
+        }
+    }
+
+    private fun showTokenWarningDialog() {
+        AlertDialog.Builder(this)
+            .setTitle(R.string.proxy_started_dialog_title)
+            .setMessage(R.string.home_token_warning)
+            .setPositiveButton(R.string.action_ok, null)
+            .show()
     }
 
     private fun showSafGrantDialog() {

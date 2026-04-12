@@ -17,6 +17,7 @@
     <string name="proxy_tooltip_online">Proxy running — online</string>
     <string name="proxy_tooltip_offline">Proxy running — offline</string>
     <string name="proxy_menu_title">Proxy</string>
+    <string name="proxy_started_dialog_title">Proxy started</string>
 
     <!-- Nav badge -->
     <string name="nav_badge_count">(%d)</string>
