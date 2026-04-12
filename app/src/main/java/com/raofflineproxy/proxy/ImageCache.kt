@@ -18,9 +18,6 @@ private fun imageCacheRoot(context: Context): File =
 private fun gameImageDir(context: Context, gameId: Int): File =
     File(imageCacheRoot(context), "$GAMES_DIR/$gameId")
 
-private fun badgeFile(context: Context, gameId: Int, badgeName: String): File =
-    File(gameImageDir(context, gameId), "badge_$badgeName.png")
-
 private fun gameIconFile(context: Context, gameId: Int, imagePath: String): File {
     val extension = imagePath.substringAfterLast('.', "png").substringBefore('?')
     return File(gameImageDir(context, gameId), "icon.$extension")
@@ -58,11 +55,6 @@ fun resolveCachedGameIconPath(context: Context, gameId: Int): String? =
         ?.firstOrNull { it.name.startsWith("icon.") && it.isFile }
         ?.absolutePath
 
-fun resolveCachedBadgePath(context: Context, gameId: Int, badgeName: String): String? {
-    val file = badgeFile(context, gameId, badgeName)
-    return file.absolutePath.takeIf { file.exists() }
-}
-
 fun deleteCachedImagesForGame(context: Context, gameId: String) {
     gameId.toIntOrNull()?.let { gameImageDir(context, it).deleteRecursively() }
 }
@@ -82,19 +74,6 @@ fun cachePatchImages(context: Context, gameId: Int, userAgent: String, patchResp
             keepNames += target.name
             if (!target.exists()) {
                 fetchFile("$RA_HOST$imagePath", userAgent, target)
-            }
-        }
-
-        val achievements = patchData.optJSONArray("Achievements")
-        if (achievements != null) {
-            for (i in 0 until achievements.length()) {
-                val achievement = achievements.optJSONObject(i) ?: continue
-                val badgeName = achievement.optString("BadgeName").takeIf { it.isNotEmpty() } ?: continue
-                val target = badgeFile(context, gameId, badgeName)
-                keepNames += target.name
-                if (!target.exists()) {
-                    fetchFile("https://i.retroachievements.org/Badge/$badgeName.png", userAgent, target)
-                }
             }
         }
 
