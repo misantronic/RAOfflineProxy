@@ -54,7 +54,7 @@ Full documentation is available at [raofflineproxy.com](https://raofflineproxy.c
 
 ## License
 
-Released under the [MIT License](LICENSE).
+Released under the [GNU GENERAL PUBLIC License](LICENSE).
 
 ---
 
