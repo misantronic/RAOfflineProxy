@@ -4,12 +4,16 @@ import com.raofflineproxy.proxy.proxyCacheKey
 import com.raofflineproxy.proxy.proxyExtractAction
 import com.raofflineproxy.proxy.proxyExtractParam
 import com.raofflineproxy.proxy.proxyHttpError
+import com.raofflineproxy.proxy.proxyHttpResponse
 import com.raofflineproxy.proxy.proxyHttpGameIdCacheMiss
 import com.raofflineproxy.proxy.proxyHttpOk
 import com.raofflineproxy.proxy.proxyIsHardcoreRequest
 import com.raofflineproxy.proxy.ParsedRequestLineResult
+import com.raofflineproxy.proxy.UpstreamResult
 import com.raofflineproxy.proxy.parseContentLength
 import com.raofflineproxy.proxy.parseRequestLine
+import com.raofflineproxy.proxy.sanitizeHttpReasonPhrase
+import com.raofflineproxy.proxy.shouldQueueAward
 import com.raofflineproxy.proxy.validateBodyRead
 import com.raofflineproxy.proxy.validateTransferEncoding
 import org.junit.Assert.assertEquals
@@ -350,6 +354,39 @@ class ProxyServerTest {
         val expectedBody = """{"Success":false,"Error":"$message"}"""
         val response = proxyHttpError(500, message)
         assertTrue(response.contains("Content-Length: ${expectedBody.toByteArray().size}"))
+    }
+
+    // ── upstream award behavior helpers ──
+
+    @Test
+    fun shouldQueueAward_networkErrorOnly() {
+        assertTrue(shouldQueueAward(UpstreamResult.NetworkError("timeout")))
+        assertFalse(shouldQueueAward(UpstreamResult.Success(200, "OK", "{}")))
+        assertFalse(shouldQueueAward(UpstreamResult.HttpError(401, "Unauthorized", "{}")))
+    }
+
+    @Test
+    fun sanitizeHttpReasonPhrase_fallsBackForBlankMessage() {
+        assertEquals("Unauthorized", sanitizeHttpReasonPhrase("", 401))
+    }
+
+    @Test
+    fun sanitizeHttpReasonPhrase_stripsNewlines() {
+        assertEquals("Bad Request injected", sanitizeHttpReasonPhrase("Bad Request\r\ninjected", 400))
+    }
+
+    @Test
+    fun httpResponse_preservesUpstreamStatusAndBody() {
+        val body = """{"Success":false,"Error":"invalid token"}"""
+        val response = proxyHttpResponse(401, "Unauthorized", body)
+        assertTrue(response.startsWith("HTTP/1.1 401 Unauthorized\r\n"))
+        assertTrue(response.endsWith(body))
+    }
+
+    @Test
+    fun httpResponse_usesFallbackReasonPhrase() {
+        val response = proxyHttpResponse(503, "", "{}")
+        assertTrue(response.startsWith("HTTP/1.1 503 Service Unavailable\r\n"))
     }
 
     // ── proxyHttpGameIdCacheMiss() ──
