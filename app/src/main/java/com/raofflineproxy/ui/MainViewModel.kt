@@ -23,9 +23,13 @@ import com.raofflineproxy.data.PendingAwardUi
 import com.raofflineproxy.proxy.AwardFlusher
 import com.raofflineproxy.proxy.FlushEvent
 import com.raofflineproxy.proxy.cacheGame
+import com.raofflineproxy.proxy.clearAllCachedImages
+import com.raofflineproxy.proxy.deleteCachedImagesForGame
 import com.raofflineproxy.proxy.httpGet
 import com.raofflineproxy.proxy.loadLoginCredentials
 import com.raofflineproxy.proxy.loadUserAgent
+import com.raofflineproxy.proxy.resolveCachedBadgePath
+import com.raofflineproxy.proxy.resolveCachedGameIconPath
 import com.raofflineproxy.proxy.scanRomFolder
 import com.raofflineproxy.service.ProxyService
 import kotlinx.coroutines.Dispatchers
@@ -62,6 +66,7 @@ data class MainUiState(
 )
 
 class MainViewModel(app: Application) : AndroidViewModel(app) {
+    private val application = app
     private val db = AppDatabase.getInstance(app)
     private val _state = MutableStateFlow(MainUiState())
     val state: StateFlow<MainUiState> = _state.asStateFlow()
@@ -155,7 +160,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                             JSONObject(entry.responseBody).getJSONObject("PatchData")
                         }.getOrNull()
                         val title = patchData?.optString("Title") ?: gameId
-                        val imageIconUrl = patchData?.optString("ImageIcon")
+                        val imageIconUrl = gameId.toIntOrNull()?.let {
+                            resolveCachedGameIconPath(application, it)
+                        } ?: patchData?.optString("ImageIcon")
                             ?.takeIf { it.isNotEmpty() }
                             ?.let { "$RA_HOST$it" }
                         val unlocksBody = db.cacheDao().get(CacheKeys.unlocks(gameId, user))?.responseBody
@@ -397,6 +404,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             db.cacheDao().deleteByKeyPrefix(CacheKeys.PREFIX_GAMEID)
             db.cacheDao().deleteByKeyPrefix(CacheKeys.PREFIX_UNLOCKS)
             db.cacheDao().deleteByKeyPrefix(CacheKeys.PREFIX_STARTSESSION)
+            clearAllCachedImages(application)
             _state.value = _state.value.copy(scanProgress = null, clearCacheMessage = str(R.string.cache_cleared))
         }
     }
@@ -405,6 +413,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch(Dispatchers.IO) {
             db.cacheDao().deleteByKeyPrefix("")
             db.pendingAwardDao().getAll().forEach { db.pendingAwardDao().delete(it) }
+            clearAllCachedImages(application)
             _state.value = _state.value.copy(scanProgress = null, clearDatabaseMessage = str(R.string.database_cleared))
         }
     }
@@ -433,6 +442,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun deleteCachedGame(game: CachedGame) {
         viewModelScope.launch(Dispatchers.IO) {
             db.cacheDao().deleteByKeyPrefix(CacheKeys.patchPrefix(game.gameId))
+            deleteCachedImagesForGame(application, game.gameId)
         }
     }
 
@@ -468,19 +478,29 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         var badgeUrl: String? = null
         for (entry in db.cacheDao().getAllByPrefix(CacheKeys.PREFIX_PATCH)) {
             runCatching {
+                val gameId = CacheKeys.parseGameIdFromPatchKey(entry.cacheKey)
                 val patchData = JSONObject(entry.responseBody).getJSONObject("PatchData")
                 val arr = patchData.getJSONArray("Achievements")
                 for (i in 0 until arr.length()) {
                     val a = arr.getJSONObject(i)
                     if (a.getInt("ID") == achievementId) {
                         gameTitle = patchData.optString("Title", gameTitle)
-                        gameIconUrl = patchData.optString("ImageIcon")
+                        gameIconUrl = gameId?.let {
+                            resolveCachedGameIconPath(application, it)
+                        } ?: patchData.optString("ImageIcon")
                             .takeIf { it.isNotEmpty() }
                             ?.let { "$RA_HOST$it" }
                         achievementTitle = a.optString("Title", achievementTitle)
                         points = a.optInt("Points", 0)
                         val badgeName = a.optString("BadgeName").takeIf { it.isNotEmpty() }
-                        badgeUrl = badgeName?.let { "https://i.retroachievements.org/Badge/$it.png" }
+                        val remoteBadgeUrl = badgeName?.let {
+                            "https://i.retroachievements.org/Badge/$it.png"
+                        }
+                        badgeUrl = badgeName?.let {
+                            gameId?.let { resolvedGameId ->
+                                resolveCachedBadgePath(application, resolvedGameId, it)
+                            } ?: remoteBadgeUrl
+                        } ?: remoteBadgeUrl
                         break
                     }
                 }
