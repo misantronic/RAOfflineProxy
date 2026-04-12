@@ -101,6 +101,17 @@
     <string name="setting_proxy_port_invalid">Enter a port between 1024 and 65535.</string>
     <string name="btn_clear_cache">Clear Cache</string>
     <string name="btn_clear_database">Clear Database</string>
+    <string name="btn_contact_feedback">Contact / Send Feedback</string>
+    <string name="contact_feedback_email">misantronic@posteo.se</string>
+    <string name="contact_feedback_subject">RAOfflineProxy feedback</string>
+    <string name="contact_feedback_body">RAOfflineProxy version: %1$s
+Android version: %2$s
+
+What were you trying to do?
+
+What happened instead?
+</string>
+    <string name="contact_feedback_no_email_app">No email app is available on this device.</string>
 
     <!-- Cached games header -->
     <string name="cached_games_scan_hint">Start the proxy and go online to manage cached games.</string>

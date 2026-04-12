@@ -18,6 +18,9 @@ hero:
     - theme: alt
       text: View on GitHub
       link: https://github.com/misantronic/RAOfflineProxy
+    - theme: alt
+      text: Contact / Feedback
+      link: /contact
 
 features:
   - icon: 💾
@@ -32,4 +35,8 @@ features:
   - icon: 🚀
     title: Always Ready
     details: Optionally starts in the background when your device boots, so you never have to think about it.
+
+  - icon: ✉️
+    title: Contact the Developer
+    details: Questions, bug reports, and feedback can be sent directly by email.
 ---
