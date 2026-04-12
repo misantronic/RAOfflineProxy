@@ -31,7 +31,7 @@ Starting the proxy automatically patches RetroArch's config file to redirect ach
 The app will identify each ROM, look it up on RetroAchievements, and save all the achievement data for that game.
 
 ::: warning Shutdown caveat
-Always stop sync before killing the app. If the app is killed or crashes while the proxy is active, reopen RAOfflineProxy once so it can clean up `retroarch.cfg`.
+On some devices, swiping the app away or crashing while the proxy is active does not reliably revert `retroarch.cfg` immediately. Stop sync before killing the app. If that happens, reopen RAOfflineProxy once so it can clean up `retroarch.cfg`.
 :::
 
 ::: tip Automatic caching when launching games
