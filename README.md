@@ -39,7 +39,7 @@ RAOfflineProxy runs a tiny local proxy on your device. It sits between RetroArch
 - If the app is killed or crashes while the proxy/sync is active, reopen RAOfflineProxy once so it can clean up `retroarch.cfg`.
 - Swiping the app away is not a reliable substitute for pressing **Stop proxy** on all devices.
 
-For detailed setup instructions, see the [documentation](https://raofflineproxy.com/installation).
+For detailed setup instructions, see the [documentation](https://d3bywedspcdj3v.cloudfront.net/installation.html).
 
 ## Build from Source
 
@@ -52,7 +52,7 @@ export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
 
 ## Documentation
 
-Full documentation is available at [raofflineproxy.com](https://raofflineproxy.com).
+Full documentation is available at [d3bywedspcdj3v.cloudfront.net](https://d3bywedspcdj3v.cloudfront.net).
 
 ## License
 
