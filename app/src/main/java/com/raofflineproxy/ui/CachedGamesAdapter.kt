@@ -10,6 +10,7 @@ import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import coil.load
+import com.google.android.material.snackbar.BaseTransientBottomBar
 import com.google.android.material.snackbar.Snackbar
 import com.raofflineproxy.R
 import com.raofflineproxy.data.CachedGame
@@ -29,13 +30,16 @@ fun updateSnackbar(view: View, msg: String?, inProgress: Boolean, current: Snack
         msg == null -> { current?.dismiss(); null }
         inProgress -> {
             val sb = current ?: Snackbar.make(view, msg, Snackbar.LENGTH_INDEFINITE)
+                .setAnimationMode(BaseTransientBottomBar.ANIMATION_MODE_FADE)
             sb.setText(msg)
             sb.show()
             sb
         }
         else -> {
             current?.dismiss()
-            Snackbar.make(view, msg, Snackbar.LENGTH_LONG).also { it.show() }
+            Snackbar.make(view, msg, Snackbar.LENGTH_LONG)
+                .setAnimationMode(BaseTransientBottomBar.ANIMATION_MODE_FADE)
+                .also { it.show() }
         }
     }
 

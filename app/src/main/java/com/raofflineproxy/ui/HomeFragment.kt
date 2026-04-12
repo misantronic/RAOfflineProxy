@@ -19,6 +19,7 @@ import com.google.android.material.button.MaterialButton
 import com.raofflineproxy.PrefsConstants
 import com.raofflineproxy.R
 import kotlinx.coroutines.launch
+import androidx.core.net.toUri
 
 class HomeFragment : Fragment() {
     private val viewModel: MainViewModel by activityViewModels()
@@ -40,7 +41,7 @@ class HomeFragment : Fragment() {
 
         spannable.setSpan(object : ClickableSpan() {
             override fun onClick(widget: View) {
-                startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(getString(R.string.home_docs_url))))
+                startActivity(Intent(Intent.ACTION_VIEW, getString(R.string.home_docs_url).toUri()))
             }
         }, start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
         spannable.setSpan(ForegroundColorSpan(linkColor), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
