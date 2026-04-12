@@ -47,7 +47,7 @@ private val AWARD_ACTIONS = setOf("awardachievement", "submitlbentry")
 private val FAKE_OFFLINE_SUCCESS_ACTIONS = setOf("ping")
 
 // These requests are safe to cache and serve offline
-private val CACHEABLE_ACTIONS = setOf("patch", "gameid", "achievements", "hashlibrary", "login2", "unlocks", "startsession")
+private val CACHEABLE_ACTIONS = setOf("patch", "gameid", "achievements", "hashlibrary", "login2", "unlocks")
 
 // Headers OkHttp manages itself — never forward these
 private val SKIP_HEADERS = setOf("host", "content-length", "connection", "transfer-encoding", "accept-encoding")
@@ -217,6 +217,7 @@ class ProxyServer(
                 Log.i(TAG, "Fake success offline: action=$action")
                 httpOk("""{"Success":true}""")
             }
+            action == "startsession" -> handleStartSessionRequest(path, rawBody)
             isOnline() -> handleOnlineRequest(method, path, rawBody, action, headers)
             else -> handleOfflineRequest(path, rawBody, action)
         }
@@ -246,6 +247,33 @@ class ProxyServer(
         }
 
         return queueOfflineAward(path, rawBody, headers)
+    }
+
+    private fun handleStartSessionRequest(path: String, rawBody: String): String {
+        val gameId = extractParam("g", path, rawBody)?.toIntOrNull()
+        val user = extractParam("u", path, rawBody)
+        if (gameId == null || user.isNullOrEmpty()) {
+            return httpError(400, "bad request")
+        }
+
+        var cached: CacheEntry? = null
+        val latch = java.util.concurrent.CountDownLatch(1)
+        scope.launch(Dispatchers.IO) {
+            runCatching {
+                cacheSession(gameId, LoginCredentials(user, ""), db)
+                cached = db.cacheDao().get(CacheKeys.startSession(gameId, user))
+            }
+            latch.countDown()
+        }
+        latch.await(3, TimeUnit.SECONDS)
+
+        return if (cached != null) {
+            Log.i(TAG, "Served synthetic startsession for gameId=$gameId user=$user")
+            httpOk(cached!!.responseBody)
+        } else {
+            Log.e(TAG, "Failed to synthesize startsession for gameId=$gameId user=$user")
+            httpError(503, "no cached response")
+        }
     }
 
     private fun queueOfflineAward(path: String, rawBody: String, headers: Map<String, String>): String {
@@ -485,6 +513,7 @@ internal fun proxyCacheKey(path: String, body: String): String {
     val hardcore = proxyExtractParam("h", path, body) ?: ""
     return when (action) {
         "gameid" -> "$action:$hash"
+        "startsession" -> CacheKeys.startSession(gameId, user)
         else -> if (hardcore.isNotEmpty()) "$action:$gameId:$user:$hardcore" else "$action:$gameId:$user"
     }
 }
