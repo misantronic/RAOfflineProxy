@@ -4,6 +4,9 @@
         <item name="colorPrimary">@color/primary</item>
         <item name="colorPrimaryVariant">@color/primary_dark</item>
         <item name="colorOnPrimary">@color/white</item>
+        <item name="colorSecondary">@color/secondary</item>
+        <item name="colorSecondaryVariant">@color/secondary_dark</item>
+        <item name="colorControlActivated">@color/secondary</item>
         <item name="actionBarStyle">@style/Widget.RAOfflineProxy.ActionBar</item>
         <item name="snackbarTextViewStyle">@style/Widget.RAOfflineProxy.SnackbarText</item>
     </style>
