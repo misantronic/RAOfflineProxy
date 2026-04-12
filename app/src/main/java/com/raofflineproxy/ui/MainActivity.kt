@@ -23,6 +23,7 @@ import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import com.google.android.material.navigation.NavigationView
 import com.google.android.material.snackbar.Snackbar
+import com.raofflineproxy.BuildConfig
 import com.raofflineproxy.PrefsConstants
 import com.raofflineproxy.R
 import com.raofflineproxy.databinding.ActivityMainBinding
@@ -65,6 +66,8 @@ class MainActivity : AppCompatActivity() {
 
         val drawerLayout = binding.drawerLayout
         val navView = binding.navView
+        val navVersion = binding.navView.findViewById<android.widget.TextView>(R.id.tv_nav_version)
+        navVersion.text = getString(R.string.nav_version_format, BuildConfig.VERSION_NAME)
 
         val toggle = ActionBarDrawerToggle(
             this, drawerLayout, R.string.nav_open, R.string.nav_close
