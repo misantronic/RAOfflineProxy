@@ -11,8 +11,12 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.util.Base64
 
 class AwardFlusherTest {
+
+    private fun signature(value: String): String =
+        Base64.getEncoder().encodeToString(value.toByteArray())
 
     private fun award(
         achievementId: Int = 100,
@@ -227,8 +231,18 @@ class AwardFlusherTest {
         val payload = canonicalPayload(a)
         val hash = sha256Hex(payload)
 
-        val signed = a.copy(payloadHash = hash, prevHash = "genesis")
-        val result = verifyChain(listOf(signed))
+        val signed = a.copy(
+            payloadHash = hash,
+            prevHash = "genesis",
+            signature = signature("sig")
+        )
+        val result = verifyChain(
+            listOf(signed),
+            decodeSignature = { it.toByteArray() },
+            verifySignature = { data, signatureBytes ->
+                String(data, Charsets.UTF_8) == "$hash:genesis" && String(signatureBytes, Charsets.UTF_8) == signature("sig")
+            }
+        )
         assertTrue(result is ChainVerificationResult.Valid)
     }
 
@@ -240,9 +254,18 @@ class AwardFlusherTest {
 
         val a2 = award(achievementId = 2, queryString = "/p2", requestBody = "b2", queuedAt = 2000L)
         val hash2 = sha256Hex(canonicalPayload(a2))
-        val signed2 = a2.copy(payloadHash = hash2, prevHash = hash1)
+        val signed2 = a2.copy(
+            payloadHash = hash2,
+            prevHash = hash1,
+            signature = signature("sig2")
+        )
 
-        val result = verifyChain(listOf(signed1, signed2))
+        val signed1WithSig = signed1.copy(signature = signature("sig1"))
+        val result = verifyChain(
+            listOf(signed1WithSig, signed2),
+            decodeSignature = { it.toByteArray() },
+            verifySignature = { _, _ -> true }
+        )
         assertTrue(result is ChainVerificationResult.Valid)
     }
 
@@ -267,7 +290,11 @@ class AwardFlusherTest {
         val hash2 = sha256Hex(canonicalPayload(a2))
         val signed2 = a2.copy(payloadHash = hash2, prevHash = "wrong_prev_hash")
 
-        val result = verifyChain(listOf(signed1, signed2))
+        val result = verifyChain(
+            listOf(signed1.copy(signature = signature("sig1")), signed2.copy(signature = signature("sig2"))),
+            decodeSignature = { it.toByteArray() },
+            verifySignature = { _, _ -> true }
+        )
         assertTrue(result is ChainVerificationResult.Broken)
         assertEquals(1, (result as ChainVerificationResult.Broken).index)
         assertTrue(result.reason.contains("prevHash"))
@@ -281,7 +308,11 @@ class AwardFlusherTest {
         val hash2 = sha256Hex(canonicalPayload(a2))
         val signed2 = a2.copy(payloadHash = hash2, prevHash = "genesis")
 
-        val result = verifyChain(listOf(legacy, signed2))
+        val result = verifyChain(
+            listOf(legacy, signed2.copy(signature = signature("sig"))),
+            decodeSignature = { it.toByteArray() },
+            verifySignature = { _, _ -> true }
+        )
         assertTrue(result is ChainVerificationResult.Valid)
     }
 
@@ -293,13 +324,19 @@ class AwardFlusherTest {
 
         val a2 = award(achievementId = 2, queryString = "/p2", requestBody = "b2", queuedAt = 2000L)
         val h2 = sha256Hex(canonicalPayload(a2))
-        val s2 = a2.copy(payloadHash = h2, prevHash = h1)
+        val s2 = a2.copy(payloadHash = h2, prevHash = h1, signature = signature("sig2"))
 
         val a3 = award(achievementId = 3, queryString = "/p3", requestBody = "b3", queuedAt = 3000L)
         val h3 = sha256Hex(canonicalPayload(a3))
-        val s3 = a3.copy(payloadHash = h3, prevHash = h2)
+        val s3 = a3.copy(payloadHash = h3, prevHash = h2, signature = signature("sig3"))
 
-        val result = verifyChain(listOf(s1, s2, s3))
+        val s1WithSig = s1.copy(signature = signature("sig1"))
+
+        val result = verifyChain(
+            listOf(s1WithSig, s2, s3),
+            decodeSignature = { it.toByteArray() },
+            verifySignature = { _, _ -> true }
+        )
         assertTrue(result is ChainVerificationResult.Valid)
     }
 
@@ -307,18 +344,76 @@ class AwardFlusherTest {
     fun verifyChain_brokenMiddleLink() {
         val a1 = award(achievementId = 1, queryString = "/p1", requestBody = "b1", queuedAt = 1000L)
         val h1 = sha256Hex(canonicalPayload(a1))
-        val s1 = a1.copy(payloadHash = h1, prevHash = "genesis")
+        val s1 = a1.copy(payloadHash = h1, prevHash = "genesis", signature = signature("sig1"))
 
         val a2 = award(achievementId = 2, queryString = "/p2", requestBody = "b2", queuedAt = 2000L)
         val h2 = sha256Hex(canonicalPayload(a2))
-        val s2 = a2.copy(payloadHash = h2, prevHash = "wrong")
+        val s2 = a2.copy(payloadHash = h2, prevHash = "wrong", signature = signature("sig2"))
 
         val a3 = award(achievementId = 3, queryString = "/p3", requestBody = "b3", queuedAt = 3000L)
         val h3 = sha256Hex(canonicalPayload(a3))
-        val s3 = a3.copy(payloadHash = h3, prevHash = h2)
+        val s3 = a3.copy(payloadHash = h3, prevHash = h2, signature = signature("sig3"))
 
-        val result = verifyChain(listOf(s1, s2, s3))
+        val result = verifyChain(
+            listOf(s1, s2, s3),
+            decodeSignature = { it.toByteArray() },
+            verifySignature = { _, _ -> true }
+        )
         assertTrue(result is ChainVerificationResult.Broken)
         assertEquals(1, (result as ChainVerificationResult.Broken).index)
+    }
+
+    @Test
+    fun verifyChain_missingSignature_isBroken() {
+        val a = award(achievementId = 1, queryString = "/path", requestBody = "body", queuedAt = 1000L)
+        val hash = sha256Hex(canonicalPayload(a))
+
+        val result = verifyChain(listOf(a.copy(payloadHash = hash, prevHash = "genesis")))
+        assertTrue(result is ChainVerificationResult.Broken)
+        result as ChainVerificationResult.Broken
+        assertTrue(result.reason.contains("missing signature"))
+    }
+
+    @Test
+    fun verifyChain_invalidBase64Signature_isBroken() {
+        val a = award(achievementId = 1, queryString = "/path", requestBody = "body", queuedAt = 1000L)
+        val hash = sha256Hex(canonicalPayload(a))
+
+        val result = verifyChain(listOf(a.copy(payloadHash = hash, prevHash = "genesis", signature = "%%%not-base64%%%")))
+        assertTrue(result is ChainVerificationResult.Broken)
+        result as ChainVerificationResult.Broken
+        assertTrue(result.reason.contains("invalid base64 signature"))
+    }
+
+    @Test
+    fun verifyChain_invalidSignature_isBroken() {
+        val a = award(achievementId = 1, queryString = "/path", requestBody = "body", queuedAt = 1000L)
+        val hash = sha256Hex(canonicalPayload(a))
+        val signature = signature("sig")
+
+        val result = verifyChain(
+            listOf(a.copy(payloadHash = hash, prevHash = "genesis", signature = signature)),
+            decodeSignature = { it.toByteArray() },
+            verifySignature = { _, _ -> false }
+        )
+        assertTrue(result is ChainVerificationResult.Broken)
+        result as ChainVerificationResult.Broken
+        assertTrue(result.reason.contains("invalid signature"))
+    }
+
+    @Test
+    fun verifyChain_signatureVerifierThrows_isBroken() {
+        val a = award(achievementId = 1, queryString = "/path", requestBody = "body", queuedAt = 1000L)
+        val hash = sha256Hex(canonicalPayload(a))
+        val signature = signature("sig")
+
+        val result = verifyChain(
+            listOf(a.copy(payloadHash = hash, prevHash = "genesis", signature = signature)),
+            decodeSignature = { it.toByteArray() },
+            verifySignature = { _, _ -> throw IllegalStateException("boom") }
+        )
+        assertTrue(result is ChainVerificationResult.Broken)
+        result as ChainVerificationResult.Broken
+        assertTrue(result.reason.contains("signature verification failed"))
     }
 }

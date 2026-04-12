@@ -83,7 +83,11 @@ internal fun computeValidationHash(
     return md.digest().toHexString()
 }
 
-internal fun verifyChain(awards: List<PendingAward>): ChainVerificationResult {
+internal fun verifyChain(
+    awards: List<PendingAward>,
+    decodeSignature: (String) -> ByteArray = { Base64.decode(it, Base64.DEFAULT) },
+    verifySignature: (ByteArray, ByteArray) -> Boolean = AwardKeyManager::verify
+): ChainVerificationResult {
     awards.forEachIndexed { index, award ->
         // Legacy awards queued before anti-tamper was added have empty payloadHash — skip chain checks
         if (award.payloadHash.isEmpty()) return@forEachIndexed
@@ -117,7 +121,7 @@ internal fun verifyChain(awards: List<PendingAward>): ChainVerificationResult {
         }
 
         val signatureBytes = runCatching {
-            Base64.decode(award.signature, Base64.DEFAULT)
+            decodeSignature(award.signature)
         }.getOrElse {
             return ChainVerificationResult.Broken(
                 index,
@@ -127,7 +131,7 @@ internal fun verifyChain(awards: List<PendingAward>): ChainVerificationResult {
 
         val signInput = "${award.payloadHash}:${award.prevHash}".toByteArray(Charsets.UTF_8)
         val signatureValid = runCatching {
-            AwardKeyManager.verify(signInput, signatureBytes)
+            verifySignature(signInput, signatureBytes)
         }.getOrElse {
             return ChainVerificationResult.Broken(
                 index,

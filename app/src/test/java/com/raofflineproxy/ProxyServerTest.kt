@@ -7,6 +7,11 @@ import com.raofflineproxy.proxy.proxyHttpError
 import com.raofflineproxy.proxy.proxyHttpGameIdCacheMiss
 import com.raofflineproxy.proxy.proxyHttpOk
 import com.raofflineproxy.proxy.proxyIsHardcoreRequest
+import com.raofflineproxy.proxy.ParsedRequestLineResult
+import com.raofflineproxy.proxy.parseContentLength
+import com.raofflineproxy.proxy.parseRequestLine
+import com.raofflineproxy.proxy.validateBodyRead
+import com.raofflineproxy.proxy.validateTransferEncoding
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -167,6 +172,91 @@ class ProxyServerTest {
     @Test
     fun isHardcoreRequest_queryPriority() {
         assertFalse(proxyIsHardcoreRequest("/dorequest.php?h=0", "h=1"))
+    }
+
+    // ── parser helpers ──
+
+    @Test
+    fun parseRequestLine_validGet() {
+        val result = parseRequestLine("GET /dorequest.php?r=patch HTTP/1.1")
+        assertTrue(result is ParsedRequestLineResult.Valid)
+        result as ParsedRequestLineResult.Valid
+        assertEquals("GET", result.method)
+        assertEquals("/dorequest.php?r=patch", result.path)
+    }
+
+    @Test
+    fun parseRequestLine_validPostWithExtraSpaces() {
+        val result = parseRequestLine("  POST   /dorequest.php   HTTP/1.1  ")
+        assertTrue(result is ParsedRequestLineResult.Valid)
+        result as ParsedRequestLineResult.Valid
+        assertEquals("POST", result.method)
+        assertEquals("/dorequest.php", result.path)
+    }
+
+    @Test
+    fun parseRequestLine_rejectsMalformedLine() {
+        val result = parseRequestLine("BROKEN")
+        assertTrue(result is ParsedRequestLineResult.Invalid)
+        result as ParsedRequestLineResult.Invalid
+        assertEquals(400, result.statusCode)
+    }
+
+    @Test
+    fun parseRequestLine_rejectsUnsupportedMethod() {
+        val result = parseRequestLine("PUT /dorequest.php HTTP/1.1")
+        assertTrue(result is ParsedRequestLineResult.Invalid)
+        result as ParsedRequestLineResult.Invalid
+        assertEquals(405, result.statusCode)
+    }
+
+    @Test
+    fun parseRequestLine_rejectsNonAbsolutePath() {
+        val result = parseRequestLine("GET dorequest.php HTTP/1.1")
+        assertTrue(result is ParsedRequestLineResult.Invalid)
+        result as ParsedRequestLineResult.Invalid
+        assertEquals(400, result.statusCode)
+    }
+
+    @Test
+    fun validateTransferEncoding_allowsNull() {
+        assertNull(validateTransferEncoding(null))
+    }
+
+    @Test
+    fun validateTransferEncoding_allowsIdentity() {
+        assertNull(validateTransferEncoding("identity"))
+        assertNull(validateTransferEncoding("Identity"))
+    }
+
+    @Test
+    fun validateTransferEncoding_rejectsChunked() {
+        assertEquals(501 to "transfer encoding not supported", validateTransferEncoding("chunked"))
+    }
+
+    @Test
+    fun parseContentLength_nullDefaultsToZero() {
+        assertEquals(0, parseContentLength(null))
+    }
+
+    @Test
+    fun parseContentLength_validInteger() {
+        assertEquals(123, parseContentLength("123"))
+    }
+
+    @Test
+    fun parseContentLength_invalidReturnsNull() {
+        assertNull(parseContentLength("abc"))
+    }
+
+    @Test
+    fun validateBodyRead_exactLengthAccepted() {
+        assertNull(validateBodyRead(10, 10))
+    }
+
+    @Test
+    fun validateBodyRead_shortReadRejected() {
+        assertEquals(400 to "incomplete request body", validateBodyRead(10, 8))
     }
 
     // ── proxyHttpOk() ──
