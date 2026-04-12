@@ -90,6 +90,10 @@
 
     <!-- Cached games adapter -->
     <string name="game_meta_format">%1$d / %2$d unlocked · %3$s</string>
+    <string name="cached_game_achievements_format">%1$d unlocked achievements</string>
+    <string name="cached_game_expand">Show unlocked achievements</string>
+    <string name="cached_game_collapse">Hide unlocked achievements</string>
+    <string name="cached_game_no_description">No description.</string>
 
     <!-- Pending awards adapter -->
     <string name="achievement_title_hardcore">%s (Hardcore)</string>
@@ -118,6 +122,7 @@
     <!-- Content descriptions -->
     <string name="cd_game_icon">Game icon</string>
     <string name="cd_badge">Badge</string>
+    <string name="cd_expand_achievements">Expand achievements</string>
     <string name="cd_delete_cache">Delete cache</string>
     <string name="cd_delete_cached_game">Delete cached game</string>
 
