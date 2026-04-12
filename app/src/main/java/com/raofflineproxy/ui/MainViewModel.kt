@@ -271,8 +271,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             ProxyService.start(app)
             _state.value = _state.value.copy(
                 proxyRunning = true,
-                cfgIsPatched = true
+                cfgIsPatched = true,
+                authState = AuthState.Unknown
             )
+            validateToken()
         }
     }
 
