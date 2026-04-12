@@ -25,7 +25,7 @@
     <string name="home_description">This app acts as a local proxy between RetroArch and RetroAchievements. It caches game data so you can play offline and earn achievements, then syncs them when you go back online.</string>
     <string name="home_proxy_hint">Use the Start proxy button in the toolbar to start or stop the proxy service.</string>
     <string name="home_shutdown_warning">On some devices, you should stop sync before killing the app. If the app is killed or crashes while sync is active, reopen RA Offline Proxy once so it can clean up retroarch.cfg.</string>
-    <string name="home_token_warning">Your RetroAchievements session has expired or no login data was found.\nPlease launch RetroArch while online and log in to RetroAchievements to refresh your session.</string>
+    <string name="home_token_warning">Please start a game in RetroArch while online with RetroAchievements logged in to refresh your session.</string>
 
     <!-- SAF grant dialog -->
     <string name="saf_dialog_title">Folder Access Required</string>

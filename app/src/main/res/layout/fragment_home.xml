@@ -20,6 +20,20 @@
             android:contentDescription="@string/app_name" />
 
         <TextView
+            android:id="@+id/tv_token_warning"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="16dp"
+            android:background="@drawable/bg_warning_box"
+            android:lineSpacingMultiplier="1.15"
+            android:padding="16dp"
+            android:text="@string/home_token_warning"
+            android:textColor="@color/warning_text"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            android:visibility="gone" />
+
+        <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:textSize="14sp"
@@ -51,17 +65,6 @@
             android:layout_marginBottom="16dp"
             android:textStyle="bold"
             android:text="@string/home_shutdown_warning" />
-
-        <TextView
-            android:id="@+id/tv_token_warning"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:textSize="14sp"
-            android:lineSpacingMultiplier="1.4"
-            android:layout_marginTop="16dp"
-            android:textColor="@android:color/holo_orange_light"
-            android:visibility="gone"
-            android:text="@string/home_token_warning" />
 
     </LinearLayout>
 
