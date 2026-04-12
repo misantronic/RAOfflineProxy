@@ -10,6 +10,7 @@ import com.raofflineproxy.proxy.proxyHttpOk
 import com.raofflineproxy.proxy.proxyIsHardcoreRequest
 import com.raofflineproxy.proxy.ParsedRequestLineResult
 import com.raofflineproxy.proxy.UpstreamResult
+import com.raofflineproxy.proxy.buildPendingAward
 import com.raofflineproxy.proxy.parseContentLength
 import com.raofflineproxy.proxy.parseRequestLine
 import com.raofflineproxy.proxy.sanitizeHttpReasonPhrase
@@ -19,6 +20,8 @@ import com.raofflineproxy.proxy.validateBodyRead
 import com.raofflineproxy.proxy.validateTransferEncoding
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -364,6 +367,43 @@ class ProxyServerTest {
         assertTrue(shouldQueueAward(UpstreamResult.NetworkError("timeout")))
         assertFalse(shouldQueueAward(UpstreamResult.Success(200, "OK", "{}")))
         assertFalse(shouldQueueAward(UpstreamResult.HttpError(401, "Unauthorized", "{}")))
+    }
+
+    @Test
+    fun buildPendingAward_returnsSignedAward() {
+        val award = buildPendingAward(
+            path = "/dorequest.php?r=awardachievement&a=123&u=player&t=tok&h=0",
+            rawBody = "a=123&u=player&t=tok&h=0&v=abc",
+            headers = mapOf("user-agent" to "rcheevos/11.4.0"),
+            loadPrevHash = { "genesis" },
+            signBytes = { "sig".toByteArray() },
+            queuedAt = 1000L
+        )
+
+        assertNotNull(award)
+        award!!
+        assertEquals(123, award.achievementId)
+        assertEquals(1000L, award.queuedAt)
+        assertEquals("genesis", award.prevHash)
+        assertEquals("c2ln", award.signature)
+        assertEquals(
+            sha256Hex("123|/dorequest.php?r=awardachievement&a=123&u=player&t=tok&h=0|a=123&u=player&t=tok&h=0&v=abc|1000"),
+            award.payloadHash
+        )
+        assertNotEquals(0L, award.signedAt)
+    }
+
+    @Test
+    fun buildPendingAward_returnsNullWhenSigningFails() {
+        val award = buildPendingAward(
+            path = "/dorequest.php?r=awardachievement&a=123",
+            rawBody = "a=123&u=player&t=tok&h=0&v=abc",
+            headers = emptyMap(),
+            loadPrevHash = { "genesis" },
+            signBytes = { throw IllegalStateException("boom") }
+        )
+
+        assertNull(award)
     }
 
     @Test
