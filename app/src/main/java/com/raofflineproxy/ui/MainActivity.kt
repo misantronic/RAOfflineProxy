@@ -22,12 +22,13 @@ import androidx.core.view.GravityCompat
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import com.google.android.material.navigation.NavigationView
-import com.google.android.material.snackbar.BaseTransientBottomBar
 import com.google.android.material.snackbar.Snackbar
 import com.raofflineproxy.BuildConfig
 import com.raofflineproxy.PrefsConstants
 import com.raofflineproxy.R
 import com.raofflineproxy.databinding.ActivityMainBinding
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
@@ -40,6 +41,7 @@ class MainActivity : AppCompatActivity() {
     private val viewModel: MainViewModel by viewModels()
     private var proxyMenuItem: MenuItem? = null
     private var snackbar: Snackbar? = null
+    private var pendingSnackbarJob: Job? = null
     private var pendingStartTokenWarning = false
 
     private val safLauncher = registerForActivityResult(OpenAndroidDataTree()) { uri ->
@@ -259,21 +261,27 @@ class MainActivity : AppCompatActivity() {
 
         when {
             msg == null -> {
+                pendingSnackbarJob?.cancel()
+                pendingSnackbarJob = null
                 snackbar?.dismiss()
                 snackbar = null
             }
             state.cfgPatchSuccess == false -> {
+                pendingSnackbarJob?.cancel()
+                pendingSnackbarJob = null
                 snackbar?.dismiss()
                 snackbar = Snackbar.make(binding.fragmentContainer, msg, Snackbar.LENGTH_INDEFINITE)
-                    .setAnimationMode(BaseTransientBottomBar.ANIMATION_MODE_FADE)
                     .setAction(R.string.action_ok) { viewModel.clearTransientMessages() }
                     .also { it.show() }
             }
             else -> {
-                snackbar?.dismiss()
-                snackbar = Snackbar.make(binding.fragmentContainer, msg, Snackbar.LENGTH_LONG)
-                    .setAnimationMode(BaseTransientBottomBar.ANIMATION_MODE_FADE)
-                    .also { it.show() }
+                pendingSnackbarJob?.cancel()
+                pendingSnackbarJob = lifecycleScope.launch {
+                    delay(500)
+                    snackbar?.dismiss()
+                    snackbar = Snackbar.make(binding.fragmentContainer, msg, Snackbar.LENGTH_LONG)
+                        .also { it.show() }
+                }
             }
         }
     }

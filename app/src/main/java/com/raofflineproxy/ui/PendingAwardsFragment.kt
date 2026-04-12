@@ -11,7 +11,6 @@ import androidx.recyclerview.widget.ConcatAdapter
 import androidx.recyclerview.widget.DividerItemDecoration
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
-import com.google.android.material.snackbar.BaseTransientBottomBar
 import com.google.android.material.snackbar.Snackbar
 import com.raofflineproxy.R
 import kotlinx.coroutines.launch
@@ -47,9 +46,7 @@ class PendingAwardsFragment : Fragment() {
 
                 snackbar?.dismiss()
                 snackbar = null
-                Snackbar.make(view, msg, Snackbar.LENGTH_LONG)
-                    .setAnimationMode(BaseTransientBottomBar.ANIMATION_MODE_FADE)
-                    .show()
+                Snackbar.make(view, msg, Snackbar.LENGTH_LONG).show()
                 viewModel.clearFlushProgress()
             }
         }
