@@ -87,6 +87,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             ?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true
         _state.value = _state.value.copy(isOnline = online)
 
+        recoverPatchedCfgIfProxyStopped()
+
         connectivityManager.registerNetworkCallback(
             NetworkRequest.Builder()
                 .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
@@ -166,6 +168,43 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     _cachedGames.value = games
                     _state.value = _state.value.copy(cachedGames = games)
                 }
+        }
+    }
+
+    private fun recoverPatchedCfgIfProxyStopped() {
+        val app = getApplication<Application>()
+        viewModelScope.launch {
+            val treeUri = loadSafUri()
+            val patched = withContext(Dispatchers.IO) { checkIsPatched(app, treeUri) }
+            val proxyRunning = ProxyService.isRunning(app)
+
+            if (!patched || proxyRunning) {
+                _state.value = _state.value.copy(
+                    proxyRunning = proxyRunning,
+                    cfgIsPatched = patched
+                )
+                return@launch
+            }
+
+            val prefs = app.getSharedPreferences(PrefsConstants.PREFS_NAME, Context.MODE_PRIVATE)
+            val restoreHardcore = prefs.getBoolean(PrefsConstants.KEY_HARDCORE_WAS_ENABLED, false)
+            val result = withContext(Dispatchers.IO) {
+                revertRetroArchCfg(app, treeUri, restoreHardcore)
+            }
+            val revertedTarget = result.success && result.copyBackPath == null
+
+            if (revertedTarget) {
+                prefs.edit { remove(PrefsConstants.KEY_HARDCORE_WAS_ENABLED) }
+            }
+
+            _state.value = _state.value.copy(
+                proxyRunning = false,
+                cfgIsPatched = if (revertedTarget) false else patched,
+                cfgPatchMessage = if (revertedTarget) null else result.message,
+                cfgPatchSuccess = if (revertedTarget) null else false,
+                needsSafGrant = result.needsSafGrant,
+                cfgCopyBackPath = result.copyBackPath
+            )
         }
     }
 
@@ -281,16 +320,23 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun stopProxy(treeUri: Uri? = null) {
         val app = getApplication<Application>()
         viewModelScope.launch {
-            ProxyService.stop(app)
             val prefs = app.getSharedPreferences(PrefsConstants.PREFS_NAME, Context.MODE_PRIVATE)
             val restoreHardcore = prefs.getBoolean(PrefsConstants.KEY_HARDCORE_WAS_ENABLED, false)
+
+            ProxyService.stop(app)
+
             val result = withContext(Dispatchers.IO) { revertRetroArchCfg(app, treeUri, restoreHardcore) }
-            prefs.edit { remove(PrefsConstants.KEY_HARDCORE_WAS_ENABLED) }
+            val revertedTarget = result.success && result.copyBackPath == null
+
+            if (revertedTarget) {
+                prefs.edit { remove(PrefsConstants.KEY_HARDCORE_WAS_ENABLED) }
+            }
+
             _state.value = _state.value.copy(
                 proxyRunning = false,
-                cfgIsPatched = if (result.success) false else _state.value.cfgIsPatched,
-                cfgPatchMessage = if (result.success) null else result.message,
-                cfgPatchSuccess = if (result.success) null else false,
+                cfgIsPatched = if (revertedTarget) false else _state.value.cfgIsPatched,
+                cfgPatchMessage = if (revertedTarget) null else result.message,
+                cfgPatchSuccess = if (revertedTarget) null else false,
                 needsSafGrant = result.needsSafGrant,
                 cfgCopyBackPath = result.copyBackPath
             )

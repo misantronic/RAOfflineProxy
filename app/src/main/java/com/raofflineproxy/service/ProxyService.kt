@@ -1,6 +1,7 @@
 package com.raofflineproxy.service
 
 import android.Manifest
+import android.app.ActivityManager
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -15,6 +16,8 @@ import android.net.NetworkRequest
 import android.os.IBinder
 import android.util.Log
 import androidx.annotation.RequiresPermission
+import androidx.core.content.edit
+import com.raofflineproxy.PrefsConstants
 import com.raofflineproxy.R
 import com.raofflineproxy.data.AppDatabase
 import com.raofflineproxy.data.CacheKeys
@@ -24,6 +27,7 @@ import com.raofflineproxy.proxy.cacheGame
 import com.raofflineproxy.proxy.loadLoginCredentials
 import com.raofflineproxy.proxy.loadUserAgent
 import com.raofflineproxy.ui.MainActivity
+import com.raofflineproxy.ui.revertRetroArchCfg
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -49,6 +53,7 @@ class ProxyService : Service() {
     private var networkCallbackRegistered = false
     private var refreshJob: Job? = null
     private var flushJob: Job? = null
+    private var cfgCleanupAttempted = false
 
     private val networkCallback = object : ConnectivityManager.NetworkCallback() {
         override fun onAvailable(network: Network) {
@@ -67,6 +72,7 @@ class ProxyService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        runningInProcess = true
         db = AppDatabase.getInstance(this)
         awardFlusher = AwardFlusher(db)
         proxyServer = ProxyServer(db, serviceScope) { isOnline }
@@ -102,7 +108,7 @@ class ProxyService : Service() {
             refreshJob = serviceScope.launch { periodicRefreshLoop() }
         }
 
-        return START_STICKY
+        return START_NOT_STICKY
     }
 
     private fun requestFlush() {
@@ -140,6 +146,8 @@ class ProxyService : Service() {
     }
 
     override fun onDestroy() {
+        revertPatchedCfgIfNeeded()
+        runningInProcess = false
         proxyServer.stop()
         if (networkCallbackRegistered) {
             runCatching { connectivityManager.unregisterNetworkCallback(networkCallback) }
@@ -147,6 +155,14 @@ class ProxyService : Service() {
         }
         serviceScope.cancel()
         super.onDestroy()
+    }
+
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        Log.i(TAG, "Task removed; stopping proxy service")
+        revertPatchedCfgIfNeeded()
+        stopForeground(STOP_FOREGROUND_REMOVE)
+        stopSelf()
+        super.onTaskRemoved(rootIntent)
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -184,13 +200,50 @@ class ProxyService : Service() {
             .notify(NOTIFICATION_ID, buildNotification())
     }
 
+    private fun revertPatchedCfgIfNeeded() {
+        if (cfgCleanupAttempted) return
+
+        cfgCleanupAttempted = true
+        val prefs = getSharedPreferences(PrefsConstants.PREFS_NAME, MODE_PRIVATE)
+        val restoreHardcore = prefs.getBoolean(PrefsConstants.KEY_HARDCORE_WAS_ENABLED, false)
+        val result = revertRetroArchCfg(this, PrefsConstants.loadSafUri(this), restoreHardcore)
+        val revertedTarget = result.success && result.copyBackPath == null
+
+        if (revertedTarget) {
+            prefs.edit { remove(PrefsConstants.KEY_HARDCORE_WAS_ENABLED) }
+            Log.i(TAG, "RetroArch cfg reverted during service shutdown")
+            return
+        }
+
+        val reason = if (result.copyBackPath != null) {
+            "${result.message} copyBackPath=${result.copyBackPath}"
+        } else {
+            result.message
+        }
+        Log.w(TAG, "Failed to revert RetroArch cfg during service shutdown: $reason")
+    }
+
     companion object {
+        @Volatile
+        private var runningInProcess = false
+
         fun start(context: Context) {
             context.startForegroundService(Intent(context, ProxyService::class.java))
         }
 
         fun stop(context: Context) {
             context.stopService(Intent(context, ProxyService::class.java))
+        }
+
+        fun isRunning(context: Context): Boolean {
+            if (runningInProcess) return true
+
+            val manager = context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
+                ?: return false
+
+            @Suppress("DEPRECATION")
+            return manager.getRunningServices(Int.MAX_VALUE)
+                .any { it.service.className == ProxyService::class.java.name }
         }
     }
 }

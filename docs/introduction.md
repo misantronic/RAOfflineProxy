@@ -35,6 +35,12 @@ RAOfflineProxy (local proxy)
 - It does not store ROM files or any game content.
 - Approved by RetroAchievements.org.
 
+## Important Shutdown Behavior
+
+- Always stop sync before killing the app.
+- On some devices, swiping the app away or crashing while the proxy is active does not immediately revert `retroarch.cfg`.
+- If that happens, reopen RAOfflineProxy once so it can clean up the config on launch.
+
 ## Requirements
 
 - Android **8.0** or newer
