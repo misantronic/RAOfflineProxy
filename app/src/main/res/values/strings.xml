@@ -131,6 +131,10 @@
     <string name="notification_online_text">Forwarding to RA</string>
     <string name="notification_offline_title">Offline</string>
     <string name="notification_offline_text">Serving from cache</string>
+    <plurals name="notification_pending_awards">
+        <item quantity="one">%d pending award</item>
+        <item quantity="other">%d pending awards</item>
+    </plurals>
 
     <!-- Legal -->
     <string name="privacy_policy_url">https://d3bywedspcdj3v.cloudfront.net/privacy-policy.html</string>
