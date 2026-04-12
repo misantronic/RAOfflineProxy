@@ -1,5 +1,6 @@
 package com.raofflineproxy.proxy
 
+import android.content.Context
 import android.util.Base64
 import android.util.Log
 import com.raofflineproxy.RA_HOST
@@ -149,7 +150,10 @@ internal fun verifyChain(
     return ChainVerificationResult.Valid
 }
 
-class AwardFlusher(private val db: AppDatabase) {
+class AwardFlusher(
+    private val context: Context,
+    private val db: AppDatabase
+) {
 
     companion object {
         private val _events = MutableSharedFlow<FlushEvent>(extraBufferCapacity = 8)
@@ -173,7 +177,7 @@ class AwardFlusher(private val db: AppDatabase) {
         val ids = mutableSetOf<Int>()
         val ua = proxyUserAgent(userAgent)
         for (gameId in gameIds) {
-            val responseBody = refreshGamePatch(gameId, creds, ua, db)
+            val responseBody = refreshGamePatch(context, gameId, creds, ua, db)
                 ?: return null
 
             runCatching {

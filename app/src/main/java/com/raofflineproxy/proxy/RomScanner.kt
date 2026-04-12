@@ -43,6 +43,7 @@ suspend fun loadUserAgent(db: AppDatabase): String =
         ?: FALLBACK_USER_AGENT
 
 suspend fun refreshGamePatch(
+    context: Context,
     gameId: Int,
     creds: LoginCredentials,
     userAgent: String,
@@ -72,6 +73,7 @@ suspend fun refreshGamePatch(
         cacheKey = CacheKeys.patch(gameId, creds.user),
         responseBody = responseBody
     ))
+    cachePatchImages(context, gameId, userAgent, responseBody)
     Log.i("RAProxy", "refreshGamePatch: updated cache for gameId=$gameId")
     return responseBody
 }
@@ -143,7 +145,7 @@ private fun fetchGameId(context: Context, hash: String, creds: LoginCredentials,
 
 internal suspend fun cacheGame(context: Context, gameId: Int, creds: LoginCredentials, userAgent: String, db: AppDatabase) {
     try {
-        httpGet(
+        val patchResponse = httpGet(
             buildApiUrl(
                 proxyBase(context),
                 "patch",
@@ -155,6 +157,7 @@ internal suspend fun cacheGame(context: Context, gameId: Int, creds: LoginCreden
             ),
             userAgent
         )
+        cachePatchImages(context, gameId, userAgent, patchResponse)
     } catch (_: Exception) { }
     cacheUnlocks(context, gameId, creds, userAgent)
     cacheSession(gameId, creds, db)

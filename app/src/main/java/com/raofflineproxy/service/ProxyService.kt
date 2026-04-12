@@ -75,7 +75,7 @@ class ProxyService : Service() {
         super.onCreate()
         runningInProcess = true
         db = AppDatabase.getInstance(this)
-        awardFlusher = AwardFlusher(db)
+        awardFlusher = AwardFlusher(this, db)
         proxyServer = ProxyServer(this, db, serviceScope, proxyPort(this)) { isOnline }
         connectivityManager = getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager
     }
