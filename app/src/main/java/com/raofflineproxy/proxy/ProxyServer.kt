@@ -2,10 +2,9 @@ package com.raofflineproxy.proxy
 
 import android.util.Base64
 import android.util.Log
-import com.raofflineproxy.PROXY_PORT
-import com.raofflineproxy.PROXY_VALUE
 import com.raofflineproxy.RA_HOST
 import com.raofflineproxy.extractFormParam
+import com.raofflineproxy.proxyHost
 import com.raofflineproxy.proxyUserAgent
 import com.raofflineproxy.redactFormBody
 import com.raofflineproxy.redactTokens
@@ -58,8 +57,10 @@ internal sealed interface ParsedRequestLineResult {
 }
 
 class ProxyServer(
+    private val context: android.content.Context,
     private val db: AppDatabase,
     private val scope: CoroutineScope,
+    private val port: Int,
     private val isOnline: () -> Boolean
 ) {
     private val executor = ThreadPoolExecutor(
@@ -75,10 +76,10 @@ class ProxyServer(
     fun start() {
         if (running) return
         running = true
-        val bindHost = PROXY_VALUE.substringBefore(':')
-        serverSocket = ServerSocket(PROXY_PORT, 50, InetAddress.getByName(bindHost))
+        val bindHost = proxyHost()
+        serverSocket = ServerSocket(port, 50, InetAddress.getByName(bindHost))
         executor.execute { acceptLoop() }
-        Log.i(TAG, "Proxy started on $bindHost:$PROXY_PORT")
+        Log.i(TAG, "Proxy started on $bindHost:$port")
     }
 
     fun stop() {
@@ -240,7 +241,7 @@ class ProxyServer(
                     val user = extractParam("u", path, rawBody)
                     val token = extractParam("t", path, rawBody)
                     if (gameId != null && user != null && token != null) {
-                        cacheUnlocks(gameId, LoginCredentials(user, token), userAgent)
+                        cacheUnlocks(context, gameId, LoginCredentials(user, token), userAgent)
                     }
                 }
             }

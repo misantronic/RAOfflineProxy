@@ -45,6 +45,7 @@ data class MainUiState(
     val isOnline: Boolean = false,
     val authState: AuthState = AuthState.Unknown,
     val autostartProxy: Boolean = false,
+    val proxyPort: Int = PrefsConstants.DEFAULT_PROXY_PORT,
     val pendingAwards: List<PendingAwardUi> = emptyList(),
     val cachedGames: List<CachedGame> = emptyList(),
     val cfgPatchMessage: String? = null,
@@ -97,7 +98,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         )
 
         checkCfgPatched(treeUri = loadSafUri())
-        _state.value = _state.value.copy(autostartProxy = loadAutostartPref())
+        _state.value = _state.value.copy(
+            autostartProxy = loadAutostartPref(),
+            proxyPort = PrefsConstants.loadProxyPort(app)
+        )
         validateToken()
         viewModelScope.launch {
             AwardFlusher.events.collect { event ->
@@ -199,7 +203,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
             _state.value = _state.value.copy(
                 proxyRunning = false,
-                cfgIsPatched = if (revertedTarget) false else patched,
+                cfgIsPatched = !revertedTarget,
                 cfgPatchMessage = if (revertedTarget) null else result.message,
                 cfgPatchSuccess = if (revertedTarget) null else false,
                 needsSafGrant = result.needsSafGrant,
@@ -425,6 +429,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun refreshGames() {
+        val app = getApplication<Application>()
         viewModelScope.launch {
             val credentials = requireCredentials() ?: return@launch
             val games = _state.value.cachedGames.reversed()
@@ -434,7 +439,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 for ((index, game) in games.withIndex()) {
                     _state.value = _state.value.copy(scanProgress = str(R.string.refresh_progress_named, index + 1, games.size, game.title))
                     val gameId = game.gameId.toIntOrNull() ?: continue
-                    cacheGame(gameId, credentials, userAgent, db)
+                    cacheGame(app, gameId, credentials, userAgent, db)
                 }
             }
             _state.value = _state.value.copy(
@@ -489,6 +494,17 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             .getSharedPreferences(PrefsConstants.PREFS_NAME, Context.MODE_PRIVATE)
             .edit { putBoolean(PrefsConstants.KEY_AUTOSTART_PROXY, enabled) }
         _state.value = _state.value.copy(autostartProxy = enabled)
+    }
+
+    fun setProxyPort(portText: String): Boolean {
+        val port = portText.toIntOrNull()
+            ?.takeIf(PrefsConstants::isValidProxyPort)
+            ?: return false
+
+        val app = getApplication<Application>()
+        PrefsConstants.saveProxyPort(app, port)
+        _state.value = _state.value.copy(proxyPort = port)
+        return true
     }
 
     private fun loadAutostartPref(): Boolean =

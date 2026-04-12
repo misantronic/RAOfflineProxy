@@ -202,7 +202,7 @@ class NetworkConstantsTest {
     @Test
     fun buildApiUrl_encodesQueryParams() {
         val url = buildApiUrl(
-            PROXY_BASE,
+            proxyBase(8080),
             "awardachievement",
             mapOf(
                 "u" to "player one",
@@ -225,17 +225,22 @@ class NetworkConstantsTest {
     }
 
     @Test
-    fun proxyPort_is8080() {
-        assertEquals(8080, PROXY_PORT)
-    }
-
-    @Test
     fun proxyBase_containsPortAndHost() {
-        assertEquals("http://127.0.0.1:8080", PROXY_BASE)
+        assertEquals("http://127.0.0.1:8080", proxyBase(8080))
     }
 
     @Test
-    fun proxyValue_isHostColon8080() {
-        assertEquals("127.0.0.1:8080", PROXY_VALUE)
+    fun proxyValue_isHostColonConfiguredPort() {
+        assertEquals("127.0.0.1:8080", proxyValue(8080))
+    }
+
+    @Test
+    fun proxyBase_usesProvidedPort() {
+        assertEquals("http://127.0.0.1:4321", proxyBase(4321))
+    }
+
+    @Test
+    fun proxyValue_usesProvidedPort() {
+        assertEquals("127.0.0.1:4321", proxyValue(4321))
     }
 }

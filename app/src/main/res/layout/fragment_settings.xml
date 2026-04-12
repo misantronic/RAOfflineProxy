@@ -16,6 +16,31 @@
             android:layout_height="wrap_content"
             android:text="@string/setting_autostart_label" />
 
+        <com.google.android.material.textfield.TextInputLayout
+            android:id="@+id/input_proxy_port"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="24dp"
+            android:hint="@string/setting_proxy_port_label">
+
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/et_proxy_port"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:inputType="number"
+                android:maxLength="5"
+                android:singleLine="true" />
+
+        </com.google.android.material.textfield.TextInputLayout>
+
+        <TextView
+            android:id="@+id/tv_proxy_port_hint"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="@string/setting_proxy_port_hint"
+            android:textAppearance="@style/TextAppearance.MaterialComponents.Body2" />
+
         <Button
             android:id="@+id/btn_clear_cache"
             android:layout_width="match_parent"

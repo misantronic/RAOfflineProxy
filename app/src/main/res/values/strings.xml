@@ -99,6 +99,9 @@
     <string name="points_format">%dpts</string>
 
     <!-- Settings fragment -->
+    <string name="setting_proxy_port_label">Proxy port</string>
+    <string name="setting_proxy_port_hint">Used for the local RetroArch proxy. Range: 1024 to 65535. Stop the proxy to change it.</string>
+    <string name="setting_proxy_port_invalid">Enter a port between 1024 and 65535.</string>
     <string name="btn_clear_cache">Clear Cache</string>
     <string name="btn_clear_database">Clear Database</string>
 
