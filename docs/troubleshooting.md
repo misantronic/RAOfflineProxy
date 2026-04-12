@@ -1,5 +1,7 @@
 # Troubleshooting / FAQ
 
+> Current release stage: alpha (`v1.0.0-alpha1`). Some rough edges are expected while the first public prerelease is being validated.
+
 ## The proxy starts but RetroArch still contacts RetroAchievements directly
 
 **Cause:** RetroArch's config is not patched, or RetroArch loaded a config from a different location.

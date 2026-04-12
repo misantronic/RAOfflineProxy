@@ -2,6 +2,8 @@
 
 An Android app that lets you earn **softcore RetroAchievements** through **RetroArch** without an internet connection.
 
+> **Current release stage: alpha (`v1.0.0-alpha1`).** This is the first public prerelease and has not gone through formal QA.
+
 RAOfflineProxy runs a tiny local proxy on your device. It sits between RetroArch and the RetroAchievements server, saving game and achievement data for offline use and queuing any achievements you unlock while offline. When you reconnect, queued awards are automatically sent to RetroAchievements.
 
 > **Hardcore mode is not supported.** The app only works with softcore achievements.

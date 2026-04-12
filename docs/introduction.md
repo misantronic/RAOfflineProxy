@@ -1,5 +1,7 @@
 # Introduction
 
+> Current release stage: alpha (`v1.0.0-alpha1`). This is the first public prerelease and has not gone through formal QA.
+
 ## What is RAOfflineProxy?
 
 RAOfflineProxy is an Android app that acts as a **local proxy** between [RetroArch](https://www.retroarch.com/) and the [RetroAchievements](https://retroachievements.org/) (RA) website.

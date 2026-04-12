@@ -1,8 +1,10 @@
 # Installation & Setup
 
+> You are installing the current alpha build: `v1.0.0-alpha1`.
+
 ## Step 1 — Install RAOfflineProxy
 
-Install the APK on your Android device. You can download the latest release from [GitHub Releases](https://github.com/misantronic/RAOfflineProxy/releases) or build from source.
+Install the APK on your Android device. You can download the latest alpha prerelease from [GitHub Releases](https://github.com/misantronic/RAOfflineProxy/releases) or build from source.
 
 ::: tip Minimum Android version
 Android **8.0** or newer is required.

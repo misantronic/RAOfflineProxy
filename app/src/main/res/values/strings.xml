@@ -21,6 +21,7 @@
 
     <!-- Nav badge -->
     <string name="nav_badge_count">(%d)</string>
+    <string name="nav_version_format">Version %s</string>
 
     <!-- Home fragment -->
     <string name="home_description">This app acts as a local proxy between RetroArch and RetroAchievements. It caches game data so you can play offline and earn achievements, then syncs them when you go back online.</string>
