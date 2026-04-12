@@ -28,7 +28,6 @@ import com.raofflineproxy.proxy.deleteCachedImagesForGame
 import com.raofflineproxy.proxy.httpGet
 import com.raofflineproxy.proxy.loadLoginCredentials
 import com.raofflineproxy.proxy.loadUserAgent
-import com.raofflineproxy.proxy.resolveCachedBadgePath
 import com.raofflineproxy.proxy.resolveCachedGameIconPath
 import com.raofflineproxy.proxy.scanRomFolder
 import com.raofflineproxy.service.ProxyService
@@ -493,14 +492,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         achievementTitle = a.optString("Title", achievementTitle)
                         points = a.optInt("Points", 0)
                         val badgeName = a.optString("BadgeName").takeIf { it.isNotEmpty() }
-                        val remoteBadgeUrl = badgeName?.let {
-                            "https://i.retroachievements.org/Badge/$it.png"
-                        }
-                        badgeUrl = badgeName?.let {
-                            gameId?.let { resolvedGameId ->
-                                resolveCachedBadgePath(application, resolvedGameId, it)
-                            } ?: remoteBadgeUrl
-                        } ?: remoteBadgeUrl
+                        badgeUrl = badgeName?.let { "https://i.retroachievements.org/Badge/$it.png" }
                         break
                     }
                 }
