@@ -1,6 +1,5 @@
 package com.raofflineproxy.proxy
 
-import android.util.Base64
 import android.util.Log
 import com.raofflineproxy.RA_HOST
 import com.raofflineproxy.extractFormParam
@@ -30,6 +29,7 @@ import java.net.InetAddress
 import java.net.ServerSocket
 import java.net.Socket
 import java.net.SocketTimeoutException
+import java.util.Base64
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.ThreadPoolExecutor
 import java.util.concurrent.TimeUnit
@@ -61,6 +61,11 @@ internal sealed interface UpstreamResult {
     data class Success(val statusCode: Int, val message: String, val body: String) : UpstreamResult
     data class HttpError(val statusCode: Int, val message: String, val body: String) : UpstreamResult
     data class NetworkError(val message: String) : UpstreamResult
+}
+
+internal sealed interface QueueAwardResult {
+    data object Queued : QueueAwardResult
+    data class Error(val message: String) : QueueAwardResult
 }
 
 class ProxyServer(
@@ -244,7 +249,14 @@ class ProxyServer(
     }
 
     private fun queueOfflineAward(path: String, rawBody: String, headers: Map<String, String>): String {
-        queueAward(path, rawBody, headers)
+        when (val result = queueAward(path, rawBody, headers)) {
+            QueueAwardResult.Queued -> Unit
+            is QueueAwardResult.Error -> {
+                Log.e(TAG, "Award queueing failed: ${result.message}")
+                return httpError(500, "award_queue_failed")
+            }
+        }
+
         val score = fetchCachedScore(path, rawBody)
         return httpOk("""{"Success":true,"Score":$score,"SoftcoreScore":0,"AchievementID":0,"Error":"queued_offline"}""")
     }
@@ -352,37 +364,34 @@ class ProxyServer(
         }
     }
 
-    private fun queueAward(path: String, rawBody: String, headers: Map<String, String>) {
-        val userAgent = headers["user-agent"] ?: ""
-        val achievementId = extractParam("a", path, rawBody)?.toIntOrNull() ?: 0
-        val queuedAt = System.currentTimeMillis()
-        scope.launch(Dispatchers.IO) {
-            val prevHash = db.pendingAwardDao().getLatest()?.payloadHash ?: "genesis"
-            val canonicalPayload = "$achievementId|$path|$rawBody|$queuedAt"
-            val payloadHash = sha256Hex(canonicalPayload)
-            val signInput = "$payloadHash:$prevHash"
-            val signature = runCatching {
-                Base64.encodeToString(AwardKeyManager.sign(signInput.toByteArray(Charsets.UTF_8)), Base64.NO_WRAP)
-            }.getOrElse { e ->
-                Log.e(TAG, "Award signing failed: ${e.message}")
-                ""
+    private fun queueAward(path: String, rawBody: String, headers: Map<String, String>): QueueAwardResult {
+        val signedAward = buildPendingAward(
+            path = path,
+            rawBody = rawBody,
+            headers = headers,
+            loadPrevHash = {
+                val latch = java.util.concurrent.CountDownLatch(1)
+                var prevHash = "genesis"
+                scope.launch(Dispatchers.IO) {
+                    prevHash = db.pendingAwardDao().getLatest()?.payloadHash ?: "genesis"
+                    latch.countDown()
+                }
+                latch.await(3, TimeUnit.SECONDS)
+                prevHash
+            },
+            signBytes = AwardKeyManager::sign
+        )
+            ?: run {
+                Log.e(TAG, "Award signing failed")
+                return QueueAwardResult.Error("signing_failed")
             }
-            val signedAt = System.currentTimeMillis()
-            db.pendingAwardDao().upsert(
-                PendingAward(
-                    achievementId = achievementId,
-                    queryString = path,
-                    requestBody = rawBody,
-                    userAgent = userAgent,
-                    queuedAt = queuedAt,
-                    payloadHash = payloadHash,
-                    prevHash = prevHash,
-                    signature = signature,
-                    signedAt = signedAt
-                )
-            )
-            Log.i(TAG, "Award queued and signed: achievementId=$achievementId")
+
+        scope.launch(Dispatchers.IO) {
+            db.pendingAwardDao().upsert(signedAward)
+            Log.i(TAG, "Award queued and signed: achievementId=${signedAward.achievementId}")
         }
+
+        return QueueAwardResult.Queued
     }
 
     private fun fetchCachedScore(path: String, rawBody: String): Int {
@@ -484,6 +493,40 @@ internal fun proxyExtractParam(param: String, path: String, body: String): Strin
     val fromPath = "http://x$path".toHttpUrlOrNull()?.queryParameter(param)
     if (fromPath != null) return fromPath
     return extractFormParam(body, param)
+}
+
+internal fun buildPendingAward(
+    path: String,
+    rawBody: String,
+    headers: Map<String, String>,
+    loadPrevHash: () -> String,
+    signBytes: (ByteArray) -> ByteArray,
+    queuedAt: Long = System.currentTimeMillis()
+): PendingAward? {
+    val userAgent = headers["user-agent"] ?: ""
+    val achievementId = proxyExtractParam("a", path, rawBody)?.toIntOrNull() ?: 0
+    val prevHash = loadPrevHash()
+    val canonicalPayload = "$achievementId|$path|$rawBody|$queuedAt"
+    val payloadHash = sha256Hex(canonicalPayload)
+    val signInput = "$payloadHash:$prevHash"
+    val signature = runCatching {
+        Base64.getEncoder().encodeToString(signBytes(signInput.toByteArray(Charsets.UTF_8)))
+    }.getOrElse {
+        return null
+    }
+    val signedAt = System.currentTimeMillis()
+
+    return PendingAward(
+        achievementId = achievementId,
+        queryString = path,
+        requestBody = rawBody,
+        userAgent = userAgent,
+        queuedAt = queuedAt,
+        payloadHash = payloadHash,
+        prevHash = prevHash,
+        signature = signature,
+        signedAt = signedAt
+    )
 }
 
 internal fun shouldQueueAward(result: UpstreamResult): Boolean = result is UpstreamResult.NetworkError
