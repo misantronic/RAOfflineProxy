@@ -1,7 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="primary">#FF2C97FA</color>
-    <color name="primary_dark">#FF1A7DD4</color>
+    <color name="primary">#FF1C5182</color>
+    <color name="primary_dark">#FF15406A</color>
+    <color name="secondary">#FFD2A448</color>
+    <color name="secondary_dark">#FFB88A30</color>
     <color name="white">#FFFFFFFF</color>
     <color name="ic_launcher_background">#FF1A1A2E</color>
     <color name="warning_background">#FFF6E8A6</color>
