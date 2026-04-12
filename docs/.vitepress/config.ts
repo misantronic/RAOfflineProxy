@@ -18,6 +18,10 @@ export default defineConfig({
     nav: [
       { text: 'Guide', link: '/introduction', activeMatch: '^/(?!$)' },
       {
+        text: 'Contact',
+        link: '/contact',
+      },
+      {
         text: 'GitHub',
         link: 'https://github.com/misantronic/RAOfflineProxy',
       },
@@ -43,7 +47,10 @@ export default defineConfig({
       },
       {
         text: 'Help',
-        items: [{ text: 'Troubleshooting / FAQ', link: '/troubleshooting' }],
+        items: [
+          { text: 'Troubleshooting / FAQ', link: '/troubleshooting' },
+          { text: 'Contact / Feedback', link: '/contact' },
+        ],
       },
     ],
 

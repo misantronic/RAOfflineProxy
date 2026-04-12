@@ -54,6 +54,12 @@ export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
 
 Full documentation is available at [d3bywedspcdj3v.cloudfront.net](https://d3bywedspcdj3v.cloudfront.net).
 
+## Contact / Feedback
+
+If you want to report a bug, ask a question, or send feedback about RAOfflineProxy, email [misantronic@posteo.se](mailto:misantronic@posteo.se).
+
+GitHub issue reports are also welcome at [github.com/misantronic/RAOfflineProxy/issues](https://github.com/misantronic/RAOfflineProxy/issues).
+
 ## License
 
 Released under the [GNU GENERAL PUBLIC License](LICENSE).

@@ -39,7 +39,7 @@
 
 **Fix:** A "Chain broken at index N" warning will appear in the Pending Awards screen. This means the local data was modified in a way that broke the integrity chain. You can:
 - Use **Settings → Clear Database** to remove all pending awards and start fresh (awards will be lost)
-- If you believe it is a bug, please report it on [GitHub Issues](https://github.com/misantronic/RAOfflineProxy/issues)
+- If you believe it is a bug, please report it on [GitHub Issues](https://github.com/misantronic/RAOfflineProxy/issues) or email [misantronic@posteo.se](mailto:misantronic@posteo.se)
 
 **Cause 3:** An award has failed 5 or more times.
 
@@ -120,3 +120,7 @@ The app's database is stored in its private internal storage, which is not direc
 ::: warning App updates may reset data
 If you install an update that includes a database structure change, the database is automatically reset. You will need to re-cache your games.
 :::
+
+## Still need help?
+
+Send feedback or support questions to [misantronic@posteo.se](mailto:misantronic@posteo.se), or see [Contact / Feedback](./contact).
