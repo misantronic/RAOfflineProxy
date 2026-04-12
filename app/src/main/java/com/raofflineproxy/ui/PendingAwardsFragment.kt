@@ -39,7 +39,15 @@ class PendingAwardsFragment : Fragment() {
                 headerAdapter.update(state.pendingAwards.isEmpty())
 
                 val msg = state.flushProgress
-                snackbar = updateSnackbar(view, msg, state.flushInProgress, snackbar)
+                if (state.flushInProgress || msg == null) {
+                    snackbar = updateSnackbar(view, msg, state.flushInProgress, snackbar)
+                    return@collect
+                }
+
+                snackbar?.dismiss()
+                snackbar = null
+                Snackbar.make(view, msg, Snackbar.LENGTH_LONG).show()
+                viewModel.clearFlushProgress()
             }
         }
     }
