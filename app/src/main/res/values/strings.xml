@@ -14,6 +14,8 @@
     <!-- Proxy button -->
     <string name="proxy_start">Start proxy</string>
     <string name="proxy_stop">Stop proxy</string>
+    <string name="proxy_started_success">Proxy started successfully.</string>
+    <string name="proxy_stopped_success">Proxy stopped.</string>
     <string name="proxy_tooltip_online">Proxy running — online</string>
     <string name="proxy_tooltip_offline">Proxy running — offline</string>
     <string name="proxy_menu_title">Proxy</string>
