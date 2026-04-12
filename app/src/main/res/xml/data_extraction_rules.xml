@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Cloud + device-transfer backup rules (API 31+). Exclude the Room DB and prefs that hold credentials. -->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="database" path="raofflineproxy.db" />
+        <exclude domain="database" path="raofflineproxy.db-wal" />
+        <exclude domain="database" path="raofflineproxy.db-shm" />
+        <exclude domain="sharedpref" path="ra_proxy_prefs.xml" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="database" path="raofflineproxy.db" />
+        <exclude domain="database" path="raofflineproxy.db-wal" />
+        <exclude domain="database" path="raofflineproxy.db-shm" />
+        <exclude domain="sharedpref" path="ra_proxy_prefs.xml" />
+    </device-transfer>
+</data-extraction-rules>

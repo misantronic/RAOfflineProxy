@@ -3,6 +3,7 @@ package com.raofflineproxy.proxy
 import android.util.Base64
 import android.util.Log
 import com.raofflineproxy.PROXY_PORT
+import com.raofflineproxy.PROXY_VALUE
 import com.raofflineproxy.RA_HOST
 import com.raofflineproxy.extractFormParam
 import com.raofflineproxy.proxyUserAgent
@@ -26,11 +27,18 @@ import org.json.JSONObject
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.io.PrintWriter
+import java.net.InetAddress
 import java.net.ServerSocket
 import java.net.Socket
-import java.util.concurrent.Executors
+import java.net.SocketTimeoutException
+import java.util.concurrent.LinkedBlockingQueue
+import java.util.concurrent.ThreadPoolExecutor
+import java.util.concurrent.TimeUnit
 
 private const val TAG = "RAProxy"
+private const val MAX_WORKER_THREADS = 8
+private const val SOCKET_TIMEOUT_MS = 30_000
+private const val MAX_REQUEST_BODY_BYTES = 1_048_576 // 1 MiB — rcheevos requests are small
 
 // These requests mutate state on the RA server — do not serve from cache offline
 private val AWARD_ACTIONS = setOf("awardachievement", "submitlbentry")
@@ -49,7 +57,11 @@ class ProxyServer(
     private val scope: CoroutineScope,
     private val isOnline: () -> Boolean
 ) {
-    private val executor = Executors.newCachedThreadPool()
+    private val executor = ThreadPoolExecutor(
+        2, MAX_WORKER_THREADS,
+        60L, TimeUnit.SECONDS,
+        LinkedBlockingQueue()
+    )
 
     @Volatile private var serverSocket: ServerSocket? = null
     @Volatile var running = false
@@ -58,9 +70,10 @@ class ProxyServer(
     fun start() {
         if (running) return
         running = true
-        serverSocket = ServerSocket(PROXY_PORT)
+        val bindHost = PROXY_VALUE.substringBefore(':')
+        serverSocket = ServerSocket(PROXY_PORT, 50, InetAddress.getByName(bindHost))
         executor.execute { acceptLoop() }
-        Log.i(TAG, "Proxy started on port $PROXY_PORT")
+        Log.i(TAG, "Proxy started on $bindHost:$PROXY_PORT")
     }
 
     fun stop() {
@@ -85,6 +98,12 @@ class ProxyServer(
     private fun handleConnection(socket: Socket) {
         socket.use {
             try {
+                if (!socket.inetAddress.isLoopbackAddress) {
+                    Log.w(TAG, "Rejected non-loopback connection from ${socket.inetAddress}")
+                    return
+                }
+                socket.soTimeout = SOCKET_TIMEOUT_MS
+
                 val reader = BufferedReader(InputStreamReader(socket.getInputStream()))
                 val writer = PrintWriter(socket.getOutputStream(), true)
 
@@ -105,13 +124,26 @@ class ProxyServer(
                 val path = parts.getOrElse(1) { "/" }
 
                 val contentLength = headers["content-length"]?.toIntOrNull() ?: 0
+                if (contentLength < 0 || contentLength > MAX_REQUEST_BODY_BYTES) {
+                    val response = httpError(413, "request body too large")
+                    writer.print(response)
+                    writer.flush()
+                    return
+                }
                 val bodyChars = CharArray(contentLength)
-                if (contentLength > 0) reader.read(bodyChars)
-                val rawBody = String(bodyChars)
+                var totalRead = 0
+                while (totalRead < contentLength) {
+                    val read = reader.read(bodyChars, totalRead, contentLength - totalRead)
+                    if (read == -1) break
+                    totalRead += read
+                }
+                val rawBody = String(bodyChars, 0, totalRead)
 
                 val response = processRequest(method, path, rawBody, headers)
                 writer.print(response)
                 writer.flush()
+            } catch (e: SocketTimeoutException) {
+                Log.w(TAG, "Connection timed out: ${e.message}")
             } catch (e: Exception) {
                 Log.e(TAG, "Connection handling error: ${e.message}")
             }
@@ -203,7 +235,7 @@ class ProxyServer(
         }
         latch.await(3, java.util.concurrent.TimeUnit.SECONDS)
         return if (cached != null) {
-            Log.i(TAG, "Cache HIT: $key => ${cached!!.responseBody}")
+            Log.i(TAG, "Cache HIT: $key (${cached!!.responseBody.length} bytes)")
             httpOk(cached!!.responseBody)
         } else {
             Log.e(TAG, "Cache MISS: $key")
@@ -233,13 +265,12 @@ class ProxyServer(
                 builder.get().build()
             }
 
-            Log.d(TAG, "→ RA $method ${redactTokens(url)}")
-            request.headers.forEach { (name, value) -> Log.d(TAG, "→ RA header: $name: $value") }
+            Log.d(TAG, "→ RA $method ${redactTokens(url)} (${request.headers.size} headers)")
             if (method == "POST") Log.d(TAG, "→ RA POST body: ${redactFormBody(rawBody)}")
 
             sharedHttpClient.newCall(request).execute().use { resp ->
                 val body = resp.body.string()
-                Log.d(TAG, "← RA ${resp.code} for ${redactTokens(path)} body=${body.take(500)}")
+                Log.d(TAG, "← RA ${resp.code} for ${redactTokens(path)} (${body.length} bytes)")
                 if (!resp.isSuccessful) {
                     Log.w(TAG, "Upstream returned ${resp.code} for ${redactTokens(path)}")
                     return null
@@ -281,7 +312,7 @@ class ProxyServer(
                     signedAt = signedAt
                 )
             )
-            Log.i(TAG, "Award queued and signed: achievementId=$achievementId payloadHash=$payloadHash prevHash=$prevHash")
+            Log.i(TAG, "Award queued and signed: achievementId=$achievementId")
         }
     }
 

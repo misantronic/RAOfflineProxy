@@ -1,6 +1,7 @@
 package com.raofflineproxy
 
 import okhttp3.OkHttpClient
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import java.net.URLDecoder
 import java.security.MessageDigest
 
@@ -33,6 +34,17 @@ fun parseFormParams(body: String): Map<String, String> =
 
 fun extractFormParam(body: String, name: String): String? =
     parseFormParams(body)[name]
+
+fun buildApiUrl(base: String, action: String, params: Map<String, String>): String {
+    val builder = "$base/dorequest.php".toHttpUrlOrNull()?.newBuilder()
+        ?: error("Invalid base URL: $base")
+
+    builder.addQueryParameter("r", action)
+    params.forEach { (name, value) ->
+        builder.addQueryParameter(name, value)
+    }
+    return builder.build().toString()
+}
 
 fun proxyUserAgent(original: String): String {
     if (original.contains(PROXY_UA_TAG)) return original

@@ -242,14 +242,13 @@ class AwardFlusher(private val db: AppDatabase) {
                 .post(body.toRequestBody("application/x-www-form-urlencoded".toMediaType()))
                 .build()
 
-            Log.d(TAG, "→ RA POST ${redactTokens(url)}")
-            request.headers.forEach { (name, value) -> Log.d(TAG, "→ RA header: $name: $value") }
+            Log.d(TAG, "→ RA POST ${redactTokens(url)} (${request.headers.size} headers)")
             Log.d(TAG, "→ RA POST body: ${redactFormBody(body)}")
 
             sharedHttpClient.newCall(request).execute().use { resp ->
                 val responseBody = resp.body.string()
 
-                Log.d(TAG, "← RA ${resp.code} for ${redactTokens(award.queryString)} body=${responseBody.take(500)}")
+                Log.d(TAG, "← RA ${resp.code} for ${redactTokens(award.queryString)} (${responseBody.length} bytes)")
 
                 if (resp.code == 401 || resp.code == 403) {
                     return FlushResult.AuthError("Token rejected by server (HTTP ${resp.code})")
@@ -293,12 +292,10 @@ class AwardFlusher(private val db: AppDatabase) {
         if (award.payloadHash.isEmpty()) return body
 
         val pubKey = runCatching { AwardKeyManager.getPublicKeyBase64() }.getOrElse { "" }
-        val chainFields = buildString {
-            append("&ra_chain_payload_hash=").append(award.payloadHash)
-            append("&ra_chain_prev_hash=").append(award.prevHash)
-            append("&ra_chain_sig=").append(award.signature)
-            append("&ra_chain_pubkey=").append(pubKey)
-        }
-        return body + chainFields
+        body = replaceOrAppendFormParam(body, "ra_chain_payload_hash", award.payloadHash)
+        body = replaceOrAppendFormParam(body, "ra_chain_prev_hash", award.prevHash)
+        body = replaceOrAppendFormParam(body, "ra_chain_sig", award.signature)
+        body = replaceOrAppendFormParam(body, "ra_chain_pubkey", pubKey)
+        return body
     }
 }
