@@ -17,7 +17,6 @@ import com.raofflineproxy.proxy.shouldCacheResponse
 import com.raofflineproxy.proxy.shouldQueueAward
 import com.raofflineproxy.proxy.validateBodyRead
 import com.raofflineproxy.proxy.validateTransferEncoding
-import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -369,7 +368,6 @@ class ProxyServerTest {
 
     @Test
     fun shouldCacheResponse_requiresSuccessTrue() {
-        assertEquals(true, JSONObject("""{"Success":true}""").get("Success"))
         assertTrue(shouldCacheResponse("""{"Success":true}"""))
         assertFalse(shouldCacheResponse("""{"Success":false}"""))
     }
