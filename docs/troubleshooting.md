@@ -107,6 +107,8 @@ RetroArch will keep trying to connect to the proxy, which will fail since nothin
 **Fix:** Add RAOfflineProxy to the battery optimization whitelist:
 - Android Settings → Apps → RAOfflineProxy → Battery → Unrestricted
 
+If the app was killed or crashed while sync was active, reopen RAOfflineProxy once so it can clean up `retroarch.cfg`. For guaranteed immediate cleanup, always press **Stop proxy** before killing the app.
+
 ---
 
 ## Where is the data stored?

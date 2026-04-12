@@ -31,6 +31,12 @@ RAOfflineProxy runs a tiny local proxy on your device. It sits between RetroArch
 3. Go to **Cached Games** and scan your ROM folder or add individual ROMs while online
 4. You are ready to play offline
 
+## Important Shutdown Behavior
+
+- Always stop sync before killing the app.
+- If the app is killed or crashes while the proxy/sync is active, reopen RAOfflineProxy once so it can clean up `retroarch.cfg`.
+- Swiping the app away is not a reliable substitute for pressing **Stop proxy** on all devices.
+
 For detailed setup instructions, see the [documentation](https://raofflineproxy.com/installation).
 
 ## Build from Source
