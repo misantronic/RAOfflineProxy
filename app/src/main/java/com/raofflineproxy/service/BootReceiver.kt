@@ -3,7 +3,6 @@ package com.raofflineproxy.service
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.os.Build
 import com.raofflineproxy.PrefsConstants
 import com.raofflineproxy.ui.patchRetroArchCfg
 import androidx.core.content.edit
