@@ -51,6 +51,7 @@ export default defineConfig({
           { text: 'Compatibility', link: '/compatibility' },
           { text: 'Troubleshooting / FAQ', link: '/troubleshooting' },
           { text: 'Contact / Feedback', link: '/contact' },
+          { text: 'Privacy Policy', link: '/privacy-policy' },
         ],
       },
     ],
