@@ -33,5 +33,3 @@ features:
     title: Always Ready
     details: Optionally starts in the background when your device boots, so you never have to think about it.
 ---
-
-> Always stop sync before killing the app. If the app is killed or crashes while the proxy is active, reopen RAOfflineProxy once so it can clean up `retroarch.cfg`.
