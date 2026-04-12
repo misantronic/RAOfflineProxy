@@ -33,7 +33,7 @@ RAOfflineProxy runs a tiny local proxy on your device. It sits between RetroArch
 
 ## Important Shutdown Behavior
 
-- Always stop sync before killing the app.
+- On some devices, you should stop sync before killing the app.
 - If the app is killed or crashes while the proxy/sync is active, reopen RAOfflineProxy once so it can clean up `retroarch.cfg`.
 - Swiping the app away is not a reliable substitute for pressing **Stop proxy** on all devices.
 
