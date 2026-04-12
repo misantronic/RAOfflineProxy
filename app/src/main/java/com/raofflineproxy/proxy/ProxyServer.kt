@@ -233,7 +233,7 @@ class ProxyServer(
                 ?: db.cacheDao().getByPrefix("$key:")
             latch.countDown()
         }
-        latch.await(3, java.util.concurrent.TimeUnit.SECONDS)
+        latch.await(3, TimeUnit.SECONDS)
         return if (cached != null) {
             Log.i(TAG, "Cache HIT: $key (${cached!!.responseBody.length} bytes)")
             httpOk(cached!!.responseBody)
@@ -332,7 +332,7 @@ class ProxyServer(
             }
             latch.countDown()
         }
-        latch.await(3, java.util.concurrent.TimeUnit.SECONDS)
+        latch.await(3, TimeUnit.SECONDS)
         return score
     }
 
