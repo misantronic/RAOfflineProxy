@@ -14,6 +14,9 @@ interface PendingAwardDao {
     @Query("SELECT * FROM pending_awards ORDER BY queuedAt DESC LIMIT 1")
     suspend fun getLatest(): PendingAward?
 
+    @Query("SELECT EXISTS(SELECT 1 FROM pending_awards WHERE achievementId = :id)")
+    suspend fun existsByAchievementId(id: Int): Boolean
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(award: PendingAward)
 

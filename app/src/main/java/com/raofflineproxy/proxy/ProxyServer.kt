@@ -393,6 +393,21 @@ class ProxyServer(
     }
 
     private fun queueAward(path: String, rawBody: String, headers: Map<String, String>): QueueAwardResult {
+        val achievementId = extractParam("a", path, rawBody)?.toIntOrNull() ?: 0
+        if (achievementId > 0) {
+            val latch = java.util.concurrent.CountDownLatch(1)
+            var alreadyQueued = false
+            scope.launch(Dispatchers.IO) {
+                alreadyQueued = db.pendingAwardDao().existsByAchievementId(achievementId)
+                latch.countDown()
+            }
+            latch.await(3, TimeUnit.SECONDS)
+            if (alreadyQueued) {
+                Log.i(TAG, "Award already queued: achievementId=$achievementId, skipping duplicate")
+                return QueueAwardResult.Queued
+            }
+        }
+
         val signedAward = buildPendingAward(
             path = path,
             rawBody = rawBody,
