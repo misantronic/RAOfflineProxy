@@ -79,6 +79,15 @@
             android:textStyle="bold"
             android:text="@string/home_shutdown_warning" />
 
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btn_start_proxy"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="start"
+            android:layout_marginTop="8dp"
+            android:text="@string/proxy_start"
+            android:visibility="gone" />
+
     </LinearLayout>
 
 </androidx.core.widget.NestedScrollView>
