@@ -104,7 +104,7 @@ class ProxyServer(
                 }
                 socket.soTimeout = SOCKET_TIMEOUT_MS
 
-                val reader = BufferedReader(InputStreamReader(socket.getInputStream()))
+                val reader = BufferedReader(InputStreamReader(socket.getInputStream(), Charsets.UTF_8))
                 val writer = PrintWriter(socket.getOutputStream(), true)
 
                 val requestLine = reader.readLine() ?: return
@@ -119,11 +119,41 @@ class ProxyServer(
                     line = reader.readLine()
                 }
 
-                val parts = requestLine.split(" ")
-                val method = parts.getOrElse(0) { "GET" }
-                val path = parts.getOrElse(1) { "/" }
+                val parts = requestLine.trim().split(" ", limit = 3).filter { it.isNotEmpty() }
+                if (parts.size < 2) {
+                    writer.print(httpError(400, "bad request"))
+                    writer.flush()
+                    return
+                }
 
-                val contentLength = headers["content-length"]?.toIntOrNull() ?: 0
+                val method = parts[0].uppercase()
+                val path = parts[1]
+                if (method != "GET" && method != "POST") {
+                    writer.print(httpError(405, "method not allowed"))
+                    writer.flush()
+                    return
+                }
+                if (!path.startsWith('/')) {
+                    writer.print(httpError(400, "bad request"))
+                    writer.flush()
+                    return
+                }
+                val transferEncoding = headers["transfer-encoding"]
+                if (!transferEncoding.isNullOrBlank() && !transferEncoding.equals("identity", ignoreCase = true)) {
+                    writer.print(httpError(501, "transfer encoding not supported"))
+                    writer.flush()
+                    return
+                }
+
+                val contentLengthHeader = headers["content-length"]
+                val contentLength = when {
+                    contentLengthHeader == null -> 0
+                    else -> contentLengthHeader.toIntOrNull() ?: run {
+                        writer.print(httpError(400, "bad content length"))
+                        writer.flush()
+                        return
+                    }
+                }
                 if (contentLength < 0 || contentLength > MAX_REQUEST_BODY_BYTES) {
                     val response = httpError(413, "request body too large")
                     writer.print(response)
@@ -136,6 +166,11 @@ class ProxyServer(
                     val read = reader.read(bodyChars, totalRead, contentLength - totalRead)
                     if (read == -1) break
                     totalRead += read
+                }
+                if (totalRead != contentLength) {
+                    writer.print(httpError(400, "incomplete request body"))
+                    writer.flush()
+                    return
                 }
                 val rawBody = String(bodyChars, 0, totalRead)
 
