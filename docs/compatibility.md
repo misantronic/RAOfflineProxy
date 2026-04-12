@@ -7,6 +7,9 @@ Devices confirmed working by users or the developer.
 | AYN Odin 2 Portal | Android 13 | ✅ Working |
 | Ayaneo Pocket Air Mini | Android 11 | ✅ Working |
 
+Browse all community submissions or add your own experience directly:
+[Community Compatibility Sheet](https://docs.google.com/spreadsheets/d/11AY4lhACICar6ddc9NgbIEJnHuPlLmCI5i3uKU5Q0FA/edit?usp=sharing)
+
 ## Submit your device
 
-Tested RAOfflineProxy on a device not listed here? You are welcome to share your experience — whether it works perfectly, has quirks, or does not work at all. [Get in touch via the contact page](/contact).
+Tested RAOfflineProxy on a device not listed here? Fill out the [Device Compatibility Form](https://forms.gle/m9hBXbPAx7KuLnmj9) — submissions are reviewed manually and may be added to the list above.
