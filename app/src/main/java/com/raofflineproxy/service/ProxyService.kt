@@ -26,6 +26,7 @@ import com.raofflineproxy.proxy.loadUserAgent
 import com.raofflineproxy.ui.MainActivity
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
@@ -45,12 +46,15 @@ class ProxyService : Service() {
     private lateinit var connectivityManager: ConnectivityManager
 
     private var isOnline = false
+    private var networkCallbackRegistered = false
+    private var refreshJob: Job? = null
+    private var flushJob: Job? = null
 
     private val networkCallback = object : ConnectivityManager.NetworkCallback() {
         override fun onAvailable(network: Network) {
             Log.i(TAG, "Network available")
             isOnline = true
-            serviceScope.launch { awardFlusher.flush() }
+            requestFlush()
             updateNotification()
         }
 
@@ -78,22 +82,38 @@ class ProxyService : Service() {
             ?.let { connectivityManager.getNetworkCapabilities(it) }
             ?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true
 
-        connectivityManager.registerNetworkCallback(
-            NetworkRequest.Builder()
-                .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
-                .build(),
-            networkCallback
-        )
+        if (!networkCallbackRegistered) {
+            connectivityManager.registerNetworkCallback(
+                NetworkRequest.Builder()
+                    .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                    .build(),
+                networkCallback
+            )
+            networkCallbackRegistered = true
+        }
 
         proxyServer.start()
 
         if (isOnline) {
-            serviceScope.launch { awardFlusher.flush() }
+            requestFlush()
         }
 
-        serviceScope.launch { periodicRefreshLoop() }
+        if (refreshJob?.isActive != true) {
+            refreshJob = serviceScope.launch { periodicRefreshLoop() }
+        }
 
         return START_STICKY
+    }
+
+    private fun requestFlush() {
+        if (flushJob?.isActive == true) return
+        flushJob = serviceScope.launch {
+            try {
+                awardFlusher.flush()
+            } finally {
+                flushJob = null
+            }
+        }
     }
 
     private suspend fun periodicRefreshLoop() {
@@ -121,7 +141,10 @@ class ProxyService : Service() {
 
     override fun onDestroy() {
         proxyServer.stop()
-        runCatching { connectivityManager.unregisterNetworkCallback(networkCallback) }
+        if (networkCallbackRegistered) {
+            runCatching { connectivityManager.unregisterNetworkCallback(networkCallback) }
+            networkCallbackRegistered = false
+        }
         serviceScope.cancel()
         super.onDestroy()
     }

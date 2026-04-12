@@ -26,6 +26,7 @@ import com.google.android.material.snackbar.Snackbar
 import com.raofflineproxy.PrefsConstants
 import com.raofflineproxy.R
 import com.raofflineproxy.databinding.ActivityMainBinding
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 @SuppressLint("UseKtx")
@@ -93,7 +94,10 @@ class MainActivity : AppCompatActivity() {
             showFragment(HomeFragment(), R.id.nav_home)
             if (viewModel.state.value.autostartProxy) {
                 lifecycleScope.launch {
-                    viewModel.startProxy(treeUri = PrefsConstants.loadSafUri(this@MainActivity))
+                    val state = viewModel.state.first { it.cfgIsPatched != null }
+                    if (state.cfgIsPatched == true) {
+                        viewModel.startProxy(treeUri = PrefsConstants.loadSafUri(this@MainActivity))
+                    }
                 }
             }
         }
