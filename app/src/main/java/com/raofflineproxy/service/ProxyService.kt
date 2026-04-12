@@ -56,6 +56,8 @@ class ProxyService : Service() {
     private var networkCallbackRegistered = false
     private var refreshJob: Job? = null
     private var flushJob: Job? = null
+    private var pendingObserverJob: Job? = null
+    private var pendingCount = 0
     private var cfgCleanupAttempted = false
 
     private val networkCallback = object : ConnectivityManager.NetworkCallback() {
@@ -113,6 +115,18 @@ class ProxyService : Service() {
 
         if (refreshJob?.isActive != true) {
             refreshJob = serviceScope.launch { periodicRefreshLoop() }
+        }
+
+        if (pendingObserverJob?.isActive != true) {
+            pendingObserverJob = serviceScope.launch {
+                db.pendingAwardDao().observe().collect { awards ->
+                    val newCount = awards.size
+                    if (newCount != pendingCount) {
+                        pendingCount = newCount
+                        updateNotification()
+                    }
+                }
+            }
         }
 
         return START_NOT_STICKY
@@ -191,8 +205,16 @@ class ProxyService : Service() {
         )
         val (title, text) = if (isOnline)
             getString(R.string.notification_online_title) to getString(R.string.notification_online_text)
-        else
-            getString(R.string.notification_offline_title) to getString(R.string.notification_offline_text)
+        else {
+            val offlineText = buildString {
+                append(getString(R.string.notification_offline_text))
+                if (pendingCount > 0) {
+                    append(" · ")
+                    append(resources.getQuantityString(R.plurals.notification_pending_awards, pendingCount, pendingCount))
+                }
+            }
+            getString(R.string.notification_offline_title) to offlineText
+        }
         return Notification.Builder(this, CHANNEL_ID)
             .setContentTitle(title)
             .setContentText(text)
