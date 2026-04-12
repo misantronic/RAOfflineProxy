@@ -1,5 +1,6 @@
 package com.raofflineproxy.proxy
 
+import android.util.Base64
 import android.util.Log
 import com.raofflineproxy.RA_HOST
 import com.raofflineproxy.data.AppDatabase
@@ -105,6 +106,39 @@ internal fun verifyChain(awards: List<PendingAward>): ChainVerificationResult {
             return ChainVerificationResult.Broken(
                 index,
                 "award #${index + 1} (achievementId=${award.achievementId}): chain link broken — prevHash mismatch"
+            )
+        }
+
+        if (award.signature.isEmpty()) {
+            return ChainVerificationResult.Broken(
+                index,
+                "award #${index + 1} (achievementId=${award.achievementId}): missing signature"
+            )
+        }
+
+        val signatureBytes = runCatching {
+            Base64.decode(award.signature, Base64.DEFAULT)
+        }.getOrElse {
+            return ChainVerificationResult.Broken(
+                index,
+                "award #${index + 1} (achievementId=${award.achievementId}): invalid base64 signature"
+            )
+        }
+
+        val signInput = "${award.payloadHash}:${award.prevHash}".toByteArray(Charsets.UTF_8)
+        val signatureValid = runCatching {
+            AwardKeyManager.verify(signInput, signatureBytes)
+        }.getOrElse {
+            return ChainVerificationResult.Broken(
+                index,
+                "award #${index + 1} (achievementId=${award.achievementId}): signature verification failed"
+            )
+        }
+
+        if (!signatureValid) {
+            return ChainVerificationResult.Broken(
+                index,
+                "award #${index + 1} (achievementId=${award.achievementId}): invalid signature"
             )
         }
     }

@@ -47,6 +47,17 @@ object AwardKeyManager {
             .sign()
     }
 
+    fun verify(data: ByteArray, signature: ByteArray): Boolean {
+        ensureKey()
+        val cert = loadKeyStore().getCertificate(KEY_ALIAS)
+        return Signature.getInstance("SHA256withECDSA")
+            .also {
+                it.initVerify(cert.publicKey)
+                it.update(data)
+            }
+            .verify(signature)
+    }
+
     fun getPublicKeyBase64(): String {
         ensureKey()
         val cert = loadKeyStore().getCertificate(KEY_ALIAS)
