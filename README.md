@@ -56,7 +56,7 @@ Full documentation is available at [d3bywedspcdj3v.cloudfront.net](https://d3byw
 
 ## Contact / Feedback
 
-If you want to report a bug, ask a question, or send feedback about RAOfflineProxy, email [misantronic@posteo.se](mailto:misantronic@posteo.se).
+If you want to report a bug, ask a question, or send feedback about RAOfflineProxy, use the [Contact / Feedback Form](https://forms.gle/XPRfWe2hAqzYy3JX9).
 
 GitHub issue reports are also welcome at [github.com/misantronic/RAOfflineProxy/issues](https://github.com/misantronic/RAOfflineProxy/issues).
 
