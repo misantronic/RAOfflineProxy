@@ -235,6 +235,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         )
     }
 
+    fun clearFlushProgress() {
+        if (_state.value.flushInProgress) return
+        _state.value = _state.value.copy(flushProgress = null)
+    }
+
     fun validateToken() {
         viewModelScope.launch {
             val credentials = withContext(Dispatchers.IO) { loadLoginCredentials(db) }
