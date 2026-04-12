@@ -5,7 +5,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Environment
 import androidx.documentfile.provider.DocumentFile
-import com.raofflineproxy.PROXY_VALUE
+import com.raofflineproxy.proxyValue
 import com.raofflineproxy.R
 import java.io.File
 
@@ -83,7 +83,7 @@ private val REVERT_STRINGS = CfgStrings(
 )
 
 fun patchRetroArchCfg(context: Context, treeUri: Uri?): PatchResult {
-    val transform: (String) -> String = { buildPatchedContent(it) }
+    val transform: (String) -> String = { buildPatchedContent(it, proxyValue(context)) }
     return applyCfgTransform(context, treeUri, transform, PATCH_STRINGS, detectHardcore = true)
 }
 
@@ -246,14 +246,14 @@ fun detectHardcoreEnabled(content: String): Boolean =
     Regex("""^\s*cheevos_hardcore_mode_enable\s*=\s*"true"\s*$""", RegexOption.MULTILINE)
         .containsMatchIn(content)
 
-fun buildPatchedContent(content: String): String {
+fun buildPatchedContent(content: String, proxyAddress: String): String {
     val hostRegex = Regex("""^(\s*cheevos_custom_host\s*=\s*).*$""", RegexOption.MULTILINE)
     val hardcoreRegex = Regex("""^(\s*cheevos_hardcore_mode_enable\s*=\s*).*$""", RegexOption.MULTILINE)
 
     val withHost = if (hostRegex.containsMatchIn(content)) {
-        hostRegex.replace(content) { mr -> "${mr.groupValues[1]}\"$PROXY_VALUE\"" }
+        hostRegex.replace(content) { mr -> "${mr.groupValues[1]}\"$proxyAddress\"" }
     } else {
-        content.trimEnd() + "\ncheevos_custom_host = \"$PROXY_VALUE\"\n"
+        content.trimEnd() + "\ncheevos_custom_host = \"$proxyAddress\"\n"
     }
 
     return if (hardcoreRegex.containsMatchIn(withHost)) {
@@ -277,13 +277,15 @@ internal fun buildRevertedContent(content: String, restoreHardcore: Boolean = fa
     }
 }
 
-internal fun isPatchedContent(content: String): Boolean {
-    val escaped = Regex.escape(PROXY_VALUE)
+internal fun isPatchedContent(content: String, proxyAddress: String): Boolean {
+    val escaped = Regex.escape(proxyAddress)
     val hostRegex = Regex("""^\s*cheevos_custom_host\s*=\s*"$escaped"\s*$""", RegexOption.MULTILINE)
     return hostRegex.containsMatchIn(content)
 }
 
 fun checkIsPatched(context: Context, treeUri: Uri?): Boolean {
+    val proxyAddress = proxyValue(context)
+
     if (treeUri != null) {
         val tree = DocumentFile.fromTreeUri(context, treeUri)
         if (tree != null) {
@@ -293,7 +295,7 @@ fun checkIsPatched(context: Context, treeUri: Uri?): Boolean {
                 return try {
                     val content = context.contentResolver.openInputStream(cfgFile.uri)
                         ?.bufferedReader()?.use { it.readText() } ?: return false
-                    isPatchedContent(content)
+                    isPatchedContent(content, proxyAddress)
                 } catch (_: Exception) { false }
             }
         }
@@ -301,7 +303,7 @@ fun checkIsPatched(context: Context, treeUri: Uri?): Boolean {
 
     val directCandidate = SOURCE_CANDIDATES.map(::File).firstOrNull { it.exists() && it.canRead() }
     if (directCandidate != null) {
-        return try { isPatchedContent(directCandidate.readText()) } catch (_: Exception) { false }
+        return try { isPatchedContent(directCandidate.readText(), proxyAddress) } catch (_: Exception) { false }
     }
 
     return false

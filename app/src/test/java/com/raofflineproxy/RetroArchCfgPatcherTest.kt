@@ -10,8 +10,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class RetroArchCfgPatcherTest {
-
-    // ── detectHardcoreEnabled() ──
+    private val proxyAddress = "127.0.0.1:4321"
 
     @Test
     fun detectHardcoreEnabled_trueWhenEnabled() {
@@ -20,6 +19,7 @@ class RetroArchCfgPatcherTest {
             cheevos_hardcore_mode_enable = "true"
             cheevos_custom_host = ""
         """.trimIndent()
+
         assertTrue(detectHardcoreEnabled(cfg))
     }
 
@@ -29,6 +29,7 @@ class RetroArchCfgPatcherTest {
             cheevos_enable = "true"
             cheevos_hardcore_mode_enable = "false"
         """.trimIndent()
+
         assertFalse(detectHardcoreEnabled(cfg))
     }
 
@@ -38,21 +39,19 @@ class RetroArchCfgPatcherTest {
             cheevos_enable = "true"
             cheevos_custom_host = ""
         """.trimIndent()
+
         assertFalse(detectHardcoreEnabled(cfg))
     }
 
     @Test
     fun detectHardcoreEnabled_handlesLeadingWhitespace() {
-        val cfg = "   cheevos_hardcore_mode_enable = \"true\""
-        assertTrue(detectHardcoreEnabled(cfg))
+        assertTrue(detectHardcoreEnabled("   cheevos_hardcore_mode_enable = \"true\""))
     }
 
     @Test
     fun detectHardcoreEnabled_emptyString() {
         assertFalse(detectHardcoreEnabled(""))
     }
-
-    // ── buildPatchedContent() ──
 
     @Test
     fun buildPatchedContent_setsProxyHost() {
@@ -62,8 +61,9 @@ class RetroArchCfgPatcherTest {
             cheevos_hardcore_mode_enable = "false"
         """.trimIndent()
 
-        val patched = buildPatchedContent(cfg)
-        assertTrue(patched.contains("""cheevos_custom_host = "127.0.0.1:8080""""))
+        val patched = buildPatchedContent(cfg, proxyAddress)
+
+        assertTrue(patched.contains("""cheevos_custom_host = "$proxyAddress""""))
     }
 
     @Test
@@ -74,7 +74,8 @@ class RetroArchCfgPatcherTest {
             cheevos_hardcore_mode_enable = "true"
         """.trimIndent()
 
-        val patched = buildPatchedContent(cfg)
+        val patched = buildPatchedContent(cfg, proxyAddress)
+
         assertTrue(patched.contains("""cheevos_hardcore_mode_enable = "false""""))
         assertFalse(patched.contains("""cheevos_hardcore_mode_enable = "true""""))
     }
@@ -86,8 +87,9 @@ class RetroArchCfgPatcherTest {
             cheevos_hardcore_mode_enable = "false"
         """.trimIndent()
 
-        val patched = buildPatchedContent(cfg)
-        assertTrue(patched.contains("""cheevos_custom_host = "127.0.0.1:8080""""))
+        val patched = buildPatchedContent(cfg, proxyAddress)
+
+        assertTrue(patched.contains("""cheevos_custom_host = "$proxyAddress""""))
     }
 
     @Test
@@ -97,16 +99,16 @@ class RetroArchCfgPatcherTest {
             cheevos_custom_host = ""
         """.trimIndent()
 
-        val patched = buildPatchedContent(cfg)
+        val patched = buildPatchedContent(cfg, proxyAddress)
+
         assertTrue(patched.contains("""cheevos_hardcore_mode_enable = "false""""))
     }
 
     @Test
     fun buildPatchedContent_bothMissing() {
-        val cfg = """cheevos_enable = "true""""
+        val patched = buildPatchedContent("""cheevos_enable = "true"""", proxyAddress)
 
-        val patched = buildPatchedContent(cfg)
-        assertTrue(patched.contains("""cheevos_custom_host = "127.0.0.1:8080""""))
+        assertTrue(patched.contains("""cheevos_custom_host = "$proxyAddress""""))
         assertTrue(patched.contains("""cheevos_hardcore_mode_enable = "false""""))
     }
 
@@ -120,7 +122,8 @@ class RetroArchCfgPatcherTest {
             input_autodetect_enable = "true"
         """.trimIndent()
 
-        val patched = buildPatchedContent(cfg)
+        val patched = buildPatchedContent(cfg, proxyAddress)
+
         assertTrue(patched.contains("video_fullscreen"))
         assertTrue(patched.contains("audio_driver"))
         assertTrue(patched.contains("input_autodetect_enable"))
@@ -129,20 +132,18 @@ class RetroArchCfgPatcherTest {
     @Test
     fun buildPatchedContent_idempotent() {
         val cfg = """
-            cheevos_custom_host = "127.0.0.1:8080"
+            cheevos_custom_host = "$proxyAddress"
             cheevos_hardcore_mode_enable = "false"
         """.trimIndent()
 
-        val patched = buildPatchedContent(cfg)
-        assertEquals(cfg, patched)
+        assertEquals(cfg, buildPatchedContent(cfg, proxyAddress))
     }
 
     @Test
     fun buildPatchedContent_replacesExistingNonEmptyHost() {
-        val cfg = """cheevos_custom_host = "old.host.com:9999""""
+        val patched = buildPatchedContent("""cheevos_custom_host = "old.host.com:9999"""", proxyAddress)
 
-        val patched = buildPatchedContent(cfg)
-        assertTrue(patched.contains("""cheevos_custom_host = "127.0.0.1:8080""""))
+        assertTrue(patched.contains("""cheevos_custom_host = "$proxyAddress""""))
         assertFalse(patched.contains("old.host.com"))
     }
 
@@ -150,48 +151,47 @@ class RetroArchCfgPatcherTest {
     fun buildPatchedContent_preservesLeadingWhitespace() {
         val cfg = "  cheevos_custom_host = \"\"\n  cheevos_hardcore_mode_enable = \"true\""
 
-        val patched = buildPatchedContent(cfg)
-        assertTrue(patched.contains("""  cheevos_custom_host = "127.0.0.1:8080""""))
+        val patched = buildPatchedContent(cfg, proxyAddress)
+
+        assertTrue(patched.contains("""  cheevos_custom_host = "$proxyAddress""""))
         assertTrue(patched.contains("""  cheevos_hardcore_mode_enable = "false""""))
     }
 
-    // ── buildRevertedContent() ──
-
     @Test
     fun buildRevertedContent_clearsProxyHost() {
-        val cfg = "cheevos_custom_host = \"127.0.0.1:8080\""
+        val cfg = "cheevos_custom_host = \"$proxyAddress\""
 
-        val reverted = buildRevertedContent(cfg)
-        assertEquals("cheevos_custom_host = \"\"", reverted)
+        assertEquals("cheevos_custom_host = \"\"", buildRevertedContent(cfg))
     }
 
     @Test
     fun buildRevertedContent_withoutRestoreHardcore_leavesHardcoreFalse() {
         val cfg = """
-            cheevos_custom_host = "127.0.0.1:8080"
+            cheevos_custom_host = "$proxyAddress"
             cheevos_hardcore_mode_enable = "false"
         """.trimIndent()
 
         val reverted = buildRevertedContent(cfg, restoreHardcore = false)
+
         assertTrue(reverted.contains("""cheevos_hardcore_mode_enable = "false""""))
     }
 
     @Test
     fun buildRevertedContent_withRestoreHardcore_setsHardcoreTrue() {
         val cfg = """
-            cheevos_custom_host = "127.0.0.1:8080"
+            cheevos_custom_host = "$proxyAddress"
             cheevos_hardcore_mode_enable = "false"
         """.trimIndent()
 
         val reverted = buildRevertedContent(cfg, restoreHardcore = true)
+
         assertTrue(reverted.contains("""cheevos_hardcore_mode_enable = "true""""))
     }
 
     @Test
     fun buildRevertedContent_restoreHardcore_noHardcoreLine_doesNotAppend() {
-        val cfg = """cheevos_custom_host = "127.0.0.1:8080""""
+        val reverted = buildRevertedContent("""cheevos_custom_host = "$proxyAddress"""", restoreHardcore = true)
 
-        val reverted = buildRevertedContent(cfg, restoreHardcore = true)
         assertFalse(reverted.contains("cheevos_hardcore_mode_enable"))
     }
 
@@ -199,11 +199,12 @@ class RetroArchCfgPatcherTest {
     fun buildRevertedContent_preservesOtherLines() {
         val cfg = """
             video_fullscreen = "true"
-            cheevos_custom_host = "127.0.0.1:8080"
+            cheevos_custom_host = "$proxyAddress"
             audio_driver = "opensl"
         """.trimIndent()
 
         val reverted = buildRevertedContent(cfg)
+
         assertTrue(reverted.contains("video_fullscreen"))
         assertTrue(reverted.contains("audio_driver"))
     }
@@ -215,53 +216,44 @@ class RetroArchCfgPatcherTest {
             cheevos_hardcore_mode_enable = "false"
         """.trimIndent()
 
-        val reverted = buildRevertedContent(cfg)
-        assertEquals(cfg, reverted)
+        assertEquals(cfg, buildRevertedContent(cfg))
     }
-
-    // ── isPatchedContent() ──
 
     @Test
     fun isPatchedContent_trueWhenPatched() {
-        val cfg = """cheevos_custom_host = "127.0.0.1:8080""""
-        assertTrue(isPatchedContent(cfg))
+        assertTrue(isPatchedContent("""cheevos_custom_host = "$proxyAddress"""", proxyAddress))
     }
 
     @Test
     fun isPatchedContent_falseWhenEmpty() {
-        val cfg = """cheevos_custom_host = """""
-        assertFalse(isPatchedContent(cfg))
+        assertFalse(isPatchedContent("""cheevos_custom_host = """"", proxyAddress))
     }
 
     @Test
     fun isPatchedContent_falseWhenDifferentHost() {
-        val cfg = """cheevos_custom_host = "other.host:9999""""
-        assertFalse(isPatchedContent(cfg))
+        assertFalse(isPatchedContent("""cheevos_custom_host = "other.host:9999"""", proxyAddress))
     }
 
     @Test
     fun isPatchedContent_falseWhenMissing() {
-        val cfg = """cheevos_enable = "true""""
-        assertFalse(isPatchedContent(cfg))
+        assertFalse(isPatchedContent("""cheevos_enable = "true"""", proxyAddress))
     }
 
     @Test
     fun isPatchedContent_handlesLeadingWhitespace() {
-        val cfg = """  cheevos_custom_host = "127.0.0.1:8080""""
-        assertTrue(isPatchedContent(cfg))
+        assertTrue(isPatchedContent("""  cheevos_custom_host = "$proxyAddress"""", proxyAddress))
     }
 
     @Test
     fun isPatchedContent_multiline() {
         val cfg = """
             video_fullscreen = "true"
-            cheevos_custom_host = "127.0.0.1:8080"
+            cheevos_custom_host = "$proxyAddress"
             audio_driver = "opensl"
         """.trimIndent()
-        assertTrue(isPatchedContent(cfg))
-    }
 
-    // ── Roundtrip tests ──
+        assertTrue(isPatchedContent(cfg, proxyAddress))
+    }
 
     @Test
     fun patchThenRevert_restoresOriginalContent() {
@@ -270,8 +262,9 @@ class RetroArchCfgPatcherTest {
             cheevos_hardcore_mode_enable = "false"
         """.trimIndent()
 
-        val patched = buildPatchedContent(original)
+        val patched = buildPatchedContent(original, proxyAddress)
         val reverted = buildRevertedContent(patched, restoreHardcore = false)
+
         assertEquals(original, reverted)
     }
 
@@ -282,10 +275,10 @@ class RetroArchCfgPatcherTest {
             cheevos_hardcore_mode_enable = "true"
         """.trimIndent()
 
-        val patched = buildPatchedContent(original)
-        assertFalse(patched.contains("""cheevos_hardcore_mode_enable = "true""""))
-
+        val patched = buildPatchedContent(original, proxyAddress)
         val reverted = buildRevertedContent(patched, restoreHardcore = true)
+
+        assertFalse(patched.contains("""cheevos_hardcore_mode_enable = "true""""))
         assertTrue(reverted.contains("cheevos_hardcore_mode_enable = \"true\""))
         assertTrue(reverted.contains("cheevos_custom_host = \"\""))
     }
@@ -297,18 +290,20 @@ class RetroArchCfgPatcherTest {
             cheevos_hardcore_mode_enable = "false"
         """.trimIndent()
 
-        val patched = buildPatchedContent(cfg)
-        assertTrue(isPatchedContent(patched))
+        val patched = buildPatchedContent(cfg, proxyAddress)
+
+        assertTrue(isPatchedContent(patched, proxyAddress))
     }
 
     @Test
     fun revertedContent_isNotDetectedByIsPatchedContent() {
         val cfg = """
-            cheevos_custom_host = "127.0.0.1:8080"
+            cheevos_custom_host = "$proxyAddress"
             cheevos_hardcore_mode_enable = "false"
         """.trimIndent()
 
         val reverted = buildRevertedContent(cfg)
-        assertFalse(isPatchedContent(reverted))
+
+        assertFalse(isPatchedContent(reverted, proxyAddress))
     }
 }

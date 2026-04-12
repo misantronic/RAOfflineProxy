@@ -4,9 +4,9 @@ import android.content.Context
 import android.net.Uri
 import android.util.Log
 import androidx.documentfile.provider.DocumentFile
-import com.raofflineproxy.PROXY_BASE
 import com.raofflineproxy.RA_HOST
 import com.raofflineproxy.buildApiUrl
+import com.raofflineproxy.proxyBase
 import com.raofflineproxy.toHexString
 import com.raofflineproxy.data.AppDatabase
 import com.raofflineproxy.data.CacheEntry
@@ -101,9 +101,9 @@ suspend fun scanRomFolder(
         onProgress(index + 1, total, file.name ?: "")
         val hash = md5File(context, file.uri)
         if (hash == null) { skipped++; continue }
-        val gameId = fetchGameId(hash, credentials, userAgent)
+        val gameId = fetchGameId(context, hash, credentials, userAgent)
         if (gameId == null) { skipped++; continue }
-        cacheGame(gameId, credentials, userAgent, db)
+        cacheGame(context, gameId, credentials, userAgent, db)
         matched++
         if (index < files.lastIndex) delay(500)
     }
@@ -125,10 +125,10 @@ private fun md5File(context: Context, uri: Uri): String? =
         digest.digest().toHexString()
     } catch (_: Exception) { null }
 
-private fun fetchGameId(hash: String, creds: LoginCredentials, userAgent: String): Int? =
+private fun fetchGameId(context: Context, hash: String, creds: LoginCredentials, userAgent: String): Int? =
     try {
         val url = buildApiUrl(
-            PROXY_BASE,
+            proxyBase(context),
             "gameid",
             mapOf(
                 "m" to hash,
@@ -141,11 +141,11 @@ private fun fetchGameId(hash: String, creds: LoginCredentials, userAgent: String
         if (gameId > 0) gameId else null
     } catch (_: Exception) { null }
 
-internal suspend fun cacheGame(gameId: Int, creds: LoginCredentials, userAgent: String, db: AppDatabase) {
+internal suspend fun cacheGame(context: Context, gameId: Int, creds: LoginCredentials, userAgent: String, db: AppDatabase) {
     try {
         httpGet(
             buildApiUrl(
-                PROXY_BASE,
+                proxyBase(context),
                 "patch",
                 mapOf(
                     "g" to gameId.toString(),
@@ -156,16 +156,16 @@ internal suspend fun cacheGame(gameId: Int, creds: LoginCredentials, userAgent: 
             userAgent
         )
     } catch (_: Exception) { }
-    cacheUnlocks(gameId, creds, userAgent)
+    cacheUnlocks(context, gameId, creds, userAgent)
     cacheSession(gameId, creds, db)
     Log.i("RAProxy", "cacheGame complete for gameId=$gameId")
 }
 
-internal fun cacheUnlocks(gameId: Int, creds: LoginCredentials, userAgent: String) {
+internal fun cacheUnlocks(context: Context, gameId: Int, creds: LoginCredentials, userAgent: String) {
     try {
         httpGet(
             buildApiUrl(
-                PROXY_BASE,
+                proxyBase(context),
                 "unlocks",
                 mapOf(
                     "g" to gameId.toString(),

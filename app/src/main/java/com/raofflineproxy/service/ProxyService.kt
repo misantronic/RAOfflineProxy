@@ -19,6 +19,7 @@ import androidx.annotation.RequiresPermission
 import androidx.core.content.edit
 import com.raofflineproxy.PrefsConstants
 import com.raofflineproxy.R
+import com.raofflineproxy.proxyPort
 import com.raofflineproxy.data.AppDatabase
 import com.raofflineproxy.data.CacheKeys
 import com.raofflineproxy.proxy.AwardFlusher
@@ -75,7 +76,7 @@ class ProxyService : Service() {
         runningInProcess = true
         db = AppDatabase.getInstance(this)
         awardFlusher = AwardFlusher(db)
-        proxyServer = ProxyServer(db, serviceScope) { isOnline }
+        proxyServer = ProxyServer(this, db, serviceScope, proxyPort(this)) { isOnline }
         connectivityManager = getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager
     }
 
@@ -138,7 +139,7 @@ class ProxyService : Service() {
                 .distinct()
             Log.i(TAG, "Periodic refresh: ${gameIds.size} game(s)")
             for (gameId in gameIds) {
-                cacheGame(gameId, credentials, userAgent, db)
+                cacheGame(this@ProxyService, gameId, credentials, userAgent, db)
             }
             db.cacheDao().evictOlderThan(System.currentTimeMillis() - CACHE_TTL_MS)
             Log.i(TAG, "Periodic refresh complete")
@@ -238,7 +239,7 @@ class ProxyService : Service() {
         fun isRunning(context: Context): Boolean {
             if (runningInProcess) return true
 
-            val manager = context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
+            val manager = context.getSystemService(ACTIVITY_SERVICE) as? ActivityManager
                 ?: return false
 
             @Suppress("DEPRECATION")

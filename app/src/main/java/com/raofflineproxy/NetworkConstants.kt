@@ -1,15 +1,13 @@
 package com.raofflineproxy
 
+import android.content.Context
 import okhttp3.OkHttpClient
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import java.net.URLDecoder
 import java.security.MessageDigest
 
 const val RA_HOST = "https://retroachievements.org"
-const val PROXY_PORT = 8080
 private const val PROXY_HOST = "127.0.0.1"
-const val PROXY_BASE = "http://$PROXY_HOST:$PROXY_PORT"
-const val PROXY_VALUE = "$PROXY_HOST:$PROXY_PORT"
 const val PROXY_UA_TAG = "RAOfflineProxy"
 
 val sharedHttpClient: OkHttpClient = OkHttpClient.Builder().build()
@@ -45,6 +43,18 @@ fun buildApiUrl(base: String, action: String, params: Map<String, String>): Stri
     }
     return builder.build().toString()
 }
+
+fun proxyHost(): String = PROXY_HOST
+
+fun proxyPort(context: Context): Int = PrefsConstants.loadProxyPort(context)
+
+fun proxyValue(port: Int): String = "${proxyHost()}:$port"
+
+fun proxyValue(context: Context): String = proxyValue(proxyPort(context))
+
+fun proxyBase(port: Int): String = "http://${proxyValue(port)}"
+
+fun proxyBase(context: Context): String = proxyBase(proxyPort(context))
 
 fun proxyUserAgent(original: String): String {
     if (original.contains(PROXY_UA_TAG)) return original
