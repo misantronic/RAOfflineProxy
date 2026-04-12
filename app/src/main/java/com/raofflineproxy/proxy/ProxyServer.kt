@@ -217,7 +217,7 @@ class ProxyServer(
                 Log.i(TAG, "Fake success offline: action=$action")
                 httpOk("""{"Success":true}""")
             }
-            action == "startsession" -> handleStartSessionRequest(path, rawBody)
+            action == "startsession" && !isOnline() -> handleStartSessionRequest(path, rawBody)
             isOnline() -> handleOnlineRequest(method, path, rawBody, action, headers)
             else -> handleOfflineRequest(path, rawBody, action)
         }

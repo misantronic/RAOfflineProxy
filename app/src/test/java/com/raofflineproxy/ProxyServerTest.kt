@@ -435,6 +435,12 @@ class ProxyServerTest {
     }
 
     @Test
+    fun startsession_isNotInCacheableActions() {
+        val cacheableActions = setOf("patch", "gameid", "achievements", "hashlibrary", "login2", "unlocks")
+        assertFalse("startsession" in cacheableActions)
+    }
+
+    @Test
     fun sanitizeHttpReasonPhrase_fallsBackForBlankMessage() {
         assertEquals("Unauthorized", sanitizeHttpReasonPhrase("", 401))
     }
