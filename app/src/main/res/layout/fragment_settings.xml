@@ -55,12 +55,34 @@
             android:layout_marginTop="8dp"
             android:text="@string/btn_clear_database" />
 
-        <Button
-            android:id="@+id/btn_contact_feedback"
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="24dp"
-            android:text="@string/btn_contact_feedback" />
+            android:gravity="center"
+            android:orientation="horizontal">
+
+            <Button
+                style="@style/Widget.MaterialComponents.Button.TextButton"
+                android:id="@+id/btn_contact_feedback"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/btn_contact_feedback" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="·"
+                android:textAppearance="@style/TextAppearance.MaterialComponents.Body2" />
+
+            <Button
+                style="@style/Widget.MaterialComponents.Button.TextButton"
+                android:id="@+id/btn_privacy_policy"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/btn_privacy_policy" />
+
+        </LinearLayout>
 
     </LinearLayout>
 

@@ -1,8 +1,6 @@
 package com.raofflineproxy.ui
 
-import android.content.ActivityNotFoundException
 import android.content.Intent
-import android.os.Build
 import android.os.Bundle
 import android.text.InputFilter
 import android.view.KeyEvent
@@ -12,39 +10,18 @@ import android.view.ViewGroup
 import android.widget.Button
 import android.widget.CheckBox
 import android.widget.TextView
+import androidx.core.net.toUri
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.lifecycleScope
 import com.google.android.material.snackbar.Snackbar
 import com.google.android.material.textfield.TextInputEditText
 import com.google.android.material.textfield.TextInputLayout
-import com.raofflineproxy.BuildConfig
 import com.raofflineproxy.R
 import kotlinx.coroutines.launch
-import androidx.core.net.toUri
 
 class SettingsFragment : Fragment() {
     private val viewModel: MainViewModel by activityViewModels()
-
-    private fun launchFeedbackEmail(view: View) {
-        val subject = getString(R.string.contact_feedback_subject)
-        val body = getString(
-            R.string.contact_feedback_body,
-            BuildConfig.VERSION_NAME,
-            Build.VERSION.RELEASE,
-        )
-        val intent = Intent(Intent.ACTION_SENDTO).apply {
-            data = "mailto:${getString(R.string.contact_feedback_email)}".toUri()
-            putExtra(Intent.EXTRA_SUBJECT, subject)
-            putExtra(Intent.EXTRA_TEXT, body)
-        }
-
-        try {
-            startActivity(intent)
-        } catch (_: ActivityNotFoundException) {
-            Snackbar.make(view, R.string.contact_feedback_no_email_app, Snackbar.LENGTH_LONG).show()
-        }
-    }
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View =
         inflater.inflate(R.layout.fragment_settings, container, false)
@@ -96,7 +73,14 @@ class SettingsFragment : Fragment() {
         }
 
         view.findViewById<Button>(R.id.btn_contact_feedback).setOnClickListener {
-            launchFeedbackEmail(view)
+            val url = getString(R.string.contact_feedback_url)
+            startActivity(Intent(Intent.ACTION_VIEW, url.toUri()))
+        }
+
+        view.findViewById<Button>(R.id.btn_privacy_policy).setOnClickListener {
+            val url = getString(R.string.privacy_policy_url)
+            val intent = Intent(Intent.ACTION_VIEW, url.toUri())
+            startActivity(intent)
         }
 
         viewLifecycleOwner.lifecycleScope.launch {
