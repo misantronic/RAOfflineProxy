@@ -1,7 +1,6 @@
 package com.raofflineproxy.ui
 
 import android.content.Intent
-import android.net.Uri
 import android.os.Bundle
 import android.text.SpannableString
 import android.text.Spanned
