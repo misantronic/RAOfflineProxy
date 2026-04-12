@@ -55,29 +55,12 @@
         </RelativeLayout>
 
         <TextView
-            android:layout_width="match_parent"
+            android:id="@+id/tv_docs_link"
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:textSize="14sp"
-            android:lineSpacingMultiplier="1.4"
             android:layout_marginBottom="16dp"
-            android:text="@string/home_hardcore_note" />
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
             android:textSize="14sp"
-            android:lineSpacingMultiplier="1.4"
-            android:layout_marginBottom="16dp"
-            android:text="@string/home_proxy_hint" />
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:textSize="14sp"
-            android:lineSpacingMultiplier="1.4"
-            android:layout_marginBottom="16dp"
-            android:textStyle="bold"
-            android:text="@string/home_shutdown_warning" />
+            android:lineSpacingMultiplier="1.4" />
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btn_start_proxy"

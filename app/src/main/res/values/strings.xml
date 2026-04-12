@@ -27,8 +27,8 @@
 
     <!-- Home fragment -->
     <string name="home_description">RAOfflineProxy acts as a local proxy between RetroArch and RetroAchievements. It caches game data so you can play offline and earn achievements, then syncs them when you go back online.</string>
-    <string name="home_proxy_hint">Use the Start proxy button in the toolbar to start or stop the proxy service.</string>
-    <string name="home_shutdown_warning">On some devices, you should stop sync before killing the app. If the app is killed or crashes while sync is active, reopen RA Offline Proxy once so it can clean up retroarch.cfg.</string>
+    <string name="home_docs_link">For setup instructions and tips, visit our documentation.</string>
+    <string name="home_docs_url">https://d3bywedspcdj3v.cloudfront.net/introduction.html</string>
     <string name="home_token_warning">Please start a game in RetroArch while online with RetroAchievements logged in to refresh your session.</string>
 
     <!-- SAF grant dialog -->
@@ -127,9 +127,6 @@
     <string name="cd_expand_achievements">Expand achievements</string>
     <string name="cd_delete_cache">Delete cache</string>
     <string name="cd_delete_cached_game">Delete cached game</string>
-
-    <!-- Softcore note -->
-    <string name="home_hardcore_note">Only softcore achievements are supported. Hardcore mode is disabled while this proxy is active.</string>
 
     <!-- Notification -->
     <string name="notification_channel_name">RA Proxy</string>
