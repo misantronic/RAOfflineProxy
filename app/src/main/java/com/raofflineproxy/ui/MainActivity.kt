@@ -29,7 +29,6 @@ import com.raofflineproxy.R
 import com.raofflineproxy.databinding.ActivityMainBinding
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 @SuppressLint("UseKtx")
@@ -103,12 +102,7 @@ class MainActivity : AppCompatActivity() {
         if (savedInstanceState == null) {
             showFragment(HomeFragment(), R.id.nav_home)
             if (viewModel.state.value.autostartProxy) {
-                lifecycleScope.launch {
-                    val state = viewModel.state.first { it.cfgIsPatched != null }
-                    if (state.cfgIsPatched == true) {
-                        viewModel.startProxy(treeUri = PrefsConstants.loadSafUri(this@MainActivity))
-                    }
-                }
+                viewModel.startProxy(treeUri = PrefsConstants.loadSafUri(this@MainActivity))
             }
         }
 
