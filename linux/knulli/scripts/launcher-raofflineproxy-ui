@@ -1,0 +1,88 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+BIN_DIR="/userdata/system/raofflineproxy/bin"
+STATE_FILE="/userdata/system/raofflineproxy/ui-state.txt"
+
+write_state() {
+  local title="$1"
+  local body="$2"
+
+  mkdir -p "$(dirname "${STATE_FILE}")"
+  cat > "${STATE_FILE}" <<EOF
+${title}
+
+${body}
+
+Saved to:
+  ${STATE_FILE}
+EOF
+}
+
+show_message() {
+  local title="$1"
+  local body="$2"
+  local message="${title}: ${body}"
+
+  if command -v notify-send >/dev/null 2>&1; then
+    notify-send "${title}" "${body}" >/dev/null 2>&1 && return 0
+  fi
+
+  if command -v batocera-es-swissknife >/dev/null 2>&1; then
+    batocera-es-swissknife --message "${message}" >/dev/null 2>&1 && return 0
+    batocera-es-swissknife --popup "${message}" >/dev/null 2>&1 && return 0
+    batocera-es-swissknife --notification "${message}" >/dev/null 2>&1 && return 0
+  fi
+
+  return 1
+}
+
+run_status() {
+  local output
+  output="$("${BIN_DIR}/raofflineproxy" status 2>&1 || true)"
+  write_state "RAOfflineProxy Status" "${output}"
+  show_message "RAOfflineProxy Status" "Status written to ui-state.txt" || true
+}
+
+run_start() {
+  local output
+  if output="$("${BIN_DIR}/raofflineproxy" start-proxy 2>&1)"; then
+    write_state "RAOfflineProxy Start" "${output}"
+    show_message "RAOfflineProxy Start" "Proxy config patched" || true
+  else
+    write_state "RAOfflineProxy Start Failed" "${output}"
+    show_message "RAOfflineProxy Start Failed" "See ui-state.txt" || true
+    return 1
+  fi
+}
+
+run_stop() {
+  local output
+  if output="$("${BIN_DIR}/raofflineproxy" stop-proxy 2>&1)"; then
+    write_state "RAOfflineProxy Stop" "${output}"
+    show_message "RAOfflineProxy Stop" "Proxy config reverted" || true
+  else
+    write_state "RAOfflineProxy Stop Failed" "${output}"
+    show_message "RAOfflineProxy Stop Failed" "See ui-state.txt" || true
+    return 1
+  fi
+}
+
+ACTION="${1:-status}"
+
+case "${ACTION}" in
+  start)
+    run_start
+    ;;
+  stop)
+    run_stop
+    ;;
+  status)
+    run_status
+    ;;
+  *)
+    write_state "RAOfflineProxy" "Unknown action: ${ACTION}"
+    show_message "RAOfflineProxy" "Unknown action: ${ACTION}" || true
+    exit 2
+    ;;
+esac
