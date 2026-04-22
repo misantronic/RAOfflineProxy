@@ -30,6 +30,8 @@ Sync events:
 
 Awards are sent in the order they were queued (oldest first).
 
+When a queued award is flushed, the proxy computes the elapsed time since it was queued and sends that as the `o` offset parameter. RetroAchievements currently caps that backdate window at 14 days, so RAOfflineProxy clamps `o` to a maximum of `1209600` seconds and recomputes the validation hash `v` using the same clamped value.
+
 | Outcome | Behaviour |
 |---|---|
 | **Success** | Award is removed from the queue |
