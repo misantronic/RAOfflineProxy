@@ -29,6 +29,7 @@ import java.security.MessageDigest
 private const val TAG = "RAProxy/AwardFlusher"
 private const val MAX_RETRIES = 5
 private const val GENESIS_HASH = "genesis"
+internal const val MAX_AWARD_OFFSET_SECONDS = 14L * 24 * 60 * 60
 private const val POST_FLUSH_REFRESH_DELAY_MS = 3_000L
 
 sealed interface FlushEvent {
@@ -84,6 +85,38 @@ internal fun computeValidationHash(
         md.update(secondsSinceUnlock.toUInt().toString().toByteArray())
     }
     return md.digest().toHexString()
+}
+
+internal fun clampAwardOffsetSeconds(rawOffsetSeconds: Long): Long =
+    rawOffsetSeconds.coerceIn(0, MAX_AWARD_OFFSET_SECONDS)
+
+internal fun buildAwardRequestBody(
+    award: PendingAward,
+    nowMillis: Long = System.currentTimeMillis(),
+    publicKeyBase64: () -> String = {
+        runCatching { AwardKeyManager.getPublicKeyBase64() }.getOrElse { "" }
+    }
+): String {
+    var body = award.requestBody
+
+    val rawOffsetSeconds = (nowMillis - award.queuedAt) / 1000
+    val offsetSeconds = clampAwardOffsetSeconds(rawOffsetSeconds)
+    if (offsetSeconds > 0) {
+        val achievementId = extractFormParam(body, "a")?.toIntOrNull() ?: award.achievementId
+        val username = extractFormParam(body, "u") ?: ""
+        val hardcore = extractFormParam(body, "h")?.toIntOrNull() ?: 0
+        val newHash = computeValidationHash(achievementId, username, hardcore, offsetSeconds)
+        body = replaceOrAppendFormParam(body, "v", newHash)
+        body = replaceOrAppendFormParam(body, "o", offsetSeconds.toString())
+    }
+
+    if (award.payloadHash.isEmpty()) return body
+
+    body = replaceOrAppendFormParam(body, "ra_chain_payload_hash", award.payloadHash)
+    body = replaceOrAppendFormParam(body, "ra_chain_prev_hash", award.prevHash)
+    body = replaceOrAppendFormParam(body, "ra_chain_sig", award.signature)
+    body = replaceOrAppendFormParam(body, "ra_chain_pubkey", publicKeyBase64())
+    return body
 }
 
 internal fun verifyChain(
@@ -296,7 +329,7 @@ class AwardFlusher(
     private fun sendAward(award: PendingAward): FlushResult {
         return try {
             val url = "$RA_HOST${award.queryString}"
-            val body = buildRequestBody(award)
+            val body = buildAwardRequestBody(award)
             val request = Request.Builder()
                 .url(url)
                 .header("User-Agent", proxyUserAgent(award.userAgent))
@@ -336,27 +369,4 @@ class AwardFlusher(
         }
     }
 
-    private fun buildRequestBody(award: PendingAward): String {
-        var body = award.requestBody
-
-        val offsetSeconds = (System.currentTimeMillis() - award.queuedAt) / 1000
-        if (offsetSeconds > 0) {
-            val achievementId = extractFormParam(body, "a")?.toIntOrNull() ?: award.achievementId
-            val username = extractFormParam(body, "u") ?: ""
-            val hardcore = extractFormParam(body, "h")?.toIntOrNull() ?: 0
-            val newHash = computeValidationHash(achievementId, username, hardcore, offsetSeconds)
-            body = replaceOrAppendFormParam(body, "v", newHash)
-            body = replaceOrAppendFormParam(body, "o", offsetSeconds.toString())
-            Log.d(TAG, "Injected offset: o=$offsetSeconds, recomputed v=$newHash for achievement $achievementId")
-        }
-
-        if (award.payloadHash.isEmpty()) return body
-
-        val pubKey = runCatching { AwardKeyManager.getPublicKeyBase64() }.getOrElse { "" }
-        body = replaceOrAppendFormParam(body, "ra_chain_payload_hash", award.payloadHash)
-        body = replaceOrAppendFormParam(body, "ra_chain_prev_hash", award.prevHash)
-        body = replaceOrAppendFormParam(body, "ra_chain_sig", award.signature)
-        body = replaceOrAppendFormParam(body, "ra_chain_pubkey", pubKey)
-        return body
-    }
 }

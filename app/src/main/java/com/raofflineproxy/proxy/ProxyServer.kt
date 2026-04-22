@@ -30,6 +30,7 @@ import java.net.ServerSocket
 import java.net.Socket
 import java.net.SocketTimeoutException
 import java.util.Base64
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.ThreadPoolExecutor
 import java.util.concurrent.TimeUnit
@@ -38,6 +39,7 @@ private const val TAG = "RAProxy"
 private const val MAX_WORKER_THREADS = 8
 private const val SOCKET_TIMEOUT_MS = 30_000
 private const val MAX_REQUEST_BODY_BYTES = 1_048_576 // 1 MiB — rcheevos requests are small
+private const val DB_OPERATION_TIMEOUT_SECONDS = 3L
 private val SUCCESS_TRUE_REGEX = Regex("\"Success\"\\s*:\\s*true(?=\\s*[,}])")
 
 // These requests mutate state on the RA server — do not serve from cache offline
@@ -395,13 +397,13 @@ class ProxyServer(
     private fun queueAward(path: String, rawBody: String, headers: Map<String, String>): QueueAwardResult {
         val achievementId = extractParam("a", path, rawBody)?.toIntOrNull() ?: 0
         if (achievementId > 0) {
-            val latch = java.util.concurrent.CountDownLatch(1)
+            val latch = CountDownLatch(1)
             var alreadyQueued = false
             scope.launch(Dispatchers.IO) {
                 alreadyQueued = db.pendingAwardDao().existsByAchievementId(achievementId)
                 latch.countDown()
             }
-            latch.await(3, TimeUnit.SECONDS)
+            latch.await(DB_OPERATION_TIMEOUT_SECONDS, TimeUnit.SECONDS)
             if (alreadyQueued) {
                 Log.i(TAG, "Award already queued: achievementId=$achievementId, skipping duplicate")
                 return QueueAwardResult.Queued
@@ -429,12 +431,16 @@ class ProxyServer(
                 return QueueAwardResult.Error("signing_failed")
             }
 
-        scope.launch(Dispatchers.IO) {
-            db.pendingAwardDao().upsert(signedAward)
-            Log.i(TAG, "Award queued and signed: achievementId=${signedAward.achievementId}")
+        return when (val result = awaitPendingAwardWrite(scope, signedAward, db.pendingAwardDao()::upsert)) {
+            QueueAwardResult.Queued -> {
+                Log.i(TAG, "Award queued and signed: achievementId=${signedAward.achievementId}")
+                QueueAwardResult.Queued
+            }
+            is QueueAwardResult.Error -> {
+                Log.e(TAG, "Award queue write failed: ${result.message}")
+                result
+            }
         }
-
-        return QueueAwardResult.Queued
     }
 
     private fun fetchCachedScore(path: String, rawBody: String): Int {
@@ -571,6 +577,34 @@ internal fun buildPendingAward(
         signature = signature,
         signedAt = signedAt
     )
+}
+
+internal fun awaitPendingAwardWrite(
+    scope: CoroutineScope,
+    award: PendingAward,
+    upsertAward: suspend (PendingAward) -> Unit,
+    timeoutSeconds: Long = DB_OPERATION_TIMEOUT_SECONDS
+): QueueAwardResult {
+    val latch = CountDownLatch(1)
+    var writeError: String? = null
+
+    scope.launch(Dispatchers.IO) {
+        runCatching {
+            upsertAward(award)
+        }.onFailure {
+            writeError = it.message ?: "db_write_failed"
+        }
+        latch.countDown()
+    }
+
+    if (!latch.await(timeoutSeconds, TimeUnit.SECONDS)) {
+        return QueueAwardResult.Error("db_write_timeout")
+    }
+    if (writeError != null) {
+        return QueueAwardResult.Error("db_write_failed")
+    }
+
+    return QueueAwardResult.Queued
 }
 
 internal fun shouldQueueAward(result: UpstreamResult): Boolean = result is UpstreamResult.NetworkError

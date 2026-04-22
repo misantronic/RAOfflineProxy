@@ -11,6 +11,7 @@ import com.raofflineproxy.proxy.proxyIsHardcoreRequest
 import com.raofflineproxy.proxy.ParsedRequestLineResult
 import com.raofflineproxy.proxy.UpstreamResult
 import com.raofflineproxy.proxy.buildPendingAward
+import com.raofflineproxy.proxy.awaitPendingAwardWrite
 import com.raofflineproxy.proxy.parseContentLength
 import com.raofflineproxy.proxy.parseRequestLine
 import com.raofflineproxy.proxy.sanitizeHttpReasonPhrase
@@ -25,6 +26,8 @@ import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 
 class ProxyServerTest {
 
@@ -416,6 +419,49 @@ class ProxyServerTest {
         )
 
         assertNull(award)
+    }
+
+    @Test
+    fun awaitPendingAwardWrite_returnsQueuedAfterWriteCompletes() {
+        val scope = CoroutineScope(Dispatchers.Default)
+        val award = buildPendingAward(
+            path = "/dorequest.php?r=awardachievement&a=123&u=player&t=tok&h=0",
+            rawBody = "a=123&u=player&t=tok&h=0&v=abc",
+            headers = mapOf("user-agent" to "rcheevos/11.4.0"),
+            loadPrevHash = { "genesis" },
+            signBytes = { "sig".toByteArray() },
+            queuedAt = 1000L
+        )!!
+        var persisted = false
+
+        val result = awaitPendingAwardWrite(scope, award, {
+            Thread.sleep(50)
+            persisted = true
+        }, timeoutSeconds = 1)
+
+        assertTrue(result is com.raofflineproxy.proxy.QueueAwardResult.Queued)
+        assertTrue(persisted)
+    }
+
+    @Test
+    fun awaitPendingAwardWrite_returnsErrorWhenWriteFails() {
+        val scope = CoroutineScope(Dispatchers.Default)
+        val award = buildPendingAward(
+            path = "/dorequest.php?r=awardachievement&a=123&u=player&t=tok&h=0",
+            rawBody = "a=123&u=player&t=tok&h=0&v=abc",
+            headers = mapOf("user-agent" to "rcheevos/11.4.0"),
+            loadPrevHash = { "genesis" },
+            signBytes = { "sig".toByteArray() },
+            queuedAt = 1000L
+        )!!
+
+        val result = awaitPendingAwardWrite(scope, award, {
+            throw IllegalStateException("boom")
+        }, timeoutSeconds = 1)
+
+        assertTrue(result is com.raofflineproxy.proxy.QueueAwardResult.Error)
+        result as com.raofflineproxy.proxy.QueueAwardResult.Error
+        assertEquals("db_write_failed", result.message)
     }
 
     @Test

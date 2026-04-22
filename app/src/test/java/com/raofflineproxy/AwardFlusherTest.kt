@@ -2,7 +2,10 @@ package com.raofflineproxy
 
 import com.raofflineproxy.data.PendingAward
 import com.raofflineproxy.proxy.ChainVerificationResult
+import com.raofflineproxy.proxy.MAX_AWARD_OFFSET_SECONDS
+import com.raofflineproxy.proxy.buildAwardRequestBody
 import com.raofflineproxy.proxy.canonicalPayload
+import com.raofflineproxy.proxy.clampAwardOffsetSeconds
 import com.raofflineproxy.proxy.computeValidationHash
 import com.raofflineproxy.proxy.isHardcoreAward
 import com.raofflineproxy.proxy.replaceOrAppendFormParam
@@ -198,6 +201,50 @@ class AwardFlusherTest {
         val softcore = computeValidationHash(42, "user", 0, 0)
         val hardcore = computeValidationHash(42, "user", 1, 0)
         assertTrue(softcore != hardcore)
+    }
+
+    @Test
+    fun clampAwardOffsetSeconds_withinLimit_unchanged() {
+        assertEquals(60L, clampAwardOffsetSeconds(60L))
+    }
+
+    @Test
+    fun clampAwardOffsetSeconds_aboveLimit_clamped() {
+        assertEquals(MAX_AWARD_OFFSET_SECONDS, clampAwardOffsetSeconds(MAX_AWARD_OFFSET_SECONDS + 1))
+    }
+
+    @Test
+    fun buildAwardRequestBody_usesActualOffsetWithinLimit() {
+        val queuedAt = 1_000L
+        val nowMillis = queuedAt + 30_000L
+        val body = buildAwardRequestBody(
+            award(queuedAt = queuedAt),
+            nowMillis = nowMillis,
+            publicKeyBase64 = { "" }
+        )
+
+        assertEquals("30", extractFormParam(body, "o"))
+        assertEquals(
+            computeValidationHash(100, "player", 0, 30L),
+            extractFormParam(body, "v")
+        )
+    }
+
+    @Test
+    fun buildAwardRequestBody_clampsOffsetAtFourteenDays() {
+        val queuedAt = 1_000L
+        val nowMillis = queuedAt + ((MAX_AWARD_OFFSET_SECONDS + 60L) * 1000L)
+        val body = buildAwardRequestBody(
+            award(queuedAt = queuedAt),
+            nowMillis = nowMillis,
+            publicKeyBase64 = { "" }
+        )
+
+        assertEquals(MAX_AWARD_OFFSET_SECONDS.toString(), extractFormParam(body, "o"))
+        assertEquals(
+            computeValidationHash(100, "player", 0, MAX_AWARD_OFFSET_SECONDS),
+            extractFormParam(body, "v")
+        )
     }
 
     // ── verifyChain() ──
