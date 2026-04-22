@@ -4,7 +4,7 @@ layout: home
 hero:
   name: RAOfflineProxy
   text: RetroAchievements for RetroArch - Offline
-  tagline: Alpha release v1.0.0-alpha1. A local Android proxy that lets you earn softcore RetroAchievements through RetroArch without an internet connection.
+  tagline: A local Android proxy that lets you earn softcore RetroAchievements through RetroArch without an internet connection.
   image:
     src: /logo.png
     alt: RAOfflineProxy
@@ -18,9 +18,6 @@ hero:
     - theme: alt
       text: View on GitHub
       link: https://github.com/misantronic/RAOfflineProxy
-    - theme: alt
-      text: Contact / Feedback
-      link: /contact
 
 features:
   - icon: 💾
@@ -36,3 +33,10 @@ features:
     title: Always Ready
     details: Optionally starts in the background when your device boots, so you never have to think about it.
 ---
+
+::: warning Alpha Release
+RAOfflineProxy is currently an alpha release. Rough edges are still possible, and feedback is always welcome.
+
+- [Contact / Feedback](/contact)
+- [GitHub Issues](https://github.com/misantronic/RAOfflineProxy/issues)
+:::

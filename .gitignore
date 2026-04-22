@@ -13,6 +13,7 @@ app/release/
 
 node_modules
 docs/.vitepress/dist
+docs/.vitepress/cache
 keystore.properties
 AGENTS.md
 .agents/
