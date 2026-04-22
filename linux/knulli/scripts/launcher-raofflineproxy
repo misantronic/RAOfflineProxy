@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+BASE_DIR="/userdata/system/raofflineproxy"
+export PYTHONPATH="${BASE_DIR}/app${PYTHONPATH:+:${PYTHONPATH}}"
+
+exec /usr/bin/python3 -m raofflineproxy.main "$@"

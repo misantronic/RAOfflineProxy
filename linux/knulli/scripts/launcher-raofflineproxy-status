@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+STATE_FILE="/userdata/system/raofflineproxy/ui-state.txt"
+
+/userdata/system/raofflineproxy/bin/raofflineproxy status > "${STATE_FILE}"
+cat "${STATE_FILE}"
