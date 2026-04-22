@@ -11,3 +11,32 @@
   --vp-c-brand-3: #2e699d;
   --vp-c-brand-soft: rgba(28, 81, 130, 0.22);
 }
+
+.VPNavBarTitle .title {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: 0.55rem;
+  align-items: center;
+}
+
+.VPNavBarTitle .title .logo {
+  grid-column: 1;
+  grid-row: 1 / span 2;
+}
+
+.VPNavBarTitle .title span {
+  grid-column: 2;
+  grid-row: 1;
+  margin-top: 0.4rem;
+}
+
+.VPNavBarTitle .title::after {
+  content: 'v1.0.0-alpha1';
+  grid-column: 2;
+  grid-row: 2;
+  margin-top: -1.4rem;
+  font-size: 0.64rem;
+  line-height: 1;
+  letter-spacing: 0.06em;
+  color: var(--vp-c-text-3);
+}
