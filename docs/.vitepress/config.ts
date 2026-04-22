@@ -5,7 +5,7 @@ export default defineConfig({
   description: 'Play RetroAchievements offline on Android — documentation',
   base: '/',
 
-  appearance: 'dark',
+  appearance: 'force-dark',
 
   head: [
     ['link', { rel: 'icon', type: 'image/png', href: '/logo.png' }],
