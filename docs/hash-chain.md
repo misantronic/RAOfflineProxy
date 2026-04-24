@@ -4,7 +4,7 @@
 
 Every award that is queued offline is cryptographically signed and chained to the previous one. This provides **tamper evidence** — if the local data is modified after awards are queued, the chain will be detected as broken and the entire sync will be blocked.
 
-This design is inspired by the [melonDS offline RetroAchievements implementation](https://github.com/SapphireRhodonite) (Feb 2026), adapted to the proxy context.
+This design is inspired by the [melonDS offline RetroAchievements implementation](https://www.thememorycore.com/feb-18-2026-offline-retroachievements/) by [SapphireRhodonite](https://github.com/SapphireRhodonite) (Feb 2026), adapted to the proxy context.
 
 ## Three-Layer Mechanism
 
