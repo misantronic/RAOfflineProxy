@@ -36,6 +36,7 @@ import com.raofflineproxy.proxy.resolveCachedGameIconPath
 import com.raofflineproxy.proxy.scanRomFolder
 import com.raofflineproxy.service.ProxyService
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -49,6 +50,7 @@ enum class AuthState { Unknown, Valid, Invalid }
 
 data class MainUiState(
     val proxyRunning: Boolean = false,
+    val proxyToggleInProgress: Boolean = false,
     val isOnline: Boolean = false,
     val authState: AuthState = AuthState.Unknown,
     val autostartProxy: Boolean = false,
@@ -331,72 +333,94 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun startProxy(treeUri: Uri? = null) {
         val app = getApplication<Application>()
         viewModelScope.launch {
-            val result = withContext(Dispatchers.IO) { patchRetroArchCfg(app, treeUri) }
-            if (result.needsSafGrant) {
+            if (_state.value.proxyToggleInProgress) return@launch
+
+            _state.value = _state.value.copy(proxyToggleInProgress = true)
+
+            try {
+                val prefs = app.getSharedPreferences(PrefsConstants.PREFS_NAME, Context.MODE_PRIVATE)
+                prefs.edit { remove(PrefsConstants.KEY_SKIP_NEXT_CFG_REVERT) }
+
+                val result = withContext(Dispatchers.IO) { patchRetroArchCfg(app, treeUri) }
+                if (result.needsSafGrant) {
+                    _state.value = _state.value.copy(
+                        needsSafGrant = true,
+                        cfgPatchMessage = result.message,
+                        cfgPatchSuccess = false
+                    )
+                    return@launch
+                }
+                if (result.copyBackPath != null) {
+                    _state.value = _state.value.copy(
+                        cfgPatchMessage = result.message,
+                        cfgPatchSuccess = result.success,
+                        cfgCopyBackPath = result.copyBackPath
+                    )
+                    return@launch
+                }
+                if (!result.success) {
+                    _state.value = _state.value.copy(
+                        cfgPatchMessage = result.message,
+                        cfgPatchSuccess = false
+                    )
+                    return@launch
+                }
+                prefs.edit {
+                    putBoolean(
+                        PrefsConstants.KEY_HARDCORE_WAS_ENABLED,
+                        result.hardcoreWasEnabled
+                    )
+                }
+                ProxyService.start(app)
                 _state.value = _state.value.copy(
-                    needsSafGrant = true,
-                    cfgPatchMessage = result.message,
-                    cfgPatchSuccess = false
+                    proxyRunning = true,
+                    cfgIsPatched = true,
+                    cfgPatchMessage = str(R.string.proxy_started_success),
+                    cfgPatchSuccess = true,
+                    authState = AuthState.Unknown
                 )
-                return@launch
+                validateToken()
+            } finally {
+                delay(250)
+                _state.value = _state.value.copy(proxyToggleInProgress = false)
             }
-            if (result.copyBackPath != null) {
-                _state.value = _state.value.copy(
-                    cfgPatchMessage = result.message,
-                    cfgPatchSuccess = result.success,
-                    cfgCopyBackPath = result.copyBackPath
-                )
-                return@launch
-            }
-            if (!result.success) {
-                _state.value = _state.value.copy(
-                    cfgPatchMessage = result.message,
-                    cfgPatchSuccess = false
-                )
-                return@launch
-            }
-            val prefs = app.getSharedPreferences(PrefsConstants.PREFS_NAME, Context.MODE_PRIVATE)
-            prefs.edit {
-                putBoolean(
-                    PrefsConstants.KEY_HARDCORE_WAS_ENABLED,
-                    result.hardcoreWasEnabled
-                )
-            }
-            ProxyService.start(app)
-            _state.value = _state.value.copy(
-                proxyRunning = true,
-                cfgIsPatched = true,
-                cfgPatchMessage = str(R.string.proxy_started_success),
-                cfgPatchSuccess = true,
-                authState = AuthState.Unknown
-            )
-            validateToken()
         }
     }
 
     fun stopProxy(treeUri: Uri? = null) {
         val app = getApplication<Application>()
         viewModelScope.launch {
-            val prefs = app.getSharedPreferences(PrefsConstants.PREFS_NAME, Context.MODE_PRIVATE)
-            val restoreHardcore = prefs.getBoolean(PrefsConstants.KEY_HARDCORE_WAS_ENABLED, false)
+            if (_state.value.proxyToggleInProgress) return@launch
 
-            ProxyService.stop(app)
+            _state.value = _state.value.copy(proxyToggleInProgress = true)
 
-            val result = withContext(Dispatchers.IO) { revertRetroArchCfg(app, treeUri, restoreHardcore) }
-            val revertedTarget = result.success && result.copyBackPath == null
+            try {
+                val prefs = app.getSharedPreferences(PrefsConstants.PREFS_NAME, Context.MODE_PRIVATE)
+                val restoreHardcore = prefs.getBoolean(PrefsConstants.KEY_HARDCORE_WAS_ENABLED, false)
+                val result = withContext(Dispatchers.IO) { revertRetroArchCfg(app, treeUri, restoreHardcore) }
+                val revertedTarget = result.success && result.copyBackPath == null
 
-            if (revertedTarget) {
-                prefs.edit { remove(PrefsConstants.KEY_HARDCORE_WAS_ENABLED) }
+                if (revertedTarget) {
+                    prefs.edit {
+                        remove(PrefsConstants.KEY_HARDCORE_WAS_ENABLED)
+                        putBoolean(PrefsConstants.KEY_SKIP_NEXT_CFG_REVERT, true)
+                    }
+                }
+
+                ProxyService.stop(app)
+
+                _state.value = _state.value.copy(
+                    proxyRunning = false,
+                    cfgIsPatched = if (revertedTarget) false else _state.value.cfgIsPatched,
+                    cfgPatchMessage = if (revertedTarget) str(R.string.proxy_stopped_success) else result.message,
+                    cfgPatchSuccess = if (revertedTarget) true else false,
+                    needsSafGrant = result.needsSafGrant,
+                    cfgCopyBackPath = result.copyBackPath
+                )
+            } finally {
+                delay(250)
+                _state.value = _state.value.copy(proxyToggleInProgress = false)
             }
-
-            _state.value = _state.value.copy(
-                proxyRunning = false,
-                cfgIsPatched = if (revertedTarget) false else _state.value.cfgIsPatched,
-                cfgPatchMessage = if (revertedTarget) str(R.string.proxy_stopped_success) else result.message,
-                cfgPatchSuccess = if (revertedTarget) true else false,
-                needsSafGrant = result.needsSafGrant,
-                cfgCopyBackPath = result.copyBackPath
-            )
         }
     }
 

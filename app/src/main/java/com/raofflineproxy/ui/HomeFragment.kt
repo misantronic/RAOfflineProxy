@@ -61,6 +61,8 @@ class HomeFragment : Fragment() {
             viewModel.state.collect { state ->
                 tokenWarning.visibility = if (state.proxyRunning && state.authState == AuthState.Invalid) View.VISIBLE else View.GONE
                 btnStartProxy.visibility = if (state.proxyRunning) View.GONE else View.VISIBLE
+                btnStartProxy.isEnabled = !state.proxyToggleInProgress
+                btnStartProxy.alpha = if (state.proxyToggleInProgress) 0.45f else 1f
                 btnGoToCachedGames.visibility = if (state.proxyRunning) View.VISIBLE else View.GONE
             }
         }

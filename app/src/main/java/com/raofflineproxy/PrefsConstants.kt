@@ -10,6 +10,7 @@ object PrefsConstants {
     const val KEY_SAF_TREE_URI = "saf_tree_uri"
     const val KEY_AUTOSTART_PROXY = "autostart_proxy"
     const val KEY_HARDCORE_WAS_ENABLED = "hardcore_was_enabled"
+    const val KEY_SKIP_NEXT_CFG_REVERT = "skip_next_cfg_revert"
     const val KEY_PROXY_PORT = "proxy_port"
 
     const val DEFAULT_PROXY_PORT = 8080

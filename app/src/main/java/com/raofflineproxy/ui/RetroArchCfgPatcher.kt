@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
+import android.util.AtomicFile
 import androidx.documentfile.provider.DocumentFile
 import com.raofflineproxy.proxyValue
 import com.raofflineproxy.R
@@ -190,12 +191,27 @@ private fun transformViaFile(
         if (transformed == original) {
             PatchResult(success = true, message = context.getString(strings.noOpMessage), hardcoreWasEnabled = hardcoreWas)
         } else {
-            target.writeText(transformed)
+            writeFileAtomically(target, transformed)
             PatchResult(success = true, message = context.getString(strings.successFile), hardcoreWasEnabled = hardcoreWas)
         }
     } catch (e: Exception) {
         PatchResult(success = false, message = context.getString(strings.errorFile, target.path, e.message))
     }
+
+private fun writeFileAtomically(target: File, content: String) {
+    val atomicFile = AtomicFile(target)
+    val bytes = content.toByteArray()
+    val output = atomicFile.startWrite()
+
+    try {
+        output.write(bytes)
+        output.flush()
+        atomicFile.finishWrite(output)
+    } catch (e: Exception) {
+        atomicFile.failWrite(output)
+        throw e
+    }
+}
 
 fun detectHardcoreEnabled(content: String): Boolean =
     Regex("""^\s*cheevos_hardcore_mode_enable\s*=\s*"true"\s*$""", RegexOption.MULTILINE)
