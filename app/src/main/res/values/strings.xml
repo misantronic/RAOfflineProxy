@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">RA Offline Proxy</string>
+    <string name="app_name">RAOfflineProxy</string>
     <string name="nav_open">Open navigation drawer</string>
     <string name="nav_close">Close navigation drawer</string>
     <string name="setting_autostart_label">Autostart %s at startup</string>
