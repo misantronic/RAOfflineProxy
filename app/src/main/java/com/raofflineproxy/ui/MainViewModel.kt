@@ -14,6 +14,7 @@ import com.raofflineproxy.buildApiUrl
 import com.raofflineproxy.PrefsConstants
 import com.raofflineproxy.R
 import com.raofflineproxy.RA_HOST
+import com.raofflineproxy.RequestFailureNotifier
 import com.raofflineproxy.parseFormParams
 import com.raofflineproxy.proxyUserAgent
 import com.raofflineproxy.data.AppDatabase
@@ -299,6 +300,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     val body = httpGet(url, userAgent)
                     JSONObject(body).optBoolean("Success", false)
                 } catch (e: Exception) {
+                    val errorMessage = e.message ?: str(R.string.request_error_unknown_reason)
+                    RequestFailureNotifier.report(
+                        str(R.string.request_failed_network, "patch", errorMessage)
+                    )
                     Log.w("RAProxy/Auth", "validateToken: live check failed — ${e.message}")
                     false
                 }

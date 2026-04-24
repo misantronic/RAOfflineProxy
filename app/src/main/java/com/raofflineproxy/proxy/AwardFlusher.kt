@@ -3,7 +3,9 @@ package com.raofflineproxy.proxy
 import android.content.Context
 import android.util.Base64
 import android.util.Log
+import com.raofflineproxy.R
 import com.raofflineproxy.RA_HOST
+import com.raofflineproxy.RequestFailureNotifier
 import com.raofflineproxy.data.AppDatabase
 import com.raofflineproxy.data.CacheKeys
 import com.raofflineproxy.data.PendingAward
@@ -345,16 +347,27 @@ class AwardFlusher(
                 Log.d(TAG, "← RA ${resp.code} for ${redactTokens(award.queryString)} (${responseBody.length} bytes)")
 
                 if (resp.code == 401 || resp.code == 403) {
-                    return FlushResult.AuthError("Token rejected by server (HTTP ${resp.code})")
+                    val errorMessage = "Token rejected by server (HTTP ${resp.code})"
+                    RequestFailureNotifier.report(
+                        context.getString(R.string.request_failed_award_sync, award.achievementId, errorMessage)
+                    )
+                    return FlushResult.AuthError(errorMessage)
                 }
                 if (!resp.isSuccessful) {
-                    return FlushResult.NetworkError("HTTP ${resp.code}")
+                    val errorMessage = "HTTP ${resp.code}"
+                    RequestFailureNotifier.report(
+                        context.getString(R.string.request_failed_award_sync, award.achievementId, errorMessage)
+                    )
+                    return FlushResult.NetworkError(errorMessage)
                 }
                 val json = runCatching { JSONObject(responseBody) }.getOrNull()
                 val success = json?.optBoolean("Success", false) ?: false
                 if (!success) {
                     val error = json?.optString("Error")?.takeIf { it.isNotEmpty() }
                         ?: "Server returned Success:false"
+                    RequestFailureNotifier.report(
+                        context.getString(R.string.request_failed_award_sync, award.achievementId, error)
+                    )
                     val isAuthError = error.contains("Invalid", ignoreCase = true)
                         || error.contains("token", ignoreCase = true)
                         || error.contains("credentials", ignoreCase = true)
@@ -365,7 +378,11 @@ class AwardFlusher(
             }
         } catch (e: Exception) {
             Log.e(TAG, "Award flush exception for ${award.id}: ${e.message}")
-            FlushResult.NetworkError(e.message ?: "Unknown network error")
+            val errorMessage = e.message ?: context.getString(R.string.request_error_unknown_reason)
+            RequestFailureNotifier.report(
+                context.getString(R.string.request_failed_award_sync, award.achievementId, errorMessage)
+            )
+            FlushResult.NetworkError(errorMessage)
         }
     }
 
