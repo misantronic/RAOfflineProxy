@@ -4,7 +4,9 @@ import android.content.Context
 import android.net.Uri
 import android.util.Log
 import androidx.documentfile.provider.DocumentFile
+import com.raofflineproxy.R
 import com.raofflineproxy.RA_HOST
+import com.raofflineproxy.RequestFailureNotifier
 import com.raofflineproxy.buildApiUrl
 import com.raofflineproxy.proxyBase
 import com.raofflineproxy.toHexString
@@ -62,11 +64,18 @@ suspend fun refreshGamePatch(
         httpGet(url, userAgent)
     } catch (e: Exception) {
         Log.e("RAProxy", "refreshGamePatch failed for gameId=$gameId: ${e.message}")
+        val errorMessage = e.message ?: context.getString(R.string.request_error_unknown_reason)
+        RequestFailureNotifier.report(
+            context.getString(R.string.request_failed_network, "patch", errorMessage)
+        )
         return null
     }
     val json = runCatching { JSONObject(responseBody) }.getOrNull()
     if (json == null || !json.optBoolean("Success", false)) {
         Log.e("RAProxy", "refreshGamePatch returned invalid response for gameId=$gameId")
+        RequestFailureNotifier.report(
+            context.getString(R.string.request_failed_invalid_response, "patch")
+        )
         return null
     }
     db.cacheDao().upsert(CacheEntry(

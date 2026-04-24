@@ -26,6 +26,7 @@ import com.google.android.material.snackbar.Snackbar
 import com.raofflineproxy.BuildConfig
 import com.raofflineproxy.PrefsConstants
 import com.raofflineproxy.R
+import com.raofflineproxy.RequestFailureNotifier
 import com.raofflineproxy.databinding.ActivityMainBinding
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -40,6 +41,7 @@ class MainActivity : AppCompatActivity() {
     private val viewModel: MainViewModel by viewModels()
     private var proxyMenuItem: MenuItem? = null
     private var snackbar: Snackbar? = null
+    private var requestErrorSnackbar: Snackbar? = null
     private var pendingSnackbarJob: Job? = null
     private var pendingStartTokenWarning = false
 
@@ -118,6 +120,18 @@ class MainActivity : AppCompatActivity() {
                 }
 
                 handlePatchSnackbar(state)
+            }
+        }
+
+        lifecycleScope.launch {
+            RequestFailureNotifier.events.collect { message ->
+                requestErrorSnackbar?.dismiss()
+                requestErrorSnackbar = Snackbar.make(binding.fragmentContainer, message, Snackbar.LENGTH_INDEFINITE)
+                    .setAction(R.string.action_ok) {
+                        requestErrorSnackbar?.dismiss()
+                        requestErrorSnackbar = null
+                    }
+                    .also { it.show() }
             }
         }
     }

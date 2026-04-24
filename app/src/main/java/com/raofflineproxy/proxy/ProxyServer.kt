@@ -1,7 +1,9 @@
 package com.raofflineproxy.proxy
 
 import android.util.Log
+import com.raofflineproxy.R
 import com.raofflineproxy.RA_HOST
+import com.raofflineproxy.RequestFailureNotifier
 import com.raofflineproxy.extractFormParam
 import com.raofflineproxy.proxyHost
 import com.raofflineproxy.proxyUserAgent
@@ -259,7 +261,7 @@ class ProxyServer(
         }
 
         var cached: CacheEntry? = null
-        val latch = java.util.concurrent.CountDownLatch(1)
+        val latch = CountDownLatch(1)
         scope.launch(Dispatchers.IO) {
             runCatching {
                 cacheSession(gameId, LoginCredentials(user, ""), db)
@@ -324,7 +326,7 @@ class ProxyServer(
         }
         var cached: CacheEntry? = null
         val key = cacheKey(path, rawBody)
-        val latch = java.util.concurrent.CountDownLatch(1)
+        val latch = CountDownLatch(1)
         scope.launch(Dispatchers.IO) {
             cached = db.cacheDao().get(key)
                 ?: db.cacheDao().getByPrefix("$key:")
@@ -359,6 +361,7 @@ class ProxyServer(
 
     private fun forwardToRAResult(method: String, path: String, rawBody: String, headers: Map<String, String>): UpstreamResult {
         return try {
+            val action = extractAction(path, rawBody) ?: context.getString(R.string.request_action_unknown)
             val url = "$RA_HOST$path"
             val builder = Request.Builder().url(url)
 
@@ -386,11 +389,19 @@ class ProxyServer(
                 if (resp.isSuccessful) {
                     UpstreamResult.Success(resp.code, message, body)
                 } else {
+                    RequestFailureNotifier.report(
+                        context.getString(R.string.request_failed_http, action, resp.code, message)
+                    )
                     UpstreamResult.HttpError(resp.code, message, body)
                 }
             }
         } catch (e: Exception) {
-            UpstreamResult.NetworkError(e.message ?: "unknown network error")
+            val action = extractAction(path, rawBody) ?: context.getString(R.string.request_action_unknown)
+            val errorMessage = e.message ?: context.getString(R.string.request_error_unknown_reason)
+            RequestFailureNotifier.report(
+                context.getString(R.string.request_failed_network, action, errorMessage)
+            )
+            UpstreamResult.NetworkError(errorMessage)
         }
     }
 
@@ -415,7 +426,7 @@ class ProxyServer(
             rawBody = rawBody,
             headers = headers,
             loadPrevHash = {
-                val latch = java.util.concurrent.CountDownLatch(1)
+                val latch = CountDownLatch(1)
                 var prevHash = "genesis"
                 scope.launch(Dispatchers.IO) {
                     prevHash = db.pendingAwardDao().getLatest()?.payloadHash ?: "genesis"
@@ -447,7 +458,7 @@ class ProxyServer(
         val user = extractParam("u", path, rawBody) ?: return 0
         val key = CacheKeys.login(user)
         var score = 0
-        val latch = java.util.concurrent.CountDownLatch(1)
+        val latch = CountDownLatch(1)
         scope.launch(Dispatchers.IO) {
             try {
                 val cached = db.cacheDao().get(key)
