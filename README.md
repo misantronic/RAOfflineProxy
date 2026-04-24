@@ -1,5 +1,7 @@
 # RAOfflineProxy
 
+![RAOfflineProxy logo](https://d3bywedspcdj3v.cloudfront.net/logo.png)
+
 An Android app that lets you earn **softcore RetroAchievements** through **RetroArch** without an internet connection.
 
 > **Current release stage: alpha (`v1.0.0-alpha1`).** This is the first public prerelease and has not gone through formal QA.
@@ -51,6 +53,10 @@ Full documentation is available at [raofflineproxy.com](https://raofflineproxy.c
 If you want to report a bug, ask a question, or send feedback about RAOfflineProxy, use the [Contact / Feedback Form](https://forms.gle/XPRfWe2hAqzYy3JX9).
 
 GitHub issue reports are also welcome at [github.com/misantronic/RAOfflineProxy/issues](https://github.com/misantronic/RAOfflineProxy/issues).
+
+## Support
+
+[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/M4M81YDHD4)
 
 ## License
 
