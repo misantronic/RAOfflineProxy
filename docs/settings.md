@@ -6,7 +6,7 @@ Navigate to **Settings** in the drawer to access the following options.
 
 ### Auto-start on Boot
 
-**Autostart RA Offline Proxy at startup** — when enabled, the proxy service starts automatically when the device boots.
+**Autostart RAOfflineProxy at startup** — when enabled, the proxy service starts automatically when the device boots.
 
 ::: warning Both conditions must be met
 Auto-start only works when **both** of the following are true:
