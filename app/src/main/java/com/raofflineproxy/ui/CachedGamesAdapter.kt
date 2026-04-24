@@ -74,12 +74,11 @@ class CachedGamesAdapter(
 
         private fun bindExpandedState(game: CachedGame, expanded: Boolean) {
             val hasAchievements = game.unlockedAchievements.isNotEmpty()
+            val hasPendingAwards = game.pendingAwardCount > 0
+            val showSummary = hasAchievements || hasPendingAwards
 
-            binding.tvAchievementCount.visibility = if (hasAchievements) View.VISIBLE else View.GONE
-            binding.tvAchievementCount.text = binding.root.context.getString(
-                R.string.cached_game_achievements_format,
-                game.unlockedAchievements.size
-            )
+            binding.tvAchievementCount.visibility = if (showSummary) View.VISIBLE else View.GONE
+            binding.tvAchievementCount.text = buildAchievementSummary(game)
             binding.ivExpand.visibility = if (hasAchievements) View.VISIBLE else View.INVISIBLE
             binding.ivExpand.rotation = if (expanded) 180f else 0f
             binding.layoutGameRow.contentDescription = binding.root.context.getString(
@@ -121,6 +120,30 @@ class CachedGamesAdapter(
                 expandedGameIds.remove(gameId)
             }
             notifyItemChanged(bindingAdapterPosition)
+        }
+
+        private fun buildAchievementSummary(game: CachedGame): String {
+            val resources = binding.root.resources
+            val unlockedText = resources.getQuantityString(
+                R.plurals.cached_game_unlocked_achievements,
+                game.unlockedAchievements.size,
+                game.unlockedAchievements.size
+            )
+
+            if (game.pendingAwardCount == 0) {
+                return unlockedText
+            }
+
+            val pendingText = resources.getQuantityString(
+                R.plurals.notification_pending_awards,
+                game.pendingAwardCount,
+                game.pendingAwardCount
+            )
+            return binding.root.context.getString(
+                R.string.cached_game_achievement_summary_with_pending,
+                unlockedText,
+                pendingText
+            )
         }
     }
 

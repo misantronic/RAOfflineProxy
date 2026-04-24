@@ -34,10 +34,10 @@ import com.raofflineproxy.proxy.resolveCachedGameIconPath
 import com.raofflineproxy.proxy.scanRomFolder
 import com.raofflineproxy.service.ProxyService
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
@@ -142,14 +142,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             }
         }
         viewModelScope.launch {
-            db.pendingAwardDao().observe().collect { awards ->
-                val resolved = awards.map { award -> resolvePendingAward(award) }
-                _state.value = _state.value.copy(pendingAwards = resolved)
-            }
-        }
-        viewModelScope.launch {
-            db.cacheDao().observePatchEntries()
-                .map { entries ->
+            combine(
+                db.pendingAwardDao().observe(),
+                db.cacheDao().observePatchEntries()
+            ) { awards, entries ->
+                val resolvedAwards = awards.map { award -> resolvePendingAward(award) }
+                val pendingAwardsByGameId = buildPendingAwardsByGameId(entries, awards)
+                val games = run {
                     val sessionKeys = db.cacheDao().getAllByPrefix(CacheKeys.PREFIX_UNLOCKS).map { it.cacheKey }
                     Log.d("RAProxy/Games", "patch entries=${entries.size}, unlocks keys in DB=${sessionKeys.size}")
                     entries.mapNotNull { entry ->
@@ -186,12 +185,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                             cachedAt = entry.cachedAt,
                             imageIconUrl = imageIconUrl,
                             unlockedCount = unlockedCount,
+                            pendingAwardCount = pendingAwardsByGameId[gameId] ?: 0,
                             totalAchievements = totalAchievements,
                             unlockedAchievements = unlockedAchievements
                         )
                     }
                 }
-                .collect { games ->
+                resolvedAwards to games
+            }.collect { (resolvedAwards, games) ->
+                    _state.value = _state.value.copy(pendingAwards = resolvedAwards)
                     _cachedGames.value = games
                     _state.value = _state.value.copy(cachedGames = games)
                     if (_state.value.proxyRunning && games.isNotEmpty() && _state.value.authState != AuthState.Valid) {
@@ -531,6 +533,48 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             hardcore = hardcore,
             lastError = award.lastError
         )
+    }
+
+    private fun buildPendingAwardsByGameId(
+        patchEntries: List<com.raofflineproxy.data.CacheEntry>,
+        awards: List<com.raofflineproxy.data.PendingAward>
+    ): Map<String, Int> {
+        if (patchEntries.isEmpty() || awards.isEmpty()) return emptyMap()
+
+        val achievementGameIds = buildAchievementGameIds(patchEntries)
+        if (achievementGameIds.isEmpty()) return emptyMap()
+
+        return buildMap {
+            awards.forEach { award ->
+                val achievementId = parsePendingAwardAchievementId(award) ?: return@forEach
+                val gameId = achievementGameIds[achievementId] ?: return@forEach
+                put(gameId, (get(gameId) ?: 0) + 1)
+            }
+        }
+    }
+
+    private fun buildAchievementGameIds(
+        patchEntries: List<com.raofflineproxy.data.CacheEntry>
+    ): Map<Int, String> = buildMap {
+        patchEntries.forEach { entry ->
+            val gameId = CacheKeys.parseGameIdStringFromPatchKey(entry.cacheKey) ?: return@forEach
+            val patchData = runCatching {
+                JSONObject(entry.responseBody).getJSONObject("PatchData")
+            }.getOrNull() ?: return@forEach
+            val achievements = patchData.optJSONArray("Achievements") ?: return@forEach
+            for (i in 0 until achievements.length()) {
+                val achievement = achievements.optJSONObject(i) ?: continue
+                val achievementId = achievement.optInt("ID")
+                if (achievementId != 0) {
+                    putIfAbsent(achievementId, gameId)
+                }
+            }
+        }
+    }
+
+    private fun parsePendingAwardAchievementId(award: com.raofflineproxy.data.PendingAward): Int? {
+        val params = parseFormParams(award.queryString.substringAfter("?", "") + "&" + award.requestBody)
+        return params["a"]?.toIntOrNull()
     }
 
     private fun buildUnlockedAchievements(
