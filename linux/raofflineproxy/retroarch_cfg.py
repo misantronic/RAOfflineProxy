@@ -6,6 +6,7 @@ from .config import proxy_value
 from .state import clear_patch_state, load_patch_state, save_patch_state
 
 HOST_KEY = "cheevos_custom_host"
+ENABLE_KEY = "cheevos_enable"
 HARDCORE_KEY = "cheevos_hardcore_mode_enable"
 
 
@@ -19,21 +20,25 @@ def is_patched_content(content: str, proxy_address: str) -> bool:
 
 def build_patched_content(content: str, proxy_address: str) -> str:
     with_host = _upsert_config_value(content, HOST_KEY, proxy_address)
-    return _upsert_config_value(with_host, HARDCORE_KEY, "false")
+    with_enable = _upsert_config_value(with_host, ENABLE_KEY, "true")
+    return _upsert_config_value(with_enable, HARDCORE_KEY, "false")
 
 
 def build_reverted_content(
     content: str,
     previous_host: Optional[str],
+    previous_enable: Optional[str],
     restore_hardcore: bool,
 ) -> str:
     restored_host = previous_host if previous_host is not None else ""
     with_host = _upsert_config_value(content, HOST_KEY, restored_host)
+    restored_enable = previous_enable if previous_enable is not None else ""
+    with_enable = _upsert_config_value(with_host, ENABLE_KEY, restored_enable)
 
     if not restore_hardcore:
-        return with_host
+        return with_enable
 
-    return _upsert_config_value(with_host, HARDCORE_KEY, "true")
+    return _upsert_config_value(with_enable, HARDCORE_KEY, "true")
 
 
 def patch_retroarch_cfg(cfg_path: str, config_data: dict) -> dict:
@@ -44,6 +49,7 @@ def patch_retroarch_cfg(cfg_path: str, config_data: dict) -> dict:
     original = target.read_text(encoding="utf-8", errors="replace")
     proxy_address = proxy_value(config_data)
     previous_host = _extract_config_value(original, HOST_KEY)
+    previous_enable = _extract_config_value(original, ENABLE_KEY)
     hardcore_was_enabled = detect_hardcore_enabled(original)
     transformed = build_patched_content(original, proxy_address)
     was_already_patched = transformed == original and is_patched_content(
@@ -58,13 +64,17 @@ def patch_retroarch_cfg(cfg_path: str, config_data: dict) -> dict:
             "cfg_path": str(target),
             "hardcore_was_enabled": hardcore_was_enabled,
             "previous_host": previous_host,
+            "previous_enable": previous_enable,
             "proxy_host": proxy_address,
+            "retroarch_cfg": str(target),
         }
     )
 
     return {
         "cfg_path": str(target),
         "hardcore_was_enabled": hardcore_was_enabled,
+        "previous_enable": previous_enable,
+        "previous_host": previous_host,
         "proxy_host": proxy_address,
         "changed": transformed != original,
         "already_patched": was_already_patched,
@@ -83,12 +93,14 @@ def revert_retroarch_cfg(cfg_path: Optional[str] = None) -> dict:
 
     current = target.read_text(encoding="utf-8", errors="replace")
     previous_host = patch_state.get("previous_host") if patch_state else ""
+    previous_enable = patch_state.get("previous_enable") if patch_state else ""
     restore_hardcore = (
         bool(patch_state.get("hardcore_was_enabled", False)) if patch_state else False
     )
     transformed = build_reverted_content(
         current,
         previous_host,
+        previous_enable,
         restore_hardcore,
     )
 
@@ -125,10 +137,25 @@ def status_retroarch_cfg(cfg_path: str, config_data: dict) -> dict:
         "cfg_path": str(target),
         "exists": True,
         "is_patched": is_patched_content(content, proxy_address),
+        "cheevos_enabled": _extract_config_value(content, ENABLE_KEY) == "true",
         "hardcore_enabled": detect_hardcore_enabled(content),
         "state_present": state is not None,
         "proxy_host": proxy_address,
     }
+
+
+def enforce_patched_cfg(cfg_path: str, config_data: dict) -> bool:
+    target = Path(cfg_path)
+    if not target.exists():
+        return False
+
+    current = target.read_text(encoding="utf-8", errors="replace")
+    transformed = build_patched_content(current, proxy_value(config_data))
+    if transformed == current:
+        return False
+
+    target.write_text(transformed, encoding="utf-8")
+    return True
 
 
 def _extract_config_value(content: str, key: str) -> str | None:

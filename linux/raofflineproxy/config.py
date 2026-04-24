@@ -2,6 +2,10 @@ import json
 import os
 from pathlib import Path
 
+RA_HOST = "https://retroachievements.org"
+PROXY_UA_TAG = "RAOfflineProxy/Linux"
+FALLBACK_USER_AGENT = "rcheevos/11.4.0"
+
 DEFAULT_PROXY_PORT = 8080
 MIN_PROXY_PORT = 1024
 MAX_PROXY_PORT = 65535
@@ -9,6 +13,12 @@ MAX_PROXY_PORT = 65535
 CONFIG_DIR = Path.home() / ".config" / "raofflineproxy"
 CONFIG_FILE = CONFIG_DIR / "config.json"
 STATE_FILE = CONFIG_DIR / "retroarch_patch_state.json"
+DATABASE_FILE = CONFIG_DIR / "proxy.sqlite3"
+PID_FILE = CONFIG_DIR / "service.pid"
+LOG_FILE = CONFIG_DIR / "service.log"
+STATUS_FILE = CONFIG_DIR / "service_status.json"
+AWARD_SECRET_FILE = CONFIG_DIR / "award_secret.key"
+DEFAULT_BATOCERA_CONF = Path("/userdata/system/batocera.conf")
 
 
 def ensure_config_dir() -> Path:
@@ -50,6 +60,29 @@ def proxy_host(config_data: dict) -> str:
 
 def proxy_value(config_data: dict) -> str:
     return f"{proxy_host(config_data)}:{proxy_port(config_data)}"
+
+
+def proxy_base(config_data: dict) -> str:
+    return f"http://{proxy_value(config_data)}"
+
+
+def upstream_host(config_data: dict) -> str:
+    return str(config_data.get("upstream_host") or RA_HOST).rstrip("/")
+
+
+def detect_batocera_conf(config_data: dict) -> str | None:
+    configured = config_data.get("batocera_conf")
+    if configured:
+        return str(configured)
+
+    env_override = os.environ.get("RAOFFLINEPROXY_BATOCERA_CONF")
+    if env_override:
+        return env_override
+
+    if DEFAULT_BATOCERA_CONF.exists():
+        return str(DEFAULT_BATOCERA_CONF)
+
+    return None
 
 
 def detect_retroarch_cfg() -> str:

@@ -13,7 +13,7 @@ This directory contains a portable KNULLI bundle for the early Linux `RAOfflineP
 
 Each Tools action writes a summary file to `/userdata/system/raofflineproxy/ui-state.txt` and also tries to trigger a frontend notification if KNULLI exposes a compatible helper.
 
-This first version only patches and reverts RetroArch config. It does not launch a background proxy server yet.
+This bundle now patches RetroArch config and launches the background Linux proxy service.
 
 ## Build
 
