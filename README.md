@@ -13,7 +13,7 @@ RAOfflineProxy runs a tiny local proxy on your device. It sits between RetroArch
 - **Play offline** — game data, achievement lists, and unlock history are cached locally so everything works without Wi-Fi or mobile data
 - **Automatic award sync** — achievements earned offline are queued and submitted to RetroAchievements as soon as you go online
 - **Offline timestamps** — each queued award records the actual time you earned it, so your RA profile shows the real unlock time
-- **Easy setup** — starting the proxy automatically patches RetroArch's config; stopping it reverts the change. If hardcore mode was enabled, it is restored on revert
+- **Easy setup** — starting the proxy automatically patches RetroArch's config; stopping it restores your original settings
 - **Scoped storage friendly** — uses SAF/folder access when direct config writes are not available; no all-files storage permission required
 - **ROM scanning** — scan a folder or add individual ROMs to pre-cache everything you need before going offline
 - **Auto-start on boot** — optionally starts in the background when your device boots
@@ -24,30 +24,38 @@ RAOfflineProxy runs a tiny local proxy on your device. It sits between RetroArch
 
 - Android **8.0** or newer
 - RetroArch installed (any variant)
-- A RetroAchievements account with your username and API token configured in RetroArch
+- A RetroAchievements account with your credentials configured in RetroArch
 
 ## Quick Start
 
-1. Install RAOfflineProxy and open it
-2. Start the proxy using the button in the action bar — this automatically patches RetroArch's config and re-checks your RA credentials
-3. Go to **Cached Games** and scan your ROM folder or add individual ROMs while online
-4. You are ready to play offline
+1. Install [RAOfflineProxy](https://github.com/misantronic/RAOfflineProxy/releases) and open it
+2. Enter your RetroAchievements credentials in RetroArch
+3. Start the proxy while online, then start any game in RetroArch and wait for a successful RA login
+4. Cache your games from **Cached Games**, or just start them while online to cache them automatically
+5. Play offline
 
 ## Important Shutdown Behavior
 
-- On some devices, you should stop sync before killing the app.
-- If the app is killed or crashes while the proxy/sync is active, reopen RAOfflineProxy once so it can clean up `retroarch.cfg`.
-- Swiping the app away is not a reliable substitute for pressing **Stop proxy** on all devices.
+- Always stop sync before killing the app.
+- On some devices, swiping the app away or crashing while the proxy is active does not reliably revert `retroarch.cfg` immediately.
+- If that happens, reopen RAOfflineProxy once so it can clean up `retroarch.cfg`.
 
 For detailed setup instructions, see the [documentation](https://d3bywedspcdj3v.cloudfront.net/installation.html).
 
 ## Build from Source
 
-**Requirements**: Android Studio with Android SDK API 34 and JDK 21 (bundled with Android Studio).
+**Requirements**: Android Studio with Android SDK API 36 and JDK 21 (bundled with Android Studio).
 
 ```bash
 export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
 ./gradlew assembleDebug
+```
+
+Run unit tests with:
+
+```bash
+export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
+./gradlew testDebugUnitTest
 ```
 
 ## Documentation
