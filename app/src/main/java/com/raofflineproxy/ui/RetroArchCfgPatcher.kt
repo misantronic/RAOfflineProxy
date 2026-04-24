@@ -11,6 +11,7 @@ import com.raofflineproxy.R
 import java.io.File
 
 private val EXT_STORAGE by lazy { Environment.getExternalStorageDirectory().path }
+private const val CFG_BACKUP_NAME = "retroarch.raofflineproxy.cfg"
 
 private val SOURCE_CANDIDATES by lazy {
     listOf(
@@ -89,12 +90,12 @@ internal fun revertManualEditInstructions(): String =
 
 fun patchRetroArchCfg(context: Context, treeUri: Uri?): PatchResult {
     val transform: (String) -> String = { buildPatchedContent(it, proxyValue(context)) }
-    return applyCfgTransform(context, treeUri, transform, PATCH_STRINGS, detectHardcore = true)
+    return applyCfgTransform(context, treeUri, transform, PATCH_STRINGS, detectHardcore = true, ensureBackup = true)
 }
 
 fun revertRetroArchCfg(context: Context, treeUri: Uri?, restoreHardcore: Boolean = false): PatchResult {
     val transform: (String) -> String = { buildRevertedContent(it, restoreHardcore) }
-    return applyCfgTransform(context, treeUri, transform, REVERT_STRINGS, detectHardcore = false)
+    return applyCfgTransform(context, treeUri, transform, REVERT_STRINGS, detectHardcore = false, ensureBackup = false)
 }
 
 private fun applyCfgTransform(
@@ -102,17 +103,18 @@ private fun applyCfgTransform(
     treeUri: Uri?,
     transform: (String) -> String,
     strings: CfgStrings,
-    detectHardcore: Boolean
+    detectHardcore: Boolean,
+    ensureBackup: Boolean
 ): PatchResult {
     if (treeUri != null) {
-        val safResult = transformViaSaf(context, treeUri, transform, strings, detectHardcore)
+        val safResult = transformViaSaf(context, treeUri, transform, strings, detectHardcore, ensureBackup)
         if (safResult != null) return safResult
     }
 
     val directCandidate = SOURCE_CANDIDATES.map(::File).firstOrNull { it.exists() }
 
     if (directCandidate != null && directCandidate.canWrite()) {
-        return transformViaFile(context, directCandidate, transform, strings, detectHardcore)
+        return transformViaFile(context, directCandidate, transform, strings, detectHardcore, ensureBackup)
     }
 
     if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.S_V2) {
@@ -143,18 +145,25 @@ private fun transformViaSaf(
     treeUri: Uri,
     transform: (String) -> String,
     strings: CfgStrings,
-    detectHardcore: Boolean
+    detectHardcore: Boolean,
+    ensureBackup: Boolean
 ): PatchResult? {
     val tree = DocumentFile.fromTreeUri(context, treeUri) ?: return null
 
     for (segments in SAF_CFG_PATHS) {
-        val cfgFile = segments.fold(tree as DocumentFile?) { dir, seg -> dir?.findFile(seg) }
+        val cfgParent = segments.dropLast(1).fold(tree as DocumentFile?) { dir, seg -> dir?.findFile(seg) }
+        val cfgFile = cfgParent?.findFile(segments.last())
         if (cfgFile == null || !cfgFile.exists()) continue
 
         return try {
             val original = context.contentResolver.openInputStream(cfgFile.uri)
                 ?.bufferedReader()?.use { it.readText() }
                 ?: return PatchResult(success = false, message = context.getString(R.string.patch_could_not_read, cfgFile.name))
+
+            if (ensureBackup) {
+                ensureSafBackupExists(context, cfgParent, original)
+                    ?: return PatchResult(success = false, message = context.getString(strings.errorSaf, "Could not create $CFG_BACKUP_NAME"))
+            }
 
             val hardcoreWas = if (detectHardcore) detectHardcoreEnabled(original) else false
             val transformed = transform(original)
@@ -182,10 +191,14 @@ private fun transformViaFile(
     target: File,
     transform: (String) -> String,
     strings: CfgStrings,
-    detectHardcore: Boolean
+    detectHardcore: Boolean,
+    ensureBackup: Boolean
 ): PatchResult =
     try {
         val original = target.readText()
+        if (ensureBackup) {
+            ensureBackupFileExists(target, original)
+        }
         val hardcoreWas = if (detectHardcore) detectHardcoreEnabled(original) else false
         val transformed = transform(original)
         if (transformed == original) {
@@ -197,6 +210,25 @@ private fun transformViaFile(
     } catch (e: Exception) {
         PatchResult(success = false, message = context.getString(strings.errorFile, target.path, e.message))
     }
+
+private fun ensureSafBackupExists(context: Context, directory: DocumentFile, originalContent: String): DocumentFile? {
+    directory.findFile(CFG_BACKUP_NAME)?.let { return it }
+
+    val backupFile = directory.createFile("application/octet-stream", CFG_BACKUP_NAME) ?: return null
+    val output = context.contentResolver.openOutputStream(backupFile.uri, "wt") ?: return null
+
+    output.use { it.write(originalContent.toByteArray()) }
+    return backupFile
+}
+
+internal fun backupFileFor(target: File): File = File(target.parentFile, CFG_BACKUP_NAME)
+
+internal fun ensureBackupFileExists(target: File, originalContent: String) {
+    val backup = backupFileFor(target)
+    if (backup.exists()) return
+
+    backup.writeText(originalContent)
+}
 
 private fun writeFileAtomically(target: File, content: String) {
     val atomicFile = AtomicFile(target)

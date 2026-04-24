@@ -55,6 +55,16 @@
 
 ---
 
+## Why is there a `retroarch.raofflineproxy.cfg` file?
+
+RAOfflineProxy creates this file as a one-time snapshot of `retroarch.cfg` the first time it starts patching and the backup is missing.
+
+- It is created only if the file does not already exist
+- It is not overwritten later
+- It is not used automatically by the app
+
+---
+
 ## A staging copy message appears asking me to manually copy a file
 
 **Cause:** The app could not write the patched config back to its original location (last-resort fallback).
