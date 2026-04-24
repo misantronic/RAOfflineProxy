@@ -29,6 +29,7 @@ class HomeFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         val tokenWarning = view.findViewById<TextView>(R.id.tv_token_warning)
         val btnStartProxy = view.findViewById<MaterialButton>(R.id.btn_start_proxy)
+        val btnGoToCachedGames = view.findViewById<MaterialButton>(R.id.btn_go_to_cached_games)
         val tvDocsLink = view.findViewById<TextView>(R.id.tv_docs_link)
 
         val fullText = getString(R.string.home_docs_link)
@@ -52,10 +53,15 @@ class HomeFragment : Fragment() {
             viewModel.startProxy(treeUri = PrefsConstants.loadSafUri(requireContext()))
         }
 
+        btnGoToCachedGames.setOnClickListener {
+            (activity as? MainActivity)?.navigateTo(R.id.nav_cached_games)
+        }
+
         viewLifecycleOwner.lifecycleScope.launch {
             viewModel.state.collect { state ->
                 tokenWarning.visibility = if (state.proxyRunning && state.authState == AuthState.Invalid) View.VISIBLE else View.GONE
                 btnStartProxy.visibility = if (state.proxyRunning) View.GONE else View.VISIBLE
+                btnGoToCachedGames.visibility = if (state.proxyRunning) View.VISIBLE else View.GONE
             }
         }
     }

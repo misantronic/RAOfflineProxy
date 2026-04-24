@@ -30,6 +30,7 @@
     <string name="home_docs_link">For setup instructions and tips, visit our documentation.</string>
     <string name="home_docs_url">https://d3bywedspcdj3v.cloudfront.net/introduction.html</string>
     <string name="home_token_warning">Please start a game in RetroArch while online with RetroAchievements logged in to refresh your session.</string>
+    <string name="home_go_to_cached_games">Go to Cached Games</string>
 
     <!-- SAF grant dialog -->
     <string name="saf_dialog_title">Folder Access Required</string>
