@@ -42,22 +42,6 @@ RAOfflineProxy runs a tiny local proxy on your device. It sits between RetroArch
 
 For detailed setup instructions, see the [documentation](https://raofflineproxy.com/installation.html).
 
-## Build from Source
-
-**Requirements**: Android Studio with Android SDK API 36 and JDK 21 (bundled with Android Studio).
-
-```bash
-export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
-./gradlew assembleDebug
-```
-
-Run unit tests with:
-
-```bash
-export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
-./gradlew testDebugUnitTest
-```
-
 ## Documentation
 
 Full documentation is available at [raofflineproxy.com](https://raofflineproxy.com).
