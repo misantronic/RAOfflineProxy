@@ -66,6 +66,8 @@
     <string name="flush_progress">Flushing award %1$d/%2$d…</string>
     <string name="flush_completed">Flushed %1$d of %2$d award(s).</string>
     <string name="flush_completed_with_stale">Flushed %1$d of %2$d award(s). %3$d skipped (stale).</string>
+    <string name="flush_completed_summary">Flush finished: %1$d sent, %2$d deleted skipped, %3$d stale skipped, %4$d still pending.</string>
+    <string name="flush_completed_sent_only">Flushed %1$d award(s).</string>
     <string name="flush_chain_broken">Flush blocked: award #%1$d failed integrity check (%2$s). Your pending awards may have been tampered with.</string>
     <string name="flush_refresh_failed">Flush blocked: could not refresh achievement data from server. %1$s</string>
 
@@ -109,6 +111,9 @@
     <!-- Pending awards adapter -->
     <string name="achievement_title_hardcore">%s (Hardcore)</string>
     <string name="points_format">%dpts</string>
+    <string name="pending_award_delete_title">Delete pending award?</string>
+    <string name="pending_award_delete_message">Delete "%1$s" from "%2$s"?</string>
+    <string name="pending_award_delete_action">Delete</string>
 
     <!-- Settings fragment -->
     <string name="setting_proxy_port_label">Proxy port</string>
@@ -136,6 +141,7 @@
     <string name="cd_expand_achievements">Expand achievements</string>
     <string name="cd_delete_cache">Delete cache</string>
     <string name="cd_delete_cached_game">Delete cached game</string>
+    <string name="cd_delete_pending_award">Delete pending award</string>
 
     <!-- Notification -->
     <string name="notification_channel_name">RA Proxy</string>

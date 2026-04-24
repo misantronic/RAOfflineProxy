@@ -4,6 +4,7 @@ import android.graphics.Typeface
 import android.text.SpannableStringBuilder
 import android.text.style.StyleSpan
 import android.view.LayoutInflater
+import android.view.View
 import android.view.ViewGroup
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
@@ -15,11 +16,16 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-class PendingAwardsAdapter : ListAdapter<PendingAwardUi, PendingAwardsAdapter.ViewHolder>(DIFF) {
+class PendingAwardsAdapter(
+    private val onDelete: (PendingAwardUi) -> Unit
+) : ListAdapter<PendingAwardUi, PendingAwardsAdapter.ViewHolder>(DIFF) {
 
     private val dateFormat = SimpleDateFormat("MMM d, HH:mm", Locale.getDefault())
 
-    class ViewHolder(private val binding: ItemPendingAwardBinding) :
+    class ViewHolder(
+        private val binding: ItemPendingAwardBinding,
+        private val onDelete: (PendingAwardUi) -> Unit
+    ) :
         RecyclerView.ViewHolder(binding.root) {
 
         fun bind(award: PendingAwardUi, dateFormat: SimpleDateFormat) {
@@ -39,15 +45,17 @@ class PendingAwardsAdapter : ListAdapter<PendingAwardUi, PendingAwardsAdapter.Vi
             binding.ivBadge.loadOrClear(award.badgeUrl)
             if (award.lastError != null) {
                 binding.tvLastError.text = award.lastError
-                binding.tvLastError.visibility = android.view.View.VISIBLE
+                binding.tvLastError.visibility = View.VISIBLE
             } else {
-                binding.tvLastError.visibility = android.view.View.GONE
+                binding.tvLastError.visibility = View.GONE
             }
+            binding.btnDeleteAward.setOnClickListener { onDelete(award) }
         }
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int) = ViewHolder(
-        ItemPendingAwardBinding.inflate(LayoutInflater.from(parent.context), parent, false)
+        ItemPendingAwardBinding.inflate(LayoutInflater.from(parent.context), parent, false),
+        onDelete
     )
 
     override fun onBindViewHolder(holder: ViewHolder, position: Int) =
@@ -55,8 +63,7 @@ class PendingAwardsAdapter : ListAdapter<PendingAwardUi, PendingAwardsAdapter.Vi
 
     companion object {
         private val DIFF = object : DiffUtil.ItemCallback<PendingAwardUi>() {
-            override fun areItemsTheSame(a: PendingAwardUi, b: PendingAwardUi) =
-                a.achievementTitle == b.achievementTitle && a.gameTitle == b.gameTitle
+            override fun areItemsTheSame(a: PendingAwardUi, b: PendingAwardUi) = a.id == b.id
             override fun areContentsTheSame(a: PendingAwardUi, b: PendingAwardUi) = a == b
         }
     }
