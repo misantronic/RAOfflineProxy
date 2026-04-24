@@ -1,18 +1,25 @@
 package com.raofflineproxy
 
+import com.raofflineproxy.ui.backupFileFor
 import com.raofflineproxy.ui.buildPatchedContent
 import com.raofflineproxy.ui.buildRevertedContent
 import com.raofflineproxy.ui.detectHardcoreEnabled
+import com.raofflineproxy.ui.ensureBackupFileExists
 import com.raofflineproxy.ui.isPatchedContent
 import com.raofflineproxy.ui.patchManualEditInstructions
 import com.raofflineproxy.ui.revertManualEditInstructions
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.Rule
 import org.junit.Test
+import org.junit.rules.TemporaryFolder
 
 class RetroArchCfgPatcherTest {
     private val proxyAddress = "127.0.0.1:4321"
+
+    @get:Rule
+    val tempFolder = TemporaryFolder()
 
     @Test
     fun detectHardcoreEnabled_trueWhenEnabled() {
@@ -219,6 +226,27 @@ class RetroArchCfgPatcherTest {
         """.trimIndent()
 
         assertEquals(cfg, buildRevertedContent(cfg))
+    }
+
+    @Test
+    fun ensureBackupFileExists_createsSiblingBackupWhenMissing() {
+        val target = tempFolder.newFile("retroarch.cfg")
+        val original = "cheevos_custom_host = \"\""
+
+        ensureBackupFileExists(target, original)
+
+        assertEquals(original, backupFileFor(target).readText())
+    }
+
+    @Test
+    fun ensureBackupFileExists_doesNotOverwriteExistingBackup() {
+        val target = tempFolder.newFile("retroarch.cfg")
+        val backup = backupFileFor(target)
+        backup.writeText("existing backup")
+
+        ensureBackupFileExists(target, "new content")
+
+        assertEquals("existing backup", backup.readText())
     }
 
     @Test

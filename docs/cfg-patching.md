@@ -13,6 +13,12 @@ Patching and reverting happen **automatically** when you start and stop the prox
 
 When you press **Start proxy** in the action bar, the app patches `retroarch.cfg` before starting the proxy service. If the app needs folder access to write the file, it shows a dialog prompting you to grant access.
 
+Before patching, the app also checks for a one-time sibling backup named `retroarch.raofflineproxy.cfg`. If that file does not already exist, RAOfflineProxy creates it from the current `retroarch.cfg`.
+
+- The backup is created only once
+- The app does not overwrite it later
+- The app does not restore from it automatically
+
 The app tries four strategies in order:
 
 ### Strategy 1 — Folder Access (preferred)
