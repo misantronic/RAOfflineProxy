@@ -1,6 +1,7 @@
-# RAOfflineProxy
-
-![RAOfflineProxy logo](https://d3bywedspcdj3v.cloudfront.net/logo.png)
+<h1>
+  <img src="https://d3bywedspcdj3v.cloudfront.net/logo.png" alt="RAOfflineProxy logo" width="40">
+  RAOfflineProxy
+</h1>
 
 An Android app that lets you earn **softcore RetroAchievements** through **RetroArch** without an internet connection.
 
