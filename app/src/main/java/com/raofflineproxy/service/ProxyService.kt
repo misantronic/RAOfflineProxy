@@ -119,7 +119,7 @@ class ProxyService : Service() {
 
         if (pendingObserverJob?.isActive != true) {
             pendingObserverJob = serviceScope.launch {
-                db.pendingAwardDao().observe().collect { awards ->
+                db.pendingAwardDao().observeByStatus().collect { awards ->
                     val newCount = awards.size
                     if (newCount != pendingCount) {
                         pendingCount = newCount

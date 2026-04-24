@@ -3,12 +3,17 @@ package com.raofflineproxy.proxy
 import android.content.Context
 import android.util.Base64
 import android.util.Log
+import androidx.room.withTransaction
 import com.raofflineproxy.R
 import com.raofflineproxy.RA_HOST
 import com.raofflineproxy.RequestFailureNotifier
 import com.raofflineproxy.data.AppDatabase
 import com.raofflineproxy.data.CacheKeys
 import com.raofflineproxy.data.PendingAward
+import com.raofflineproxy.data.PENDING_AWARD_STATUS_DELETED
+import com.raofflineproxy.data.PENDING_AWARD_STATUS_FLUSHED
+import com.raofflineproxy.data.PENDING_AWARD_STATUS_PENDING
+import com.raofflineproxy.data.PENDING_AWARD_STATUS_STALE
 import com.raofflineproxy.extractFormParam
 import com.raofflineproxy.parseFormParams
 import com.raofflineproxy.proxyUserAgent
@@ -37,7 +42,13 @@ private const val POST_FLUSH_REFRESH_DELAY_MS = 3_000L
 sealed interface FlushEvent {
     data object Started : FlushEvent
     data class Progress(val current: Int, val total: Int) : FlushEvent
-    data class Completed(val flushed: Int, val total: Int, val skippedStale: Int = 0) : FlushEvent
+    data class Completed(
+        val flushed: Int,
+        val total: Int,
+        val skippedDeleted: Int = 0,
+        val skippedStale: Int = 0,
+        val pendingRemaining: Int = 0
+    ) : FlushEvent
     data class ChainBroken(val index: Int, val reason: String) : FlushEvent
     data class RefreshFailed(val reason: String) : FlushEvent
 }
@@ -238,11 +249,11 @@ class AwardFlusher(
     }
 
     suspend fun flush() = withContext(Dispatchers.IO) {
-        val pending = db.pendingAwardDao().getAll()
-        if (pending.isEmpty()) return@withContext
-        Log.i(TAG, "Flushing ${pending.size} pending awards")
+        val awards = db.pendingAwardDao().getAll()
+        if (awards.isEmpty()) return@withContext
+        Log.i(TAG, "Flushing ${awards.size} queued awards")
 
-        when (val chain = verifyChain(pending)) {
+        when (val chain = verifyChain(awards)) {
             is ChainVerificationResult.Broken -> {
                 Log.w(TAG, "Chain verification failed: ${chain.reason}")
                 _events.emit(FlushEvent.ChainBroken(chain.index, chain.reason))
@@ -251,6 +262,22 @@ class AwardFlusher(
             ChainVerificationResult.Valid -> {
                 Log.i(TAG, "Chain verification passed")
             }
+        }
+
+        if (awards.none { it.status == PENDING_AWARD_STATUS_PENDING }) {
+            val skippedDeleted = awards.count { it.status == PENDING_AWARD_STATUS_DELETED }
+            val skippedStale = awards.count { it.status == PENDING_AWARD_STATUS_STALE }
+            purgeProcessedAwardsIfSafe()
+            _events.emit(
+                FlushEvent.Completed(
+                    flushed = 0,
+                    total = awards.size,
+                    skippedDeleted = skippedDeleted,
+                    skippedStale = skippedStale,
+                    pendingRemaining = 0
+                )
+            )
+            return@withContext
         }
 
         val creds = loadLoginCredentials(db)
@@ -273,35 +300,72 @@ class AwardFlusher(
         _events.emit(FlushEvent.Started)
 
         var flushed = 0
+        var skippedDeleted = 0
         var skippedStale = 0
-        pending.forEachIndexed { index, award ->
-            _events.emit(FlushEvent.Progress(index + 1, pending.size))
-            if (isHardcoreAward(award)) {
-                Log.w(TAG, "Deleting stale hardcore award ${award.id} — hardcore mode is not supported")
-                db.pendingAwardDao().delete(award)
-                flushed++
+        awards.forEachIndexed { index, award ->
+            _events.emit(FlushEvent.Progress(index + 1, awards.size))
+
+            if (award.status == PENDING_AWARD_STATUS_DELETED) {
+                skippedDeleted++
                 return@forEachIndexed
             }
-            if (knownAchievementIds.isNotEmpty() && award.achievementId !in knownAchievementIds) {
-                Log.w(TAG, "Skipping stale award ${award.id} — achievement ${award.achievementId} not found in live patch data")
+
+            if (award.status == PENDING_AWARD_STATUS_STALE) {
+                skippedStale++
+                return@forEachIndexed
+            }
+
+            if (award.status == PENDING_AWARD_STATUS_FLUSHED) {
+                return@forEachIndexed
+            }
+
+            if (isHardcoreAward(award)) {
+                Log.w(TAG, "Marking stale hardcore award ${award.id} — hardcore mode is not supported")
                 db.pendingAwardDao().update(
-                    award.copy(lastError = "Achievement ${award.achievementId} not found in live server data — may have been retired or modified")
+                    award.copy(
+                        status = PENDING_AWARD_STATUS_STALE,
+                        lastError = "Hardcore award cannot be flushed because hardcore mode is not supported"
+                    )
                 )
                 skippedStale++
                 return@forEachIndexed
             }
+
+            if (knownAchievementIds.isNotEmpty() && award.achievementId !in knownAchievementIds) {
+                Log.w(TAG, "Marking stale award ${award.id} — achievement ${award.achievementId} not found in live patch data")
+                db.pendingAwardDao().update(
+                    award.copy(
+                        status = PENDING_AWARD_STATUS_STALE,
+                        lastError = "Achievement ${award.achievementId} not found in live server data — may have been retired or modified"
+                    )
+                )
+                skippedStale++
+                return@forEachIndexed
+            }
+
             when (val result = sendAward(award)) {
                 is FlushResult.Success -> {
-                    db.pendingAwardDao().delete(award)
+                    db.pendingAwardDao().update(
+                        award.copy(
+                            status = PENDING_AWARD_STATUS_FLUSHED,
+                            lastError = null
+                        )
+                    )
                     flushed++
                     Log.i(TAG, "Award flushed: ${award.id}")
                 }
                 is FlushResult.AuthError -> {
                     Log.w(TAG, "Award ${award.id} auth error — not retrying: ${result.message}")
-                    db.pendingAwardDao().update(award.copy(lastError = result.message))
+                    db.pendingAwardDao().update(
+                        award.copy(
+                            status = PENDING_AWARD_STATUS_PENDING,
+                            lastError = result.message
+                        )
+                    )
                 }
                 is FlushResult.NetworkError -> {
                     val updated = award.copy(
+                        status = PENDING_AWARD_STATUS_PENDING,
                         retryCount = award.retryCount + 1,
                         lastError = result.message
                     )
@@ -315,6 +379,9 @@ class AwardFlusher(
             }
         }
 
+        purgeProcessedAwardsIfSafe()
+        val pendingRemaining = db.pendingAwardDao().getAllByStatus().size
+
         if (flushed > 0) {
             Log.i(TAG, "Post-flush unlocks/session refresh in ${POST_FLUSH_REFRESH_DELAY_MS}ms for ${liveRefresh.gameIds.size} game(s)")
             delay(POST_FLUSH_REFRESH_DELAY_MS)
@@ -325,7 +392,30 @@ class AwardFlusher(
             Log.i(TAG, "Post-flush refresh complete")
         }
 
-        _events.emit(FlushEvent.Completed(flushed, pending.size, skippedStale))
+        _events.emit(
+            FlushEvent.Completed(
+                flushed = flushed,
+                total = awards.size,
+                skippedDeleted = skippedDeleted,
+                skippedStale = skippedStale,
+                pendingRemaining = pendingRemaining
+            )
+        )
+    }
+
+    private suspend fun purgeProcessedAwardsIfSafe() {
+        db.withTransaction {
+            if (db.pendingAwardDao().existsByStatus(PENDING_AWARD_STATUS_PENDING)) {
+                return@withTransaction
+            }
+            db.pendingAwardDao().deleteByStatuses(
+                listOf(
+                    PENDING_AWARD_STATUS_DELETED,
+                    PENDING_AWARD_STATUS_STALE,
+                    PENDING_AWARD_STATUS_FLUSHED
+                )
+            )
+        }
     }
 
     private fun sendAward(award: PendingAward): FlushResult {

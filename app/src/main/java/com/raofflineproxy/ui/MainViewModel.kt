@@ -20,7 +20,9 @@ import com.raofflineproxy.proxyUserAgent
 import com.raofflineproxy.data.AppDatabase
 import com.raofflineproxy.data.CacheKeys
 import com.raofflineproxy.data.CachedGame
+import com.raofflineproxy.data.PendingAward
 import com.raofflineproxy.data.PendingAwardUi
+import com.raofflineproxy.data.PENDING_AWARD_STATUS_DELETED
 import com.raofflineproxy.data.UnlockedAchievement
 import com.raofflineproxy.proxy.AwardFlusher
 import com.raofflineproxy.proxy.FlushEvent
@@ -112,22 +114,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             AwardFlusher.events.collect { event ->
                 when (event) {
-                    is FlushEvent.Started -> _state.value = _state.value.copy(
-                        flushInProgress = true,
-                        flushProgress = str(R.string.flush_started)
-                    )
-                    is FlushEvent.Progress -> _state.value = _state.value.copy(
-                        flushProgress = str(R.string.flush_progress, event.current, event.total)
-                    )
+                    is FlushEvent.Started -> _state.value = _state.value.copy(flushInProgress = true)
+                    is FlushEvent.Progress -> Unit
                     is FlushEvent.Completed -> {
-                        val msg = if (event.skippedStale > 0) {
-                            str(R.string.flush_completed_with_stale, event.flushed, event.total, event.skippedStale)
-                        } else {
-                            str(R.string.flush_completed, event.flushed, event.total)
-                        }
                         _state.value = _state.value.copy(
                             flushInProgress = false,
-                            flushProgress = msg
+                            flushProgress = str(R.string.flush_completed_sent_only, event.flushed)
                         )
                     }
                     is FlushEvent.ChainBroken -> _state.value = _state.value.copy(
@@ -143,7 +135,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
         viewModelScope.launch {
             combine(
-                db.pendingAwardDao().observe(),
+                db.pendingAwardDao().observeByStatus(),
                 db.cacheDao().observePatchEntries()
             ) { awards, entries ->
                 val resolvedAwards = awards.map { award -> resolvePendingAward(award) }
@@ -258,6 +250,28 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             clearCacheMessage = null,
             clearDatabaseMessage = null
         )
+    }
+
+    fun deletePendingAward(award: PendingAwardUi) {
+        viewModelScope.launch(Dispatchers.IO) {
+            db.pendingAwardDao().update(
+                PendingAward(
+                    id = award.id,
+                    achievementId = award.achievementId,
+                    queryString = award.queryString,
+                    requestBody = award.requestBody,
+                    userAgent = award.userAgent,
+                    queuedAt = award.queuedAt,
+                    retryCount = award.retryCount,
+                    lastError = award.lastError,
+                    status = PENDING_AWARD_STATUS_DELETED,
+                    payloadHash = award.payloadHash,
+                    prevHash = award.prevHash,
+                    signature = award.signature,
+                    signedAt = award.signedAt
+                )
+            )
+        }
     }
 
     fun clearFlushProgress() {
@@ -491,7 +505,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    private suspend fun resolvePendingAward(award: com.raofflineproxy.data.PendingAward): PendingAwardUi {
+    private suspend fun resolvePendingAward(award: PendingAward): PendingAwardUi {
         val params = parseFormParams(award.queryString.substringAfter("?", "") + "&" + award.requestBody)
         val achievementId = params["a"]?.toIntOrNull()
         val hardcore = params["h"] == "1"
@@ -524,6 +538,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             }
         }
         return PendingAwardUi(
+            id = award.id,
+            achievementId = award.achievementId,
+            queryString = award.queryString,
+            requestBody = award.requestBody,
+            userAgent = award.userAgent,
             gameTitle = gameTitle,
             gameIconUrl = gameIconUrl,
             achievementTitle = achievementTitle,
@@ -531,13 +550,18 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             points = points,
             badgeUrl = badgeUrl,
             hardcore = hardcore,
-            lastError = award.lastError
+            retryCount = award.retryCount,
+            lastError = award.lastError,
+            payloadHash = award.payloadHash,
+            prevHash = award.prevHash,
+            signature = award.signature,
+            signedAt = award.signedAt
         )
     }
 
     private fun buildPendingAwardsByGameId(
         patchEntries: List<com.raofflineproxy.data.CacheEntry>,
-        awards: List<com.raofflineproxy.data.PendingAward>
+        awards: List<PendingAward>
     ): Map<String, Int> {
         if (patchEntries.isEmpty() || awards.isEmpty()) return emptyMap()
 
@@ -572,7 +596,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    private fun parsePendingAwardAchievementId(award: com.raofflineproxy.data.PendingAward): Int? {
+    private fun parsePendingAwardAchievementId(award: PendingAward): Int? {
         val params = parseFormParams(award.queryString.substringAfter("?", "") + "&" + award.requestBody)
         return params["a"]?.toIntOrNull()
     }
