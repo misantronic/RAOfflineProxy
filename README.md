@@ -40,7 +40,7 @@ RAOfflineProxy runs a tiny local proxy on your device. It sits between RetroArch
 - On some devices, swiping the app away or crashing while the proxy is active does not reliably revert `retroarch.cfg` immediately.
 - If that happens, reopen RAOfflineProxy once so it can clean up `retroarch.cfg`.
 
-For detailed setup instructions, see the [documentation](https://d3bywedspcdj3v.cloudfront.net/installation.html).
+For detailed setup instructions, see the [documentation](https://raofflineproxy.com/installation.html).
 
 ## Build from Source
 
@@ -60,7 +60,7 @@ export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
 
 ## Documentation
 
-Full documentation is available at [d3bywedspcdj3v.cloudfront.net](https://d3bywedspcdj3v.cloudfront.net).
+Full documentation is available at [raofflineproxy.com](https://raofflineproxy.com).
 
 ## Contact / Feedback
 

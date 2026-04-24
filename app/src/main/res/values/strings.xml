@@ -28,7 +28,7 @@
     <!-- Home fragment -->
     <string name="home_description">RAOfflineProxy acts as a local proxy between RetroArch and RetroAchievements. It caches game data so you can play offline and earn achievements, then syncs them when you go back online.</string>
     <string name="home_docs_link">For setup instructions and tips, visit our documentation.</string>
-    <string name="home_docs_url">https://d3bywedspcdj3v.cloudfront.net/introduction.html</string>
+    <string name="home_docs_url">https://raofflineproxy.com/introduction.html</string>
     <string name="home_token_warning">Please start a game in RetroArch while online with RetroAchievements logged in to refresh your session.</string>
     <string name="home_go_to_cached_games">Go to Cached Games</string>
 
@@ -142,6 +142,6 @@
     </plurals>
 
     <!-- Legal -->
-    <string name="privacy_policy_url">https://d3bywedspcdj3v.cloudfront.net/privacy-policy.html</string>
+    <string name="privacy_policy_url">https://raofflineproxy.com/privacy-policy.html</string>
     <string name="btn_privacy_policy">Privacy Policy</string>
 </resources>
