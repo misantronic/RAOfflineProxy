@@ -55,6 +55,8 @@ If you want to report a bug, ask a question, or send feedback about RAOfflinePro
 
 GitHub issue reports are also welcome at [github.com/misantronic/RAOfflineProxy/issues](https://github.com/misantronic/RAOfflineProxy/issues).
 
+[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/M4M81YDHD4)
+
 ## License
 
 Released under the [GNU GENERAL PUBLIC License](LICENSE).
@@ -62,5 +64,3 @@ Released under the [GNU GENERAL PUBLIC License](LICENSE).
 ---
 
 RAOfflineProxy is approved by [RetroAchievements.org](https://retroachievements.org).
-
-[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/M4M81YDHD4)
