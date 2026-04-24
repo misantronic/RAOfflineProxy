@@ -16,6 +16,7 @@ class BootReceiver : BroadcastReceiver() {
         if (!prefs.getBoolean(PrefsConstants.KEY_AUTOSTART_PROXY, false)) return
 
         val treeUri = PrefsConstants.loadSafUri(context)
+        prefs.edit { remove(PrefsConstants.KEY_SKIP_NEXT_CFG_REVERT) }
         val result = patchRetroArchCfg(context, treeUri)
         if (result.success) {
             prefs.edit {

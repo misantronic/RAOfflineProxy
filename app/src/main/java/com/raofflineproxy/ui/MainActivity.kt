@@ -110,7 +110,7 @@ class MainActivity : AppCompatActivity() {
 
         lifecycleScope.launch {
             viewModel.state.collect { state ->
-                updateProxyMenuItem(state.proxyRunning, state.isOnline)
+                updateProxyMenuItem(state.proxyRunning, state.isOnline, state.proxyToggleInProgress)
                 updateNavBadge(navView, R.id.nav_cached_games, state.cachedGames.size)
                 updateNavBadge(navView, R.id.nav_pending_awards, state.pendingAwards.size)
                 maybeShowStartTokenWarning(state)
@@ -149,7 +149,7 @@ class MainActivity : AppCompatActivity() {
         proxyMenuItem?.actionView?.findViewById<android.view.View>(R.id.action_proxy_root)
             ?.setOnClickListener { toggleProxy() }
         val state = viewModel.state.value
-        updateProxyMenuItem(state.proxyRunning, state.isOnline)
+        updateProxyMenuItem(state.proxyRunning, state.isOnline, state.proxyToggleInProgress)
         return true
     }
 
@@ -206,7 +206,7 @@ class MainActivity : AppCompatActivity() {
         tv.text = if (count > 0) getString(R.string.nav_badge_count, count) else ""
     }
 
-    private fun updateProxyMenuItem(proxyRunning: Boolean, isOnline: Boolean) {
+    private fun updateProxyMenuItem(proxyRunning: Boolean, isOnline: Boolean, proxyToggleInProgress: Boolean) {
         val item = proxyMenuItem ?: return
         val actionView = item.actionView ?: return
         val label = actionView.findViewById<android.widget.TextView>(R.id.tv_proxy_label)
@@ -217,11 +217,13 @@ class MainActivity : AppCompatActivity() {
         }
         label.text = if (proxyRunning) getString(R.string.proxy_stop) else getString(R.string.proxy_start)
         actionView.tooltipText = tooltipText
-        actionView.isEnabled = true
-        actionView.alpha = 1f
+        actionView.isEnabled = !proxyToggleInProgress
+        actionView.alpha = if (proxyToggleInProgress) 0.45f else 1f
     }
 
     private fun toggleProxy() {
+        if (viewModel.state.value.proxyToggleInProgress) return
+
         if (viewModel.state.value.proxyRunning) {
             pendingStartTokenWarning = false
             viewModel.stopProxy(treeUri = PrefsConstants.loadSafUri(this))

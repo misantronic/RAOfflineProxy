@@ -234,6 +234,12 @@ class ProxyService : Service() {
 
         cfgCleanupAttempted = true
         val prefs = getSharedPreferences(PrefsConstants.PREFS_NAME, MODE_PRIVATE)
+        if (prefs.getBoolean(PrefsConstants.KEY_SKIP_NEXT_CFG_REVERT, false)) {
+            prefs.edit { remove(PrefsConstants.KEY_SKIP_NEXT_CFG_REVERT) }
+            Log.i(TAG, "Skipping RetroArch cfg revert; UI already handled it")
+            return
+        }
+
         val restoreHardcore = prefs.getBoolean(PrefsConstants.KEY_HARDCORE_WAS_ENABLED, false)
         val result = revertRetroArchCfg(this, PrefsConstants.loadSafUri(this), restoreHardcore)
         val revertedTarget = result.success && result.copyBackPath == null
