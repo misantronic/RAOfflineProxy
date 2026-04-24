@@ -49,6 +49,7 @@ export default defineConfig({
       {
         text: 'Help',
         items: [
+          { text: 'Support', link: '/support' },
           { text: 'Compatibility', link: '/compatibility' },
           { text: 'Troubleshooting / FAQ', link: '/troubleshooting' },
           { text: 'Contact / Feedback', link: '/contact' },
@@ -67,8 +68,8 @@ export default defineConfig({
     },
 
     footer: {
-      message: 'Released under the GNU GENERAL PUBLIC License.',
-      copyright: 'Approved by RetroAchievements.org',
+      message: 'Approved by <a href="https://retroachievements.org/" target="_blank" rel="noreferrer">RetroAchievements.org</a><br>Support the project on <a href="https://ko-fi.com/misantronic" target="_blank" rel="noreferrer">Ko-fi</a>.',
+      copyright: 'Released under the GNU GENERAL PUBLIC License.'
     },
 
     socialLinks: [
