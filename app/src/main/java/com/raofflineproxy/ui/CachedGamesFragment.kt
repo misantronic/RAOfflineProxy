@@ -12,7 +12,6 @@ import androidx.recyclerview.widget.ConcatAdapter
 import androidx.recyclerview.widget.DividerItemDecoration
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
-import androidx.recyclerview.widget.SimpleItemAnimator
 import com.raofflineproxy.R
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -60,7 +59,7 @@ class CachedGamesFragment : Fragment() {
             layoutManager = LinearLayoutManager(requireContext())
             adapter = ConcatAdapter(headerAdapter, gamesAdapter)
             addItemDecoration(DividerItemDecoration(requireContext(), DividerItemDecoration.VERTICAL))
-            (itemAnimator as? SimpleItemAnimator)?.supportsChangeAnimations = false
+            itemAnimator = null
         }
 
         viewLifecycleOwner.lifecycleScope.launch {
