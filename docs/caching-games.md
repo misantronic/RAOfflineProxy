@@ -1,6 +1,13 @@
 # Caching Games
 
-Before going offline you must save game and achievement data for each game you intend to play. The **Cached Games** screen handles this.
+Before going offline you must save game and achievement data for each game you intend to play.
+
+You can do that in two ways:
+
+1. **Automatically** by starting the game in RetroArch while the proxy is running and you are online
+2. **Manually** from the **Cached Games** screen by adding ROMs or scanning a ROM folder
+
+The rest of this page explains the manual caching flow in the **Cached Games** screen and what data gets saved locally.
 
 ## What Gets Cached
 
@@ -50,6 +57,35 @@ For each ROM file the following steps happen:
 5. **Build session data** — a local session response is built from your saved unlocks (no server call)
 
 There is a short delay between files to avoid overloading the RA servers.
+
+## Current Hashing Support
+
+Manual caching does not use one universal hashing rule for every system. Some systems need header stripping, byte-order normalization, or filesystem-aware disc parsing before the hash is sent to RetroAchievements.
+
+The table below reflects the current app behavior.
+
+| System | Extensions | Hashing method | Current status |
+|---|---|---|---|
+| **NES** | `.nes` | Ignores the 16-byte iNES header when present, then MD5s the remaining ROM data | **Working and tested** |
+| **SNES / Super Famicom** | `.smc`, `.sfc`, `.fig`, `.swc` | Ignores a 512-byte copier header when the file layout matches that format, then MD5s the ROM | **Working and tested** |
+| **Game Boy** | `.gb` | Plain whole-file MD5 | **Working and tested** |
+| **Game Boy Color** | `.gbc` | Plain whole-file MD5 | **Working and tested** |
+| **Game Boy Advance** | `.gba` | Plain whole-file MD5 | **Working and tested** |
+| **Nintendo 64** | `.z64`, `.n64`, `.v64` | Normalizes ROM byte order to `.z64` format first, then MD5s up to the first 64 MiB | **Working and tested for `.z64` and `.n64`**. `.v64` is implemented but not manually tested |
+| **PlayStation** | `.bin`, `.iso` | Parses the disc image, reads `SYSTEM.CNF`, finds the boot executable, and hashes the executable path plus executable contents | **Working and tested for direct `.bin` images**. `.iso` is implemented but not manually tested |
+| **PSP** | `.iso` | Parses the ISO and hashes `PSP_GAME\PARAM.SFO` followed by `PSP_GAME\SYSDIR\EBOOT.BIN` | **Partially verified**. Some `.iso` titles cache correctly, but not every ISO tested so far is recognized |
+| **PSP homebrew / PBP** | `.pbp` | Plain whole-file MD5 | **Implemented, not manually tested** |
+| **Other formats** | everything else | Falls back to plain whole-file MD5 | **Best effort only**. This may or may not match RetroAchievements depending on the system |
+
+::: warning Manual caching support is still format-dependent
+If a file format needs custom RetroAchievements hashing and that format is not explicitly listed above, manual caching may skip it even though launching the same game through RetroArch works.
+:::
+
+::: tip A skipped ROM is not always a bug
+If the app computes a valid hash but RetroAchievements returns `GameID=0`, the file will still be skipped. That can mean the dump, region, revision, or container variant is not recognized by RA for manual lookup.
+:::
+
+If your system or file format is missing from this list, or if your results differ from the current status above, please use the [contact page](./contact).
 
 ## Viewing Cached Games
 
