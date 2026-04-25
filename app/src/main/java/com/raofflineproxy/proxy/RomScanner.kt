@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.Uri
 import android.util.Log
 import androidx.documentfile.provider.DocumentFile
+import com.raofflineproxy.MAX_CACHED_GAMES
 import com.raofflineproxy.R
 import com.raofflineproxy.RA_HOST
 import com.raofflineproxy.RequestFailureNotifier
@@ -29,7 +30,8 @@ private const val HTTP_ERROR_BODY_LOG_LIMIT = 512
 data class ScanResult(
     val matched: Int,
     val total: Int,
-    val skipped: Int
+    val skipped: Int,
+    val limitReached: Boolean = false
 )
 
 data class LoginCredentials(val user: String, val token: String)
@@ -144,6 +146,9 @@ suspend fun scanRomFolder(
     singleFile: Boolean = false,
     onProgress: (current: Int, total: Int, fileName: String) -> Unit
 ): ScanResult {
+    val cachedGameIds = db.cacheDao().getAllByPrefix(CacheKeys.PREFIX_PATCH)
+        .mapNotNull { entry -> CacheKeys.parseGameIdStringFromPatchKey(entry.cacheKey) }
+        .toMutableSet()
     val files: List<DocumentFile> = if (singleFile) {
         val f = DocumentFile.fromSingleUri(context, treeUri)
         if (f != null && shouldScanFile(f)) listOf(f) else emptyList()
@@ -155,19 +160,26 @@ suspend fun scanRomFolder(
     val total = files.size
     var matched = 0
     var skipped = 0
+    var limitReached = false
 
     for ((index, file) in files.withIndex()) {
+        if (cachedGameIds.size >= MAX_CACHED_GAMES) {
+            skipped += total - index
+            limitReached = true
+            break
+        }
         onProgress(index + 1, total, file.name ?: "")
         val hash = hashRom(context, file)
         if (hash == null) { skipped++; continue }
         val gameId = fetchGameId(context, hash, credentials, userAgent)
         if (gameId == null) { skipped++; continue }
         cacheGame(context, gameId, credentials, userAgent, db)
+        cachedGameIds.add(gameId.toString())
         matched++
         if (index < files.lastIndex) delay(500)
     }
 
-    return ScanResult(matched, total, skipped)
+    return ScanResult(matched, total, skipped, limitReached)
 }
 
 private fun shouldScanFile(file: DocumentFile): Boolean {
