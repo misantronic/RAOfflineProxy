@@ -308,7 +308,7 @@ class ProxyServer(
                     val user = extractParam("u", path, rawBody)
                     val token = extractParam("t", path, rawBody)
                     if (gameId != null && user != null && token != null) {
-                        cacheUnlocks(context, gameId, LoginCredentials(user, token), userAgent)
+                        cacheUnlocks(context, gameId, LoginCredentials(user, token), userAgent, db)
                     }
                 }
             }
