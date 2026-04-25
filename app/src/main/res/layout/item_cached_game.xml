@@ -46,14 +46,6 @@
                 android:alpha="0.6"
                 android:textSize="12sp" />
 
-            <TextView
-                android:id="@+id/tv_achievement_count"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:alpha="0.7"
-                android:textSize="12sp"
-                android:visibility="gone" />
-
         </LinearLayout>
 
         <ImageView
