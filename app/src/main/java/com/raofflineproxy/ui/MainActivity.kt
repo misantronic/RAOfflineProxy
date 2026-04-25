@@ -26,8 +26,8 @@ import com.google.android.material.snackbar.Snackbar
 import com.raofflineproxy.BuildConfig
 import com.raofflineproxy.PrefsConstants
 import com.raofflineproxy.R
-import com.raofflineproxy.RequestFailureNotifier
 import com.raofflineproxy.databinding.ActivityMainBinding
+import java.util.ArrayDeque
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -41,10 +41,13 @@ class MainActivity : AppCompatActivity() {
     private val viewModel: MainViewModel by viewModels()
     private var proxyMenuItem: MenuItem? = null
     private var snackbar: Snackbar? = null
-    private var requestErrorSnackbar: Snackbar? = null
     private var pendingSnackbarJob: Job? = null
     private var pendingStartTokenWarning = false
-    private var lastHandledPatchMessageId = 0L
+    private val pendingErrors = ArrayDeque<QueuedError>()
+    private var pendingMessage: SnackbarEvent.Message? = null
+    private var progressMessage: String? = null
+    private var activeSnackbarKind: ActiveSnackbarKind? = null
+    private var suppressNextDismissCallback = false
 
     private val safLauncher = registerForActivityResult(OpenAndroidDataTree()) { uri ->
         if (uri == null) return@registerForActivityResult
@@ -119,20 +122,16 @@ class MainActivity : AppCompatActivity() {
                 if (state.needsSafGrant) {
                     showSafGrantDialog()
                 }
-
-                handlePatchSnackbar(state)
             }
         }
 
         lifecycleScope.launch {
-            RequestFailureNotifier.events.collect { message ->
-                requestErrorSnackbar?.dismiss()
-                requestErrorSnackbar = Snackbar.make(binding.fragmentContainer, message, Snackbar.LENGTH_INDEFINITE)
-                    .setAction(R.string.action_ok) {
-                        requestErrorSnackbar?.dismiss()
-                        requestErrorSnackbar = null
-                    }
-                    .also { it.show() }
+            SnackbarManager.events.collect { event ->
+                when (event) {
+                    is SnackbarEvent.Error -> enqueueError(event.message)
+                    is SnackbarEvent.Progress -> showOrClearProgress(event.message)
+                    is SnackbarEvent.Message -> showOrQueueMessage(event)
+                }
             }
         }
     }
@@ -267,40 +266,139 @@ class MainActivity : AppCompatActivity() {
             .show()
     }
 
-    private fun handlePatchSnackbar(state: MainUiState) {
-        val msg = state.cfgPatchMessage
-        val messageId = state.cfgPatchMessageId
+    private fun enqueueError(message: String) {
+        val existing = pendingErrors.lastOrNull()
+        if (existing?.message == message) {
+            existing.count += 1
+            if (activeSnackbarKind == ActiveSnackbarKind.Error && pendingErrors.firstOrNull() === existing) {
+                showCurrentError()
+            }
+            return
+        }
 
-        when {
-            msg == null -> {
-                pendingSnackbarJob?.cancel()
-                pendingSnackbarJob = null
-                snackbar?.dismiss()
-                snackbar = null
-            }
-            messageId == lastHandledPatchMessageId -> Unit
-            state.cfgPatchSuccess == false -> {
-                lastHandledPatchMessageId = messageId
-                pendingSnackbarJob?.cancel()
-                pendingSnackbarJob = null
-                snackbar?.dismiss()
-                snackbar = Snackbar.make(binding.fragmentContainer, msg, Snackbar.LENGTH_INDEFINITE)
-                    .setAction(R.string.action_ok) { viewModel.clearTransientMessages() }
-                    .also { it.show() }
-            }
-            else -> {
-                lastHandledPatchMessageId = messageId
-                pendingSnackbarJob?.cancel()
-                pendingSnackbarJob = lifecycleScope.launch {
-                    delay(500)
-                    snackbar?.dismiss()
-                    snackbar = Snackbar.make(binding.fragmentContainer, msg, Snackbar.LENGTH_LONG)
-                        .also { it.show() }
-                }
-            }
+        val activeError = pendingErrors.firstOrNull()
+        if (activeSnackbarKind == ActiveSnackbarKind.Error && activeError?.message == message) {
+            activeError.count += 1
+            showCurrentError()
+            return
+        }
+
+        pendingErrors.addLast(QueuedError(message))
+        if (activeSnackbarKind != ActiveSnackbarKind.Error) {
+            showNextSnackbar(force = true)
         }
     }
 
+    private fun showOrQueueMessage(event: SnackbarEvent.Message) {
+        pendingMessage = event
+        if (activeSnackbarKind == ActiveSnackbarKind.Error) return
+        showNextSnackbar(force = true)
+    }
+
+    private fun showOrClearProgress(message: String?) {
+        progressMessage = message
+        if (activeSnackbarKind == ActiveSnackbarKind.Error) return
+        showNextSnackbar(force = true)
+    }
+
+    private fun showNextSnackbar(force: Boolean = false) {
+        if (!force && snackbar != null) return
+
+        pendingSnackbarJob?.cancel()
+        pendingSnackbarJob = null
+        if (snackbar != null) {
+            suppressNextDismissCallback = true
+            snackbar?.dismiss()
+        }
+        snackbar = null
+
+        when {
+            pendingErrors.isNotEmpty() -> showCurrentError()
+            progressMessage != null -> showCurrentProgress(progressMessage!!)
+            pendingMessage != null -> showCurrentMessage(pendingMessage!!)
+            else -> activeSnackbarKind = null
+        }
+    }
+
+    private fun showCurrentError() {
+        val queued = pendingErrors.firstOrNull() ?: run {
+            activeSnackbarKind = null
+            return
+        }
+
+        activeSnackbarKind = ActiveSnackbarKind.Error
+        snackbar = Snackbar.make(
+            binding.fragmentContainer,
+            queued.displayMessage(),
+            Snackbar.LENGTH_INDEFINITE
+        ).setAction(R.string.action_ok) {
+            if (pendingErrors.isNotEmpty()) {
+                pendingErrors.removeFirst()
+            }
+            snackbar = null
+            activeSnackbarKind = null
+            showNextSnackbar(force = true)
+        }.also { it.show() }
+    }
+
+    private fun showCurrentMessage(event: SnackbarEvent.Message) {
+        activeSnackbarKind = ActiveSnackbarKind.Message
+        pendingMessage = null
+
+        val duration = when (event.duration) {
+            SnackbarDuration.Short -> Snackbar.LENGTH_SHORT
+            SnackbarDuration.Long -> Snackbar.LENGTH_LONG
+            SnackbarDuration.Indefinite -> Snackbar.LENGTH_INDEFINITE
+        }
+
+        if (duration == Snackbar.LENGTH_INDEFINITE) {
+            snackbar = Snackbar.make(binding.fragmentContainer, event.message, duration)
+                .setAction(R.string.action_ok) {
+                    snackbar = null
+                    activeSnackbarKind = null
+                    showNextSnackbar(force = true)
+                }
+                .also { it.show() }
+            return
+        }
+
+        pendingSnackbarJob = lifecycleScope.launch {
+            delay(500)
+            snackbar = Snackbar.make(binding.fragmentContainer, event.message, duration)
+                .also {
+                    it.addCallback(object : Snackbar.Callback() {
+                        override fun onDismissed(transientBottomBar: Snackbar?, event: Int) {
+                            if (suppressNextDismissCallback) {
+                                suppressNextDismissCallback = false
+                                return
+                            }
+                            if (snackbar === transientBottomBar) {
+                                snackbar = null
+                                activeSnackbarKind = null
+                                showNextSnackbar(force = true)
+                            }
+                        }
+                    })
+                    it.show()
+                }
+        }
+    }
+
+    private fun showCurrentProgress(message: String) {
+        activeSnackbarKind = ActiveSnackbarKind.Progress
+        snackbar = Snackbar.make(binding.fragmentContainer, message, Snackbar.LENGTH_INDEFINITE)
+            .also { it.show() }
+    }
+
+}
+
+private enum class ActiveSnackbarKind { Error, Message, Progress }
+
+private data class QueuedError(
+    val message: String,
+    var count: Int = 1
+) {
+    fun displayMessage(): String = if (count > 1) "$message (x$count)" else message
 }
 
 private class OpenAndroidDataTree : ActivityResultContract<Unit, Uri?>() {

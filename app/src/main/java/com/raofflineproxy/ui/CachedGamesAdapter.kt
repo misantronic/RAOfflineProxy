@@ -10,7 +10,6 @@ import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import coil.load
-import com.google.android.material.snackbar.Snackbar
 import com.raofflineproxy.R
 import com.raofflineproxy.data.CachedGame
 import com.raofflineproxy.data.UnlockedAchievement
@@ -23,29 +22,6 @@ fun ImageView.loadOrClear(url: String?) {
     if (url != null) load(url) { crossfade(true) }
     else setImageDrawable(null)
 }
-
-fun updateSnackbar(
-    view: View,
-    msg: String?,
-    inProgress: Boolean,
-    messageId: Long,
-    lastHandledMessageId: Long,
-    current: Snackbar?
-): Snackbar? =
-    when {
-        msg == null -> { current?.dismiss(); null }
-        !inProgress && messageId == lastHandledMessageId -> current
-        inProgress -> {
-            val sb = current ?: Snackbar.make(view, msg, Snackbar.LENGTH_INDEFINITE)
-            sb.setText(msg)
-            sb.show()
-            sb
-        }
-        else -> {
-            current?.dismiss()
-            Snackbar.make(view, msg, Snackbar.LENGTH_LONG).also { it.show() }
-        }
-    }
 
 class CachedGamesAdapter(
     private val onDelete: (CachedGame) -> Unit
