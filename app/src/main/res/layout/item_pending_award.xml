@@ -68,9 +68,10 @@
 
     <com.google.android.material.button.MaterialButton
         android:id="@+id/btn_delete_award"
-        style="@style/Widget.Material3.Button.IconButton"
+        style="@style/Widget.RAOfflineProxy.Button.Icon"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
+        android:layout_marginStart="8dp"
         android:contentDescription="@string/cd_delete_pending_award"
         android:tooltipText="@string/cd_delete_pending_award"
         app:icon="@drawable/ic_delete"
