@@ -83,10 +83,10 @@
     <string name="scan_no_login">No login data found. Please launch RetroArch and log in to RetroAchievements while online first.</string>
     <string name="scan_hashing">Hashing file %1$d/%2$d…</string>
     <string name="scan_looking_up">Looking up %1$d/%2$d: %3$s</string>
-    <string name="scan_add_complete">Added: %1$d of %2$d game(s) cached.</string>
+    <string name="scan_add_complete">Added: %1$d of %2$d game(s) cached, %3$d skipped.</string>
     <string name="scan_starting">Starting scan…</string>
     <string name="scan_progress">Scanning %1$d/%2$d: %3$s</string>
-    <string name="scan_complete">Scan complete: %1$d game(s) matched out of %2$d file(s).</string>
+    <string name="scan_complete">Scan complete: %1$d game(s) matched out of %2$d file(s), %3$d skipped.</string>
 
     <!-- Refresh messages -->
     <string name="refresh_progress">Refreshing %1$d/%2$d…</string>

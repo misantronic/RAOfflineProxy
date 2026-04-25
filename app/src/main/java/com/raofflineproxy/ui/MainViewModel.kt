@@ -427,6 +427,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             val credentials = requireCredentials() ?: return@launch
             val total = fileUris.size
             var matched = 0
+            var skipped = 0
             val userAgent = withContext(Dispatchers.IO) { loadUserAgent(db) }
             for ((index, uri) in fileUris.withIndex()) {
                 val progressMessage = str(R.string.scan_hashing, index + 1, total)
@@ -440,13 +441,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     }
                 }
                 matched += result.matched
+                skipped += result.skipped
             }
             _state.value = _state.value.copy(
                 scanInProgress = false,
                 scanProgress = null
             )
             SnackbarManager.showProgress(null)
-            SnackbarManager.showMessage(str(R.string.scan_add_complete, matched, total))
+            SnackbarManager.showMessage(str(R.string.scan_add_complete, matched, total, skipped))
         }
     }
 
@@ -497,7 +499,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 scanProgress = null
             )
             SnackbarManager.showProgress(null)
-            SnackbarManager.showMessage(str(R.string.scan_complete, result.matched, result.total))
+            SnackbarManager.showMessage(str(R.string.scan_complete, result.matched, result.total, result.skipped))
         }
     }
 

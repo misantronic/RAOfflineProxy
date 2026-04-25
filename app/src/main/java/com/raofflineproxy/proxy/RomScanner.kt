@@ -26,6 +26,8 @@ import java.security.MessageDigest
 private const val FALLBACK_USER_AGENT = "rcheevos/11.4.0"
 private const val TAG = "RAProxy"
 private const val HTTP_ERROR_BODY_LOG_LIMIT = 512
+private val NES_HEADER_MAGIC = byteArrayOf('N'.code.toByte(), 'E'.code.toByte(), 'S'.code.toByte(), 0x1A)
+private val FDS_HEADER_MAGIC = byteArrayOf('F'.code.toByte(), 'D'.code.toByte(), 'S'.code.toByte(), 0x1A)
 
 data class ScanResult(
     val matched: Int,
@@ -183,6 +185,19 @@ private fun md5File(context: Context, uri: Uri): String? =
     try {
         val digest = MessageDigest.getInstance("MD5")
         context.contentResolver.openInputStream(uri)?.use { stream ->
+            val header = ByteArray(16)
+            var headerBytesRead = 0
+            while (headerBytesRead < header.size) {
+                val read = stream.read(header, headerBytesRead, header.size - headerBytesRead)
+                if (read <= 0) break
+                headerBytesRead += read
+            }
+
+            val headerBytesToSkip = retroAchievementsHeaderBytesToSkip(header, headerBytesRead)
+            if (headerBytesRead > headerBytesToSkip) {
+                digest.update(header, headerBytesToSkip, headerBytesRead - headerBytesToSkip)
+            }
+
             val buffer = ByteArray(8192)
             var read = stream.read(buffer)
             while (read != -1) {
@@ -192,6 +207,23 @@ private fun md5File(context: Context, uri: Uri): String? =
         }
         digest.digest().toHexString()
     } catch (_: Exception) { null }
+
+internal fun retroAchievementsHeaderBytesToSkip(header: ByteArray, bytesRead: Int): Int {
+    if (bytesRead < 4) return 0
+    return when {
+        header.startsWithMagic(bytesRead, NES_HEADER_MAGIC) -> minOf(16, bytesRead)
+        header.startsWithMagic(bytesRead, FDS_HEADER_MAGIC) -> minOf(16, bytesRead)
+        else -> 0
+    }
+}
+
+private fun ByteArray.startsWithMagic(bytesRead: Int, magic: ByteArray): Boolean {
+    if (bytesRead < magic.size) return false
+    for (index in magic.indices) {
+        if (this[index] != magic[index]) return false
+    }
+    return true
+}
 
 private fun fetchGameId(context: Context, hash: String, creds: LoginCredentials, userAgent: String): Int? =
     run {
@@ -207,7 +239,13 @@ private fun fetchGameId(context: Context, hash: String, creds: LoginCredentials,
         when (val result = httpGet(url, userAgent)) {
             is HttpGetResult.Success -> {
                 val gameId = runCatching { JSONObject(result.body).optInt("GameID", 0) }.getOrDefault(0)
-                if (gameId > 0) gameId else null
+                if (gameId > 0) {
+                    Log.i(TAG, "fetchGameId matched hash=$hash gameId=$gameId")
+                    gameId
+                } else {
+                    Log.i(TAG, "fetchGameId no match for hash=$hash body=${result.body}")
+                    null
+                }
             }
 
             is HttpGetResult.Failure -> {
