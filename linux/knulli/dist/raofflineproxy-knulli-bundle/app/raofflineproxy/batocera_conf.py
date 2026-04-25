@@ -7,7 +7,11 @@ RETROACHIEVEMENTS_HARDCORE_KEY = "global.retroachievements.hardcore"
 RETROARCH_CHEEVOS_ENABLE_KEY = "global.retroarch.cheevos_enable"
 CHEEVOS_CUSTOM_HOST_KEY = "global.retroarch.cheevos_custom_host"
 CHEEVOS_HARDCORE_KEY = "global.retroarch.cheevos_hardcore_mode_enable"
-OBSOLETE_KEYS = ["global.cheevos_enable"]
+OBSOLETE_KEYS = [
+    "global.cheevos_enable",
+    RETROARCH_CHEEVOS_ENABLE_KEY,
+    CHEEVOS_HARDCORE_KEY,
+]
 
 
 def patch_batocera_conf(config_data: dict) -> dict:
@@ -85,9 +89,11 @@ def build_patched_batocera_conf(content: str, config_data: dict) -> str:
 
     updated = _upsert_value(updated, RETROACHIEVEMENTS_KEY, "1")
     updated = _upsert_value(updated, RETROACHIEVEMENTS_HARDCORE_KEY, "0")
-    updated = _upsert_value(updated, RETROARCH_CHEEVOS_ENABLE_KEY, "true")
-    updated = _upsert_value(updated, CHEEVOS_CUSTOM_HOST_KEY, proxy_value(config_data))
-    return _upsert_value(updated, CHEEVOS_HARDCORE_KEY, "false")
+    updated = _upsert_value(updated, RETROARCH_CHEEVOS_ENABLE_KEY, '"true"')
+    updated = _upsert_value(
+        updated, CHEEVOS_CUSTOM_HOST_KEY, f'"{proxy_value(config_data)}"'
+    )
+    return _upsert_value(updated, CHEEVOS_HARDCORE_KEY, '"false"')
 
 
 def build_reverted_batocera_conf(content: str, previous: dict) -> str:

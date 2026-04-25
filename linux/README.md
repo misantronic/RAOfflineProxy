@@ -21,9 +21,9 @@ The Batocera integration uses supported `batocera.conf` keys such as:
 
 - `global.retroachievements=1`
 - `global.retroachievements.hardcore=0`
-- `global.retroarch.cheevos_enable=true`
-- `global.retroarch.cheevos_custom_host=<proxy_host>:<proxy_port>`
-- `global.retroarch.cheevos_hardcore_mode_enable=false`
+- `global.retroarch.cheevos_enable="true"`
+- `global.retroarch.cheevos_custom_host="<proxy_host>:<proxy_port>"`
+- `global.retroarch.cheevos_hardcore_mode_enable="false"`
 
 The background service:
 

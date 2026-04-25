@@ -1,4 +1,5 @@
 import json
+import logging
 import time
 from dataclasses import dataclass
 
@@ -19,6 +20,7 @@ from .utils import (
 MAX_RETRIES = 5
 GENESIS_HASH = "genesis"
 MAX_AWARD_OFFSET_SECONDS = 14 * 24 * 60 * 60
+LOGGER = logging.getLogger("raofflineproxy")
 
 
 @dataclass
@@ -181,8 +183,13 @@ def flush_pending_awards(storage: Storage, config_data: dict) -> FlushOutcome:
     if not pending:
         return FlushOutcome(flushed=0, total=0, skipped_stale=0)
 
+    LOGGER.info("Flush started: pending_awards=%s", len(pending))
+
     valid, reason, index = verify_chain(pending)
     if not valid:
+        LOGGER.warning(
+            "Flush aborted: chain broken at index=%s reason=%s", index, reason
+        )
         return FlushOutcome(
             flushed=0,
             total=len(pending),
@@ -192,6 +199,7 @@ def flush_pending_awards(storage: Storage, config_data: dict) -> FlushOutcome:
 
     credentials = storage.load_login_credentials()
     if credentials is None:
+        LOGGER.warning("Flush aborted: no cached login credentials")
         return FlushOutcome(
             flushed=0,
             total=len(pending),
@@ -204,6 +212,7 @@ def flush_pending_awards(storage: Storage, config_data: dict) -> FlushOutcome:
         storage, credentials, user_agent, config_data
     )
     if refreshed is None:
+        LOGGER.warning("Flush aborted: could not refresh live achievement data")
         return FlushOutcome(
             flushed=0,
             total=len(pending),
@@ -216,39 +225,65 @@ def flush_pending_awards(storage: Storage, config_data: dict) -> FlushOutcome:
     skipped_stale = 0
 
     for award in pending:
+        achievement_id = award["achievementId"]
         if is_hardcore_award(award):
-            storage.delete_pending_award(award["achievementId"])
+            LOGGER.info(
+                "Flush dropping hardcore pending award: achievementId=%s",
+                achievement_id,
+            )
+            storage.delete_pending_award(achievement_id)
             flushed += 1
             continue
 
-        if (
-            known_achievement_ids
-            and award["achievementId"] not in known_achievement_ids
-        ):
+        if known_achievement_ids and achievement_id not in known_achievement_ids:
             award["lastError"] = (
-                f"Achievement {award['achievementId']} not found in live server data"
+                f"Achievement {achievement_id} not found in live server data"
             )
             storage.update_pending_award(award)
             skipped_stale += 1
+            LOGGER.warning(
+                "Flush skipped stale pending award: achievementId=%s lastError=%s",
+                achievement_id,
+                award["lastError"],
+            )
             continue
 
         outcome, message = send_award(award, config_data)
         if outcome == "success":
-            storage.delete_pending_award(award["achievementId"])
+            storage.delete_pending_award(achievement_id)
             flushed += 1
+            LOGGER.info("Flush succeeded: achievementId=%s", achievement_id)
         elif outcome == "auth_error":
             award["lastError"] = message
             storage.update_pending_award(award)
+            LOGGER.warning(
+                "Flush auth error: achievementId=%s lastError=%s",
+                achievement_id,
+                message,
+            )
         else:
             award["retryCount"] = int(award.get("retryCount", 0)) + 1
             award["lastError"] = message
             storage.update_pending_award(award)
+            LOGGER.warning(
+                "Flush network error: achievementId=%s retryCount=%s lastError=%s",
+                achievement_id,
+                award["retryCount"],
+                message,
+            )
 
     if flushed:
         time.sleep(3)
         for game_id in game_ids:
             cache_unlocks(game_id, credentials, user_agent, config_data)
             cache_session(game_id, credentials, storage)
+
+    LOGGER.info(
+        "Flush complete: total=%s flushed=%s skipped_stale=%s",
+        len(pending),
+        flushed,
+        skipped_stale,
+    )
 
     return FlushOutcome(
         flushed=flushed, total=len(pending), skipped_stale=skipped_stale
