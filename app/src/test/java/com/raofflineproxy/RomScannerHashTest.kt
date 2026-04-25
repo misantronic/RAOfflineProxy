@@ -15,7 +15,6 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
-import org.junit.Assert.fail
 import org.junit.Test
 
 class RomScannerHashTest {
@@ -250,7 +249,29 @@ class RomScannerHashTest {
         val size: Long,
         val isDirectory: Boolean,
         val content: ByteArray = byteArrayOf()
-    )
+    ) {
+        override fun equals(other: Any?): Boolean {
+            if (this === other) return true
+            if (javaClass != other?.javaClass) return false
+
+            other as DirectoryEntry
+
+            if (sector != other.sector) return false
+            if (size != other.size) return false
+            if (isDirectory != other.isDirectory) return false
+            if (!content.contentEquals(other.content)) return false
+
+            return true
+        }
+
+        override fun hashCode(): Int {
+            var result = sector
+            result = 31 * result + size.hashCode()
+            result = 31 * result + isDirectory.hashCode()
+            result = 31 * result + content.contentHashCode()
+            return result
+        }
+    }
 
     private fun buildIsoImage(entries: Map<String, DirectoryEntry>): ByteArray {
         val totalSectors = 64
