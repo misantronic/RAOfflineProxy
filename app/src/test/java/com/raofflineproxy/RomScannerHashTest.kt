@@ -1,7 +1,9 @@
 package com.raofflineproxy
 
 import com.raofflineproxy.proxy.hash.FdsRomHashStrategy
+import com.raofflineproxy.proxy.hash.N64ByteOrder
 import com.raofflineproxy.proxy.hash.NesRomHashStrategy
+import com.raofflineproxy.proxy.hash.Nintendo64RomHashStrategy
 import com.raofflineproxy.proxy.hash.detectPrimaryVolumeDescriptor
 import com.raofflineproxy.proxy.hash.detectIsoSectorLayout
 import com.raofflineproxy.proxy.hash.findFileRecord
@@ -228,6 +230,100 @@ class RomScannerHashTest {
         assertEquals("078c9a3e352a09d0ec06155a58057611", hash)
     }
 
+    @Test
+    fun n64NormalizeNintendo64Bytes_v64ConvertsToBigEndianOrder() {
+        val bytes = byteArrayOf(
+            0x37,
+            0x80.toByte(),
+            0x40,
+            0x12,
+            0x11,
+            0x22,
+            0x33,
+            0x44
+        )
+
+        Nintendo64RomHashStrategy.normalizeNintendo64Bytes(bytes, bytes.size, N64ByteOrder.BYTE_SWAPPED)
+
+        assertEquals(0x80.toByte(), bytes[0])
+        assertEquals(0x37.toByte(), bytes[1])
+        assertEquals(0x12.toByte(), bytes[2])
+        assertEquals(0x40.toByte(), bytes[3])
+        assertEquals(0x22.toByte(), bytes[4])
+        assertEquals(0x11.toByte(), bytes[5])
+        assertEquals(0x44.toByte(), bytes[6])
+        assertEquals(0x33.toByte(), bytes[7])
+    }
+
+    @Test
+    fun n64NormalizeNintendo64Bytes_n64ConvertsToBigEndianOrder() {
+        val bytes = byteArrayOf(
+            0x40,
+            0x12,
+            0x37,
+            0x80.toByte(),
+            0x44,
+            0x33,
+            0x22,
+            0x11
+        )
+
+        Nintendo64RomHashStrategy.normalizeNintendo64Bytes(bytes, bytes.size, N64ByteOrder.LITTLE_ENDIAN)
+
+        assertEquals(0x80.toByte(), bytes[0])
+        assertEquals(0x37.toByte(), bytes[1])
+        assertEquals(0x12.toByte(), bytes[2])
+        assertEquals(0x40.toByte(), bytes[3])
+        assertEquals(0x11.toByte(), bytes[4])
+        assertEquals(0x22.toByte(), bytes[5])
+        assertEquals(0x33.toByte(), bytes[6])
+        assertEquals(0x44.toByte(), bytes[7])
+    }
+
+    @Test
+    fun n64Hash_n64AndV64NormalizeToSameHashAsZ64() {
+        val z64 = ByteArray(65536 + 16) { index -> ((index * 37) and 0xFF).toByte() }.also {
+            it[0] = 0x80.toByte()
+            it[1] = 0x37
+            it[2] = 0x12
+            it[3] = 0x40
+        }
+        val n64 = z64ToN64(z64)
+        val v64 = z64ToV64(z64)
+
+        val z64Hash = Nintendo64RomHashStrategy.hash(
+            RomHashInput(
+                fileName = "test.z64",
+                fileSize = z64.size.toLong(),
+                openStream = { z64.inputStream() }
+            )
+        )
+        val n64Hash = Nintendo64RomHashStrategy.hash(
+            RomHashInput(
+                fileName = "test.n64",
+                fileSize = n64.size.toLong(),
+                openStream = { n64.inputStream() }
+            )
+        )
+        val v64Hash = Nintendo64RomHashStrategy.hash(
+            RomHashInput(
+                fileName = "test.v64",
+                fileSize = v64.size.toLong(),
+                openStream = { v64.inputStream() }
+            )
+        )
+
+        assertEquals(z64Hash, n64Hash)
+        assertEquals(z64Hash, v64Hash)
+    }
+
+    @Test
+    fun n64DetectByteOrder_usesFirstByteOnly() {
+        assertEquals(N64ByteOrder.BIG_ENDIAN, Nintendo64RomHashStrategy.detectByteOrder(0x80.toByte()))
+        assertEquals(N64ByteOrder.BYTE_SWAPPED, Nintendo64RomHashStrategy.detectByteOrder(0x37.toByte()))
+        assertEquals(N64ByteOrder.LITTLE_ENDIAN, Nintendo64RomHashStrategy.detectByteOrder(0x40.toByte()))
+    }
+
     private class ByteArrayRomDataSource(
         private val data: ByteArray
     ) : RomDataSource {
@@ -271,6 +367,35 @@ class RomScannerHashTest {
             result = 31 * result + content.contentHashCode()
             return result
         }
+    }
+
+    private fun z64ToN64(z64: ByteArray): ByteArray {
+        val result = z64.copyOf()
+        var index = 0
+        while (index + 3 < result.size) {
+            val b0 = result[index]
+            val b1 = result[index + 1]
+            val b2 = result[index + 2]
+            val b3 = result[index + 3]
+            result[index] = b3
+            result[index + 1] = b2
+            result[index + 2] = b1
+            result[index + 3] = b0
+            index += 4
+        }
+        return result
+    }
+
+    private fun z64ToV64(z64: ByteArray): ByteArray {
+        val result = z64.copyOf()
+        var index = 0
+        while (index + 1 < result.size) {
+            val first = result[index]
+            result[index] = result[index + 1]
+            result[index + 1] = first
+            index += 2
+        }
+        return result
     }
 
     private fun buildIsoImage(entries: Map<String, DirectoryEntry>): ByteArray {
