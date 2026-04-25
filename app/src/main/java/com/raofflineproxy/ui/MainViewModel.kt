@@ -59,16 +59,21 @@ data class MainUiState(
     val pendingAwards: List<PendingAwardUi> = emptyList(),
     val cachedGames: List<CachedGame> = emptyList(),
     val cfgPatchMessage: String? = null,
+    val cfgPatchMessageId: Long = 0L,
     val cfgPatchSuccess: Boolean? = null,
     val needsSafGrant: Boolean = false,
     val cfgCopyBackPath: String? = null,
     val cfgIsPatched: Boolean? = null,
     val scanInProgress: Boolean = false,
     val scanProgress: String? = null,
+    val scanProgressId: Long = 0L,
     val flushInProgress: Boolean = false,
     val flushProgress: String? = null,
+    val flushProgressId: Long = 0L,
     val clearCacheMessage: String? = null,
-    val clearDatabaseMessage: String? = null
+    val clearCacheMessageId: Long = 0L,
+    val clearDatabaseMessage: String? = null,
+    val clearDatabaseMessageId: Long = 0L
 )
 
 class MainViewModel(app: Application) : AndroidViewModel(app) {
@@ -78,11 +83,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     val state: StateFlow<MainUiState> = _state.asStateFlow()
     private val _cachedGames = MutableStateFlow<List<CachedGame>>(emptyList())
     val cachedGames: StateFlow<List<CachedGame>> = _cachedGames.asStateFlow()
+    private var nextMessageId = 1L
     private val connectivityManager =
         app.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
 
     private fun str(resId: Int): String = getApplication<Application>().getString(resId)
     private fun str(resId: Int, vararg args: Any): String = getApplication<Application>().getString(resId, *args)
+    private fun newMessageId(): Long = nextMessageId++
 
     private val networkCallback = object : ConnectivityManager.NetworkCallback() {
         override fun onAvailable(network: Network) {
@@ -122,16 +129,19 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     is FlushEvent.Completed -> {
                         _state.value = _state.value.copy(
                             flushInProgress = false,
-                            flushProgress = str(R.string.flush_completed_sent_only, event.flushed)
+                            flushProgress = str(R.string.flush_completed_sent_only, event.flushed),
+                            flushProgressId = newMessageId()
                         )
                     }
                     is FlushEvent.ChainBroken -> _state.value = _state.value.copy(
                         flushInProgress = false,
-                        flushProgress = str(R.string.flush_chain_broken, event.index + 1, event.reason)
+                        flushProgress = str(R.string.flush_chain_broken, event.index + 1, event.reason),
+                        flushProgressId = newMessageId()
                     )
                     is FlushEvent.RefreshFailed -> _state.value = _state.value.copy(
                         flushInProgress = false,
-                        flushProgress = str(R.string.flush_refresh_failed, event.reason)
+                        flushProgress = str(R.string.flush_refresh_failed, event.reason),
+                        flushProgressId = newMessageId()
                     )
                 }
             }
@@ -228,6 +238,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 proxyRunning = false,
                 cfgIsPatched = !revertedTarget,
                 cfgPatchMessage = if (revertedTarget) null else result.message,
+                cfgPatchMessageId = if (revertedTarget) _state.value.cfgPatchMessageId else newMessageId(),
                 cfgPatchSuccess = if (revertedTarget) null else false,
                 needsSafGrant = result.needsSafGrant,
                 cfgCopyBackPath = result.copyBackPath
@@ -238,7 +249,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private suspend fun requireCredentials(): com.raofflineproxy.proxy.LoginCredentials? {
         val credentials = withContext(Dispatchers.IO) { loadLoginCredentials(db) }
         if (credentials == null) {
-            _state.value = _state.value.copy(scanProgress = str(R.string.scan_no_login))
+            _state.value = _state.value.copy(
+                scanProgress = str(R.string.scan_no_login),
+                scanProgressId = newMessageId()
+            )
         }
         return credentials
     }
@@ -345,6 +359,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     _state.value = _state.value.copy(
                         needsSafGrant = true,
                         cfgPatchMessage = result.message,
+                        cfgPatchMessageId = newMessageId(),
                         cfgPatchSuccess = false
                     )
                     return@launch
@@ -352,6 +367,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 if (result.copyBackPath != null) {
                     _state.value = _state.value.copy(
                         cfgPatchMessage = result.message,
+                        cfgPatchMessageId = newMessageId(),
                         cfgPatchSuccess = result.success,
                         cfgCopyBackPath = result.copyBackPath
                     )
@@ -360,6 +376,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 if (!result.success) {
                     _state.value = _state.value.copy(
                         cfgPatchMessage = result.message,
+                        cfgPatchMessageId = newMessageId(),
                         cfgPatchSuccess = false
                     )
                     return@launch
@@ -375,6 +392,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     proxyRunning = true,
                     cfgIsPatched = true,
                     cfgPatchMessage = str(R.string.proxy_started_success),
+                    cfgPatchMessageId = newMessageId(),
                     cfgPatchSuccess = true,
                     authState = AuthState.Unknown
                 )
@@ -412,6 +430,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     proxyRunning = false,
                     cfgIsPatched = if (revertedTarget) false else _state.value.cfgIsPatched,
                     cfgPatchMessage = if (revertedTarget) str(R.string.proxy_stopped_success) else result.message,
+                    cfgPatchMessageId = newMessageId(),
                     cfgPatchSuccess = if (revertedTarget) true else false,
                     needsSafGrant = result.needsSafGrant,
                     cfgCopyBackPath = result.copyBackPath
@@ -444,17 +463,25 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             var matched = 0
             val userAgent = withContext(Dispatchers.IO) { loadUserAgent(db) }
             for ((index, uri) in fileUris.withIndex()) {
-                _state.value = _state.value.copy(scanInProgress = true, scanProgress = str(R.string.scan_hashing, index + 1, total))
+                _state.value = _state.value.copy(
+                    scanInProgress = true,
+                    scanProgress = str(R.string.scan_hashing, index + 1, total),
+                    scanProgressId = newMessageId()
+                )
                 val result = withContext(Dispatchers.IO) {
                     scanRomFolder(app, uri, credentials, userAgent, db, singleFile = true) { _, _, fileName ->
-                        _state.value = _state.value.copy(scanProgress = str(R.string.scan_looking_up, index + 1, total, fileName))
+                        _state.value = _state.value.copy(
+                            scanProgress = str(R.string.scan_looking_up, index + 1, total, fileName),
+                            scanProgressId = newMessageId()
+                        )
                     }
                 }
                 matched += result.matched
             }
             _state.value = _state.value.copy(
                 scanInProgress = false,
-                scanProgress = str(R.string.scan_add_complete, matched, total)
+                scanProgress = str(R.string.scan_add_complete, matched, total),
+                scanProgressId = newMessageId()
             )
         }
     }
@@ -466,7 +493,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             db.cacheDao().deleteByKeyPrefix(CacheKeys.PREFIX_UNLOCKS)
             db.cacheDao().deleteByKeyPrefix(CacheKeys.PREFIX_STARTSESSION)
             clearAllCachedImages(application)
-            _state.value = _state.value.copy(scanProgress = null, clearCacheMessage = str(R.string.cache_cleared))
+            _state.value = _state.value.copy(
+                scanProgress = null,
+                clearCacheMessage = str(R.string.cache_cleared),
+                clearCacheMessageId = newMessageId()
+            )
         }
     }
 
@@ -475,7 +506,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             db.cacheDao().deleteByKeyPrefix("")
             db.pendingAwardDao().getAll().forEach { db.pendingAwardDao().delete(it) }
             clearAllCachedImages(application)
-            _state.value = _state.value.copy(scanProgress = null, clearDatabaseMessage = str(R.string.database_cleared))
+            _state.value = _state.value.copy(
+                scanProgress = null,
+                clearDatabaseMessage = str(R.string.database_cleared),
+                clearDatabaseMessageId = newMessageId()
+            )
         }
     }
 
@@ -483,19 +518,25 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val app = getApplication<Application>()
         viewModelScope.launch {
             val credentials = requireCredentials() ?: return@launch
-            _state.value = _state.value.copy(scanInProgress = true, scanProgress = str(R.string.scan_starting))
+            _state.value = _state.value.copy(
+                scanInProgress = true,
+                scanProgress = str(R.string.scan_starting),
+                scanProgressId = newMessageId()
+            )
             withContext(Dispatchers.IO) { db.cacheDao().deleteByKeyPrefix(CacheKeys.PREFIX_GAMEID) }
             val userAgent = withContext(Dispatchers.IO) { loadUserAgent(db) }
             val result = withContext(Dispatchers.IO) {
                 scanRomFolder(app, treeUri, credentials, userAgent, db) { current, total, fileName ->
                     _state.value = _state.value.copy(
-                        scanProgress = str(R.string.scan_progress, current, total, fileName)
+                        scanProgress = str(R.string.scan_progress, current, total, fileName),
+                        scanProgressId = newMessageId()
                     )
                 }
             }
             _state.value = _state.value.copy(
                 scanInProgress = false,
-                scanProgress = str(R.string.scan_complete, result.matched, result.total)
+                scanProgress = str(R.string.scan_complete, result.matched, result.total),
+                scanProgressId = newMessageId()
             )
         }
     }
@@ -512,18 +553,26 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             val credentials = requireCredentials() ?: return@launch
             val games = _state.value.cachedGames.reversed()
-            _state.value = _state.value.copy(scanInProgress = true, scanProgress = str(R.string.refresh_progress, 0, games.size))
+            _state.value = _state.value.copy(
+                scanInProgress = true,
+                scanProgress = str(R.string.refresh_progress, 0, games.size),
+                scanProgressId = newMessageId()
+            )
             val userAgent = withContext(Dispatchers.IO) { loadUserAgent(db) }
             withContext(Dispatchers.IO) {
                 for ((index, game) in games.withIndex()) {
-                    _state.value = _state.value.copy(scanProgress = str(R.string.refresh_progress_named, index + 1, games.size, game.title))
+                    _state.value = _state.value.copy(
+                        scanProgress = str(R.string.refresh_progress_named, index + 1, games.size, game.title),
+                        scanProgressId = newMessageId()
+                    )
                     val gameId = game.gameId.toIntOrNull() ?: continue
                     cacheGame(app, gameId, credentials, userAgent, db)
                 }
             }
             _state.value = _state.value.copy(
                 scanInProgress = false,
-                scanProgress = str(R.string.refresh_complete, games.size)
+                scanProgress = str(R.string.refresh_complete, games.size),
+                scanProgressId = newMessageId()
             )
         }
     }

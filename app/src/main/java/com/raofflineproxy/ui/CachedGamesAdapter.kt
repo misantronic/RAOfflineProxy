@@ -24,9 +24,17 @@ fun ImageView.loadOrClear(url: String?) {
     else setImageDrawable(null)
 }
 
-fun updateSnackbar(view: View, msg: String?, inProgress: Boolean, current: Snackbar?): Snackbar? =
+fun updateSnackbar(
+    view: View,
+    msg: String?,
+    inProgress: Boolean,
+    messageId: Long,
+    lastHandledMessageId: Long,
+    current: Snackbar?
+): Snackbar? =
     when {
         msg == null -> { current?.dismiss(); null }
+        !inProgress && messageId == lastHandledMessageId -> current
         inProgress -> {
             val sb = current ?: Snackbar.make(view, msg, Snackbar.LENGTH_INDEFINITE)
             sb.setText(msg)

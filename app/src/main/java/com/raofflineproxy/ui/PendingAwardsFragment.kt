@@ -19,6 +19,7 @@ import kotlinx.coroutines.launch
 
 class PendingAwardsFragment : Fragment() {
     private val viewModel: MainViewModel by activityViewModels()
+    private var lastHandledFlushProgressId = 0L
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View =
         inflater.inflate(R.layout.fragment_pending_awards, container, false)
@@ -39,10 +40,11 @@ class PendingAwardsFragment : Fragment() {
                 headerAdapter.update(state.pendingAwards.isEmpty())
 
                 val msg = state.flushProgress
-                if (state.flushInProgress || msg == null) {
+                if (state.flushInProgress || msg == null || state.flushProgressId == lastHandledFlushProgressId) {
                     return@collect
                 }
 
+                lastHandledFlushProgressId = state.flushProgressId
                 Snackbar.make(view, msg, Snackbar.LENGTH_LONG).show()
                 viewModel.clearFlushProgress()
             }

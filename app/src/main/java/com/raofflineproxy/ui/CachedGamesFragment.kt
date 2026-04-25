@@ -20,6 +20,7 @@ import kotlinx.coroutines.launch
 
 class CachedGamesFragment : Fragment() {
     private val viewModel: MainViewModel by activityViewModels()
+    private var lastHandledScanProgressId = 0L
 
     private val romFolderPickerLauncher = registerForActivityResult(
         ActivityResultContracts.OpenDocumentTree()
@@ -87,7 +88,10 @@ class CachedGamesFragment : Fragment() {
                 )
 
                 val msg = state.scanProgress
-                snackbar = updateSnackbar(view, msg, state.scanInProgress, snackbar)
+                snackbar = updateSnackbar(view, msg, state.scanInProgress, state.scanProgressId, lastHandledScanProgressId, snackbar)
+                if (msg != null) {
+                    lastHandledScanProgressId = state.scanProgressId
+                }
             }
         }
     }
