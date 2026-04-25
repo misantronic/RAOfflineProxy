@@ -179,7 +179,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                             totalAchievements = totalAchievements,
                             unlockedAchievements = unlockedAchievements
                         )
-                    }
+                    }.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.title })
                 }
                 resolvedAwards to games
             }.collect { (resolvedAwards, games) ->
