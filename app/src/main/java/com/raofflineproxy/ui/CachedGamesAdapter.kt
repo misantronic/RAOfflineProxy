@@ -36,12 +36,7 @@ class CachedGamesAdapter(
         fun bind(game: CachedGame) {
             val expanded = expandedGameIds.contains(game.gameId)
             binding.tvGameTitle.text = game.title
-            binding.tvGameMeta.text = binding.root.context.getString(
-                R.string.game_meta_format,
-                game.unlockedCount,
-                game.totalAchievements,
-                dateFormat.format(Date(game.cachedAt))
-            )
+            binding.tvGameMeta.text = buildMetaText(game)
             binding.btnDeleteGame.setOnClickListener { onDelete(game) }
             binding.ivGameIcon.loadOrClear(game.imageIconUrl)
             bindExpandedState(game, expanded)
@@ -58,11 +53,6 @@ class CachedGamesAdapter(
 
         private fun bindExpandedState(game: CachedGame, expanded: Boolean) {
             val hasAchievements = game.unlockedAchievements.isNotEmpty()
-            val hasPendingAwards = game.pendingAwardCount > 0
-            val showSummary = hasAchievements || hasPendingAwards
-
-            binding.tvAchievementCount.visibility = if (showSummary) View.VISIBLE else View.GONE
-            binding.tvAchievementCount.text = buildAchievementSummary(game)
             binding.ivExpand.visibility = if (hasAchievements) View.VISIBLE else View.INVISIBLE
             binding.ivExpand.rotation = if (expanded) 180f else 0f
             binding.layoutGameRow.contentDescription = binding.root.context.getString(
@@ -106,27 +96,30 @@ class CachedGamesAdapter(
             notifyItemChanged(bindingAdapterPosition)
         }
 
-        private fun buildAchievementSummary(game: CachedGame): String {
-            val resources = binding.root.resources
-            val unlockedText = resources.getQuantityString(
-                R.plurals.cached_game_unlocked_achievements,
-                game.unlockedAchievements.size,
-                game.unlockedAchievements.size
-            )
+        private fun buildMetaText(game: CachedGame): String {
+            val context = binding.root.context
+            val dateText = dateFormat.format(Date(game.cachedAt))
 
             if (game.pendingAwardCount == 0) {
-                return unlockedText
+                return context.getString(
+                    R.string.game_meta_format,
+                    game.unlockedCount,
+                    game.totalAchievements,
+                    dateText
+                )
             }
 
-            val pendingText = resources.getQuantityString(
+            val pendingText = binding.root.resources.getQuantityString(
                 R.plurals.notification_pending_awards,
                 game.pendingAwardCount,
                 game.pendingAwardCount
             )
-            return binding.root.context.getString(
-                R.string.cached_game_achievement_summary_with_pending,
-                unlockedText,
-                pendingText
+            return context.getString(
+                R.string.cached_game_meta_with_pending,
+                game.unlockedCount,
+                game.totalAchievements,
+                pendingText,
+                dateText
             )
         }
     }

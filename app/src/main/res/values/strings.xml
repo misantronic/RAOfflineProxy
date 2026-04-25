@@ -103,7 +103,7 @@
 
     <!-- Cached games adapter -->
     <string name="game_meta_format">%1$d / %2$d unlocked · %3$s</string>
-    <string name="cached_game_achievement_summary_with_pending">%1$s · %2$s</string>
+    <string name="cached_game_meta_with_pending">%1$d / %2$d unlocked · %3$s · %4$s</string>
     <string name="cached_game_expand">Show unlocked achievements</string>
     <string name="cached_game_collapse">Hide unlocked achievements</string>
     <string name="cached_game_no_description">No description.</string>
@@ -154,11 +154,6 @@
         <item quantity="one">%d pending award</item>
         <item quantity="other">%d pending awards</item>
     </plurals>
-    <plurals name="cached_game_unlocked_achievements">
-        <item quantity="one">%d unlocked achievement</item>
-        <item quantity="other">%d unlocked achievements</item>
-    </plurals>
-
     <!-- Legal -->
     <string name="privacy_policy_url">https://raofflineproxy.com/privacy-policy.html</string>
     <string name="btn_privacy_policy">Privacy Policy</string>
