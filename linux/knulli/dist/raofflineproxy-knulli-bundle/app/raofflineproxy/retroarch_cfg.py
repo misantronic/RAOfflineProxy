@@ -19,7 +19,8 @@ def is_patched_content(content: str, proxy_address: str) -> bool:
 
 
 def build_patched_content(content: str, proxy_address: str) -> str:
-    with_host = _upsert_config_value(content, HOST_KEY, proxy_address)
+    sanitized = _remove_orphan_boolean_lines(content)
+    with_host = _upsert_config_value(sanitized, HOST_KEY, proxy_address)
     with_enable = _upsert_config_value(with_host, ENABLE_KEY, "true")
     return _upsert_config_value(with_enable, HARDCORE_KEY, "false")
 
@@ -30,8 +31,9 @@ def build_reverted_content(
     previous_enable: Optional[str],
     restore_hardcore: bool,
 ) -> str:
+    sanitized = _remove_orphan_boolean_lines(content)
     restored_host = previous_host if previous_host is not None else ""
-    with_host = _upsert_config_value(content, HOST_KEY, restored_host)
+    with_host = _upsert_config_value(sanitized, HOST_KEY, restored_host)
     restored_enable = previous_enable if previous_enable is not None else ""
     with_enable = _upsert_config_value(with_host, ENABLE_KEY, restored_enable)
 
@@ -169,11 +171,22 @@ def _extract_config_value(content: str, key: str) -> str | None:
 
 def _upsert_config_value(content: str, key: str, value: str) -> str:
     pattern = re.compile(rf"^(\s*{re.escape(key)}\s*=\s*).*$", re.MULTILINE)
-    replacement = f'\\1"{value}"'
     if pattern.search(content):
-        return pattern.sub(replacement, content)
+        return pattern.sub(lambda match: f'{match.group(1)}"{value}"', content)
 
     stripped = content.rstrip("\n")
     if stripped:
         return f'{stripped}\n{key} = "{value}"\n'
     return f'{key} = "{value}"\n'
+
+
+def _remove_orphan_boolean_lines(content: str) -> str:
+    lines = content.splitlines()
+    orphan_pattern = re.compile(
+        r'^[\x00-\x1f\x7f\s]*"(?:true|false)"[\x00-\x1f\x7f\s]*$'
+    )
+    kept = [line for line in lines if not orphan_pattern.fullmatch(line)]
+    result = "\n".join(kept)
+    if content.endswith("\n") and result:
+        result += "\n"
+    return result

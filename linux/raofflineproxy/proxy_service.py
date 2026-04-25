@@ -13,7 +13,14 @@ from .award_signing import sign_award
 from .batocera_conf import enforce_batocera_conf
 from .config import FALLBACK_USER_AGENT, proxy_host, proxy_port, upstream_host
 from .flusher import flush_pending_awards
-from .network import build_forward_headers, http_post, online_check
+from .network import (
+    build_forward_headers,
+    decode_response_body,
+    http_post,
+    online_check,
+    read_response_bytes,
+    response_content_type,
+)
 from .retroarch_cfg import enforce_patched_cfg
 from .rom_cache import cache_session, cache_unlocks, refresh_game_patch
 from .storage import Storage, current_millis
@@ -79,6 +86,23 @@ def response_bytes(code: int, body: str, reason: str | None = None) -> bytes:
         f"Connection: close\r\n\r\n"
     ).encode("utf-8")
     return head + text
+
+
+def raw_response_bytes(
+    code: int,
+    body: bytes,
+    content_type: str | None,
+    reason: str | None = None,
+) -> bytes:
+    reason_phrase = reason or canonical_reason_phrase(code)
+    mime_type = content_type or "application/octet-stream"
+    head = (
+        f"HTTP/1.1 {code} {reason_phrase}\r\n"
+        f"Content-Type: {mime_type}\r\n"
+        f"Content-Length: {len(body)}\r\n"
+        f"Connection: close\r\n\r\n"
+    ).encode("utf-8")
+    return head + body
 
 
 def ok_json(body: str) -> bytes:
@@ -209,9 +233,13 @@ class ProxyRuntimeServer(ThreadingTCPServer):
         if self.is_online():
             upstream = self.forward_to_upstream_result("POST", path, raw_body, headers)
             if upstream[0] == "success":
-                return response_bytes(upstream[1], upstream[3], upstream[2])
+                return raw_response_bytes(
+                    upstream[1], upstream[3], upstream[4], upstream[2]
+                )
             if upstream[0] == "http_error":
-                return response_bytes(upstream[1], upstream[3], upstream[2])
+                return raw_response_bytes(
+                    upstream[1], upstream[3], upstream[4], upstream[2]
+                )
 
         return self.queue_offline_award(path, raw_body, headers)
 
@@ -262,7 +290,16 @@ class ProxyRuntimeServer(ThreadingTCPServer):
 
         status_code = upstream[1]
         reason = upstream[2]
-        response_body = upstream[3]
+        response_body_bytes = upstream[3]
+        content_type = upstream[4]
+        response_body = upstream[5]
+        if action is None or not path.startswith("/dorequest.php"):
+            return raw_response_bytes(
+                status_code, response_body_bytes, content_type, reason
+            )
+
+        if response_body is None:
+            return error_json(503, "invalid upstream response")
         if should_cache_response(response_body) and action in CACHEABLE_ACTIONS:
             key = cache_key_for_request(path, raw_body)
             self.storage.upsert_cache(key, response_body)
@@ -301,14 +338,18 @@ class ProxyRuntimeServer(ThreadingTCPServer):
     ) -> bytes:
         upstream = self.forward_to_upstream_result(method, path, raw_body, headers)
         if upstream[0] == "success":
-            return response_bytes(upstream[1], upstream[3], upstream[2])
+            return raw_response_bytes(
+                upstream[1], upstream[3], upstream[4], upstream[2]
+            )
         if upstream[0] == "http_error":
-            return response_bytes(upstream[1], upstream[3], upstream[2])
+            return raw_response_bytes(
+                upstream[1], upstream[3], upstream[4], upstream[2]
+            )
         return error_json(503, "upstream unavailable")
 
     def forward_to_upstream_result(
         self, method: str, path: str, raw_body: str, headers: dict[str, str]
-    ) -> tuple[str, int, str, str]:
+    ) -> tuple[str, int, str, bytes, str | None, str | None]:
         url = f"{upstream_host(self.config_data)}{path}"
         request_headers = build_forward_headers(headers)
         try:
@@ -316,6 +357,8 @@ class ProxyRuntimeServer(ThreadingTCPServer):
                 status, reason, response_body = http_post(
                     url, raw_body, request_headers
                 )
+                response_bytes_body = response_body.encode("utf-8")
+                content_type = "application/json"
             else:
                 import urllib.request
 
@@ -326,32 +369,66 @@ class ProxyRuntimeServer(ThreadingTCPServer):
                     with urllib.request.urlopen(request, timeout=15) as response:
                         status = response.status
                         reason = response.reason
-                        response_body = response.read().decode("utf-8")
+                        response_bytes_body = read_response_bytes(response)
+                        content_type = response_content_type(response)
+                        if path.startswith("/dorequest.php"):
+                            response_body = decode_response_body(
+                                response_bytes_body, content_type
+                            )
+                        else:
+                            response_body = ""
                 except Exception as error:
                     if hasattr(error, "read"):
                         status = getattr(error, "code", 500)
                         reason = getattr(
                             error, "reason", canonical_reason_phrase(status)
                         )
-                        response_body = error.read().decode("utf-8")
+                        response_bytes_body = error.read()
+                        content_type = getattr(error, "headers", {}).get("Content-Type")
+                        if path.startswith("/dorequest.php"):
+                            response_body = decode_response_body(
+                                response_bytes_body, content_type
+                            )
+                        else:
+                            response_body = ""
                     else:
                         raise
 
             if 200 <= status < 300:
-                return "success", status, reason, response_body
-            return "http_error", status, reason, response_body
+                return (
+                    "success",
+                    status,
+                    reason,
+                    response_bytes_body,
+                    content_type,
+                    response_body,
+                )
+            return (
+                "http_error",
+                status,
+                reason,
+                response_bytes_body,
+                content_type,
+                response_body,
+            )
         except Exception as error:
             LOGGER.error("Upstream request failed: %s", error)
             return (
                 "network_error",
                 503,
                 "Service Unavailable",
+                json.dumps({"Success": False, "Error": str(error)}).encode("utf-8"),
+                "application/json",
                 json.dumps({"Success": False, "Error": str(error)}),
             )
 
     def queue_award(self, path: str, raw_body: str, headers: dict[str, str]) -> bool:
         achievement_id = int(extract_request_param(path, raw_body, "a") or "0")
         if achievement_id > 0 and self.storage.pending_award_exists(achievement_id):
+            LOGGER.info(
+                "Offline award already queued: achievementId=%s",
+                achievement_id,
+            )
             return True
 
         prev_hash = (self.storage.get_latest_pending_award() or {}).get(
@@ -378,6 +455,11 @@ class ProxyRuntimeServer(ThreadingTCPServer):
             "signedAt": current_millis(),
         }
         self.storage.upsert_pending_award(award)
+        LOGGER.info(
+            "Queued offline award: achievementId=%s queuedAt=%s",
+            achievement_id,
+            queued_at,
+        )
         return True
 
     def fetch_cached_score(self, path: str, raw_body: str) -> int:
@@ -396,6 +478,14 @@ class ProxyRuntimeServer(ThreadingTCPServer):
     def flush_pending_awards(self) -> dict:
         with self.flush_lock:
             outcome = flush_pending_awards(self.storage, self.config_data)
+            if outcome.total:
+                LOGGER.info(
+                    "Flush outcome: total=%s flushed=%s skipped_stale=%s last_error=%s",
+                    outcome.total,
+                    outcome.flushed,
+                    outcome.skipped_stale,
+                    outcome.last_error,
+                )
             return {
                 "flushed": outcome.flushed,
                 "total": outcome.total,
@@ -419,6 +509,7 @@ class ConnectivityMonitor(threading.Thread):
         while not self.stop_event.wait(self.interval_seconds):
             is_online = self.server.is_online()
             if is_online and not was_online:
+                LOGGER.info("Connectivity restored; attempting flush")
                 self.server.flush_pending_awards()
             was_online = is_online
 

@@ -7,6 +7,32 @@ from .config import FALLBACK_USER_AGENT, upstream_host
 from .utils import proxy_user_agent
 
 
+def read_response_bytes(response: object) -> bytes:
+    return response.read()
+
+
+def detect_charset(content_type: str | None, default: str = "utf-8") -> str:
+    if not content_type:
+        return default
+
+    for part in content_type.split(";"):
+        piece = part.strip()
+        if piece.lower().startswith("charset="):
+            return piece.split("=", 1)[1].strip() or default
+    return default
+
+
+def decode_response_body(body: bytes, content_type: str | None) -> str:
+    return body.decode(detect_charset(content_type), errors="strict")
+
+
+def response_content_type(response: object) -> str | None:
+    headers = getattr(response, "headers", None)
+    if headers is None:
+        return None
+    return headers.get("Content-Type")
+
+
 def build_api_url(base: str, action: str, params: dict[str, str]) -> str:
     query = urllib.parse.urlencode({"r": action, **params})
     return f"{base.rstrip('/')}/dorequest.php?{query}"
@@ -23,7 +49,8 @@ def http_get(url: str, user_agent: str) -> str:
     )
 
     with urllib.request.urlopen(request, timeout=10) as response:
-        return response.read().decode("utf-8")
+        body = read_response_bytes(response)
+        return decode_response_body(body, response_content_type(response))
 
 
 def http_post(
@@ -45,9 +72,19 @@ def http_post(
 
     try:
         with urllib.request.urlopen(request, timeout=15) as response:
-            return response.status, response.reason, response.read().decode("utf-8")
+            response_body = read_response_bytes(response)
+            return (
+                response.status,
+                response.reason,
+                decode_response_body(response_body, response_content_type(response)),
+            )
     except urllib.error.HTTPError as error:
-        return error.code, error.reason, error.read().decode("utf-8")
+        response_body = error.read()
+        return (
+            error.code,
+            error.reason,
+            decode_response_body(response_body, error.headers.get("Content-Type")),
+        )
 
 
 def online_check(config_data: dict) -> bool:
