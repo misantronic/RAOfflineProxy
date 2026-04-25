@@ -77,6 +77,19 @@ fun cachePatchImages(context: Context, gameId: Int, userAgent: String, patchResp
             }
         }
 
+        val achievements = patchData.optJSONArray("Achievements")
+        if (achievements != null) {
+            for (index in 0 until achievements.length()) {
+                val achievement = achievements.optJSONObject(index) ?: continue
+                val badgeName = achievement.optString("BadgeName").takeIf { it.isNotEmpty() } ?: continue
+                val badgeTarget = File(gameImageDir(context, gameId), "badge_$badgeName.png")
+                keepNames += badgeTarget.name
+                if (!badgeTarget.exists()) {
+                    fetchFile("$RA_HOST/Badge/$badgeName.png", userAgent, badgeTarget)
+                }
+            }
+        }
+
         trimStaleImages(context, gameId, keepNames)
     }.onFailure { e ->
         Log.w(TAG, "Failed to cache patch images for gameId=$gameId: ${e.message}")
