@@ -71,10 +71,11 @@ The table below reflects the current app behavior.
 | **Game Boy** | `.gb` | Plain whole-file MD5 | **Working and tested** |
 | **Game Boy Color** | `.gbc` | Plain whole-file MD5 | **Working and tested** |
 | **Game Boy Advance** | `.gba` | Plain whole-file MD5 | **Working and tested** |
+| **Sega Master System** | `.sms` | Plain whole-file MD5 | **Working and tested** |
+| **Sega Mega Drive / Genesis** | `.md` | Plain whole-file MD5 | **Working and tested** |
 | **Nintendo 64** | `.z64`, `.n64`, `.v64` | Normalizes ROM byte order to `.z64` format first, then MD5s up to the first 64 MiB | **Working and tested for `.z64` and `.n64`**. `.v64` is implemented but not manually tested |
 | **PlayStation** | `.bin`, `.iso` | Parses the disc image, reads `SYSTEM.CNF`, finds the boot executable, and hashes the executable path plus executable contents | **Working and tested for direct `.bin` images**. `.iso` is implemented but not manually tested |
 | **PSP** | `.iso` | Parses the ISO and hashes `PSP_GAME\PARAM.SFO` followed by `PSP_GAME\SYSDIR\EBOOT.BIN` | **Partially verified**. Some `.iso` titles cache correctly, but not every ISO tested so far is recognized |
-| **PSP homebrew / PBP** | `.pbp` | Plain whole-file MD5 | **Implemented, not manually tested** |
 | **Other formats** | everything else | Falls back to plain whole-file MD5 | **Best effort only**. This may or may not match RetroAchievements depending on the system |
 
 ::: warning Manual caching support is still format-dependent
