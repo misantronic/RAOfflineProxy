@@ -14,7 +14,6 @@ import androidx.core.net.toUri
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.lifecycleScope
-import com.google.android.material.snackbar.Snackbar
 import com.google.android.material.textfield.TextInputEditText
 import com.google.android.material.textfield.TextInputLayout
 import com.raofflineproxy.R
@@ -22,8 +21,6 @@ import kotlinx.coroutines.launch
 
 class SettingsFragment : Fragment() {
     private val viewModel: MainViewModel by activityViewModels()
-    private var lastHandledClearCacheMessageId = 0L
-    private var lastHandledClearDatabaseMessageId = 0L
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View =
         inflater.inflate(R.layout.fragment_settings, container, false)
@@ -99,16 +96,6 @@ class SettingsFragment : Fragment() {
                 tvProxyPortHint.isEnabled = !state.proxyRunning
                 if (!state.proxyRunning) {
                     inputProxyPort.error = null
-                }
-                state.clearCacheMessage?.takeIf { state.clearCacheMessageId != lastHandledClearCacheMessageId }?.let { msg ->
-                    lastHandledClearCacheMessageId = state.clearCacheMessageId
-                    Snackbar.make(view, msg, Snackbar.LENGTH_LONG).show()
-                    viewModel.clearTransientMessages()
-                }
-                state.clearDatabaseMessage?.takeIf { state.clearDatabaseMessageId != lastHandledClearDatabaseMessageId }?.let { msg ->
-                    lastHandledClearDatabaseMessageId = state.clearDatabaseMessageId
-                    Snackbar.make(view, msg, Snackbar.LENGTH_LONG).show()
-                    viewModel.clearTransientMessages()
                 }
             }
         }

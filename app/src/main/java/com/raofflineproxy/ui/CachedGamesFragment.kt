@@ -13,14 +13,12 @@ import androidx.recyclerview.widget.DividerItemDecoration
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import androidx.recyclerview.widget.SimpleItemAnimator
-import com.google.android.material.snackbar.Snackbar
 import com.raofflineproxy.R
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 class CachedGamesFragment : Fragment() {
     private val viewModel: MainViewModel by activityViewModels()
-    private var lastHandledScanProgressId = 0L
 
     private val romFolderPickerLauncher = registerForActivityResult(
         ActivityResultContracts.OpenDocumentTree()
@@ -72,8 +70,6 @@ class CachedGamesFragment : Fragment() {
             }
         }
 
-        var snackbar: Snackbar? = null
-
         viewLifecycleOwner.lifecycleScope.launch {
             viewModel.state.collect { state ->
                 val scanEnabled = state.proxyRunning && state.isOnline && !state.scanInProgress
@@ -86,12 +82,6 @@ class CachedGamesFragment : Fragment() {
                         showScanHint = !scanEnabled && !state.scanInProgress
                     )
                 )
-
-                val msg = state.scanProgress
-                snackbar = updateSnackbar(view, msg, state.scanInProgress, state.scanProgressId, lastHandledScanProgressId, snackbar)
-                if (msg != null) {
-                    lastHandledScanProgressId = state.scanProgressId
-                }
             }
         }
     }
