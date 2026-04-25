@@ -31,7 +31,7 @@
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btn_refresh_games"
-            style="@style/Widget.Material3.Button.IconButton"
+            style="@style/Widget.RAOfflineProxy.Button.Icon"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:contentDescription="@string/cached_games_refresh"
@@ -41,7 +41,7 @@
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btn_add_rom"
-            style="@style/Widget.Material3.Button.IconButton"
+            style="@style/Widget.RAOfflineProxy.Button.Icon"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:contentDescription="@string/cached_games_add_rom"
@@ -51,7 +51,7 @@
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btn_scan_roms"
-            style="@style/Widget.Material3.Button.IconButton"
+            style="@style/Widget.RAOfflineProxy.Button.Icon"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:contentDescription="@string/cached_games_scan_folder"
@@ -61,7 +61,7 @@
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btn_clear_cache"
-            style="@style/Widget.Material3.Button.IconButton"
+            style="@style/Widget.RAOfflineProxy.Button.Icon"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:contentDescription="@string/cached_games_clear_all"
