@@ -63,6 +63,10 @@ class MainActivity : AppCompatActivity() {
     private val notificationPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { /* no-op: notification is non-critical */ }
 
+    private val backStackListener = androidx.fragment.app.FragmentManager.OnBackStackChangedListener {
+        syncNavigationUi()
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
@@ -99,6 +103,8 @@ class MainActivity : AppCompatActivity() {
             }
         })
 
+        supportFragmentManager.addOnBackStackChangedListener(backStackListener)
+
         navView.setNavigationItemSelectedListener { item ->
             navigateTo(item.itemId)
             drawerLayout.closeDrawer(GravityCompat.START)
@@ -106,10 +112,12 @@ class MainActivity : AppCompatActivity() {
         }
 
         if (savedInstanceState == null) {
-            showFragment(HomeFragment(), R.id.nav_home)
+            showFragment(HomeFragment(), R.id.nav_home, addToBackStack = false)
             if (viewModel.state.value.autostartProxy) {
                 viewModel.startProxy(treeUri = PrefsConstants.loadSafUri(this@MainActivity))
             }
+        } else {
+            syncNavigationUi()
         }
 
         lifecycleScope.launch {
@@ -172,6 +180,11 @@ class MainActivity : AppCompatActivity() {
     }
 
     fun navigateTo(itemId: Int) {
+        if (resolveCurrentItemId() == itemId) {
+            binding.navView.setCheckedItem(itemId)
+            return
+        }
+
         val fragment: Fragment = when (itemId) {
             R.id.nav_home -> HomeFragment()
             R.id.nav_cached_games -> CachedGamesFragment()
@@ -179,12 +192,27 @@ class MainActivity : AppCompatActivity() {
             R.id.nav_settings -> SettingsFragment()
             else -> return
         }
-        showFragment(fragment, itemId)
-        binding.navView.setCheckedItem(itemId)
+        showFragment(fragment, itemId, addToBackStack = true)
     }
 
-    private fun showFragment(fragment: Fragment, itemId: Int) {
+    private fun showFragment(fragment: Fragment, itemId: Int, addToBackStack: Boolean) {
         viewModel.clearTransientMessages()
+        supportFragmentManager.beginTransaction()
+            .replace(R.id.fragment_container, fragment)
+            .apply {
+                if (addToBackStack) {
+                    addToBackStack(itemId.toString())
+                }
+            }
+            .commit()
+        updateNavigationUi(itemId)
+    }
+
+    private fun syncNavigationUi() {
+        updateNavigationUi(resolveCurrentItemId() ?: R.id.nav_home)
+    }
+
+    private fun updateNavigationUi(itemId: Int) {
         val title = when (itemId) {
             R.id.nav_home -> getString(R.string.app_name)
             R.id.nav_cached_games -> getString(R.string.title_cached_games)
@@ -193,9 +221,20 @@ class MainActivity : AppCompatActivity() {
             else -> getString(R.string.app_name)
         }
         supportActionBar?.title = title
-        supportFragmentManager.beginTransaction()
-            .replace(R.id.fragment_container, fragment)
-            .commit()
+        binding.navView.setCheckedItem(itemId)
+    }
+
+    private fun resolveCurrentItemId(): Int? = when (supportFragmentManager.findFragmentById(R.id.fragment_container)) {
+        is HomeFragment -> R.id.nav_home
+        is CachedGamesFragment -> R.id.nav_cached_games
+        is PendingAwardsFragment -> R.id.nav_pending_awards
+        is SettingsFragment -> R.id.nav_settings
+        else -> null
+    }
+
+    override fun onDestroy() {
+        supportFragmentManager.removeOnBackStackChangedListener(backStackListener)
+        super.onDestroy()
     }
 
     private fun updateNavBadge(navView: NavigationView, itemId: Int, count: Int) {
