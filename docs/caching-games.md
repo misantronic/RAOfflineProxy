@@ -9,6 +9,14 @@ You can do that in two ways:
 
 The rest of this page explains the manual caching flow in the **Cached Games** screen and what data gets saved locally.
 
+## Cache Limit
+
+Manual caching is limited to **50 cached games** at a time.
+
+This limit exists to keep bulk caching from generating too many RetroAchievements requests at once. Each manually cached game can require multiple upstream requests, so the cap helps reduce server load while still leaving enough room for a practical offline library.
+
+When the proxy is running, the **Cached Games** header shows a counter such as `12/50 cached`. Once you reach `50/50`, the **Scan ROM folder** and **Add ROM** actions are disabled until you delete some cached games or clear the cache.
+
 ## What Gets Cached
 
 For each game, the proxy saves three types of data locally:
@@ -32,6 +40,8 @@ The proxy never contacts RA's session endpoint. Instead, it builds the session r
 3. Pick the folder containing your ROM files
 4. The app scans all ROM files, identifies them, and saves their achievement data
 
+If the scan reaches the **50-game cache limit**, it stops there and skips the remaining files.
+
 Progress is shown in a snackbar at the bottom of the screen.
 
 ::: tip
@@ -45,6 +55,8 @@ ROMs not recognized by RetroAchievements are skipped. Text files and hidden file
 3. Each selected file is identified and its game data is saved
 
 This is useful when you just want to cache one or two games without scanning an entire folder.
+
+If adding ROMs would push the cache above **50 games**, the app stops once the limit is reached.
 
 ## The Caching Process
 
@@ -96,6 +108,7 @@ The **Cached Games** screen shows a list of all games currently saved. For each 
 - Game title and icon
 - Number of unlocked achievements out of total
 - Date last cached
+- Cached games counter (`X/50`) while the proxy is running
 
 ## Refreshing Cache
 

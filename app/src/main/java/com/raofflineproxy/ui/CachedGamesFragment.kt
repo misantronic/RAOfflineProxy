@@ -14,6 +14,7 @@ import androidx.recyclerview.widget.ConcatAdapter
 import androidx.recyclerview.widget.DividerItemDecoration
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import com.raofflineproxy.MAX_CACHED_GAMES
 import com.raofflineproxy.R
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -92,14 +93,25 @@ class CachedGamesFragment : Fragment() {
 
         viewLifecycleOwner.lifecycleScope.launch {
             viewModel.state.collect { state ->
-                val scanEnabled = state.proxyRunning && state.isOnline && !state.scanInProgress
+                val actionsEnabled = state.proxyRunning
+                    && state.isOnline
+                    && !state.scanInProgress
+                val scanEnabled = state.proxyRunning
+                    && state.isOnline
+                    && !state.scanInProgress
+                    && state.cachedGames.size < MAX_CACHED_GAMES
+                val statusText = if (state.proxyRunning) {
+                    getString(R.string.cached_games_counter, state.cachedGames.size, MAX_CACHED_GAMES)
+                } else {
+                    getString(R.string.cached_games_scan_hint)
+                }
                 headerAdapter.update(
                     CachedGamesHeaderAdapter.HeaderState(
                         scanEnabled = scanEnabled,
-                        refreshEnabled = scanEnabled && state.cachedGames.isNotEmpty(),
+                        refreshEnabled = actionsEnabled && state.cachedGames.isNotEmpty(),
                         clearEnabled = !state.scanInProgress,
                         showNoCachedGames = state.cachedGames.isEmpty(),
-                        showScanHint = !scanEnabled && !state.scanInProgress
+                        statusText = statusText
                     )
                 )
             }

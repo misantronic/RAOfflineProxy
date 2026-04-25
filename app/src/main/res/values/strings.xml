@@ -84,9 +84,11 @@
     <string name="scan_hashing">Hashing file %1$d/%2$d…</string>
     <string name="scan_looking_up">Looking up %1$d/%2$d: %3$s</string>
     <string name="scan_add_complete">Added: %1$d of %2$d game(s) cached, %3$d skipped.</string>
+    <string name="scan_add_complete_limit">Added: %1$d of %2$d game(s) cached, %3$d skipped. Reached the %4$d-game cache limit.</string>
     <string name="scan_starting">Starting scan…</string>
     <string name="scan_progress">Scanning %1$d/%2$d: %3$s</string>
     <string name="scan_complete">Scan complete: %1$d game(s) matched out of %2$d file(s), %3$d skipped.</string>
+    <string name="scan_complete_limit">Scan complete: %1$d game(s) matched out of %2$d file(s), %3$d skipped. Reached the %4$d-game cache limit.</string>
 
     <!-- Refresh messages -->
     <string name="refresh_progress">Refreshing %1$d/%2$d…</string>
@@ -126,6 +128,8 @@
 
     <!-- Cached games header -->
     <string name="cached_games_scan_hint">Start the proxy and go online to manage cached games.</string>
+    <string name="cached_games_counter">%1$d/%2$d cached</string>
+    <string name="cached_games_limit_reached">You already have %d cached games. Clear some games to add more.</string>
     <string name="cached_games_refresh">Refresh games</string>
     <string name="cached_games_add_rom">Add ROM</string>
     <string name="cached_games_scan_folder">Scan ROM folder</string>

@@ -8,8 +8,10 @@ import android.net.NetworkCapabilities
 import android.net.NetworkRequest
 import android.net.Uri
 import android.util.Log
+import androidx.core.content.edit
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.raofflineproxy.MAX_CACHED_GAMES
 import com.raofflineproxy.buildApiUrl
 import com.raofflineproxy.PrefsConstants
 import com.raofflineproxy.R
@@ -45,7 +47,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
-import androidx.core.content.edit
 
 enum class AuthState { Unknown, Valid, Invalid }
 
@@ -424,12 +425,22 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun addRom(fileUris: List<Uri>) {
         val app = getApplication<Application>()
         viewModelScope.launch {
+            if (_state.value.cachedGames.size >= MAX_CACHED_GAMES) {
+                SnackbarManager.showMessage(str(R.string.cached_games_limit_reached, MAX_CACHED_GAMES))
+                return@launch
+            }
             val credentials = requireCredentials() ?: return@launch
             val total = fileUris.size
             var matched = 0
             var skipped = 0
+            var limitReached = false
             val userAgent = withContext(Dispatchers.IO) { loadUserAgent(db) }
             for ((index, uri) in fileUris.withIndex()) {
+                if (_state.value.cachedGames.size >= MAX_CACHED_GAMES) {
+                    skipped += total - index
+                    limitReached = true
+                    break
+                }
                 val progressMessage = str(R.string.scan_hashing, index + 1, total)
                 _state.value = _state.value.copy(scanInProgress = true, scanProgress = progressMessage)
                 SnackbarManager.showProgress(progressMessage)
@@ -442,13 +453,21 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 }
                 matched += result.matched
                 skipped += result.skipped
+                limitReached = false || result.limitReached
+                if (result.limitReached) break
             }
             _state.value = _state.value.copy(
                 scanInProgress = false,
                 scanProgress = null
             )
             SnackbarManager.showProgress(null)
-            SnackbarManager.showMessage(str(R.string.scan_add_complete, matched, total, skipped))
+            SnackbarManager.showMessage(
+                if (limitReached) {
+                    str(R.string.scan_add_complete_limit, matched, total, skipped, MAX_CACHED_GAMES)
+                } else {
+                    str(R.string.scan_add_complete, matched, total, skipped)
+                }
+            )
         }
     }
 
@@ -481,6 +500,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun scanRoms(treeUri: Uri) {
         val app = getApplication<Application>()
         viewModelScope.launch {
+            if (_state.value.cachedGames.size >= MAX_CACHED_GAMES) {
+                SnackbarManager.showMessage(str(R.string.cached_games_limit_reached, MAX_CACHED_GAMES))
+                return@launch
+            }
             val credentials = requireCredentials() ?: return@launch
             val startingMessage = str(R.string.scan_starting)
             _state.value = _state.value.copy(scanInProgress = true, scanProgress = startingMessage)
@@ -499,7 +522,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 scanProgress = null
             )
             SnackbarManager.showProgress(null)
-            SnackbarManager.showMessage(str(R.string.scan_complete, result.matched, result.total, result.skipped))
+            SnackbarManager.showMessage(
+                if (result.limitReached) {
+                    str(R.string.scan_complete_limit, result.matched, result.total, result.skipped, MAX_CACHED_GAMES)
+                } else {
+                    str(R.string.scan_complete, result.matched, result.total, result.skipped)
+                }
+            )
         }
     }
 

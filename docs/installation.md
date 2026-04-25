@@ -45,6 +45,8 @@ Once the proxy has been started and RetroArch has logged in successfully through
 
 The app will identify each ROM, look it up on RetroAchievements, and save all the achievement data for that game.
 
+Manual caching is capped at **50 games** to limit bulk server requests to RetroAchievements. The **Cached Games** screen shows the current total as `X/50 cached` while the proxy is running.
+
 ::: tip Automatic caching when launching games
 Caching also happens automatically when you open a game in RetroArch while the proxy is running and you are online — the proxy saves the game data in the background. Manual scanning is only needed if you want to pre-cache games before going offline without launching them first.
 :::

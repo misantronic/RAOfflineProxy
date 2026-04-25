@@ -22,7 +22,7 @@ class CachedGamesHeaderAdapter(
         val refreshEnabled: Boolean = false,
         val clearEnabled: Boolean = true,
         val showNoCachedGames: Boolean = false,
-        val showScanHint: Boolean = false
+        val statusText: String? = null
     )
 
     inner class ViewHolder(view: View) : RecyclerView.ViewHolder(view) {
@@ -52,7 +52,8 @@ class CachedGamesHeaderAdapter(
             btnClear.isEnabled = s.clearEnabled
             btnClear.alpha = if (s.clearEnabled) 1f else 0.38f
 
-            tvScanHint.visibility = if (s.showScanHint) View.VISIBLE else View.GONE
+            tvScanHint.text = s.statusText
+            tvScanHint.visibility = if (s.statusText.isNullOrEmpty()) View.GONE else View.VISIBLE
 
             tvNoCachedGames.visibility = if (s.showNoCachedGames) View.VISIBLE else View.GONE
         }
