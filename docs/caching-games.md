@@ -60,23 +60,24 @@ There is a short delay between files to avoid overloading the RA servers.
 
 ## Current Hashing Support
 
-Manual caching does not use one universal hashing rule for every system. Some systems need header stripping, byte-order normalization, or filesystem-aware disc parsing before the hash is sent to RetroAchievements.
+Manual caching does not use one universal hashing rule for every system. Some systems need header stripping, byte-order normalization, or disc-image parsing before the hash is sent to RetroAchievements.
 
 The table below reflects the current app behavior.
 
-| System | Extensions | Hashing method | Current status |
-|---|---|---|---|
-| **NES** | `.nes` | Ignores the 16-byte iNES header when present, then MD5s the remaining ROM data | **Working and tested** |
-| **SNES / Super Famicom** | `.smc`, `.sfc`, `.fig`, `.swc` | Ignores a 512-byte copier header when the file layout matches that format, then MD5s the ROM | **Working and tested** |
-| **Game Boy** | `.gb` | Plain whole-file MD5 | **Working and tested** |
-| **Game Boy Color** | `.gbc` | Plain whole-file MD5 | **Working and tested** |
-| **Game Boy Advance** | `.gba` | Plain whole-file MD5 | **Working and tested** |
-| **Sega Master System** | `.sms` | Plain whole-file MD5 | **Working and tested** |
-| **Sega Mega Drive / Genesis** | `.md` | Plain whole-file MD5 | **Working and tested** |
-| **Nintendo 64** | `.z64`, `.n64`, `.v64` | Normalizes ROM byte order to `.z64` format first, then MD5s up to the first 64 MiB | **Working and tested for `.z64` and `.n64`**. `.v64` is implemented but not manually tested |
-| **PlayStation** | `.bin`, `.iso` | Parses the disc image, reads `SYSTEM.CNF`, finds the boot executable, and hashes the executable path plus executable contents | **Working and tested for direct `.bin` images**. `.iso` is implemented but not manually tested |
-| **PSP** | `.iso` | Parses the ISO and hashes `PSP_GAME\PARAM.SFO` followed by `PSP_GAME\SYSDIR\EBOOT.BIN` | **Partially verified**. Some `.iso` titles cache correctly, but not every ISO tested so far is recognized |
-| **Other formats** | everything else | Falls back to plain whole-file MD5 | **Best effort only**. This may or may not match RetroAchievements depending on the system |
+| System | Hashing method | Current status |
+|---|---|---|
+| **NES** | Ignores the 16-byte iNES header when present, then MD5s the remaining ROM data | **✅ Working** |
+| **SNES** | Ignores a 512-byte copier header when the file layout matches that format, then MD5s the ROM | **✅ Working** |
+| **Game Boy** | Plain whole-file MD5 | **✅ Working** |
+| **Game Boy Color** | Plain whole-file MD5 | **✅ Working** |
+| **Game Boy Advance** | Plain whole-file MD5 | **✅ Working** |
+| **Sega Master System** | Plain whole-file MD5 | **✅ Working** |
+| **Sega Mega Drive / Genesis** | Plain whole-file MD5 | **✅ Working** |
+| **Nintendo 64** | Normalizes ROM byte order to `.z64` format first, then MD5s up to the first 64 MiB | **✅ Working** |
+| **PlayStation** | Parses the disc image, reads `SYSTEM.CNF`, finds the boot executable, and hashes the executable path plus executable contents | **Working and tested for direct `.bin` images**. `.iso` is implemented but not manually tested |
+| **PSP** | Parses the ISO and hashes `PSP_GAME\PARAM.SFO` followed by `PSP_GAME\SYSDIR\EBOOT.BIN` | **✅ Working** |
+| **Dreamcast** | No supported manual hashing path at the moment | **Not manually working** |
+| **Other formats** | Falls back to plain whole-file MD5 | **Best effort only**. This may or may not match RetroAchievements depending on the system |
 
 ::: warning Manual caching support is still format-dependent
 If a file format needs custom RetroAchievements hashing and that format is not explicitly listed above, manual caching may skip it even though launching the same game through RetroArch works.

@@ -444,8 +444,8 @@ class RomScannerHashTest {
         return image
     }
 
-    private fun writeDirectorySector(image: ByteArray, sector: Int, records: List<ByteArray>) {
-        val offset = sector * 2048
+    private fun writeDirectorySector(image: ByteArray, sector: Int, records: List<ByteArray>, sectorSize: Int = 2048) {
+        val offset = sector * sectorSize
         var cursor = offset
         records.forEach { record ->
             record.copyInto(image, cursor)

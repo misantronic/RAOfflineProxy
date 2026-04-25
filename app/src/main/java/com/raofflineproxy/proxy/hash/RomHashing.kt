@@ -40,7 +40,10 @@ private val romHashStrategies: List<RomHashStrategy> = listOf(
     GameBoyRomHashStrategy
 )
 
-internal fun hashRom(context: Context, file: DocumentFile): String? {
+internal fun hashRom(
+    context: Context,
+    file: DocumentFile
+): String? {
     val fileName = file.name ?: return null
     val input = RomHashInput(
         fileName = fileName,
