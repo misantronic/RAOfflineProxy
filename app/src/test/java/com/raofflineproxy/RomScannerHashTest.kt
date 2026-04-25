@@ -1,13 +1,15 @@
 package com.raofflineproxy
 
-import com.raofflineproxy.proxy.retroAchievementsHeaderBytesToSkip
+import com.raofflineproxy.proxy.hash.FdsRomHashStrategy
+import com.raofflineproxy.proxy.hash.NesRomHashStrategy
+import com.raofflineproxy.proxy.hash.SnesRomHashStrategy
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class RomScannerHashTest {
 
     @Test
-    fun retroAchievementsHeaderBytesToSkip_nesHeader_skips16Bytes() {
+    fun nesHeaderBytesToSkip_nesHeader_skips16Bytes() {
         val header = byteArrayOf(
             'N'.code.toByte(),
             'E'.code.toByte(),
@@ -27,11 +29,11 @@ class RomScannerHashTest {
             0
         )
 
-        assertEquals(16, retroAchievementsHeaderBytesToSkip(header, header.size))
+        assertEquals(16, NesRomHashStrategy.headerBytesToSkip(header, header.size))
     }
 
     @Test
-    fun retroAchievementsHeaderBytesToSkip_fdsHeader_skips16Bytes() {
+    fun fdsHeaderBytesToSkip_fdsHeader_skips16Bytes() {
         val header = byteArrayOf(
             'F'.code.toByte(),
             'D'.code.toByte(),
@@ -51,11 +53,11 @@ class RomScannerHashTest {
             0
         )
 
-        assertEquals(16, retroAchievementsHeaderBytesToSkip(header, header.size))
+        assertEquals(16, FdsRomHashStrategy.headerBytesToSkip(header, header.size))
     }
 
     @Test
-    fun retroAchievementsHeaderBytesToSkip_nonHeader_skipsNothing() {
+    fun nesHeaderBytesToSkip_nonHeader_skipsNothing() {
         val header = byteArrayOf(
             0x01,
             0x02,
@@ -75,13 +77,23 @@ class RomScannerHashTest {
             0x10
         )
 
-        assertEquals(0, retroAchievementsHeaderBytesToSkip(header, header.size))
+        assertEquals(0, NesRomHashStrategy.headerBytesToSkip(header, header.size))
     }
 
     @Test
-    fun retroAchievementsHeaderBytesToSkip_shortRead_skipsNothing() {
+    fun nesHeaderBytesToSkip_shortRead_skipsNothing() {
         val header = byteArrayOf('N'.code.toByte(), 'E'.code.toByte(), 'S'.code.toByte())
 
-        assertEquals(0, retroAchievementsHeaderBytesToSkip(header, header.size))
+        assertEquals(0, NesRomHashStrategy.headerBytesToSkip(header, header.size))
+    }
+
+    @Test
+    fun snesHeaderBytesToSkip_copierHeader_skips512Bytes() {
+        assertEquals(512, SnesRomHashStrategy.headerBytesToSkip(bytesRead = 512, fileSize = 8192L + 512L))
+    }
+
+    @Test
+    fun snesHeaderBytesToSkip_plainRom_skipsNothing() {
+        assertEquals(0, SnesRomHashStrategy.headerBytesToSkip(bytesRead = 512, fileSize = 8192L))
     }
 }
