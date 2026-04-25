@@ -1,5 +1,7 @@
 package com.raofflineproxy.ui
 
+import android.app.Activity
+import android.content.Intent
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
@@ -24,18 +26,29 @@ class CachedGamesFragment : Fragment() {
     ) { uri ->
         if (uri == null) return@registerForActivityResult
         requireContext().contentResolver.takePersistableUriPermission(
-            uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+            uri, Intent.FLAG_GRANT_READ_URI_PERMISSION
         )
         viewModel.scanRoms(uri)
     }
 
     private val addRomLauncher = registerForActivityResult(
-        ActivityResultContracts.OpenMultipleDocuments()
-    ) { uris ->
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode != Activity.RESULT_OK) return@registerForActivityResult
+        val data = result.data ?: return@registerForActivityResult
+        val uris = buildList {
+            data.data?.let(::add)
+            val clipData = data.clipData
+            if (clipData != null) {
+                for (index in 0 until clipData.itemCount) {
+                    add(clipData.getItemAt(index).uri)
+                }
+            }
+        }.distinct()
         if (uris.isEmpty()) return@registerForActivityResult
         uris.forEach { uri ->
             requireContext().contentResolver.takePersistableUriPermission(
-                uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+                uri, Intent.FLAG_GRANT_READ_URI_PERMISSION
             )
         }
         viewModel.addRom(uris)
@@ -50,7 +63,15 @@ class CachedGamesFragment : Fragment() {
         )
         val headerAdapter = CachedGamesHeaderAdapter(
             onScan = { romFolderPickerLauncher.launch(null) },
-            onAdd = { addRomLauncher.launch(arrayOf("*/*")) },
+            onAdd = {
+                addRomLauncher.launch(
+                    Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                        addCategory(Intent.CATEGORY_OPENABLE)
+                        type = "*/*"
+                        putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
+                    }
+                )
+            },
             onRefresh = viewModel::refreshGames,
             onClear = viewModel::clearCache
         )
