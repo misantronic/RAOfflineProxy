@@ -2,7 +2,7 @@
 
 > You are installing the current alpha build: `v1.0.0-alpha1`.
 
-## Step 1 — Install RAOfflineProxy
+## Step 1: Install RAOfflineProxy
 
 Install the APK on your Android device. You can download the latest alpha prerelease from [GitHub Releases](https://github.com/misantronic/RAOfflineProxy/releases) or build from source.
 
@@ -10,7 +10,7 @@ Install the APK on your Android device. You can download the latest alpha prerel
 Android **8.0** or newer is required.
 :::
 
-## Step 2 — Enter Your RetroAchievements Credentials in RetroArch
+## Step 2: Enter Your RetroAchievements Credentials in RetroArch
 
 Before using RAOfflineProxy, enter your RetroAchievements account details in RetroArch.
 
@@ -19,7 +19,7 @@ In RetroArch:
 2. Enter your RetroAchievements **Username** and **Password** (or API Token)
 3. Save the settings
 
-## Step 3 — Start the Proxy and Complete the First Online Game Launch
+## Step 3: Start the Proxy and Complete the First Online Game Launch
 
 Starting the proxy automatically patches RetroArch's config file to redirect achievement traffic to the local proxy. If direct file access is unavailable, the app asks you to grant folder access.
 
@@ -34,7 +34,7 @@ After that first successful online login through the proxy, the setup is ready.
 On some devices, swiping the app away or crashing while the proxy is active does not reliably revert `retroarch.cfg` immediately. Stop sync before killing the app. If that happens, reopen RAOfflineProxy once so it can clean up `retroarch.cfg`.
 :::
 
-## Step 4 — Cache Your Games
+## Step 4: Cache Your Games
 
 Once the proxy has been started and RetroArch has logged in successfully through it, you can cache games for offline use.
 
@@ -53,7 +53,7 @@ Caching also happens automatically when you open a game in RetroArch while the p
 
 See [Caching Games](./caching-games) for full details.
 
-## Step 5 — Play Offline
+## Step 5: Play Offline
 
 1. Start the proxy service (press **Start proxy** in the action bar, or enable auto-start)
 2. Launch RetroArch and load a cached game
