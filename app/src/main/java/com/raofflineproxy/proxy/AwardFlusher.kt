@@ -8,6 +8,7 @@ import com.raofflineproxy.R
 import com.raofflineproxy.RA_HOST
 import com.raofflineproxy.RequestFailureNotifier
 import com.raofflineproxy.data.AppDatabase
+import com.raofflineproxy.data.CacheEntry
 import com.raofflineproxy.data.CacheKeys
 import com.raofflineproxy.data.PendingAward
 import com.raofflineproxy.data.PENDING_AWARD_STATUS_DELETED
@@ -209,23 +210,65 @@ class AwardFlusher(
         val events = _events.asSharedFlow()
     }
 
-    private data class LiveRefreshResult(
-        val achievementIds: Set<Int>,
+    private data class PendingAwardGameTargets(
+        val awardGameIds: Map<Long, Int>,
         val gameIds: List<Int>
     )
 
+    private suspend fun resolvePendingAwardGameTargets(
+        awards: List<PendingAward>
+    ): PendingAwardGameTargets {
+        val patchEntries = db.cacheDao().getAllByPrefix(CacheKeys.PREFIX_PATCH)
+        if (patchEntries.isEmpty()) {
+            return PendingAwardGameTargets(emptyMap(), emptyList())
+        }
+
+        val achievementGameIds = buildAchievementGameIds(patchEntries)
+        if (achievementGameIds.isEmpty()) {
+            return PendingAwardGameTargets(emptyMap(), emptyList())
+        }
+
+        val awardGameIds = buildMap {
+            awards.forEach { award ->
+                val gameId = achievementGameIds[award.achievementId] ?: return@forEach
+                put(award.id, gameId)
+            }
+        }
+
+        return PendingAwardGameTargets(
+            awardGameIds = awardGameIds,
+            gameIds = awardGameIds.values.distinct()
+        )
+    }
+
+    private fun buildAchievementGameIds(
+        patchEntries: List<CacheEntry>
+    ): Map<Int, Int> = buildMap {
+        patchEntries.forEach { entry ->
+            val gameId = CacheKeys.parseGameIdFromPatchKey(entry.cacheKey) ?: return@forEach
+            val patchData = runCatching {
+                JSONObject(entry.responseBody).getJSONObject("PatchData")
+            }.getOrNull() ?: return@forEach
+            val achievements = patchData.optJSONArray("Achievements") ?: return@forEach
+            for (i in 0 until achievements.length()) {
+                val achievement = achievements.optJSONObject(i) ?: continue
+                val achievementId = achievement.optInt("ID")
+                if (achievementId != 0) {
+                    putIfAbsent(achievementId, gameId)
+                }
+            }
+        }
+    }
+
     private suspend fun refreshAndLoadAchievementIds(
         creds: LoginCredentials,
-        userAgent: String
-    ): LiveRefreshResult? {
-        val patchEntries = db.cacheDao().getAllByPrefix(CacheKeys.PREFIX_PATCH)
-        val gameIds = patchEntries.mapNotNull { entry ->
-            CacheKeys.parseGameIdFromPatchKey(entry.cacheKey)
-        }.distinct()
+        userAgent: String,
+        gameIds: List<Int>
+    ): Set<Int>? {
 
         if (gameIds.isEmpty()) {
-            Log.w(TAG, "No cached patch entries — cannot determine game IDs for staleness check")
-            return LiveRefreshResult(emptySet(), emptyList())
+            Log.w(TAG, "No cached games matched pending awards — skipping targeted refresh")
+            return emptySet()
         }
 
         val ids = mutableSetOf<Int>()
@@ -246,7 +289,7 @@ class AwardFlusher(
                 return null
             }
         }
-        return LiveRefreshResult(ids, gameIds)
+        return ids
     }
 
     suspend fun flush() = withContext(Dispatchers.IO) {
@@ -288,21 +331,30 @@ class AwardFlusher(
             return@withContext
         }
         val userAgent = loadUserAgent(db)
+        val pendingAwards = awards.filter { it.status == PENDING_AWARD_STATUS_PENDING }
+        val pendingAwardGameTargets = resolvePendingAwardGameTargets(pendingAwards)
 
-        val liveRefresh = refreshAndLoadAchievementIds(creds, userAgent)
-        if (liveRefresh == null) {
+        val knownAchievementIds = refreshAndLoadAchievementIds(
+            creds = creds,
+            userAgent = userAgent,
+            gameIds = pendingAwardGameTargets.gameIds
+        )
+        if (knownAchievementIds == null) {
             Log.e(TAG, "Flush blocked — could not refresh achievement data from server")
             _events.emit(FlushEvent.RefreshFailed("Could not refresh achievement data from server. Try again later."))
             return@withContext
         }
-        val knownAchievementIds = liveRefresh.achievementIds
-        Log.i(TAG, "Live refresh complete: ${knownAchievementIds.size} known achievement IDs")
+        Log.i(
+            TAG,
+            "Live refresh complete: ${knownAchievementIds.size} known achievement IDs across ${pendingAwardGameTargets.gameIds.size} targeted game(s)"
+        )
 
         _events.emit(FlushEvent.Started)
 
         var flushed = 0
         var skippedDeleted = 0
         var skippedStale = 0
+        val successfulGameIds = linkedSetOf<Int>()
         awards.forEachIndexed { index, award ->
             _events.emit(FlushEvent.Progress(index + 1, awards.size))
 
@@ -320,6 +372,8 @@ class AwardFlusher(
                 return@forEachIndexed
             }
 
+            val awardGameId = pendingAwardGameTargets.awardGameIds[award.id]
+
             if (isHardcoreAward(award)) {
                 Log.w(TAG, "Marking stale hardcore award ${award.id} — hardcore mode is not supported")
                 db.pendingAwardDao().update(
@@ -332,7 +386,7 @@ class AwardFlusher(
                 return@forEachIndexed
             }
 
-            if (knownAchievementIds.isNotEmpty() && award.achievementId !in knownAchievementIds) {
+            if (awardGameId != null && knownAchievementIds.isNotEmpty() && award.achievementId !in knownAchievementIds) {
                 Log.w(TAG, "Marking stale award ${award.id} — achievement ${award.achievementId} not found in live patch data")
                 db.pendingAwardDao().update(
                     award.copy(
@@ -353,6 +407,9 @@ class AwardFlusher(
                         )
                     )
                     flushed++
+                    if (awardGameId != null) {
+                        successfulGameIds.add(awardGameId)
+                    }
                     Log.i(TAG, "Award flushed: ${award.id}")
                 }
                 is FlushResult.AuthError -> {
@@ -383,11 +440,11 @@ class AwardFlusher(
         purgeProcessedAwardsIfSafe()
         val pendingRemaining = db.pendingAwardDao().getAllByStatus().size
 
-        if (flushed > 0) {
-            Log.i(TAG, "Post-flush unlocks/session refresh in ${POST_FLUSH_REFRESH_DELAY_MS}ms for ${liveRefresh.gameIds.size} game(s)")
+        if (successfulGameIds.isNotEmpty()) {
+            Log.i(TAG, "Post-flush unlocks/session refresh in ${POST_FLUSH_REFRESH_DELAY_MS}ms for ${successfulGameIds.size} game(s)")
             delay(POST_FLUSH_REFRESH_DELAY_MS)
-            for (gameId in liveRefresh.gameIds) {
-                cacheUnlocks(context, gameId, creds, proxyUserAgent(userAgent))
+            for (gameId in successfulGameIds) {
+                cacheUnlocks(context, gameId, creds, proxyUserAgent(userAgent), db)
                 cacheSession(gameId, creds, db)
             }
             Log.i(TAG, "Post-flush refresh complete")

@@ -237,11 +237,18 @@ internal suspend fun cacheGame(context: Context, gameId: Int, creds: LoginCreden
             RequestFailureNotifier.report(result.userMessage(context, "patch"), logDetails)
         }
     }
+    cacheUnlocks(context, gameId, creds, userAgent, db)
     cacheSession(gameId, creds, db)
     Log.i(TAG, "cacheGame complete for gameId=$gameId")
 }
 
-internal fun cacheUnlocks(context: Context, gameId: Int, creds: LoginCredentials, userAgent: String) {
+internal suspend fun cacheUnlocks(
+    context: Context,
+    gameId: Int,
+    creds: LoginCredentials,
+    userAgent: String,
+    db: AppDatabase
+) {
     val url = buildApiUrl(
         proxyBase(context),
         "unlocks",
@@ -254,6 +261,12 @@ internal fun cacheUnlocks(context: Context, gameId: Int, creds: LoginCredentials
     )
     when (val result = httpGet(url, userAgent)) {
         is HttpGetResult.Success -> {
+            db.cacheDao().upsert(
+                CacheEntry(
+                    cacheKey = CacheKeys.unlocks(gameId, creds.user),
+                    responseBody = result.body
+                )
+            )
             Log.i(TAG, "Cached unlocks for gameId=$gameId")
         }
 
