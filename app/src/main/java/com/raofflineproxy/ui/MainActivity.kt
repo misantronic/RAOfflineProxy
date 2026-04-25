@@ -285,25 +285,23 @@ class MainActivity : AppCompatActivity() {
 
         pendingErrors.addLast(QueuedError(message))
         if (activeSnackbarKind != ActiveSnackbarKind.Error) {
-            showNextSnackbar(force = true)
+            showNextSnackbar()
         }
     }
 
     private fun showOrQueueMessage(event: SnackbarEvent.Message) {
         pendingMessage = event
         if (activeSnackbarKind == ActiveSnackbarKind.Error) return
-        showNextSnackbar(force = true)
+        showNextSnackbar()
     }
 
     private fun showOrClearProgress(message: String?) {
         progressMessage = message
         if (activeSnackbarKind == ActiveSnackbarKind.Error) return
-        showNextSnackbar(force = true)
+        showNextSnackbar()
     }
 
-    private fun showNextSnackbar(force: Boolean = false) {
-        if (!force && snackbar != null) return
-
+    private fun showNextSnackbar() {
         pendingSnackbarJob?.cancel()
         pendingSnackbarJob = null
         if (snackbar != null) {
@@ -337,7 +335,7 @@ class MainActivity : AppCompatActivity() {
             }
             snackbar = null
             activeSnackbarKind = null
-            showNextSnackbar(force = true)
+            showNextSnackbar()
         }.also { it.show() }
     }
 
@@ -356,7 +354,7 @@ class MainActivity : AppCompatActivity() {
                 .setAction(R.string.action_ok) {
                     snackbar = null
                     activeSnackbarKind = null
-                    showNextSnackbar(force = true)
+                    showNextSnackbar()
                 }
                 .also { it.show() }
             return
@@ -375,7 +373,7 @@ class MainActivity : AppCompatActivity() {
                             if (snackbar === transientBottomBar) {
                                 snackbar = null
                                 activeSnackbarKind = null
-                                showNextSnackbar(force = true)
+                                showNextSnackbar()
                             }
                         }
                     })
