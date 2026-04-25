@@ -5,6 +5,9 @@ import com.raofflineproxy.proxy.hash.N64ByteOrder
 import com.raofflineproxy.proxy.hash.NesRomHashStrategy
 import com.raofflineproxy.proxy.hash.NintendoDsRomHashStrategy
 import com.raofflineproxy.proxy.hash.Nintendo64RomHashStrategy
+import com.raofflineproxy.proxy.hash.Atari7800RomHashStrategy
+import com.raofflineproxy.proxy.hash.AtariLynxRomHashStrategy
+import com.raofflineproxy.proxy.hash.PcEngineRomHashStrategy
 import com.raofflineproxy.proxy.hash.detectPrimaryVolumeDescriptor
 import com.raofflineproxy.proxy.hash.detectIsoSectorLayout
 import com.raofflineproxy.proxy.hash.findFileRecord
@@ -13,6 +16,7 @@ import com.raofflineproxy.proxy.hash.PspRomHashStrategy
 import com.raofflineproxy.proxy.hash.RomDataSource
 import com.raofflineproxy.proxy.hash.RomHashInput
 import com.raofflineproxy.proxy.hash.SnesRomHashStrategy
+import com.raofflineproxy.proxy.hash.SuperCassetteVisionRomHashStrategy
 import com.raofflineproxy.proxy.hash.SectorLayout
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -109,6 +113,55 @@ class RomScannerHashTest {
     @Test
     fun snesHeaderBytesToSkip_plainRom_skipsNothing() {
         assertEquals(0, SnesRomHashStrategy.headerBytesToSkip(bytesRead = 512, fileSize = 8192L))
+    }
+
+    @Test
+    fun atari7800HeaderBytesToSkip_header_skips128Bytes() {
+        val header = ByteArray(128)
+        "ATARI7800".toByteArray(Charsets.US_ASCII).copyInto(header, 1)
+
+        assertEquals(128, Atari7800RomHashStrategy.headerBytesToSkip(header, header.size))
+    }
+
+    @Test
+    fun atari7800HeaderBytesToSkip_plainRom_skipsNothing() {
+        assertEquals(0, Atari7800RomHashStrategy.headerBytesToSkip(ByteArray(128), 128))
+    }
+
+    @Test
+    fun lynxHeaderBytesToSkip_header_skips64Bytes() {
+        val header = ByteArray(64)
+        "LYNX".toByteArray(Charsets.US_ASCII).copyInto(header, 0)
+
+        assertEquals(64, AtariLynxRomHashStrategy.headerBytesToSkip(header, header.size))
+    }
+
+    @Test
+    fun lynxHeaderBytesToSkip_plainRom_skipsNothing() {
+        assertEquals(0, AtariLynxRomHashStrategy.headerBytesToSkip(ByteArray(64), 64))
+    }
+
+    @Test
+    fun pcEngineHeaderBytesToSkip_sizeWith512ExtraBytes_skipsHeader() {
+        assertEquals(512, PcEngineRomHashStrategy.headerBytesToSkip(8192L + 512L))
+    }
+
+    @Test
+    fun pcEngineHeaderBytesToSkip_exactMultipleOf8k_skipsNothing() {
+        assertEquals(0, PcEngineRomHashStrategy.headerBytesToSkip(8192L))
+    }
+
+    @Test
+    fun superCassetteVisionHeaderBytesToSkip_header_skips32Bytes() {
+        val header = ByteArray(32)
+        "EmuSCV".toByteArray(Charsets.US_ASCII).copyInto(header, 0)
+
+        assertEquals(32, SuperCassetteVisionRomHashStrategy.headerBytesToSkip(header, header.size))
+    }
+
+    @Test
+    fun superCassetteVisionHeaderBytesToSkip_plainRom_skipsNothing() {
+        assertEquals(0, SuperCassetteVisionRomHashStrategy.headerBytesToSkip(ByteArray(32), 32))
     }
 
     @Test

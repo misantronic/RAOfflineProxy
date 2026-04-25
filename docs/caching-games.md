@@ -80,17 +80,17 @@ The table below reflects the current app behavior.
 |---|---|---|
 | **NES** | Ignores the 16-byte iNES header when present, then MD5s the remaining ROM data | **✅ Working** |
 | **SNES** | Ignores a 512-byte copier header when the file layout matches that format, then MD5s the ROM | **✅ Working** |
-| **Game Boy** | Plain whole-file MD5 | **✅ Working** |
-| **Game Boy Color** | Plain whole-file MD5 | **✅ Working** |
-| **Game Boy Advance** | Plain whole-file MD5 | **✅ Working** |
-| **Sega Master System** | Plain whole-file MD5 | **✅ Working** |
-| **Sega Mega Drive / Genesis** | Plain whole-file MD5 | **✅ Working** |
+| **Atari 2600**<br>**Game Boy**<br>**Game Boy Color**<br>**Game Boy Advance**<br>**Sega Master System**<br>**Sega Mega Drive / Genesis**<br>**Game Gear**<br>**SG-1000**<br>**Sega 32X**<br>**ColecoVision**<br>**Intellivision**<br>**Neo Geo Pocket**<br>**Pokemon Mini**<br>**Virtual Boy**<br>**WonderSwan** | Plain whole-file MD5 | **✅ Working** |
 | **Nintendo 64** | Normalizes ROM byte order to `.z64` format first, then MD5s up to the first 64 MiB | **✅ Working** |
 | **Nintendo DS** | Hashes the DS header, ARM9 code, ARM7 code, and icon/title block, while ignoring a 512-byte SuperCard header when present | **✅ Working** |
-| **PlayStation** | Parses the disc image, reads `SYSTEM.CNF`, finds the boot executable, and hashes the executable path plus executable contents | **Working and tested for direct `.bin` images**. `.iso` is implemented but not manually tested |
+| **PlayStation** | Parses the disc image, reads `SYSTEM.CNF`, finds the boot executable, and hashes the executable path plus executable contents | **✅ Working for `.bin` images**. `.iso` is implemented but not manually tested |
 | **PSP** | Parses the ISO and hashes `PSP_GAME\PARAM.SFO` followed by `PSP_GAME\SYSDIR\EBOOT.BIN` | **✅ Working** |
-| **Dreamcast** | No supported manual hashing path at the moment | **Not manually working** |
+| **Atari 7800** | Ignores the 128-byte A78 header when present, then MD5s the remaining ROM data | **Best effort only** |
+| **Atari Lynx** | Ignores the 64-byte LNX header when present, then MD5s the remaining ROM data | **Best effort only** |
+| **PC Engine**<br>**TurboGrafx-16**<br>**SuperGrafx** | Ignores a 512-byte header when the file size indicates one, then MD5s the ROM | **Best effort only** |
+| **Super Cassette Vision** | Ignores the 32-byte EmuSCV header when present, then MD5s the remaining ROM data | **Best effort only** |
 | **Other formats** | Falls back to plain whole-file MD5 | **Best effort only**. This may or may not match RetroAchievements depending on the system |
+| **Dreamcast**<br>**Sega CD**<br>**Saturn**<br>**3DO**<br>**Neo Geo CD**<br>**PC Engine CD**<br>**PC-FX**<br>**Jaguar CD**<br>**GameCube**<br>**Wii**<br>**Nintendo 3DS**<br>**MS-DOS**<br>**Arcade** | No supported manual hashing path at the moment | **Not manually working** |
 
 ::: warning Manual caching support is still format-dependent
 If a file format needs custom RetroAchievements hashing and that format is not explicitly listed above, manual caching may skip it even though launching the same game through RetroArch works.
