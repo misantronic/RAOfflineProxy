@@ -147,10 +147,10 @@ suspend fun scanRomFolder(
 ): ScanResult {
     val files: List<DocumentFile> = if (singleFile) {
         val f = DocumentFile.fromSingleUri(context, treeUri)
-        if (f != null && f.isFile) listOf(f) else emptyList()
+        if (f != null && shouldScanFile(f)) listOf(f) else emptyList()
     } else {
         DocumentFile.fromTreeUri(context, treeUri)?.listFiles()
-            ?.filter { it.isFile && it.name?.let { n -> !n.startsWith(".") && !n.endsWith(".txt", ignoreCase = true) } == true }
+            ?.filter(::shouldScanFile)
             ?: emptyList()
     }
     val total = files.size
@@ -169,6 +169,14 @@ suspend fun scanRomFolder(
     }
 
     return ScanResult(matched, total, skipped)
+}
+
+private fun shouldScanFile(file: DocumentFile): Boolean {
+    val name = file.name ?: return false
+    return file.isFile
+        && !name.startsWith(".")
+        && !name.endsWith(".txt", ignoreCase = true)
+        && !name.endsWith(".xml", ignoreCase = true)
 }
 
 private fun md5File(context: Context, uri: Uri): String? =
