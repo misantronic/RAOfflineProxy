@@ -82,8 +82,7 @@
         android:textSize="13sp"
         android:alpha="0.6"
         android:layout_marginTop="12dp"
-        android:paddingStart="16dp"
-        android:paddingEnd="16dp"
+
         android:visibility="gone" />
 
 </LinearLayout>

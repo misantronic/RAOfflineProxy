@@ -52,7 +52,7 @@
             android:id="@+id/iv_expand"
             android:layout_width="24dp"
             android:layout_height="24dp"
-            android:layout_marginStart="8dp"
+            android:layout_marginStart="16dp"
             android:contentDescription="@string/cd_expand_achievements"
             android:src="@drawable/ic_expand_more" />
 
@@ -61,7 +61,7 @@
             style="@style/Widget.RAOfflineProxy.Button.Icon"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginStart="8dp"
+            android:layout_marginStart="16dp"
             android:contentDescription="@string/cd_delete_cache"
             android:tooltipText="@string/cd_delete_cached_game"
             app:icon="@drawable/ic_delete"
