@@ -7,6 +7,8 @@ import java.io.Closeable
 import java.io.FileInputStream
 import java.io.InputStream
 
+private const val TAG = "RAProxy/Hash"
+
 internal data class RomHashInput(
     val fileName: String,
     val fileSize: Long,
@@ -27,6 +29,7 @@ internal interface RomHashStrategy {
 }
 
 private val romHashStrategies: List<RomHashStrategy> = listOf(
+    PspRomHashStrategy,
     PsxRomHashStrategy,
     NesRomHashStrategy,
     FdsRomHashStrategy,
@@ -48,10 +51,21 @@ internal fun hashRom(context: Context, file: DocumentFile): String? {
     )
     romHashStrategies.forEach { strategy ->
         if (!strategy.matches(fileName)) return@forEach
+        logInfo(TAG, "Trying ${strategy.javaClass.simpleName} for $fileName size=${input.fileSize}")
         val hash = strategy.hash(input)
-        if (hash != null) return hash
+        if (hash != null) {
+            logInfo(TAG, "${strategy.javaClass.simpleName} produced hash=$hash for $fileName")
+            return hash
+        }
+        logInfo(TAG, "${strategy.javaClass.simpleName} could not hash $fileName")
     }
-    return GenericMd5RomHashStrategy.hash(input)
+    val fallback = GenericMd5RomHashStrategy.hash(input)
+    if (fallback != null) {
+        logInfo(TAG, "GenericMd5RomHashStrategy produced hash=$fallback for $fileName")
+    } else {
+        logWarn(TAG, "No hash strategy could hash $fileName")
+    }
+    return fallback
 }
 
 internal fun hasExtension(fileName: String, vararg extensions: String): Boolean =
@@ -68,7 +82,14 @@ private class ParcelFileDescriptorRomDataSource(
 
     override fun read(offset: Long, buffer: ByteArray, length: Int): Int {
         channel.position(offset)
-        return inputStream.read(buffer, 0, length.coerceAtMost(buffer.size))
+        val targetLength = length.coerceAtMost(buffer.size)
+        var totalRead = 0
+        while (totalRead < targetLength) {
+            val read = inputStream.read(buffer, totalRead, targetLength - totalRead)
+            if (read <= 0) break
+            totalRead += read
+        }
+        return if (totalRead == 0) -1 else totalRead
     }
 
     override fun close() {
