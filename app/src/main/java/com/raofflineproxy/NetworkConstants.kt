@@ -1,14 +1,18 @@
 package com.raofflineproxy
 
 import android.content.Context
+import android.util.Log
 import okhttp3.OkHttpClient
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import java.net.URLDecoder
 import java.security.MessageDigest
+import kotlin.math.max
 
 const val RA_HOST = "https://retroachievements.org"
 private const val PROXY_HOST = "127.0.0.1"
 const val PROXY_UA_TAG = "RAOfflineProxy"
+private const val REQUEST_THROTTLE_TAG = "RAProxy/RateLimit"
+private const val RETROACHIEVEMENTS_API_MIN_INTERVAL_MS = 750L
 
 val sharedHttpClient: OkHttpClient = OkHttpClient.Builder().build()
 
@@ -66,3 +70,22 @@ fun redactTokens(input: String): String =
 
 fun redactFormBody(input: String): String =
     TOKEN_FORM_REGEX.replace(input) { "${it.groupValues[1]}t=<token>" }
+
+private object RetroAchievementsRequestThrottle {
+    private var nextAllowedAtMillis = 0L
+
+    @Synchronized
+    fun await(action: String) {
+        val now = System.currentTimeMillis()
+        val sleepMillis = max(0L, nextAllowedAtMillis - now)
+        if (sleepMillis > 0) {
+            Log.d(REQUEST_THROTTLE_TAG, "Delaying $action by ${sleepMillis}ms")
+            Thread.sleep(sleepMillis)
+        }
+        nextAllowedAtMillis = System.currentTimeMillis() + RETROACHIEVEMENTS_API_MIN_INTERVAL_MS
+    }
+}
+
+fun throttleRetroAchievementsApiRequest(action: String) {
+    RetroAchievementsRequestThrottle.await(action)
+}

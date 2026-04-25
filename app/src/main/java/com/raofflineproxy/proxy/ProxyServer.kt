@@ -11,6 +11,7 @@ import com.raofflineproxy.redactFormBody
 import com.raofflineproxy.redactTokens
 import com.raofflineproxy.sha256Hex
 import com.raofflineproxy.sharedHttpClient
+import com.raofflineproxy.throttleRetroAchievementsApiRequest
 import com.raofflineproxy.data.AppDatabase
 import com.raofflineproxy.data.CacheEntry
 import com.raofflineproxy.data.CacheKeys
@@ -381,6 +382,7 @@ class ProxyServer(
             Log.d(TAG, "→ RA $method ${redactTokens(url)} (${request.headers.size} headers)")
             if (method == "POST") Log.d(TAG, "→ RA POST body: ${redactFormBody(rawBody)}")
 
+            throttleRetroAchievementsApiRequest("$method ${action.lowercase()}")
             sharedHttpClient.newCall(request).execute().use { resp ->
                 val body = resp.body.string()
                 Log.d(TAG, "← RA ${resp.code} for ${redactTokens(path)} (${body.length} bytes)")
@@ -389,8 +391,14 @@ class ProxyServer(
                 if (resp.isSuccessful) {
                     UpstreamResult.Success(resp.code, message, body)
                 } else {
+                    val logDetails = buildString {
+                        append("$action request failed url=${redactTokens(url)}")
+                        append(" http=${resp.code} $message")
+                        if (body.isNotBlank()) append(" body=${body.take(512)}")
+                    }
                     RequestFailureNotifier.report(
-                        context.getString(R.string.request_failed_http, action, resp.code, message)
+                        context.getString(R.string.request_failed_http, action, resp.code, message),
+                        logDetails
                     )
                     UpstreamResult.HttpError(resp.code, message, body)
                 }
@@ -398,8 +406,10 @@ class ProxyServer(
         } catch (e: Exception) {
             val action = extractAction(path, rawBody) ?: context.getString(R.string.request_action_unknown)
             val errorMessage = e.message ?: context.getString(R.string.request_error_unknown_reason)
+            val url = "$RA_HOST$path"
             RequestFailureNotifier.report(
-                context.getString(R.string.request_failed_network, action, errorMessage)
+                context.getString(R.string.request_failed_network, action, errorMessage),
+                "$action request failed url=${redactTokens(url)} error=$errorMessage"
             )
             UpstreamResult.NetworkError(errorMessage)
         }

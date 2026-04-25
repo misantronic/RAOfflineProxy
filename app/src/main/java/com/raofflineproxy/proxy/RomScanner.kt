@@ -9,6 +9,8 @@ import com.raofflineproxy.RA_HOST
 import com.raofflineproxy.RequestFailureNotifier
 import com.raofflineproxy.buildApiUrl
 import com.raofflineproxy.proxyBase
+import com.raofflineproxy.redactTokens
+import com.raofflineproxy.throttleRetroAchievementsApiRequest
 import com.raofflineproxy.toHexString
 import com.raofflineproxy.data.AppDatabase
 import com.raofflineproxy.data.CacheEntry
@@ -16,11 +18,14 @@ import com.raofflineproxy.data.CacheKeys
 import kotlinx.coroutines.delay
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
 import java.security.MessageDigest
 
 private const val FALLBACK_USER_AGENT = "rcheevos/11.4.0"
+private const val TAG = "RAProxy"
+private const val HTTP_ERROR_BODY_LOG_LIMIT = 512
 
 data class ScanResult(
     val matched: Int,
@@ -29,6 +34,50 @@ data class ScanResult(
 )
 
 data class LoginCredentials(val user: String, val token: String)
+
+internal sealed interface HttpGetResult {
+    data class Success(val body: String) : HttpGetResult
+    data class Failure(
+        val kind: String,
+        val statusCode: Int? = null,
+        val reason: String? = null,
+        val bodySnippet: String? = null,
+        val exceptionMessage: String? = null
+    ) : HttpGetResult {
+        fun logMessage(action: String, url: String): String {
+            val target = redactTokens(url)
+            return when (kind) {
+                "http" -> buildString {
+                    append("$action request failed for $target")
+                    if (statusCode != null) append(" (HTTP $statusCode")
+                    if (!reason.isNullOrBlank()) append(" $reason")
+                    if (statusCode != null) append(')')
+                    if (!bodySnippet.isNullOrBlank()) append(" body=$bodySnippet")
+                }
+
+                else -> buildString {
+                    append("$action request failed for $target")
+                    if (!exceptionMessage.isNullOrBlank()) append(": $exceptionMessage")
+                }
+            }
+        }
+
+        fun userMessage(context: Context, action: String): String = when (kind) {
+            "http" -> context.getString(
+                R.string.request_failed_http,
+                action,
+                statusCode ?: 0,
+                reason ?: context.getString(R.string.request_error_unknown_reason)
+            )
+
+            else -> context.getString(
+                R.string.request_failed_network,
+                action,
+                exceptionMessage ?: context.getString(R.string.request_error_unknown_reason)
+            )
+        }
+    }
+}
 
 suspend fun loadLoginCredentials(db: AppDatabase): LoginCredentials? {
     val entry = db.cacheDao().getByPrefix(CacheKeys.PREFIX_LOGIN) ?: return null
@@ -60,21 +109,21 @@ suspend fun refreshGamePatch(
             "t" to creds.token
         )
     )
-    val responseBody = try {
-        httpGet(url, userAgent)
-    } catch (e: Exception) {
-        Log.e("RAProxy", "refreshGamePatch failed for gameId=$gameId: ${e.message}")
-        val errorMessage = e.message ?: context.getString(R.string.request_error_unknown_reason)
-        RequestFailureNotifier.report(
-            context.getString(R.string.request_failed_network, "patch", errorMessage)
-        )
-        return null
+    val responseBody = when (val result = httpGet(url, userAgent)) {
+        is HttpGetResult.Success -> result.body
+        is HttpGetResult.Failure -> {
+            val logDetails = result.logMessage("patch", url)
+            Log.e(TAG, "refreshGamePatch failed for gameId=$gameId: $logDetails")
+            RequestFailureNotifier.report(result.userMessage(context, "patch"), logDetails)
+            return null
+        }
     }
     val json = runCatching { JSONObject(responseBody) }.getOrNull()
     if (json == null || !json.optBoolean("Success", false)) {
-        Log.e("RAProxy", "refreshGamePatch returned invalid response for gameId=$gameId")
+        Log.e(TAG, "refreshGamePatch returned invalid response for gameId=$gameId url=${redactTokens(url)}")
         RequestFailureNotifier.report(
-            context.getString(R.string.request_failed_invalid_response, "patch")
+            context.getString(R.string.request_failed_invalid_response, "patch"),
+            "patch invalid response url=${redactTokens(url)}"
         )
         return null
     }
@@ -83,7 +132,7 @@ suspend fun refreshGamePatch(
         responseBody = responseBody
     ))
     cachePatchImages(context, gameId, userAgent, responseBody)
-    Log.i("RAProxy", "refreshGamePatch: updated cache for gameId=$gameId")
+    Log.i(TAG, "refreshGamePatch: updated cache for gameId=$gameId")
     return responseBody
 }
 
@@ -137,7 +186,7 @@ private fun md5File(context: Context, uri: Uri): String? =
     } catch (_: Exception) { null }
 
 private fun fetchGameId(context: Context, hash: String, creds: LoginCredentials, userAgent: String): Int? =
-    try {
+    run {
         val url = buildApiUrl(
             proxyBase(context),
             "gameid",
@@ -147,49 +196,65 @@ private fun fetchGameId(context: Context, hash: String, creds: LoginCredentials,
                 "t" to creds.token
             )
         )
-        val body = httpGet(url, userAgent)
-        val gameId = JSONObject(body).optInt("GameID", 0)
-        if (gameId > 0) gameId else null
-    } catch (_: Exception) { null }
+        when (val result = httpGet(url, userAgent)) {
+            is HttpGetResult.Success -> {
+                val gameId = runCatching { JSONObject(result.body).optInt("GameID", 0) }.getOrDefault(0)
+                if (gameId > 0) gameId else null
+            }
+
+            is HttpGetResult.Failure -> {
+                val logDetails = result.logMessage("gameid", url)
+                Log.e(TAG, "fetchGameId failed for hash=$hash: $logDetails")
+                RequestFailureNotifier.report(result.userMessage(context, "gameid"), logDetails)
+                null
+            }
+        }
+    }
 
 internal suspend fun cacheGame(context: Context, gameId: Int, creds: LoginCredentials, userAgent: String, db: AppDatabase) {
-    try {
-        val patchResponse = httpGet(
-            buildApiUrl(
-                proxyBase(context),
-                "patch",
-                mapOf(
-                    "g" to gameId.toString(),
-                    "u" to creds.user,
-                    "t" to creds.token
-                )
-            ),
-            userAgent
+    val patchUrl = buildApiUrl(
+        proxyBase(context),
+        "patch",
+        mapOf(
+            "g" to gameId.toString(),
+            "u" to creds.user,
+            "t" to creds.token
         )
-        cachePatchImages(context, gameId, userAgent, patchResponse)
-    } catch (_: Exception) { }
-    cacheUnlocks(context, gameId, creds, userAgent)
+    )
+    when (val result = httpGet(patchUrl, userAgent)) {
+        is HttpGetResult.Success -> cachePatchImages(context, gameId, userAgent, result.body)
+        is HttpGetResult.Failure -> {
+            val logDetails = result.logMessage("patch", patchUrl)
+            Log.e(TAG, "cacheGame patch refresh failed for gameId=$gameId: $logDetails")
+            RequestFailureNotifier.report(result.userMessage(context, "patch"), logDetails)
+        }
+    }
     cacheSession(gameId, creds, db)
-    Log.i("RAProxy", "cacheGame complete for gameId=$gameId")
+    Log.i(TAG, "cacheGame complete for gameId=$gameId")
 }
 
 internal fun cacheUnlocks(context: Context, gameId: Int, creds: LoginCredentials, userAgent: String) {
-    try {
-        httpGet(
-            buildApiUrl(
-                proxyBase(context),
-                "unlocks",
-                mapOf(
-                    "g" to gameId.toString(),
-                    "h" to "0",
-                    "u" to creds.user,
-                    "t" to creds.token
-                )
-            ),
-            userAgent
+    val url = buildApiUrl(
+        proxyBase(context),
+        "unlocks",
+        mapOf(
+            "g" to gameId.toString(),
+            "h" to "0",
+            "u" to creds.user,
+            "t" to creds.token
         )
-    } catch (_: Exception) { }
-    Log.i("RAProxy", "Cached unlocks for gameId=$gameId")
+    )
+    when (val result = httpGet(url, userAgent)) {
+        is HttpGetResult.Success -> {
+            Log.i(TAG, "Cached unlocks for gameId=$gameId")
+        }
+
+        is HttpGetResult.Failure -> {
+            val logDetails = result.logMessage("unlocks", url)
+            Log.e(TAG, "cacheUnlocks failed for gameId=$gameId: $logDetails")
+            RequestFailureNotifier.report(result.userMessage(context, "unlocks"), logDetails)
+        }
+    }
 }
 
 internal suspend fun cacheSession(gameId: Int, creds: LoginCredentials, db: AppDatabase) {
@@ -205,7 +270,7 @@ internal suspend fun cacheSession(gameId: Int, creds: LoginCredentials, db: AppD
         cacheKey = CacheKeys.startSession(gameId, creds.user),
         responseBody = fakeStartSession.toString()
     ))
-    Log.i("RAProxy", "Cached fake startsession for gameId=$gameId unlocks=${unlocks.length()}")
+    Log.i(TAG, "Cached fake startsession for gameId=$gameId unlocks=${unlocks.length()}")
 }
 
 private suspend fun buildUnlocksArray(db: AppDatabase, gameId: Int, user: String, serverNow: Long): JSONArray {
@@ -224,11 +289,43 @@ private suspend fun buildUnlocksArray(db: AppDatabase, gameId: Int, user: String
     }
 }
 
-internal fun httpGet(url: String, userAgent: String): String {
-    val connection = URL(url).openConnection() as HttpURLConnection
-    connection.connectTimeout = 10_000
-    connection.readTimeout = 10_000
-    connection.setRequestProperty("User-Agent", userAgent)
-    connection.setRequestProperty("Accept-Encoding", "identity")
-    return connection.inputStream.bufferedReader().use { it.readText() }
+internal fun httpGet(url: String, userAgent: String): HttpGetResult {
+    if (url.startsWith("$RA_HOST/dorequest.php")) {
+        val action = url.substringAfter("r=", "request").substringBefore('&')
+        throttleRetroAchievementsApiRequest("GET $action")
+    }
+
+    val connection = (URL(url).openConnection() as HttpURLConnection).apply {
+        connectTimeout = 10_000
+        readTimeout = 10_000
+        setRequestProperty("User-Agent", userAgent)
+        setRequestProperty("Accept-Encoding", "identity")
+    }
+
+    return try {
+        val statusCode = connection.responseCode
+        val reason = connection.responseMessage
+        val body = (if (statusCode in 200..299) connection.inputStream else connection.errorStream)
+            ?.bufferedReader()
+            ?.use { it.readText() }
+            .orEmpty()
+
+        if (statusCode in 200..299) {
+            HttpGetResult.Success(body)
+        } else {
+            HttpGetResult.Failure(
+                kind = "http",
+                statusCode = statusCode,
+                reason = reason,
+                bodySnippet = body.take(HTTP_ERROR_BODY_LOG_LIMIT).ifBlank { null }
+            )
+        }
+    } catch (e: IOException) {
+        HttpGetResult.Failure(
+            kind = "network",
+            exceptionMessage = e.message ?: e::class.java.simpleName
+        )
+    } finally {
+        connection.disconnect()
+    }
 }
