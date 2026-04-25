@@ -44,6 +44,7 @@ class MainActivity : AppCompatActivity() {
     private var requestErrorSnackbar: Snackbar? = null
     private var pendingSnackbarJob: Job? = null
     private var pendingStartTokenWarning = false
+    private var lastHandledPatchMessageId = 0L
 
     private val safLauncher = registerForActivityResult(OpenAndroidDataTree()) { uri ->
         if (uri == null) return@registerForActivityResult
@@ -268,6 +269,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun handlePatchSnackbar(state: MainUiState) {
         val msg = state.cfgPatchMessage
+        val messageId = state.cfgPatchMessageId
 
         when {
             msg == null -> {
@@ -276,7 +278,9 @@ class MainActivity : AppCompatActivity() {
                 snackbar?.dismiss()
                 snackbar = null
             }
+            messageId == lastHandledPatchMessageId -> Unit
             state.cfgPatchSuccess == false -> {
+                lastHandledPatchMessageId = messageId
                 pendingSnackbarJob?.cancel()
                 pendingSnackbarJob = null
                 snackbar?.dismiss()
@@ -285,6 +289,7 @@ class MainActivity : AppCompatActivity() {
                     .also { it.show() }
             }
             else -> {
+                lastHandledPatchMessageId = messageId
                 pendingSnackbarJob?.cancel()
                 pendingSnackbarJob = lifecycleScope.launch {
                     delay(500)

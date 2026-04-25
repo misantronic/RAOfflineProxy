@@ -22,6 +22,8 @@ import kotlinx.coroutines.launch
 
 class SettingsFragment : Fragment() {
     private val viewModel: MainViewModel by activityViewModels()
+    private var lastHandledClearCacheMessageId = 0L
+    private var lastHandledClearDatabaseMessageId = 0L
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View =
         inflater.inflate(R.layout.fragment_settings, container, false)
@@ -98,11 +100,13 @@ class SettingsFragment : Fragment() {
                 if (!state.proxyRunning) {
                     inputProxyPort.error = null
                 }
-                state.clearCacheMessage?.let { msg ->
+                state.clearCacheMessage?.takeIf { state.clearCacheMessageId != lastHandledClearCacheMessageId }?.let { msg ->
+                    lastHandledClearCacheMessageId = state.clearCacheMessageId
                     Snackbar.make(view, msg, Snackbar.LENGTH_LONG).show()
                     viewModel.clearTransientMessages()
                 }
-                state.clearDatabaseMessage?.let { msg ->
+                state.clearDatabaseMessage?.takeIf { state.clearDatabaseMessageId != lastHandledClearDatabaseMessageId }?.let { msg ->
+                    lastHandledClearDatabaseMessageId = state.clearDatabaseMessageId
                     Snackbar.make(view, msg, Snackbar.LENGTH_LONG).show()
                     viewModel.clearTransientMessages()
                 }
