@@ -86,6 +86,7 @@ The table below reflects the current app behavior.
 | **Sega Master System** | Plain whole-file MD5 | **✅ Working** |
 | **Sega Mega Drive / Genesis** | Plain whole-file MD5 | **✅ Working** |
 | **Nintendo 64** | Normalizes ROM byte order to `.z64` format first, then MD5s up to the first 64 MiB | **✅ Working** |
+| **Nintendo DS** | Hashes the DS header, ARM9 code, ARM7 code, and icon/title block, while ignoring a 512-byte SuperCard header when present | **✅ Working** |
 | **PlayStation** | Parses the disc image, reads `SYSTEM.CNF`, finds the boot executable, and hashes the executable path plus executable contents | **Working and tested for direct `.bin` images**. `.iso` is implemented but not manually tested |
 | **PSP** | Parses the ISO and hashes `PSP_GAME\PARAM.SFO` followed by `PSP_GAME\SYSDIR\EBOOT.BIN` | **✅ Working** |
 | **Dreamcast** | No supported manual hashing path at the moment | **Not manually working** |

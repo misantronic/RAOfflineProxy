@@ -3,6 +3,7 @@ package com.raofflineproxy
 import com.raofflineproxy.proxy.hash.FdsRomHashStrategy
 import com.raofflineproxy.proxy.hash.N64ByteOrder
 import com.raofflineproxy.proxy.hash.NesRomHashStrategy
+import com.raofflineproxy.proxy.hash.NintendoDsRomHashStrategy
 import com.raofflineproxy.proxy.hash.Nintendo64RomHashStrategy
 import com.raofflineproxy.proxy.hash.detectPrimaryVolumeDescriptor
 import com.raofflineproxy.proxy.hash.detectIsoSectorLayout
@@ -228,6 +229,95 @@ class RomScannerHashTest {
         )
 
         assertEquals("078c9a3e352a09d0ec06155a58057611", hash)
+    }
+
+    @Test
+    fun ndsHasSuperCardHeader_detectsExpectedPattern() {
+        val file = ByteArray(1024)
+        file[0] = 0x2E
+        file[1] = 0x00
+        file[2] = 0x00
+        file[3] = 0xEA.toByte()
+        file[0xB0] = 0x44
+        file[0xB1] = 0x46
+        file[0xB2] = 0x96.toByte()
+        file[0xB3] = 0x00
+
+        assertTrue(NintendoDsRomHashStrategy.hasSuperCardHeader(ByteArrayRomDataSource(file)))
+    }
+
+    @Test
+    fun ndsHash_hashesHeaderArm9Arm7AndIconBlock() {
+        val header = ByteArray(512)
+        header[0x20] = 0x00
+        header[0x21] = 0x02
+        header[0x2C] = 0x04
+        header[0x30] = 0x00
+        header[0x31] = 0x03
+        header[0x3C] = 0x03
+        header[0x68] = 0x00
+        header[0x69] = 0x04
+
+        val arm9 = byteArrayOf(0x11, 0x22, 0x33, 0x44)
+        val arm7 = byteArrayOf(0x55, 0x66, 0x77)
+        val icon = ByteArray(0xA00) { index -> (index and 0xFF).toByte() }
+
+        val file = ByteArray(0x1000 + 0xA00)
+        header.copyInto(file, 0)
+        arm9.copyInto(file, 0x0200)
+        arm7.copyInto(file, 0x0300)
+        icon.copyInto(file, 0x0400)
+
+        val hash = NintendoDsRomHashStrategy.hash(
+            RomHashInput(
+                fileName = "test.nds",
+                fileSize = file.size.toLong(),
+                openStream = { file.inputStream() },
+                openDataSource = { ByteArrayRomDataSource(file) }
+            )
+        )
+
+        assertEquals("213d1906eccdfd3b2f42d625a1ae42d9", hash)
+    }
+
+    @Test
+    fun ndsHash_superCardHeaderIsIgnored() {
+        val superCardHeader = ByteArray(512)
+        superCardHeader[0] = 0x2E
+        superCardHeader[1] = 0x00
+        superCardHeader[2] = 0x00
+        superCardHeader[3] = 0xEA.toByte()
+        superCardHeader[0xB0] = 0x44
+        superCardHeader[0xB1] = 0x46
+        superCardHeader[0xB2] = 0x96.toByte()
+        superCardHeader[0xB3] = 0x00
+
+        val header = ByteArray(512)
+        header[0x20] = 0x00
+        header[0x21] = 0x02
+        header[0x2C] = 0x01
+        header[0x30] = 0x00
+        header[0x31] = 0x03
+        header[0x3C] = 0x01
+        header[0x68] = 0x00
+        header[0x69] = 0x04
+
+        val file = ByteArray(1024 + 0x1000 + 0xA00)
+        superCardHeader.copyInto(file, 0)
+        header.copyInto(file, 512)
+        file[0x0200 + 512] = 0x12
+        file[0x0300 + 512] = 0x34
+
+        val hash = NintendoDsRomHashStrategy.hash(
+            RomHashInput(
+                fileName = "test.nds",
+                fileSize = file.size.toLong(),
+                openStream = { file.inputStream() },
+                openDataSource = { ByteArrayRomDataSource(file) }
+            )
+        )
+
+        assertNotNull(hash)
     }
 
     @Test

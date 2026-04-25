@@ -31,6 +31,7 @@ internal interface RomHashStrategy {
 private val romHashStrategies: List<RomHashStrategy> = listOf(
     PspRomHashStrategy,
     PsxRomHashStrategy,
+    NintendoDsRomHashStrategy,
     Nintendo64RomHashStrategy,
     NesRomHashStrategy,
     FdsRomHashStrategy,
