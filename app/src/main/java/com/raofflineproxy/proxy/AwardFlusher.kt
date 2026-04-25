@@ -21,6 +21,7 @@ import com.raofflineproxy.redactFormBody
 import com.raofflineproxy.redactTokens
 import com.raofflineproxy.sha256Hex
 import com.raofflineproxy.sharedHttpClient
+import com.raofflineproxy.throttleRetroAchievementsApiRequest
 import com.raofflineproxy.toHexString
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -419,8 +420,8 @@ class AwardFlusher(
     }
 
     private fun sendAward(award: PendingAward): FlushResult {
+        val url = "$RA_HOST${award.queryString}"
         return try {
-            val url = "$RA_HOST${award.queryString}"
             val body = buildAwardRequestBody(award)
             val request = Request.Builder()
                 .url(url)
@@ -431,6 +432,7 @@ class AwardFlusher(
             Log.d(TAG, "→ RA POST ${redactTokens(url)} (${request.headers.size} headers)")
             Log.d(TAG, "→ RA POST body: ${redactFormBody(body)}")
 
+            throttleRetroAchievementsApiRequest("POST awardachievement")
             sharedHttpClient.newCall(request).execute().use { resp ->
                 val responseBody = resp.body.string()
 
@@ -439,14 +441,16 @@ class AwardFlusher(
                 if (resp.code == 401 || resp.code == 403) {
                     val errorMessage = "Token rejected by server (HTTP ${resp.code})"
                     RequestFailureNotifier.report(
-                        context.getString(R.string.request_failed_award_sync, award.achievementId, errorMessage)
+                        context.getString(R.string.request_failed_award_sync, award.achievementId, errorMessage),
+                        "award sync failed url=${redactTokens(url)} http=${resp.code} body=${responseBody.take(512)}"
                     )
                     return FlushResult.AuthError(errorMessage)
                 }
                 if (!resp.isSuccessful) {
                     val errorMessage = "HTTP ${resp.code}"
                     RequestFailureNotifier.report(
-                        context.getString(R.string.request_failed_award_sync, award.achievementId, errorMessage)
+                        context.getString(R.string.request_failed_award_sync, award.achievementId, errorMessage),
+                        "award sync failed url=${redactTokens(url)} http=${resp.code} body=${responseBody.take(512)}"
                     )
                     return FlushResult.NetworkError(errorMessage)
                 }
@@ -456,7 +460,8 @@ class AwardFlusher(
                     val error = json?.optString("Error")?.takeIf { it.isNotEmpty() }
                         ?: "Server returned Success:false"
                     RequestFailureNotifier.report(
-                        context.getString(R.string.request_failed_award_sync, award.achievementId, error)
+                        context.getString(R.string.request_failed_award_sync, award.achievementId, error),
+                        "award sync failed url=${redactTokens(url)} success=false body=${responseBody.take(512)}"
                     )
                     val isAuthError = error.contains("Invalid", ignoreCase = true)
                         || error.contains("token", ignoreCase = true)
@@ -470,7 +475,8 @@ class AwardFlusher(
             Log.e(TAG, "Award flush exception for ${award.id}: ${e.message}")
             val errorMessage = e.message ?: context.getString(R.string.request_error_unknown_reason)
             RequestFailureNotifier.report(
-                context.getString(R.string.request_failed_award_sync, award.achievementId, errorMessage)
+                context.getString(R.string.request_failed_award_sync, award.achievementId, errorMessage),
+                "award sync failed url=${redactTokens(url)} error=$errorMessage"
             )
             FlushResult.NetworkError(errorMessage)
         }

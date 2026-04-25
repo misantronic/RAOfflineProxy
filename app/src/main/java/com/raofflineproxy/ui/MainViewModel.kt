@@ -29,6 +29,7 @@ import com.raofflineproxy.proxy.FlushEvent
 import com.raofflineproxy.proxy.cacheGame
 import com.raofflineproxy.proxy.clearAllCachedImages
 import com.raofflineproxy.proxy.deleteCachedImagesForGame
+import com.raofflineproxy.proxy.HttpGetResult
 import com.raofflineproxy.proxy.httpGet
 import com.raofflineproxy.proxy.loadLoginCredentials
 import com.raofflineproxy.proxy.loadUserAgent
@@ -304,26 +305,24 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 return@launch
             }
             val valid = withContext(Dispatchers.IO) {
-                try {
-                    val userAgent = proxyUserAgent(loadUserAgent(db))
-                    val url = buildApiUrl(
-                        RA_HOST,
-                        "patch",
-                        mapOf(
-                            "g" to gameId,
-                            "u" to credentials.user,
-                            "t" to credentials.token
-                        )
+                val userAgent = proxyUserAgent(loadUserAgent(db))
+                val url = buildApiUrl(
+                    RA_HOST,
+                    "patch",
+                    mapOf(
+                        "g" to gameId,
+                        "u" to credentials.user,
+                        "t" to credentials.token
                     )
-                    val body = httpGet(url, userAgent)
-                    JSONObject(body).optBoolean("Success", false)
-                } catch (e: Exception) {
-                    val errorMessage = e.message ?: str(R.string.request_error_unknown_reason)
-                    RequestFailureNotifier.report(
-                        str(R.string.request_failed_network, "patch", errorMessage)
-                    )
-                    Log.w("RAProxy/Auth", "validateToken: live check failed — ${e.message}")
-                    false
+                )
+                when (val result = httpGet(url, userAgent)) {
+                    is HttpGetResult.Success -> JSONObject(result.body).optBoolean("Success", false)
+                    is HttpGetResult.Failure -> {
+                        val logDetails = result.logMessage("patch", url)
+                        RequestFailureNotifier.report(result.userMessage(getApplication(), "patch"), logDetails)
+                        Log.w("RAProxy/Auth", "validateToken: live check failed — $logDetails")
+                        false
+                    }
                 }
             }
             Log.i("RAProxy/Auth", "validateToken: live patch check valid=$valid")
