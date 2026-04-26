@@ -122,16 +122,14 @@ def write_status_image(
     write_bmp(output, pixels, resolved_width, resolved_height)
 
 
-def write_text_image(
-    output_path: str,
+def render_text_pixels(
     text: str,
     width: int = 72,
     height: int = 32,
     image_width: int = DEFAULT_IMAGE_WIDTH,
     image_height: int = DEFAULT_IMAGE_HEIGHT,
     font_scale: int = DEFAULT_FONT_SCALE,
-) -> None:
-    output = Path(output_path)
+) -> tuple[list[list[int]], int, int]:
     lines = [line.upper() for line in normalize_text_lines(text, width, height)]
     resolved_width, resolved_height = normalize_image_size(image_width, image_height)
     resolved_font_scale = normalize_font_scale(font_scale)
@@ -152,6 +150,28 @@ def write_text_image(
         y += line_height
         if y + (GLYPH_HEIGHT * resolved_font_scale) >= resolved_height - MARGIN_Y:
             break
+
+    return pixels, resolved_width, resolved_height
+
+
+def write_text_image(
+    output_path: str,
+    text: str,
+    width: int = 72,
+    height: int = 32,
+    image_width: int = DEFAULT_IMAGE_WIDTH,
+    image_height: int = DEFAULT_IMAGE_HEIGHT,
+    font_scale: int = DEFAULT_FONT_SCALE,
+) -> None:
+    output = Path(output_path)
+    pixels, resolved_width, resolved_height = render_text_pixels(
+        text,
+        width=width,
+        height=height,
+        image_width=image_width,
+        image_height=image_height,
+        font_scale=font_scale,
+    )
 
     if output.suffix.lower() == ".ppm":
         write_ppm(output, pixels, resolved_width, resolved_height)
