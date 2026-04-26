@@ -35,16 +35,11 @@ if [ -x "${BASE_DIR}/bin/raofflineproxy" ]; then
   fi
 fi
 
-if [ -x "${BASE_DIR}/bin/raofflineproxy-stop" ]; then
-  "${BASE_DIR}/bin/raofflineproxy-stop" || true
+if [ -x "${BASE_DIR}/bin/raofflineproxy" ]; then
+  "${BASE_DIR}/bin/raofflineproxy" stop-proxy || true
 fi
 
-rm -f "${TOOLS_DIR}/RAOfflineProxy Start.sh"
-rm -f "${TOOLS_DIR}/RAOfflineProxy Stop.sh"
 rm -f "${TOOLS_DIR}/RAOfflineProxy Menu.sh"
-rm -f "${TOOLS_DIR}/RAOfflineProxy UI.sh"
-rm -f "${TOOLS_DIR}/RAOfflineProxy Status.sh"
-rm -f "${TOOLS_DIR}/RAOfflineProxy Uninstall.sh"
 rm -f "/userdata/system/scripts/RAOfflineProxy_game_hook.sh"
 
 rm -rf "${BASE_DIR}"

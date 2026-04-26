@@ -122,13 +122,9 @@ cp "path/to/RAOfflineProxy/linux/knulli/dist/RAOfflineProxy Install.sh" /path/to
 
 Then run `RAOfflineProxy Install` from EmulationStation Tools.
 
-The installer removes itself after a successful install and creates these Tools entries:
+The installer removes itself after a successful install and creates this Tools entry:
 
 - `RAOfflineProxy Menu`
-- `RAOfflineProxy Status`
-- `RAOfflineProxy Start`
-- `RAOfflineProxy Stop`
-- `RAOfflineProxy Uninstall`
 
 ## Config
 
@@ -212,40 +208,15 @@ PYTHONPATH=. python3 -m raofflineproxy.main start-proxy --retroarch-cfg /path/to
 
 `status` reports both config patch state and daemon state, including whether the service is running and its PID.
 
-## RAOfflineProxy Status
-
-The experimental `ui` command renders a simple read-only status screen for KNULLI-style environments.
-
-It currently shows:
-
-- service running state and PID
-- RetroArch config state
-- cheevos enabled / hardcore enabled flags
-- storage backend and cached entry counts
-- pending award count
-
-The on-screen Status image intentionally omits recent log lines for readability on TV-sized displays. The full text snapshot still includes them in `ui-screen.txt`.
-
-On KNULLI, the Tools launcher writes the rendered status snapshot to disk, generates a framebuffer-friendly BMP image, and then tries to display that image with `fbv`.
-
-The image view defaults to 15 seconds and can be overridden with `RAOFFLINEPROXY_STATUS_SECONDS`.
-
-If no viewer can be opened from EmulationStation Tools, the rendered screen is still saved to:
-
-```text
-/userdata/system/raofflineproxy/ui-screen.txt
-/userdata/system/raofflineproxy/ui-screen.bmp
-```
-
 ## RAOfflineProxy Menu
 
 The experimental `menu` command provides a single-entry fullscreen menu for KNULLI-style environments.
 
 It is intended to allow controller-driven access to:
 
-- Status
 - Start proxy
 - Stop proxy
+- Uninstall
 - Exit
 
 The KNULLI Tools installer exposes this as `RAOfflineProxy Menu`.

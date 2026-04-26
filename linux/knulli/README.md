@@ -20,18 +20,8 @@ This is still considered experimental and may need additional hardening across d
 - installs small launcher scripts under `/userdata/system/raofflineproxy/bin`
 - adds EmulationStation Tools entries for:
   - `RAOfflineProxy Menu`
-  - `RAOfflineProxy Status`
-  - `RAOfflineProxy Start`
-  - `RAOfflineProxy Stop`
-  - `RAOfflineProxy Uninstall`
 
-`RAOfflineProxy Status` writes its rendered screen to `/userdata/system/raofflineproxy/ui-screen.txt`, renders a framebuffer-friendly image to `/userdata/system/raofflineproxy/ui-screen.bmp`, and then tries to display that image with `fbv`.
-
-The display duration defaults to 15 seconds and can be overridden by setting `RAOFFLINEPROXY_STATUS_SECONDS` before launching the dashboard script.
-
-`RAOfflineProxy Menu` is an experimental interactive fullscreen menu intended to provide one place to launch Status, Start, Stop, and Exit actions.
-
-Start and Stop write summary output to `/userdata/system/raofflineproxy/ui-state.txt` and also try to trigger a frontend notification if KNULLI exposes a compatible helper.
+`RAOfflineProxy Menu` is the primary experimental interactive fullscreen UI. It is intended to provide one place to launch Start, Stop, Uninstall, and Exit actions.
 
 This bundle now patches RetroArch config and launches the background Linux proxy service.
 
@@ -62,6 +52,4 @@ The installer removes itself after a successful install.
 
 ## Uninstall
 
-```bash
-Run `RAOfflineProxy Uninstall` from EmulationStation Tools.
-```
+Use `Uninstall` inside `RAOfflineProxy Menu`.
