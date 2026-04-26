@@ -6,9 +6,12 @@ LINUX_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 DIST_DIR="${SCRIPT_DIR}/dist"
 BUILD_DIR="${DIST_DIR}/raofflineproxy-knulli-bundle"
 APP_DIR="${BUILD_DIR}/app"
+INSTALLER_PATH="${DIST_DIR}/RAOfflineProxy Install.sh"
 
 rm -rf "${BUILD_DIR}"
 mkdir -p "${APP_DIR}"
+
+export COPYFILE_DISABLE=1
 
 cp -r "${LINUX_DIR}/raofflineproxy" "${APP_DIR}/raofflineproxy"
 cp "${LINUX_DIR}/requirements.txt" "${APP_DIR}/requirements.txt"
@@ -25,9 +28,40 @@ chmod +x "${BUILD_DIR}/scripts/launcher-raofflineproxy"
 chmod +x "${BUILD_DIR}/scripts/launcher-raofflineproxy-ui"
 chmod +x "${BUILD_DIR}/scripts/launcher-raofflineproxy-start"
 chmod +x "${BUILD_DIR}/scripts/launcher-raofflineproxy-stop"
-chmod +x "${BUILD_DIR}/scripts/launcher-raofflineproxy-status"
+chmod +x "${BUILD_DIR}/scripts/launcher-raofflineproxy-uninstall"
 
 mkdir -p "${DIST_DIR}"
 tar -czf "${DIST_DIR}/raofflineproxy-knulli-bundle.tar.gz" -C "${DIST_DIR}" "raofflineproxy-knulli-bundle"
 
+cat > "${INSTALLER_PATH}" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_PATH="$0"
+PAYLOAD_MARKER="__RAOFFLINEPROXY_PAYLOAD_BELOW__"
+TARGET_DIR="/userdata/system/raofflineproxy-knulli-bundle"
+TOOLS_INSTALL_SCRIPT="/userdata/roms/tools/RAOfflineProxy Install.sh"
+
+marker_line="$(awk -v marker="${PAYLOAD_MARKER}" '$0 == marker { print NR; exit }' "${SCRIPT_PATH}")"
+if [ -z "${marker_line}" ]; then
+  echo "Installer payload marker not found."
+  exit 1
+fi
+
+payload_line=$((marker_line + 1))
+rm -rf "${TARGET_DIR}"
+mkdir -p "/userdata/system"
+tail -n +"${payload_line}" "${SCRIPT_PATH}" | base64 -d | tar -xzf - -C "/userdata/system" --no-same-owner
+cd "${TARGET_DIR}"
+./install.sh
+rm -f "${TOOLS_INSTALL_SCRIPT}" "${SCRIPT_PATH}"
+echo "RAOfflineProxy installed."
+exit 0
+__RAOFFLINEPROXY_PAYLOAD_BELOW__
+EOF
+
+base64 -i "${DIST_DIR}/raofflineproxy-knulli-bundle.tar.gz" >> "${INSTALLER_PATH}"
+chmod +x "${INSTALLER_PATH}"
+
 echo "Created ${DIST_DIR}/raofflineproxy-knulli-bundle.tar.gz"
+echo "Created ${INSTALLER_PATH}"

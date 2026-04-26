@@ -2,6 +2,18 @@
 
 This directory contains a portable KNULLI bundle for the early Linux `RAOfflineProxy` client.
 
+## Current State
+
+The experimental KNULLI flow is now working end to end in testing:
+
+- Start patches the required RetroArch and Batocera settings
+- RetroAchievements requests are intercepted locally
+- offline game launches still reach the proxy
+- offline softcore achievements can be queued
+- queued achievements can be flushed on reconnect
+
+This is still considered experimental and may need additional hardening across devices and KNULLI versions.
+
 ## What It Does
 
 - installs the Python app under `/userdata/system/raofflineproxy/app`
@@ -9,7 +21,7 @@ This directory contains a portable KNULLI bundle for the early Linux `RAOfflineP
 - adds EmulationStation Tools entries for:
   - `RAOfflineProxy Start`
   - `RAOfflineProxy Stop`
-  - `RAOfflineProxy Status`
+  - `RAOfflineProxy Uninstall`
 
 Each Tools action writes a summary file to `/userdata/system/raofflineproxy/ui-state.txt` and also tries to trigger a frontend notification if KNULLI exposes a compatible helper.
 
@@ -26,24 +38,22 @@ From repo root:
 This creates:
 
 - `linux/knulli/dist/raofflineproxy-knulli-bundle.tar.gz`
+- `linux/knulli/dist/RAOfflineProxy Install.sh`
 
 ## Install On KNULLI
 
+Copy the single-file installer to `/userdata/roms/tools` and launch it from EmulationStation Tools.
+
 ```bash
-scp /Users/dschkalee/src/RAOfflineProxy/linux/knulli/dist/raofflineproxy-knulli-bundle.tar.gz root@knulli:/userdata/system/
-ssh root@knulli
-cd /userdata/system
-rm -rf raofflineproxy-knulli-bundle
-tar -xzf raofflineproxy-knulli-bundle.tar.gz --no-same-owner
-cd raofflineproxy-knulli-bundle
-./install.sh
+cp "path/to/RAOfflineProxy/linux/knulli/dist/RAOfflineProxy Install.sh" /path/to/mounted/knulli/share/roms/tools/
 ```
 
-After install, restart EmulationStation to refresh the Tools list.
+Then run `RAOfflineProxy Install` from EmulationStation Tools.
+
+The installer removes itself after a successful install.
 
 ## Uninstall
 
 ```bash
-cd /userdata/system/raofflineproxy-knulli-bundle
-./uninstall.sh
+Run `RAOfflineProxy Uninstall` from EmulationStation Tools.
 ```

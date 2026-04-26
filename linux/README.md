@@ -2,6 +2,17 @@
 
 Python-based Linux support for `RAOfflineProxy` lives in this directory.
 
+## Status
+
+This Linux implementation is currently **experimental**, but the core KNULLI flow is now working end to end in testing:
+
+- online RetroAchievements traffic is intercepted and forwarded
+- cached game data can be served while offline
+- offline softcore achievements can be queued locally
+- queued achievements can be flushed successfully on reconnect
+
+It is still not considered a stable public target yet. Android remains the primary supported platform.
+
 `start-proxy` now does two things:
 
 - patches `retroarch.cfg`
@@ -59,7 +70,7 @@ No separate wheel or system package is required yet. Run it directly from this r
 From repo root:
 
 ```bash
-cd /Users/dschkalee/src/RAOfflineProxy/linux
+cd path/to/RAOfflineProxy/linux
 python3 -m raofflineproxy.main status
 ```
 
@@ -71,7 +82,7 @@ cat > ~/.local/bin/raofflineproxy <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
 
-cd /Users/dschkalee/src/RAOfflineProxy/linux
+cd /path/to/RAOfflineProxy/linux
 exec python3 -m raofflineproxy.main "$@"
 EOF
 chmod +x ~/.local/bin/raofflineproxy
@@ -87,38 +98,33 @@ raofflineproxy stop-proxy
 
 ### KNULLI
 
-Build the portable bundle:
+Build the portable bundle and single-file installer:
 
 ```bash
-cd /Users/dschkalee/src/RAOfflineProxy
+cd path/to/RAOfflineProxy
 ./linux/knulli/build_bundle.sh
 ```
 
 This creates:
 
 ```text
-/Users/dschkalee/src/RAOfflineProxy/linux/knulli/dist/raofflineproxy-knulli-bundle.tar.gz
+path/to/RAOfflineProxy/linux/knulli/dist/RAOfflineProxy Install.sh
+path/to/RAOfflineProxy/linux/knulli/dist/raofflineproxy-knulli-bundle.tar.gz
 ```
 
-Then copy and install it on the device:
+Recommended install flow:
 
 ```bash
-scp /Users/dschkalee/src/RAOfflineProxy/linux/knulli/dist/raofflineproxy-knulli-bundle.tar.gz root@knulli:/userdata/system/
-ssh root@knulli
-cd /userdata/system
-rm -rf raofflineproxy-knulli-bundle
-tar -xzf raofflineproxy-knulli-bundle.tar.gz --no-same-owner
-cd raofflineproxy-knulli-bundle
-./install.sh
+cp "path/to/RAOfflineProxy/linux/knulli/dist/RAOfflineProxy Install.sh" /path/to/mounted/knulli/share/roms/tools/
 ```
 
-After install, restart EmulationStation.
+Then run `RAOfflineProxy Install` from EmulationStation Tools.
 
-The KNULLI bundle adds these Tools entries:
+The installer removes itself after a successful install and creates these Tools entries:
 
 - `RAOfflineProxy Start`
 - `RAOfflineProxy Stop`
-- `RAOfflineProxy Status`
+- `RAOfflineProxy Uninstall`
 
 ## Config
 
@@ -205,3 +211,4 @@ PYTHONPATH=. python3 -m raofflineproxy.main start-proxy --retroarch-cfg /path/to
 - hardcore mode remains unsupported and hardcore awards are rejected
 - the Linux version uses a local SQLite database instead of the Android Room schema
 - award signing uses a local HMAC secret for tamper-evidence instead of the Android Keystore-backed ECDSA key
+- the KNULLI/Batocera flow is still experimental and may require additional refinement across firmware versions
