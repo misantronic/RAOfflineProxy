@@ -4,7 +4,7 @@ This directory contains a portable KNULLI bundle for the early Linux `RAOfflineP
 
 ## Current State
 
-The experimental KNULLI flow is now working end to end in testing:
+The experimental KNULLI flow is now working end to end in testing for the proxy path:
 
 - Start patches the required RetroArch and Batocera settings
 - RetroAchievements requests are intercepted locally
@@ -19,11 +19,16 @@ This is still considered experimental and may need additional hardening across d
 - installs the Python app under `/userdata/system/raofflineproxy/app`
 - installs small launcher scripts under `/userdata/system/raofflineproxy/bin`
 - adds EmulationStation Tools entries for:
+  - `RAOfflineProxy Status`
   - `RAOfflineProxy Start`
   - `RAOfflineProxy Stop`
   - `RAOfflineProxy Uninstall`
 
-Each Tools action writes a summary file to `/userdata/system/raofflineproxy/ui-state.txt` and also tries to trigger a frontend notification if KNULLI exposes a compatible helper.
+`RAOfflineProxy Status` writes its rendered screen to `/userdata/system/raofflineproxy/ui-screen.txt`, renders a framebuffer-friendly image to `/userdata/system/raofflineproxy/ui-screen.bmp`, and then tries to display that image with `fbv`.
+
+The display duration defaults to 15 seconds and can be overridden by setting `RAOFFLINEPROXY_STATUS_SECONDS` before launching the dashboard script.
+
+Start and Stop write summary output to `/userdata/system/raofflineproxy/ui-state.txt` and also try to trigger a frontend notification if KNULLI exposes a compatible helper.
 
 This bundle now patches RetroArch config and launches the background Linux proxy service.
 

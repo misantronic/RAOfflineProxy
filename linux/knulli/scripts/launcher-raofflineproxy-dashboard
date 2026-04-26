@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+BIN_DIR="/userdata/system/raofflineproxy/bin"
+STATE_FILE="/userdata/system/raofflineproxy/ui-screen.txt"
+IMAGE_FILE="/userdata/system/raofflineproxy/ui-screen.bmp"
+DISPLAY_SECONDS="${RAOFFLINEPROXY_STATUS_SECONDS:-15}"
+
+detect_resolution() {
+  if [ -r /sys/class/graphics/fb0/virtual_size ]; then
+    IFS=, read -r FB_WIDTH FB_HEIGHT < /sys/class/graphics/fb0/virtual_size || true
+  fi
+
+  FB_WIDTH="${FB_WIDTH:-0}"
+  FB_HEIGHT="${FB_HEIGHT:-0}"
+}
+
+show_message() {
+  local title="$1"
+  local body="$2"
+  local message="${title}: ${body}"
+
+  if command -v notify-send >/dev/null 2>&1; then
+    notify-send "${title}" "${body}" >/dev/null 2>&1 && return 0
+  fi
+
+  if command -v batocera-es-swissknife >/dev/null 2>&1; then
+    batocera-es-swissknife --message "${message}" >/dev/null 2>&1 && return 0
+    batocera-es-swissknife --popup "${message}" >/dev/null 2>&1 && return 0
+    batocera-es-swissknife --notification "${message}" >/dev/null 2>&1 && return 0
+  fi
+
+  return 1
+}
+
+mkdir -p "$(dirname "${STATE_FILE}")"
+detect_resolution
+"${BIN_DIR}/raofflineproxy" ui > "${STATE_FILE}"
+"${BIN_DIR}/raofflineproxy" ui-image --output "${IMAGE_FILE}" --image-width "${FB_WIDTH}" --image-height "${FB_HEIGHT}"
+
+if command -v fbv >/dev/null 2>&1; then
+  if /bin/sh -c '
+    fbv -i -c -u "$1" >/dev/null 2>&1 &
+    viewer_pid=$!
+    sleep "$2"
+    kill "$viewer_pid" >/dev/null 2>&1 || true
+  ' sh "${IMAGE_FILE}" "${DISPLAY_SECONDS}"; then
+    exit 0
+  fi
+fi
+
+show_message "RAOfflineProxy Status" "Status saved to ui-screen.txt" || true
+
+cat <<EOF
+RAOfflineProxy Status snapshot saved to:
+  ${STATE_FILE}
+
+Image snapshot saved to:
+  ${IMAGE_FILE}
+
+Display duration:
+  ${DISPLAY_SECONDS} seconds
+EOF
