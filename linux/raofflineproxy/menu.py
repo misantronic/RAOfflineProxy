@@ -143,6 +143,7 @@ class MenuSession:
         self.menu_frame_cache: dict[tuple[bool, int], bytes] = {}
         self.last_frame: bytes | None = None
         self.bootstrap_shown = False
+        self.bootstrap_active = False
 
     def run(self) -> None:
         try:
@@ -186,6 +187,15 @@ class MenuSession:
         if not self.bootstrap_shown:
             self.show_bootstrap_frame(frame)
             self.bootstrap_shown = True
+            self.bootstrap_active = True
+            return
+
+        if self.bootstrap_active:
+            self.framebuffer.stop_fallback()
+            time.sleep(0.05)
+            self.framebuffer.ensure_open()
+            self.bootstrap_active = False
+
         self.framebuffer.display_frame(frame)
 
     def show_bootstrap_frame(self, frame: bytes) -> None:
@@ -323,6 +333,11 @@ class FramebufferRenderer:
         except OSError:
             self.close()
 
+    def ensure_open(self) -> None:
+        if self.fb_map is not None:
+            return
+        self.open()
+
     def display_bmp(self, image_path: Path) -> None:
         if self.fb_map is None:
             self.display_with_fallback(image_path)
@@ -334,6 +349,7 @@ class FramebufferRenderer:
     def display_pixels(
         self, pixels: list[list[int]], image_width: int, image_height: int
     ) -> None:
+        self.ensure_open()
         if self.fb_map is None:
             return
 
@@ -366,6 +382,7 @@ class FramebufferRenderer:
         self.safe_flush()
 
     def display_frame(self, frame: bytes) -> None:
+        self.ensure_open()
         if self.fb_map is None:
             return
 
@@ -455,7 +472,9 @@ class FramebufferRenderer:
 
         frame[pixel_offset] = 0xFF
 
-    def display_with_fallback(self, image_path: Path, duration: float = 0.1) -> None:
+    def display_with_fallback(
+        self, image_path: Path, duration: float = 0.1, auto_stop: bool = False
+    ) -> None:
         self.stop_fallback()
         self.fallback_process = subprocess.Popen(
             ["fbv", "-i", "-c", "-u", str(image_path)],
@@ -463,6 +482,8 @@ class FramebufferRenderer:
             stderr=subprocess.DEVNULL,
         )
         time.sleep(duration)
+        if auto_stop:
+            self.stop_fallback()
 
     def frame_to_pixels(self, frame: bytes) -> list[list[int]]:
         pixels = [[0 for _ in range(self.width)] for _ in range(self.height)]
