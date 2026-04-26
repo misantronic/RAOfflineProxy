@@ -162,6 +162,9 @@ class MenuSession:
 
     def render_menu(self) -> None:
         proxy_running = self.proxy_running()
+        self.render_menu_for_state(proxy_running)
+
+    def render_menu_for_state(self, proxy_running: bool) -> None:
         cache_key = (proxy_running, self.selected_index)
         cached_image = self.menu_frame_cache.get(cache_key)
         if cached_image is not None:
@@ -239,14 +242,16 @@ class MenuSession:
         return bool(service.get("running"))
 
     def handle_key(self, key: int) -> None:
+        proxy_running = self.proxy_running()
+
         if key in {KEY_UP, KEY_LEFT, BTN_DPAD_UP, BTN_DPAD_LEFT}:
             self.selected_index = (self.selected_index - 1) % len(self.entries())
-            self.render_menu()
+            self.render_menu_for_state(proxy_running)
             return
 
         if key in {KEY_DOWN, KEY_RIGHT, BTN_DPAD_DOWN, BTN_DPAD_RIGHT}:
             self.selected_index = (self.selected_index + 1) % len(self.entries())
-            self.render_menu()
+            self.render_menu_for_state(proxy_running)
             return
 
         if key in {KEY_ENTER, KEY_SPACE, KEY_S, BTN_SOUTH, BTN_START}:
@@ -349,19 +354,18 @@ class FbvMenuPresenter:
             stderr=subprocess.DEVNULL,
         )
         self.current_image_path = image_path
-        time.sleep(0.05)
+        time.sleep(0.01)
 
     def stop_viewer(self) -> None:
         if self.viewer_process is None:
             return
         log_menu("fbv stop_viewer")
         if self.viewer_process.poll() is None:
-            self.viewer_process.terminate()
+            self.viewer_process.kill()
             try:
-                self.viewer_process.wait(timeout=0.1)
+                self.viewer_process.wait(timeout=0.05)
             except subprocess.TimeoutExpired:
-                self.viewer_process.kill()
-                self.viewer_process.wait(timeout=0.1)
+                pass
         self.viewer_process = None
 
     def close(self) -> None:

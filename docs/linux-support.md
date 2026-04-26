@@ -20,7 +20,7 @@ What is already working in the experimental implementation:
 - queuing softcore achievement awards while offline
 - flushing queued awards automatically when connectivity returns
 - KNULLI installation through a single-file `RAOfflineProxy Install.sh` Tools entry
-- KNULLI Tools entries for `RAOfflineProxy Status`, `RAOfflineProxy Start`, `RAOfflineProxy Stop`, and `RAOfflineProxy Uninstall`
+- a single KNULLI Tools entry for `RAOfflineProxy Menu`
 - on-screen framebuffer status and action feedback using `fbv`
 
 ## KNULLI Flow
@@ -31,18 +31,14 @@ The current experimental KNULLI flow is:
 2. Copy it into `/userdata/roms/tools`
 3. Launch `RAOfflineProxy Install` from EmulationStation Tools
 
-After install, these Tools entries are created:
+After install, this Tools entry is created:
 
-- `RAOfflineProxy Status`
-- `RAOfflineProxy Start`
-- `RAOfflineProxy Stop`
-- `RAOfflineProxy Uninstall`
+- `RAOfflineProxy Menu`
 
 Current on-device feedback behavior:
 
-- `RAOfflineProxy Status` displays a framebuffer status screen for 15 seconds by default
-- `RAOfflineProxy Start`, `RAOfflineProxy Stop`, `RAOfflineProxy Install`, and `RAOfflineProxy Uninstall` display framebuffer feedback screens for 6 seconds
-- status and action text snapshots are also written to disk under `/userdata/system/raofflineproxy/`
+- `RAOfflineProxy Menu` is the primary interactive KNULLI UI for Start, Stop, Uninstall, and Exit
+- `RAOfflineProxy Install` still displays a short framebuffer feedback screen during installation
 
 What is still rough:
 
