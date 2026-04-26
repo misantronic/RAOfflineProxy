@@ -19,12 +19,36 @@ What is already working in the experimental implementation:
 - serving cached game data while offline
 - queuing softcore achievement awards while offline
 - flushing queued awards automatically when connectivity returns
+- KNULLI installation through a single-file `RAOfflineProxy Install.sh` Tools entry
+- KNULLI Tools entries for `RAOfflineProxy Status`, `RAOfflineProxy Start`, `RAOfflineProxy Stop`, and `RAOfflineProxy Uninstall`
+- on-screen framebuffer status and action feedback using `fbv`
+
+## KNULLI Flow
+
+The current experimental KNULLI flow is:
+
+1. Build `linux/knulli/dist/RAOfflineProxy Install.sh`
+2. Copy it into `/userdata/roms/tools`
+3. Launch `RAOfflineProxy Install` from EmulationStation Tools
+
+After install, these Tools entries are created:
+
+- `RAOfflineProxy Status`
+- `RAOfflineProxy Start`
+- `RAOfflineProxy Stop`
+- `RAOfflineProxy Uninstall`
+
+Current on-device feedback behavior:
+
+- `RAOfflineProxy Status` displays a framebuffer status screen for 15 seconds by default
+- `RAOfflineProxy Start`, `RAOfflineProxy Stop`, `RAOfflineProxy Install`, and `RAOfflineProxy Uninstall` display framebuffer feedback screens for 6 seconds
+- status and action text snapshots are also written to disk under `/userdata/system/raofflineproxy/`
 
 What is still rough:
 
 - installation and update flow are still experimental
 - KNULLI integration is still being hardened and simplified
-- logs and tooling are still evolving
+- visual presentation is still being tuned for device-specific framebuffer behavior
 - Android remains the only fully documented and supported target
 
 Treat Linux support as a development preview rather than an officially supported feature for now.

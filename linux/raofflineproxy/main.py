@@ -16,6 +16,7 @@ from .service import (
     stop_service_process,
 )
 from .state import load_patch_state, save_patch_state
+from .ui import launch_ui, write_status_image, write_text_image
 
 STALE_HOOK_PATH = Path("/userdata/system/scripts/RAOfflineProxy_game_hook.sh")
 
@@ -67,13 +68,49 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="RAOfflineProxy Linux client")
     parser.add_argument(
         "command",
-        choices=["start-proxy", "stop-proxy", "status", "run-service"],
+        choices=[
+            "start-proxy",
+            "stop-proxy",
+            "status",
+            "run-service",
+            "ui",
+            "ui-image",
+            "text-image",
+        ],
         help="Action to perform",
     )
     parser.add_argument(
         "--retroarch-cfg",
         dest="retroarch_cfg",
         help="Override RetroArch config path",
+    )
+    parser.add_argument(
+        "--output",
+        dest="output",
+        help="Output file path for commands that write files",
+    )
+    parser.add_argument(
+        "--text",
+        dest="text",
+        help="Text payload for commands that render text",
+    )
+    parser.add_argument(
+        "--image-width",
+        dest="image_width",
+        type=int,
+        help="Override rendered image width",
+    )
+    parser.add_argument(
+        "--image-height",
+        dest="image_height",
+        type=int,
+        help="Override rendered image height",
+    )
+    parser.add_argument(
+        "--font-scale",
+        dest="font_scale",
+        type=int,
+        help="Override rendered font scale",
     )
     args = parser.parse_args()
 
@@ -87,6 +124,34 @@ def main() -> None:
 
         if args.command == "run-service":
             run_service_foreground(config_data)
+            return
+
+        if args.command == "ui":
+            launch_ui()
+            return
+
+        if args.command == "ui-image":
+            if not args.output:
+                raise ValueError("ui-image requires --output")
+            write_status_image(
+                args.output,
+                image_width=args.image_width or 0,
+                image_height=args.image_height or 0,
+            )
+            return
+
+        if args.command == "text-image":
+            if not args.output:
+                raise ValueError("text-image requires --output")
+            if args.text is None:
+                raise ValueError("text-image requires --text")
+            write_text_image(
+                args.output,
+                args.text,
+                image_width=args.image_width or 0,
+                image_height=args.image_height or 0,
+                font_scale=args.font_scale or 0,
+            )
             return
 
         if args.command == "start-proxy":
