@@ -124,6 +124,7 @@ Then run `RAOfflineProxy Install` from EmulationStation Tools.
 
 The installer removes itself after a successful install and creates these Tools entries:
 
+- `RAOfflineProxy Menu`
 - `RAOfflineProxy Status`
 - `RAOfflineProxy Start`
 - `RAOfflineProxy Stop`
@@ -235,6 +236,19 @@ If no viewer can be opened from EmulationStation Tools, the rendered screen is s
 /userdata/system/raofflineproxy/ui-screen.txt
 /userdata/system/raofflineproxy/ui-screen.bmp
 ```
+
+## RAOfflineProxy Menu
+
+The experimental `menu` command provides a single-entry fullscreen menu for KNULLI-style environments.
+
+It is intended to allow controller-driven access to:
+
+- Status
+- Start proxy
+- Stop proxy
+- Exit
+
+The KNULLI Tools installer exposes this as `RAOfflineProxy Menu`.
 
 ## Current Limitations
 

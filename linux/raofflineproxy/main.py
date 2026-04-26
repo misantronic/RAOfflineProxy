@@ -15,6 +15,7 @@ from .service import (
     start_service_process,
     stop_service_process,
 )
+from .menu import run_menu
 from .state import load_patch_state, save_patch_state
 from .ui import launch_ui, write_status_image, write_text_image
 
@@ -76,6 +77,7 @@ def main() -> None:
             "ui",
             "ui-image",
             "text-image",
+            "menu",
         ],
         help="Action to perform",
     )
@@ -128,6 +130,10 @@ def main() -> None:
 
         if args.command == "ui":
             launch_ui()
+            return
+
+        if args.command == "menu":
+            run_menu(sys.argv[0])
             return
 
         if args.command == "ui-image":

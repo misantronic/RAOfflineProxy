@@ -41,6 +41,7 @@ fi
 
 rm -f "${TOOLS_DIR}/RAOfflineProxy Start.sh"
 rm -f "${TOOLS_DIR}/RAOfflineProxy Stop.sh"
+rm -f "${TOOLS_DIR}/RAOfflineProxy Menu.sh"
 rm -f "${TOOLS_DIR}/RAOfflineProxy UI.sh"
 rm -f "${TOOLS_DIR}/RAOfflineProxy Status.sh"
 rm -f "${TOOLS_DIR}/RAOfflineProxy Uninstall.sh"

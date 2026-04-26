@@ -39,6 +39,11 @@ cat > "${TOOLS_DIR}/RAOfflineProxy Status.sh" <<'EOF'
 exec /userdata/system/raofflineproxy/bin/raofflineproxy-dashboard
 EOF
 
+cat > "${TOOLS_DIR}/RAOfflineProxy Menu.sh" <<'EOF'
+#!/bin/sh
+exec /userdata/system/raofflineproxy/bin/raofflineproxy menu
+EOF
+
 cat > "${TOOLS_DIR}/RAOfflineProxy Start.sh" <<'EOF'
 #!/bin/sh
 exec /userdata/system/raofflineproxy/bin/raofflineproxy-ui start
@@ -56,6 +61,7 @@ EOF
 
 chmod +x "${TOOLS_DIR}/RAOfflineProxy Start.sh"
 chmod +x "${TOOLS_DIR}/RAOfflineProxy Stop.sh"
+chmod +x "${TOOLS_DIR}/RAOfflineProxy Menu.sh"
 chmod +x "${TOOLS_DIR}/RAOfflineProxy Status.sh"
 chmod +x "${TOOLS_DIR}/RAOfflineProxy Uninstall.sh"
 
