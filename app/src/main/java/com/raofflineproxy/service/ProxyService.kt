@@ -218,7 +218,7 @@ class ProxyService : Service() {
         return Notification.Builder(this, CHANNEL_ID)
             .setContentTitle(title)
             .setContentText(text)
-            .setSmallIcon(R.drawable.ic_proxy)
+            .setSmallIcon(R.mipmap.ic_launcher)
             .setContentIntent(tapIntent)
             .setOngoing(true)
             .build()
