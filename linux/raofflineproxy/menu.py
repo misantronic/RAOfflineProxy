@@ -22,6 +22,7 @@ from .ui import (
     normalize_font_scale,
     render_text_pixels,
     scaled_line_height,
+    write_bmp,
 )
 
 EVENT_SIZE = struct.calcsize("llHHi")
@@ -56,9 +57,8 @@ MENU_IMAGE_PATH = Path("/userdata/system/raofflineproxy/menu.bmp")
 STATUS_SECONDS = 15
 ACTION_SECONDS = 6
 POLL_TIMEOUT_SECONDS = 0.10
-REPAINT_INTERVAL_SECONDS = 0.5
-STARTUP_REPAINT_SECONDS = 1.5
 STALE_HOOK_PATH = Path("/userdata/system/scripts/RAOfflineProxy_game_hook.sh")
+MENU_BOOTSTRAP_IMAGE_PATH = Path("/userdata/system/raofflineproxy/menu-bootstrap.bmp")
 
 
 def run_menu(command_runner: str) -> None:
@@ -142,18 +142,15 @@ class MenuSession:
         self.framebuffer = FramebufferRenderer(image_width, image_height)
         self.menu_frame_cache: dict[tuple[bool, int], bytes] = {}
         self.last_frame: bytes | None = None
-        self.started_at = time.monotonic()
-        self.last_paint_at = 0.0
+        self.bootstrap_shown = False
 
     def run(self) -> None:
         try:
             try:
                 self.render_menu()
-                self.force_startup_repaint()
                 while self.running:
                     key = read_key(self.input_handles)
                     if key is None:
-                        self.repaint_if_needed()
                         continue
                     self.handle_key(key)
             except Exception as exc:
@@ -186,33 +183,21 @@ class MenuSession:
 
     def display_frame(self, frame: bytes) -> None:
         self.last_frame = frame
-        self.last_paint_at = time.monotonic()
+        if not self.bootstrap_shown:
+            self.show_bootstrap_frame(frame)
+            self.bootstrap_shown = True
         self.framebuffer.display_frame(frame)
 
-    def repaint_if_needed(self) -> None:
-        if self.last_frame is None:
-            return
-
-        now = time.monotonic()
-        interval = (
-            0.1
-            if (now - self.started_at) < STARTUP_REPAINT_SECONDS
-            else REPAINT_INTERVAL_SECONDS
+    def show_bootstrap_frame(self, frame: bytes) -> None:
+        pixels = self.framebuffer.frame_to_pixels(frame)
+        MENU_BOOTSTRAP_IMAGE_PATH.parent.mkdir(parents=True, exist_ok=True)
+        write_bmp(
+            MENU_BOOTSTRAP_IMAGE_PATH,
+            pixels,
+            self.image_width,
+            self.image_height,
         )
-        if (now - self.last_paint_at) < interval:
-            return
-
-        self.last_paint_at = now
-        self.framebuffer.display_frame(self.last_frame)
-
-    def force_startup_repaint(self) -> None:
-        if self.last_frame is None:
-            return
-
-        for _ in range(3):
-            time.sleep(0.05)
-            self.last_paint_at = time.monotonic()
-            self.framebuffer.display_frame(self.last_frame)
+        self.framebuffer.display_with_fallback(MENU_BOOTSTRAP_IMAGE_PATH, duration=0.2)
 
     def entries(self) -> list["MenuEntry"]:
         toggle_entry = (
@@ -470,14 +455,32 @@ class FramebufferRenderer:
 
         frame[pixel_offset] = 0xFF
 
-    def display_with_fallback(self, image_path: Path) -> None:
+    def display_with_fallback(self, image_path: Path, duration: float = 0.1) -> None:
         self.stop_fallback()
         self.fallback_process = subprocess.Popen(
             ["fbv", "-i", "-c", "-u", str(image_path)],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
-        time.sleep(0.1)
+        time.sleep(duration)
+
+    def frame_to_pixels(self, frame: bytes) -> list[list[int]]:
+        pixels = [[0 for _ in range(self.width)] for _ in range(self.height)]
+        for row_index in range(self.height):
+            row_offset = row_index * self.stride
+            for column_index in range(self.width):
+                pixel_offset = row_offset + (column_index * self.bytes_per_pixel)
+                if self.bytes_per_pixel >= 3:
+                    pixels[row_index][column_index] = frame[pixel_offset]
+                elif self.bytes_per_pixel == 2:
+                    packed = struct.unpack(
+                        "<H", frame[pixel_offset : pixel_offset + 2]
+                    )[0]
+                    blue = (packed & 0x1F) << 3
+                    pixels[row_index][column_index] = blue
+                else:
+                    pixels[row_index][column_index] = frame[pixel_offset]
+        return pixels
 
     def stop_fallback(self) -> None:
         if self.fallback_process is None:
