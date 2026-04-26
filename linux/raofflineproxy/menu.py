@@ -6,7 +6,11 @@ import subprocess
 import time
 from pathlib import Path
 
-from .state import load_service_status
+from .batocera_conf import patch_batocera_conf, revert_batocera_conf
+from .config import detect_retroarch_cfg, load_config
+from .retroarch_cfg import patch_retroarch_cfg, revert_retroarch_cfg
+from .service import service_status, start_service_process, stop_service_process
+from .state import load_patch_state, save_patch_state
 from .ui import (
     GLYPH_HEIGHT,
     GLYPH_SPACING,
@@ -52,6 +56,9 @@ MENU_IMAGE_PATH = Path("/userdata/system/raofflineproxy/menu.bmp")
 STATUS_SECONDS = 15
 ACTION_SECONDS = 6
 POLL_TIMEOUT_SECONDS = 0.10
+REPAINT_INTERVAL_SECONDS = 0.5
+STARTUP_REPAINT_SECONDS = 1.5
+STALE_HOOK_PATH = Path("/userdata/system/scripts/RAOfflineProxy_game_hook.sh")
 
 
 def run_menu(command_runner: str) -> None:
@@ -74,6 +81,54 @@ def detect_resolution() -> tuple[int, int]:
     return 640, 480
 
 
+def remove_stale_hook() -> None:
+    if STALE_HOOK_PATH.exists():
+        STALE_HOOK_PATH.unlink()
+
+
+def runtime_config() -> tuple[dict, str]:
+    config_data = load_config()
+    cfg_path = config_data.get("retroarch_cfg") or detect_retroarch_cfg()
+    return config_data, cfg_path
+
+
+def start_proxy_inline() -> None:
+    config_data, cfg_path = runtime_config()
+    remove_stale_hook()
+    patch_retroarch_cfg(cfg_path, config_data)
+    batocera = patch_batocera_conf(config_data)
+    patch_state = load_patch_state() or {}
+    patch_state["batocera_previous"] = batocera.get("previous", {})
+    patch_state["batocera_conf_path"] = batocera.get("path")
+    save_patch_state(patch_state)
+    start_service_process(config_data)
+
+
+def stop_proxy_inline() -> None:
+    config_data, cfg_path = runtime_config()
+    remove_stale_hook()
+    service = stop_service_process()
+    patch_state = load_patch_state() or {}
+    previous_batocera = patch_state.get("batocera_previous", {})
+    revert_batocera_conf(config_data, previous_batocera)
+
+    if patch_state:
+        revert_retroarch_cfg(cfg_path)
+        return
+
+    if not service.get("already_stopped"):
+        try:
+            revert_retroarch_cfg(cfg_path)
+        except Exception:
+            pass
+        return
+
+    try:
+        revert_retroarch_cfg(cfg_path)
+    except Exception:
+        pass
+
+
 class MenuSession:
     def __init__(
         self, command_runner: str, image_width: int, image_height: int
@@ -86,15 +141,25 @@ class MenuSession:
         self.input_handles = open_input_devices()
         self.framebuffer = FramebufferRenderer(image_width, image_height)
         self.menu_frame_cache: dict[tuple[bool, int], bytes] = {}
+        self.last_frame: bytes | None = None
+        self.started_at = time.monotonic()
+        self.last_paint_at = 0.0
 
     def run(self) -> None:
         try:
-            self.render_menu()
-            while self.running:
-                key = read_key(self.input_handles)
-                if key is None:
-                    continue
-                self.handle_key(key)
+            try:
+                self.render_menu()
+                self.force_startup_repaint()
+                while self.running:
+                    key = read_key(self.input_handles)
+                    if key is None:
+                        self.repaint_if_needed()
+                        continue
+                    self.handle_key(key)
+            except Exception as exc:
+                self.show_timed_text(
+                    f"RAOFFLINEPROXY MENU ERROR\n\n{exc}", ACTION_SECONDS, 2
+                )
         finally:
             close_input_devices(self.input_handles)
             self.framebuffer.close()
@@ -104,11 +169,12 @@ class MenuSession:
         cache_key = (proxy_running, self.selected_index)
         cached_frame = self.menu_frame_cache.get(cache_key)
         if cached_frame is not None:
-            self.framebuffer.display_frame(cached_frame)
+            self.display_frame(cached_frame)
             return
 
         entries = self.entries()
-        lines = ["RAOFFLINEPROXY MENU", ""]
+        status_text = "RUNNING" if proxy_running else "STOPPED"
+        lines = ["RAOFFLINEPROXY MENU", "", f"PROXY: {status_text}", ""]
 
         for index, entry in enumerate(entries):
             prefix = ">" if index == self.selected_index else " "
@@ -116,7 +182,37 @@ class MenuSession:
 
         frame = self.framebuffer.build_text_frame("\n".join(lines), font_scale=2)
         self.menu_frame_cache[cache_key] = frame
+        self.display_frame(frame)
+
+    def display_frame(self, frame: bytes) -> None:
+        self.last_frame = frame
+        self.last_paint_at = time.monotonic()
         self.framebuffer.display_frame(frame)
+
+    def repaint_if_needed(self) -> None:
+        if self.last_frame is None:
+            return
+
+        now = time.monotonic()
+        interval = (
+            0.1
+            if (now - self.started_at) < STARTUP_REPAINT_SECONDS
+            else REPAINT_INTERVAL_SECONDS
+        )
+        if (now - self.last_paint_at) < interval:
+            return
+
+        self.last_paint_at = now
+        self.framebuffer.display_frame(self.last_frame)
+
+    def force_startup_repaint(self) -> None:
+        if self.last_frame is None:
+            return
+
+        for _ in range(3):
+            time.sleep(0.05)
+            self.last_paint_at = time.monotonic()
+            self.framebuffer.display_frame(self.last_frame)
 
     def entries(self) -> list["MenuEntry"]:
         toggle_entry = (
@@ -137,7 +233,10 @@ class MenuSession:
         return entries
 
     def proxy_running(self) -> bool:
-        service = load_service_status() or {}
+        try:
+            service = service_status() or {}
+        except Exception:
+            return False
         return bool(service.get("running"))
 
     def handle_key(self, key: int) -> None:
@@ -161,12 +260,22 @@ class MenuSession:
             self.exit_menu()
 
     def start_proxy(self) -> None:
-        output = self.run_command("start-proxy")
-        self.show_timed_text(f"RAOFFLINEPROXY START\n\n{output}", ACTION_SECONDS, 2)
+        try:
+            start_proxy_inline()
+            self.menu_frame_cache.clear()
+        except Exception as exc:
+            self.show_timed_text(
+                f"RAOFFLINEPROXY START FAILED\n\n{exc}", ACTION_SECONDS, 2
+            )
 
     def stop_proxy(self) -> None:
-        output = self.run_command("stop-proxy")
-        self.show_timed_text(f"RAOFFLINEPROXY STOP\n\n{output}", ACTION_SECONDS, 2)
+        try:
+            stop_proxy_inline()
+            self.menu_frame_cache.clear()
+        except Exception as exc:
+            self.show_timed_text(
+                f"RAOFFLINEPROXY STOP FAILED\n\n{exc}", ACTION_SECONDS, 2
+            )
 
     def uninstall(self) -> None:
         self.framebuffer.close()
@@ -180,19 +289,6 @@ class MenuSession:
 
     def exit_menu(self) -> None:
         self.running = False
-
-    def run_command(self, command: str, allow_failure: bool = False) -> str:
-        process = subprocess.run(
-            [self.command_runner, command],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            check=False,
-        )
-        output = (process.stdout or "").strip()
-        if process.returncode != 0 and not allow_failure:
-            return output or f"Command failed: {command}"
-        return output or "No output"
 
     def show_timed_text(self, text: str, seconds: int, font_scale: int) -> None:
         self.display_text(text, font_scale)
@@ -282,6 +378,7 @@ class FramebufferRenderer:
 
         self.fb_map.seek(0)
         self.fb_map.write(frame)
+        self.safe_flush()
 
     def display_frame(self, frame: bytes) -> None:
         if self.fb_map is None:
@@ -289,6 +386,16 @@ class FramebufferRenderer:
 
         self.fb_map.seek(0)
         self.fb_map.write(frame)
+        self.safe_flush()
+
+    def safe_flush(self) -> None:
+        if self.fb_map is None:
+            return
+
+        try:
+            self.fb_map.flush()
+        except (BufferError, OSError, ValueError):
+            pass
 
     def build_text_frame(self, text: str, font_scale: int) -> bytes:
         resolved_font_scale = normalize_font_scale(font_scale)
@@ -386,12 +493,6 @@ class FramebufferRenderer:
 
     def close(self) -> None:
         self.stop_fallback()
-        if self.fb_map is not None and self.previous_frame is not None:
-            try:
-                self.fb_map.seek(0)
-                self.fb_map.write(self.previous_frame)
-            except ValueError:
-                pass
         if self.fb_map is not None:
             self.fb_map.close()
             self.fb_map = None
