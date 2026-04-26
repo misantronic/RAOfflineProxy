@@ -27,6 +27,7 @@ import com.raofflineproxy.BuildConfig
 import com.raofflineproxy.PrefsConstants
 import com.raofflineproxy.R
 import com.raofflineproxy.databinding.ActivityMainBinding
+import com.raofflineproxy.service.ProxyService
 import java.util.ArrayDeque
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -113,7 +114,7 @@ class MainActivity : AppCompatActivity() {
 
         if (savedInstanceState == null) {
             showFragment(HomeFragment(), R.id.nav_home, addToBackStack = false)
-            if (viewModel.state.value.autostartProxy) {
+            if (viewModel.state.value.autostartProxy && !ProxyService.isRunning(this)) {
                 viewModel.startProxy(treeUri = PrefsConstants.loadSafUri(this@MainActivity))
             }
         } else {
