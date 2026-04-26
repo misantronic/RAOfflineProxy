@@ -22,6 +22,7 @@ What is already working in the experimental implementation:
 - KNULLI installation through a single-file `RAOfflineProxy Install.sh` Tools entry
 - a single KNULLI Tools entry for `RAOfflineProxy Menu`
 - on-screen framebuffer status and action feedback using `fbv`
+- an interactive KNULLI menu for Start, Stop, Uninstall, and Exit
 
 ## KNULLI Flow
 
@@ -40,11 +41,18 @@ Current on-device feedback behavior:
 - `RAOfflineProxy Menu` is the primary interactive KNULLI UI for Start, Stop, Uninstall, and Exit
 - `RAOfflineProxy Install` still displays a short framebuffer feedback screen during installation
 
+Current install UX:
+
+- after running `RAOfflineProxy Install`, the installer asks the user to `Please Update Gamelists.`
+- the installer removes itself after a successful install
+- the Tools list is expected to expose only `RAOfflineProxy Menu`
+
 What is still rough:
 
 - installation and update flow are still experimental
 - KNULLI integration is still being hardened and simplified
 - visual presentation is still being tuned for device-specific framebuffer behavior
+- the current interactive menu is stable enough to use, but navigation still has noticeable delay because menu presentation is using the safer `fbv` path instead of the faster direct framebuffer experiments
 - Android remains the only fully documented and supported target
 
 Treat Linux support as a development preview rather than an officially supported feature for now.
