@@ -326,6 +326,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             _state.value = _state.value.copy(proxyToggleInProgress = true)
 
             try {
+                val alreadyRunning = ProxyService.isRunning(app)
                 val prefs = app.getSharedPreferences(PrefsConstants.PREFS_NAME, Context.MODE_PRIVATE)
                 prefs.edit { remove(PrefsConstants.KEY_SKIP_NEXT_CFG_REVERT) }
 
@@ -359,7 +360,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     cfgIsPatched = true,
                     authState = AuthState.Unknown
                 )
-                SnackbarManager.showMessage(str(R.string.proxy_started_success))
+                if (!alreadyRunning) {
+                    SnackbarManager.showMessage(str(R.string.proxy_started_success))
+                }
                 validateToken()
             } finally {
                 delay(250)
