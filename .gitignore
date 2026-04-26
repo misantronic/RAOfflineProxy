@@ -17,3 +17,4 @@ docs/.vitepress/cache
 keystore.properties
 AGENTS.md
 .agents/
+linux/knulli/dist/

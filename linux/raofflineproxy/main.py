@@ -25,6 +25,44 @@ def remove_stale_hook() -> None:
         STALE_HOOK_PATH.unlink()
 
 
+def safe_stop_proxy(config_data: dict, cfg_path: str | None) -> list[str]:
+    output: list[str] = []
+
+    remove_stale_hook()
+    service = stop_service_process()
+    patch_state = load_patch_state() or {}
+    previous_batocera = patch_state.get("batocera_previous", {})
+    batocera = revert_batocera_conf(config_data, previous_batocera)
+
+    if service.get("already_stopped"):
+        output.append("Service already stopped")
+    elif service.get("forced"):
+        output.append(f"Service stopped forcefully (pid {service['pid']})")
+    else:
+        output.append(f"Service stopped (pid {service['pid']})")
+
+    if batocera.get("exists"):
+        output.append(f"Reverted batocera.conf at {batocera['path']}")
+
+    revert_result = None
+    if patch_state:
+        revert_result = revert_retroarch_cfg(cfg_path)
+    elif cfg_path:
+        try:
+            revert_result = revert_retroarch_cfg(cfg_path)
+        except Exception:
+            revert_result = None
+
+    if revert_result is None:
+        output.append("Proxy config already reverted")
+    elif revert_result["changed"]:
+        output.append(f"Reverted proxy config in {revert_result['cfg_path']}")
+    else:
+        output.append(f"Proxy config already reverted in {revert_result['cfg_path']}")
+
+    return output
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="RAOfflineProxy Linux client")
     parser.add_argument(
@@ -77,24 +115,8 @@ def main() -> None:
             return
 
         if args.command == "stop-proxy":
-            remove_stale_hook()
-            service = stop_service_process()
-            patch_state = load_patch_state() or {}
-            previous_batocera = patch_state.get("batocera_previous", {})
-            batocera = revert_batocera_conf(config_data, previous_batocera)
-            result = revert_retroarch_cfg(args.retroarch_cfg)
-            if service.get("already_stopped"):
-                print("Service already stopped")
-            elif service.get("forced"):
-                print(f"Service stopped forcefully (pid {service['pid']})")
-            else:
-                print(f"Service stopped (pid {service['pid']})")
-            if batocera.get("exists"):
-                print(f"Reverted batocera.conf at {batocera['path']}")
-            if result["changed"]:
-                print(f"Reverted proxy config in {result['cfg_path']}")
-            else:
-                print(f"Proxy config already reverted in {result['cfg_path']}")
+            for line in safe_stop_proxy(config_data, args.retroarch_cfg or cfg_path):
+                print(line)
             return
 
         status = status_retroarch_cfg(cfg_path, config_data)
