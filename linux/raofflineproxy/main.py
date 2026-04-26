@@ -15,7 +15,7 @@ from .service import (
     start_service_process,
     stop_service_process,
 )
-from .menu import run_menu
+from .menu_sdl import run_menu_sdl
 from .state import load_patch_state, save_patch_state
 from .ui import launch_ui, write_status_image, write_text_image
 
@@ -78,6 +78,7 @@ def main() -> None:
             "ui-image",
             "text-image",
             "menu",
+            "menu-sdl",
         ],
         help="Action to perform",
     )
@@ -133,7 +134,11 @@ def main() -> None:
             return
 
         if args.command == "menu":
-            run_menu(sys.argv[0])
+            run_menu_sdl(sys.argv[0])
+            return
+
+        if args.command == "menu-sdl":
+            run_menu_sdl(sys.argv[0])
             return
 
         if args.command == "ui-image":

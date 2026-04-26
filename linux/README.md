@@ -126,6 +126,8 @@ The installer removes itself after a successful install and creates this Tools e
 
 - `RAOfflineProxy Menu`
 
+`RAOfflineProxy Menu` now launches the SDL/`pygame` menu path. The KNULLI launcher automatically adds `/userdata/roms/pygame` to `PYTHONPATH` when that directory exists on-device.
+
 ## Config
 
 Optional config file:
@@ -220,6 +222,8 @@ It is intended to allow controller-driven access to:
 - Exit
 
 The KNULLI Tools installer exposes this as `RAOfflineProxy Menu`.
+
+The current primary implementation is the SDL menu. The older `fbv` menu code remains in the repo as a fallback implementation, but it is no longer the default KNULLI path.
 
 ## Current Limitations
 

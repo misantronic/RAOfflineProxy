@@ -2,6 +2,13 @@
 set -euo pipefail
 
 BASE_DIR="/userdata/system/raofflineproxy"
-export PYTHONPATH="${BASE_DIR}/app${PYTHONPATH:+:${PYTHONPATH}}"
+PYGAME_DIR="/userdata/roms/pygame"
+PYTHONPATH_ENTRIES="${BASE_DIR}/app"
+
+if [ -d "${PYGAME_DIR}" ]; then
+  PYTHONPATH_ENTRIES="${PYTHONPATH_ENTRIES}:${PYGAME_DIR}"
+fi
+
+export PYTHONPATH="${PYTHONPATH_ENTRIES}${PYTHONPATH:+:${PYTHONPATH}}"
 
 exec /usr/bin/python3 -m raofflineproxy.main "$@"

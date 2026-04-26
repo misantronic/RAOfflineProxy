@@ -21,8 +21,8 @@ What is already working in the experimental implementation:
 - flushing queued awards automatically when connectivity returns
 - KNULLI installation through a single-file `RAOfflineProxy Install.sh` Tools entry
 - a single KNULLI Tools entry for `RAOfflineProxy Menu`
-- on-screen framebuffer status and action feedback using `fbv`
-- an interactive KNULLI menu for Start, Stop, Uninstall, and Exit
+- on-screen install/status feedback using `fbv`
+- an interactive SDL-based KNULLI menu for Start, Stop, Uninstall, and Exit
 
 ## KNULLI Flow
 
@@ -39,6 +39,7 @@ After install, this Tools entry is created:
 Current on-device feedback behavior:
 
 - `RAOfflineProxy Menu` is the primary interactive KNULLI UI for Start, Stop, Uninstall, and Exit
+- `RAOfflineProxy Menu` now uses the SDL/`pygame` menu path for responsive controller navigation
 - `RAOfflineProxy Install` still displays a short framebuffer feedback screen during installation
 
 Current install UX:
@@ -51,8 +52,8 @@ What is still rough:
 
 - installation and update flow are still experimental
 - KNULLI integration is still being hardened and simplified
-- visual presentation is still being tuned for device-specific framebuffer behavior
-- the current interactive menu is stable enough to use, but navigation still has noticeable delay because menu presentation is using the safer `fbv` path instead of the faster direct framebuffer experiments
+- visual presentation is still being tuned for device-specific KNULLI behavior
+- the SDL menu depends on `pygame` being available on-device; the launcher automatically adds `/userdata/roms/pygame` to `PYTHONPATH` when present
 - Android remains the only fully documented and supported target
 
 Treat Linux support as a development preview rather than an officially supported feature for now.
