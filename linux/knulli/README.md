@@ -21,7 +21,9 @@ This is still considered experimental and may need additional hardening across d
 - adds EmulationStation Tools entries for:
   - `RAOfflineProxy Menu`
 
-`RAOfflineProxy Menu` is the primary experimental interactive fullscreen UI. It is intended to provide one place to launch Start, Stop, Uninstall, and Exit actions.
+`RAOfflineProxy Menu` is the primary experimental interactive fullscreen UI. It provides one place to launch Start, Stop, Uninstall, and Exit actions.
+
+The current `RAOfflineProxy Menu` implementation uses SDL/`pygame` for responsive controller-driven navigation. The launcher adds `/userdata/roms/pygame` to `PYTHONPATH` automatically when that directory exists.
 
 This bundle now patches RetroArch config and launches the background Linux proxy service.
 

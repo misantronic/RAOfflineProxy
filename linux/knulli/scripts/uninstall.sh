@@ -17,9 +17,6 @@ cat > "${BASE_DIR}/ui-state.txt" <<'EOF'
 RAOfflineProxy Uninstall
 
 KNULLI bundle removed.
-
-Saved to:
-  /userdata/system/raofflineproxy/ui-state.txt
 EOF
 
 if [ -x "${BASE_DIR}/bin/raofflineproxy" ]; then
@@ -40,6 +37,7 @@ if [ -x "${BASE_DIR}/bin/raofflineproxy" ]; then
 fi
 
 rm -f "${TOOLS_DIR}/RAOfflineProxy Menu.sh"
+rm -f "${TOOLS_DIR}/RAOfflineProxy Menu SDL.sh"
 rm -f "/userdata/system/scripts/RAOfflineProxy_game_hook.sh"
 
 rm -rf "${BASE_DIR}"
