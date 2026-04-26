@@ -35,11 +35,21 @@ from .menu import (
 SDL_LOG_PATH = CONFIG_DIR / "menu-sdl.log"
 STALE_HOOK_PATH = Path("/userdata/system/scripts/RAOfflineProxy_game_hook.sh")
 BACKGROUND_COLOR = (0, 0, 0)
+PRIMARY_COLOR = (28, 81, 130)
+SECONDARY_COLOR = (210, 164, 72)
 TEXT_COLOR = (255, 255, 255)
-SELECTED_COLOR = (255, 220, 120)
+SELECTED_COLOR = SECONDARY_COLOR
 STATUS_COLOR = (180, 180, 180)
 ERROR_SECONDS = 3
 FPS = 30
+FONT_CANDIDATES = [
+    "Press Start 2P",
+    "Pixel Operator",
+    "Terminus",
+    "Perfect DOS VGA 437",
+    "Fixed",
+    "Monospace",
+]
 
 
 def run_menu_sdl(command_runner: str) -> None:
@@ -128,9 +138,9 @@ class MenuSdlSession:
         self.last_navigation_at = 0.0
         self.message: tuple[str, float] | None = None
         self.input_handles = open_input_devices()
-        self.title_font = pygame.font.Font(None, max(42, height // 14))
-        self.status_font = pygame.font.Font(None, max(28, height // 24))
-        self.item_font = pygame.font.Font(None, max(52, height // 11))
+        self.title_font = self.load_font(max(38, height // 16), bold=True)
+        self.status_font = self.load_font(max(28, height // 24))
+        self.item_font = self.load_font(max(46, height // 12), bold=True)
         self.clock = pygame.time.Clock()
         for joystick_index in range(pygame.joystick.get_count()):
             joystick = pygame.joystick.Joystick(joystick_index)
@@ -142,6 +152,24 @@ class MenuSdlSession:
         log_menu_sdl(
             f"MenuSdlSession init width={width} height={height} input_handles={len(self.input_handles)}"
         )
+
+    def load_font(self, size: int, bold: bool = False):
+        for font_name in FONT_CANDIDATES:
+            font_path = self.pygame.font.match_font(font_name)
+            if font_path is None:
+                continue
+
+            font = self.pygame.font.Font(font_path, size)
+            font.set_bold(bold)
+            log_menu_sdl(
+                f"font selected name={font_name} path={font_path} size={size} bold={bold}"
+            )
+            return font
+
+        font = self.pygame.font.Font(None, size)
+        font.set_bold(bold)
+        log_menu_sdl(f"font fallback default size={size} bold={bold}")
+        return font
 
     def run(self) -> None:
         try:
@@ -156,7 +184,7 @@ class MenuSdlSession:
     def render(self) -> None:
         self.surface.fill(BACKGROUND_COLOR)
 
-        title = self.title_font.render("RAOFFLINEPROXY MENU SDL", True, TEXT_COLOR)
+        title = self.title_font.render("RAOfflineProxy Menu", False, PRIMARY_COLOR)
         title_rect = title.get_rect(
             center=(self.width // 2, max(50, self.height // 10))
         )
@@ -164,7 +192,7 @@ class MenuSdlSession:
 
         running = self.proxy_running()
         status_text = "PROXY: RUNNING" if running else "PROXY: STOPPED"
-        status = self.status_font.render(status_text, True, STATUS_COLOR)
+        status = self.status_font.render(status_text, False, STATUS_COLOR)
         status_rect = status.get_rect(center=(self.width // 2, title_rect.bottom + 40))
         self.surface.blit(status, status_rect)
 
@@ -174,7 +202,7 @@ class MenuSdlSession:
         for index, label in enumerate(items):
             color = SELECTED_COLOR if index == self.selected_index else TEXT_COLOR
             prefix = "> " if index == self.selected_index else "  "
-            text = self.item_font.render(f"{prefix}{label}", True, color)
+            text = self.item_font.render(f"{prefix}{label}", False, color)
             rect = text.get_rect(center=(self.width // 2, start_y + (index * gap)))
             self.surface.blit(text, rect)
 
@@ -183,7 +211,7 @@ class MenuSdlSession:
             if time.monotonic() >= expires_at:
                 self.message = None
             else:
-                overlay = self.status_font.render(text, True, SELECTED_COLOR)
+                overlay = self.status_font.render(text, False, SELECTED_COLOR)
                 overlay_rect = overlay.get_rect(
                     center=(self.width // 2, self.height - 60)
                 )
