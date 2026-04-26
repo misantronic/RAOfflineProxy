@@ -39,7 +39,8 @@ INPUT_DIR = Path("/dev/input")
 FB_SIZE_PATH = Path("/sys/class/graphics/fb0/virtual_size")
 MENU_LOG_PATH = CONFIG_DIR / "menu.log"
 ACTION_SECONDS = 6
-POLL_TIMEOUT_SECONDS = 0.10
+POLL_TIMEOUT_SECONDS = 0.02
+NAVIGATION_DEBOUNCE_SECONDS = 0.14
 STALE_HOOK_PATH = Path("/userdata/system/scripts/RAOfflineProxy_game_hook.sh")
 STARTUP_OPEN_DELAY_SECONDS = 0.8
 
@@ -134,6 +135,7 @@ class MenuSession:
         self.input_handles = open_input_devices()
         self.presenter = FbvMenuPresenter(image_width, image_height)
         self.menu_frame_cache: dict[tuple[bool, int], Path] = {}
+        self.last_navigation_at = 0.0
         log_menu(
             f"MenuSession init width={image_width} height={image_height} input_handles={len(self.input_handles)}"
         )
@@ -245,11 +247,15 @@ class MenuSession:
         proxy_running = self.proxy_running()
 
         if key in {KEY_UP, KEY_LEFT, BTN_DPAD_UP, BTN_DPAD_LEFT}:
+            if self.navigation_debounced():
+                return
             self.selected_index = (self.selected_index - 1) % len(self.entries())
             self.render_menu_for_state(proxy_running)
             return
 
         if key in {KEY_DOWN, KEY_RIGHT, BTN_DPAD_DOWN, BTN_DPAD_RIGHT}:
+            if self.navigation_debounced():
+                return
             self.selected_index = (self.selected_index + 1) % len(self.entries())
             self.render_menu_for_state(proxy_running)
             return
@@ -262,6 +268,16 @@ class MenuSession:
 
         if key in {KEY_ESC, KEY_BACKSPACE, KEY_Q, BTN_EAST, BTN_SELECT}:
             self.exit_menu()
+
+    def navigation_debounced(self) -> bool:
+        now = time.monotonic()
+        elapsed = now - self.last_navigation_at
+        if elapsed < NAVIGATION_DEBOUNCE_SECONDS:
+            log_menu(f"navigation debounced elapsed={elapsed:.3f}")
+            return True
+
+        self.last_navigation_at = now
+        return False
 
     def start_proxy(self) -> None:
         try:
