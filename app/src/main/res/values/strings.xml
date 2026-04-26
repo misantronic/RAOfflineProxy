@@ -154,6 +154,8 @@
     <string name="notification_online_text">Forwarding to RA</string>
     <string name="notification_offline_title">Offline</string>
     <string name="notification_offline_text">Serving from cache</string>
+    <string name="notification_offline_active_text">Serving %1$s from cache</string>
+    <string name="notification_offline_idle_text">Idle</string>
     <plurals name="notification_pending_awards">
         <item quantity="one">%d pending award</item>
         <item quantity="other">%d pending awards</item>

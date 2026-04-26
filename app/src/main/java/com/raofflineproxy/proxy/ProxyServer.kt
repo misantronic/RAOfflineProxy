@@ -78,7 +78,8 @@ class ProxyServer(
     private val db: AppDatabase,
     private val scope: CoroutineScope,
     private val port: Int,
-    private val isOnline: () -> Boolean
+    private val isOnline: () -> Boolean,
+    private val onOfflineCacheServed: (String) -> Unit = {}
 ) {
     private val executor = ThreadPoolExecutor(
         2, MAX_WORKER_THREADS,
@@ -274,6 +275,7 @@ class ProxyServer(
 
         return if (cached != null) {
             Log.i(TAG, "Served synthetic startsession for gameId=$gameId user=$user")
+            onOfflineCacheServed(gameId.toString())
             httpOk(cached!!.responseBody)
         } else {
             Log.e(TAG, "Failed to synthesize startsession for gameId=$gameId user=$user")
@@ -336,6 +338,7 @@ class ProxyServer(
         latch.await(3, TimeUnit.SECONDS)
         return if (cached != null) {
             Log.i(TAG, "Cache HIT: $key (${cached!!.responseBody.length} bytes)")
+            extractOfflineServedGameId(path, rawBody)?.let(onOfflineCacheServed)
             httpOk(cached!!.responseBody)
         } else {
             Log.e(TAG, "Cache MISS: $key")
@@ -565,6 +568,10 @@ internal fun proxyExtractParam(param: String, path: String, body: String): Strin
     if (fromPath != null) return fromPath
     return extractFormParam(body, param)
 }
+
+internal fun extractOfflineServedGameId(path: String, body: String): String? =
+    proxyExtractParam("g", path, body)
+        ?: proxyExtractParam("i", path, body)
 
 internal fun buildPendingAward(
     path: String,

@@ -38,12 +38,14 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import org.json.JSONObject
 
 private const val TAG = "ProxyService"
 private const val CHANNEL_ID = "proxy_service"
 private const val NOTIFICATION_ID = 1
 private const val REFRESH_INTERVAL_MS = 60L * 60 * 1000 // 1 hour
 private const val CACHE_TTL_MS = 7L * 24 * 60 * 60 * 1000 // 7 days
+private const val OFFLINE_GAME_ACTIVE_WINDOW_MS = 15_000L
 
 class ProxyService : Service() {
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
@@ -57,8 +59,12 @@ class ProxyService : Service() {
     private var refreshJob: Job? = null
     private var flushJob: Job? = null
     private var pendingObserverJob: Job? = null
+    private var offlineGameTimeoutJob: Job? = null
     private var pendingCount = 0
     private var cfgCleanupAttempted = false
+    @Volatile private var activeOfflineGameId: String? = null
+    @Volatile private var activeOfflineGameTitle: String? = null
+    @Volatile private var lastOfflineCacheServedAt = 0L
 
     private val networkCallback = object : ConnectivityManager.NetworkCallback() {
         override fun onAvailable(network: Network) {
@@ -80,7 +86,14 @@ class ProxyService : Service() {
         runningInProcess = true
         db = AppDatabase.getInstance(this)
         awardFlusher = AwardFlusher(this, db)
-        proxyServer = ProxyServer(this, db, serviceScope, proxyPort(this)) { isOnline }
+        proxyServer = ProxyServer(
+            context = this,
+            db = db,
+            scope = serviceScope,
+            port = proxyPort(this),
+            isOnline = { isOnline },
+            onOfflineCacheServed = ::onOfflineCacheServed
+        )
         connectivityManager = getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager
     }
 
@@ -207,7 +220,7 @@ class ProxyService : Service() {
             getString(R.string.notification_online_title) to getString(R.string.notification_online_text)
         else {
             val offlineText = buildString {
-                append(getString(R.string.notification_offline_text))
+                append(resolveOfflineStatusText())
                 if (pendingCount > 0) {
                     append(" · ")
                     append(resources.getQuantityString(R.plurals.notification_pending_awards, pendingCount, pendingCount))
@@ -227,6 +240,61 @@ class ProxyService : Service() {
     private fun updateNotification() {
         getSystemService(NotificationManager::class.java)
             .notify(NOTIFICATION_ID, buildNotification())
+    }
+
+    private fun onOfflineCacheServed(gameId: String) {
+        lastOfflineCacheServedAt = System.currentTimeMillis()
+        if (gameId != activeOfflineGameId) {
+            activeOfflineGameId = gameId
+            activeOfflineGameTitle = null
+            serviceScope.launch {
+                val title = loadCachedGameTitle(gameId)
+                if (activeOfflineGameId == gameId) {
+                    activeOfflineGameTitle = title
+                    if (!isOnline) {
+                        updateNotification()
+                    }
+                }
+            }
+        }
+        offlineGameTimeoutJob?.cancel()
+        offlineGameTimeoutJob = serviceScope.launch {
+            delay(OFFLINE_GAME_ACTIVE_WINDOW_MS)
+            if (!isOnline) {
+                updateNotification()
+            }
+        }
+        if (!isOnline) {
+            updateNotification()
+        }
+    }
+
+    private fun resolveOfflineStatusText(): String {
+        val lastServedAt = lastOfflineCacheServedAt
+        if (lastServedAt == 0L) return getString(R.string.notification_offline_idle_text)
+        if (System.currentTimeMillis() - lastServedAt > OFFLINE_GAME_ACTIVE_WINDOW_MS) {
+            activeOfflineGameId = null
+            activeOfflineGameTitle = null
+            return getString(R.string.notification_offline_idle_text)
+        }
+
+        val gameTitle = activeOfflineGameTitle?.takeIf { it.isNotBlank() }
+        return if (gameTitle != null) {
+            getString(R.string.notification_offline_active_text, gameTitle)
+        } else {
+            getString(R.string.notification_offline_text)
+        }
+    }
+
+    private suspend fun loadCachedGameTitle(gameId: String): String? {
+        val patchEntry = db.cacheDao().getByPrefix(CacheKeys.patchPrefix(gameId)) ?: return null
+        return runCatching {
+            val json = JSONObject(patchEntry.responseBody)
+            json.optJSONObject("PatchData")
+                ?.optString("Title")
+                ?.takeIf { it.isNotBlank() }
+                ?: json.optString("Title").takeIf { it.isNotBlank() }
+        }.getOrNull()
     }
 
     private fun revertPatchedCfgIfNeeded() {
