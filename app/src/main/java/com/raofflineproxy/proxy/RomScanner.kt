@@ -9,7 +9,6 @@ import com.raofflineproxy.R
 import com.raofflineproxy.RA_HOST
 import com.raofflineproxy.RequestFailureNotifier
 import com.raofflineproxy.buildApiUrl
-import com.raofflineproxy.proxyBase
 import com.raofflineproxy.proxy.hash.hashRom
 import com.raofflineproxy.redactTokens
 import com.raofflineproxy.throttleRetroAchievementsApiRequest
@@ -193,7 +192,7 @@ private fun shouldScanFile(file: DocumentFile): Boolean {
 private fun fetchGameId(context: Context, hash: String, creds: LoginCredentials, userAgent: String): Int? =
     run {
         val url = buildApiUrl(
-            proxyBase(context),
+            RA_HOST,
             "gameid",
             mapOf(
                 "m" to hash,
@@ -224,7 +223,7 @@ private fun fetchGameId(context: Context, hash: String, creds: LoginCredentials,
 
 internal suspend fun cacheGame(context: Context, gameId: Int, creds: LoginCredentials, userAgent: String, db: AppDatabase) {
     val patchUrl = buildApiUrl(
-        proxyBase(context),
+        RA_HOST,
         "patch",
         mapOf(
             "g" to gameId.toString(),
@@ -233,7 +232,15 @@ internal suspend fun cacheGame(context: Context, gameId: Int, creds: LoginCreden
         )
     )
     when (val result = httpGet(patchUrl, userAgent)) {
-        is HttpGetResult.Success -> cachePatchImages(context, gameId, userAgent, result.body)
+        is HttpGetResult.Success -> {
+            db.cacheDao().upsert(
+                CacheEntry(
+                    cacheKey = CacheKeys.patch(gameId, creds.user),
+                    responseBody = result.body
+                )
+            )
+            cachePatchImages(context, gameId, userAgent, result.body)
+        }
         is HttpGetResult.Failure -> {
             val logDetails = result.logMessage("patch", patchUrl)
             Log.e(TAG, "cacheGame patch refresh failed for gameId=$gameId: $logDetails")
@@ -253,7 +260,7 @@ internal suspend fun cacheUnlocks(
     db: AppDatabase
 ) {
     val url = buildApiUrl(
-        proxyBase(context),
+        RA_HOST,
         "unlocks",
         mapOf(
             "g" to gameId.toString(),
