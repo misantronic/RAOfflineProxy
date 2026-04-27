@@ -103,23 +103,23 @@ class CachedGamesFragment : Fragment() {
 
         viewLifecycleOwner.lifecycleScope.launch {
             viewModel.state.collect { state ->
-                val actionsEnabled = state.proxyRunning
+                val actionsEnabled = state.hasLoginCredentials
                     && state.isOnline
                     && !state.scanInProgress
-                val scanEnabled = state.proxyRunning
+                val scanEnabled = state.hasLoginCredentials
                     && state.isOnline
                     && !state.scanInProgress
                     && state.cachedGames.size < MAX_CACHED_GAMES
-                val statusText = if (state.proxyRunning) {
-                    getString(R.string.cached_games_counter, state.cachedGames.size, MAX_CACHED_GAMES)
-                } else {
-                    getString(R.string.cached_games_scan_hint)
+                val statusText = when {
+                    !state.hasLoginCredentials -> getString(R.string.cached_games_credentials_hint)
+                    !state.isOnline -> getString(R.string.cached_games_offline_hint)
+                    else -> getString(R.string.cached_games_counter, state.cachedGames.size, MAX_CACHED_GAMES)
                 }
                 headerAdapter.update(
                     CachedGamesHeaderAdapter.HeaderState(
                         scanEnabled = scanEnabled,
                         refreshEnabled = actionsEnabled && state.cachedGames.isNotEmpty(),
-                        clearEnabled = !state.proxyRunning && !state.scanInProgress,
+                        clearEnabled = state.cachedGames.isNotEmpty() && !state.scanInProgress,
                         showNoCachedGames = state.cachedGames.isEmpty(),
                         statusText = statusText
                     )

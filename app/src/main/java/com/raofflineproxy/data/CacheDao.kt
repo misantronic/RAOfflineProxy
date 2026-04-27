@@ -25,6 +25,9 @@ interface CacheDao {
     @Query("SELECT * FROM api_cache WHERE cacheKey LIKE 'patch:%' ORDER BY firstCachedAt DESC")
     fun observePatchEntries(): Flow<List<CacheEntry>>
 
+    @Query("SELECT * FROM api_cache WHERE cacheKey LIKE :prefix || '%' ORDER BY cachedAt DESC")
+    fun observeByPrefix(prefix: String): Flow<List<CacheEntry>>
+
     @Query("SELECT * FROM api_cache WHERE cacheKey LIKE :prefix || '%' LIMIT 1")
     suspend fun getByPrefix(prefix: String): CacheEntry?
 

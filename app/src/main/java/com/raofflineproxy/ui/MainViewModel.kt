@@ -54,6 +54,7 @@ data class MainUiState(
     val proxyRunning: Boolean = false,
     val proxyToggleInProgress: Boolean = false,
     val isOnline: Boolean = false,
+    val hasLoginCredentials: Boolean = false,
     val authState: AuthState = AuthState.Unknown,
     val autostartProxy: Boolean = false,
     val proxyPort: Int = PrefsConstants.DEFAULT_PROXY_PORT,
@@ -135,9 +136,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             combine(
                 db.pendingAwardDao().observeByStatus(),
-                db.cacheDao().observePatchEntries()
-            ) { awards, entries ->
+                db.cacheDao().observePatchEntries(),
+                db.cacheDao().observeByPrefix(CacheKeys.PREFIX_LOGIN)
+            ) { awards, entries, loginEntries ->
                 val resolvedAwards = awards.map { award -> resolvePendingAward(award) }
+                val hasLoginCredentials = loginEntries.isNotEmpty()
                 val pendingAwardsByGameId = buildPendingAwardsByGameId(entries, awards)
                 val games = run {
                     val sessionKeys = db.cacheDao().getAllByPrefix(CacheKeys.PREFIX_UNLOCKS).map { it.cacheKey }
@@ -182,11 +185,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         )
                     }.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.title })
                 }
-                resolvedAwards to games
-            }.collect { (resolvedAwards, games) ->
+                Triple(resolvedAwards, games, hasLoginCredentials)
+            }.collect { (resolvedAwards, games, hasLoginCredentials) ->
                     _state.value = _state.value.copy(pendingAwards = resolvedAwards)
                     _cachedGames.value = games
-                    _state.value = _state.value.copy(cachedGames = games)
+                    _state.value = _state.value.copy(
+                        cachedGames = games,
+                        hasLoginCredentials = hasLoginCredentials
+                    )
                     if (_state.value.proxyRunning && games.isNotEmpty() && _state.value.authState != AuthState.Valid) {
                         validateToken()
                     }
