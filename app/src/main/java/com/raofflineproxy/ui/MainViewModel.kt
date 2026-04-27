@@ -511,7 +511,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             val startingMessage = str(R.string.scan_starting)
             _state.value = _state.value.copy(scanInProgress = true, scanProgress = startingMessage)
             SnackbarManager.showProgress(startingMessage)
-            withContext(Dispatchers.IO) { db.cacheDao().deleteByKeyPrefix(CacheKeys.PREFIX_GAMEID) }
             val userAgent = withContext(Dispatchers.IO) { loadUserAgent(db) }
             val result = withContext(Dispatchers.IO) {
                 scanRomFolder(app, treeUri, credentials, userAgent, db) { current, total, fileName ->
