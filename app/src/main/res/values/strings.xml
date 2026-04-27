@@ -98,6 +98,11 @@
     <!-- Clear cache/database -->
     <string name="cache_cleared">Cache cleared.</string>
     <string name="database_cleared">Database cleared.</string>
+    <string name="clear_cache_confirm_title">Clear cache?</string>
+    <string name="clear_cache_confirm_message">This will remove all cached games and cached RetroAchievements data.</string>
+    <string name="clear_database_confirm_title">Clear database?</string>
+    <string name="clear_database_confirm_message">This will remove all cached data and all pending awards.</string>
+    <string name="clear_action">Clear</string>
 
     <!-- Pending award fallbacks -->
     <string name="unknown_game">Unknown Game</string>

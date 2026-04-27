@@ -7,6 +7,7 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AlertDialog
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.lifecycleScope
@@ -74,7 +75,16 @@ class CachedGamesFragment : Fragment() {
                 )
             },
             onRefresh = viewModel::refreshGames,
-            onClear = viewModel::clearCache
+            onClear = {
+                AlertDialog.Builder(requireContext())
+                    .setTitle(R.string.clear_cache_confirm_title)
+                    .setMessage(R.string.clear_cache_confirm_message)
+                    .setPositiveButton(R.string.clear_action) { _, _ ->
+                        viewModel.clearCache()
+                    }
+                    .setNegativeButton(android.R.string.cancel, null)
+                    .show()
+            }
         )
 
         view.findViewById<RecyclerView>(R.id.rv_cached_games).apply {
@@ -109,7 +119,7 @@ class CachedGamesFragment : Fragment() {
                     CachedGamesHeaderAdapter.HeaderState(
                         scanEnabled = scanEnabled,
                         refreshEnabled = actionsEnabled && state.cachedGames.isNotEmpty(),
-                        clearEnabled = !state.scanInProgress,
+                        clearEnabled = !state.proxyRunning && !state.scanInProgress,
                         showNoCachedGames = state.cachedGames.isEmpty(),
                         statusText = statusText
                     )
