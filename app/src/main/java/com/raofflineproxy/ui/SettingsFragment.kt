@@ -10,6 +10,7 @@ import android.view.ViewGroup
 import android.widget.Button
 import android.widget.CheckBox
 import android.widget.TextView
+import androidx.appcompat.app.AlertDialog
 import androidx.core.net.toUri
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
@@ -30,6 +31,8 @@ class SettingsFragment : Fragment() {
         val inputProxyPort = view.findViewById<TextInputLayout>(R.id.input_proxy_port)
         val etProxyPort = view.findViewById<TextInputEditText>(R.id.et_proxy_port)
         val tvProxyPortHint = view.findViewById<TextView>(R.id.tv_proxy_port_hint)
+        val btnClearCache = view.findViewById<Button>(R.id.btn_clear_cache)
+        val btnClearDatabase = view.findViewById<Button>(R.id.btn_clear_database)
         cbAutostart.text = getString(R.string.setting_autostart_label, getString(R.string.app_name))
         etProxyPort.filters = arrayOf(InputFilter.LengthFilter(5))
 
@@ -63,12 +66,26 @@ class SettingsFragment : Fragment() {
             }
         }
 
-        view.findViewById<Button>(R.id.btn_clear_cache).setOnClickListener {
-            viewModel.clearCache()
+        btnClearCache.setOnClickListener {
+            AlertDialog.Builder(requireContext())
+                .setTitle(R.string.clear_cache_confirm_title)
+                .setMessage(R.string.clear_cache_confirm_message)
+                .setPositiveButton(R.string.clear_action) { _, _ ->
+                    viewModel.clearCache()
+                }
+                .setNegativeButton(android.R.string.cancel, null)
+                .show()
         }
 
-        view.findViewById<Button>(R.id.btn_clear_database).setOnClickListener {
-            viewModel.clearDatabase()
+        btnClearDatabase.setOnClickListener {
+            AlertDialog.Builder(requireContext())
+                .setTitle(R.string.clear_database_confirm_title)
+                .setMessage(R.string.clear_database_confirm_message)
+                .setPositiveButton(R.string.clear_action) { _, _ ->
+                    viewModel.clearDatabase()
+                }
+                .setNegativeButton(android.R.string.cancel, null)
+                .show()
         }
 
         view.findViewById<Button>(R.id.btn_contact_feedback).setOnClickListener {
@@ -94,6 +111,8 @@ class SettingsFragment : Fragment() {
                 inputProxyPort.isEnabled = !state.proxyRunning
                 etProxyPort.isEnabled = !state.proxyRunning
                 tvProxyPortHint.isEnabled = !state.proxyRunning
+                btnClearCache.isEnabled = !state.proxyRunning
+                btnClearDatabase.isEnabled = !state.proxyRunning
                 if (!state.proxyRunning) {
                     inputProxyPort.error = null
                 }

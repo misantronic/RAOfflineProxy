@@ -7,8 +7,20 @@
         <item name="colorSecondary">@color/secondary</item>
         <item name="colorSecondaryVariant">@color/secondary_dark</item>
         <item name="colorControlActivated">@color/secondary</item>
+        <item name="alertDialogTheme">@style/ThemeOverlay.RAOfflineProxy.AlertDialog</item>
+        <item name="materialAlertDialogTheme">@style/ThemeOverlay.RAOfflineProxy.AlertDialog</item>
         <item name="actionBarStyle">@style/Widget.RAOfflineProxy.ActionBar</item>
         <item name="snackbarTextViewStyle">@style/Widget.RAOfflineProxy.SnackbarText</item>
+    </style>
+
+    <style name="ThemeOverlay.RAOfflineProxy.AlertDialog" parent="ThemeOverlay.MaterialComponents.MaterialAlertDialog">
+        <item name="buttonBarPositiveButtonStyle">@style/Widget.RAOfflineProxy.AlertDialog.Button</item>
+        <item name="buttonBarNegativeButtonStyle">@style/Widget.RAOfflineProxy.AlertDialog.Button</item>
+        <item name="buttonBarNeutralButtonStyle">@style/Widget.RAOfflineProxy.AlertDialog.Button</item>
+    </style>
+
+    <style name="Widget.RAOfflineProxy.AlertDialog.Button" parent="Widget.AppCompat.Button.ButtonBar.AlertDialog">
+        <item name="android:textColor">@color/dialog_action</item>
     </style>
 
     <style name="Widget.RAOfflineProxy.SnackbarText" parent="Widget.MaterialComponents.Snackbar.TextView">

@@ -4,6 +4,7 @@
     <color name="primary_dark">#FF15406A</color>
     <color name="secondary">#FFD2A448</color>
     <color name="secondary_dark">#FFB88A30</color>
+    <color name="dialog_action">#FFFFD27A</color>
     <color name="white">#FFFFFFFF</color>
     <color name="ic_launcher_background">#FF1A1A2E</color>
     <color name="warning_background">#FFF6E8A6</color>
