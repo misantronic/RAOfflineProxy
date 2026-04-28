@@ -28,5 +28,5 @@ def verify_award(data: bytes, signature: str) -> bool:
 
 
 def public_key_base64() -> str:
-    secret = load_or_create_secret()
-    return base64.b64encode(secret).decode("ascii")
+    key_id = hashlib.sha256(load_or_create_secret()).hexdigest()
+    return base64.b64encode(key_id.encode("ascii")).decode("ascii")

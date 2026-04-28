@@ -8,11 +8,20 @@ from .award_signing import public_key_base64, verify_award
 from .config import FALLBACK_USER_AGENT, MAX_PROXY_PORT, upstream_host
 from .network import build_api_url, http_post
 from .rom_cache import cache_session, cache_unlocks, refresh_game_patch
-from .storage import Storage
+from .storage import (
+    PENDING_AWARD_STATUS_DELETED,
+    PENDING_AWARD_STATUS_FLUSHED,
+    PENDING_AWARD_STATUS_PENDING,
+    PENDING_AWARD_STATUS_STALE,
+    Storage,
+)
 from .utils import (
     canonical_reason_phrase,
     extract_form_param,
     parse_form_params,
+    proxy_user_agent,
+    redact_form_tokens,
+    redact_query_tokens,
     replace_or_append_form_param,
     sha256_hex,
 )
@@ -28,6 +37,8 @@ class FlushOutcome:
     flushed: int
     total: int
     skipped_stale: int
+    skipped_deleted: int = 0
+    pending_remaining: int = 0
     last_error: str | None = None
 
 
@@ -90,7 +101,19 @@ def build_award_request_body(award: dict, now_millis: int | None = None) -> str:
     return body
 
 
-def verify_chain(awards: list[dict]) -> tuple[bool, str | None, int | None]:
+def award_offset_seconds(
+    award: dict, now_millis: int | None = None
+) -> tuple[int, bool]:
+    current_time = now_millis or int(time.time() * 1000)
+    raw_offset = int((current_time - award["queuedAt"]) / 1000)
+    offset_seconds = clamp_award_offset_seconds(raw_offset)
+    return offset_seconds, raw_offset != offset_seconds
+
+
+def verify_chain(
+    awards: list[dict],
+    verify_signature=verify_award,
+) -> tuple[bool, str | None, int | None]:
     for index, award in enumerate(awards):
         if not award.get("payloadHash"):
             continue
@@ -108,29 +131,57 @@ def verify_chain(awards: list[dict]) -> tuple[bool, str | None, int | None]:
             return False, "chain link broken", index
 
         sign_input = f"{award['payloadHash']}:{award['prevHash']}".encode("utf-8")
-        if not verify_award(sign_input, award["signature"]):
+        if not verify_signature(sign_input, award["signature"]):
             return False, "invalid signature", index
 
     return True, None, None
 
 
 def refresh_and_load_achievement_ids(
-    storage: Storage, credentials: dict, user_agent: str, config_data: dict
+    storage: Storage,
+    credentials: dict,
+    user_agent: str,
+    config_data: dict,
+    awards: list[dict],
 ) -> tuple[set[int], list[int]] | None:
     patch_entries = storage.get_all_cache_by_prefix(cache_keys.PREFIX_PATCH)
-    game_ids = []
+    achievement_game_ids: dict[int, int] = {}
     for entry in patch_entries:
         game_id = cache_keys.parse_game_id_from_patch_key(entry["cacheKey"])
-        if game_id is not None and game_id not in game_ids:
+        if game_id is None:
+            continue
+        try:
+            payload = json.loads(entry["responseBody"])
+            achievements = payload.get("PatchData", {}).get("Achievements", [])
+        except Exception:
+            continue
+
+        for achievement in achievements:
+            achievement_id = achievement.get("ID")
+            if (
+                isinstance(achievement_id, int)
+                and achievement_id not in achievement_game_ids
+            ):
+                achievement_game_ids[achievement_id] = game_id
+
+    award_game_ids: dict[int, int] = {}
+    game_ids: list[int] = []
+    for award in awards:
+        game_id = achievement_game_ids.get(int(award["achievementId"]))
+        if game_id is None:
+            continue
+        award_game_ids[int(award["id"])] = game_id
+        if game_id not in game_ids:
             game_ids.append(game_id)
 
     if not game_ids:
         return set(), []
 
     achievement_ids: set[int] = set()
+    proxied_user_agent = proxy_user_agent(user_agent)
     for game_id in game_ids:
         response_body = refresh_game_patch(
-            game_id, credentials, user_agent, storage, config_data
+            game_id, credentials, proxied_user_agent, storage, config_data
         )
         if response_body is None:
             return None
@@ -149,11 +200,26 @@ def refresh_and_load_achievement_ids(
 
 def send_award(award: dict, config_data: dict) -> tuple[str, str]:
     url = f"{upstream_host(config_data)}{award['queryString']}"
+    offset_seconds, was_clamped = award_offset_seconds(award)
     body = build_award_request_body(award)
+    user_agent = proxy_user_agent(award["userAgent"] or FALLBACK_USER_AGENT)
+    LOGGER.info(
+        "Flush sending: achievementId=%s offsetSeconds=%s clamped=%s userAgent=%s url=%s",
+        award["achievementId"],
+        offset_seconds,
+        was_clamped,
+        user_agent,
+        redact_query_tokens(award["queryString"]),
+    )
+    LOGGER.info(
+        "Flush sending body: achievementId=%s body=%s",
+        award["achievementId"],
+        redact_form_tokens(body),
+    )
     status, _reason, response_body = http_post(
         url,
         body,
-        headers={"User-Agent": award["userAgent"] or FALLBACK_USER_AGENT},
+        headers={"User-Agent": user_agent},
     )
 
     if status in (401, 403):
@@ -194,7 +260,34 @@ def flush_pending_awards(storage: Storage, config_data: dict) -> FlushOutcome:
             flushed=0,
             total=len(pending),
             skipped_stale=0,
+            pending_remaining=len(pending),
             last_error=f"chain broken at {index}: {reason}",
+        )
+
+    if not any(
+        award.get("status", PENDING_AWARD_STATUS_PENDING)
+        == PENDING_AWARD_STATUS_PENDING
+        for award in pending
+    ):
+        skipped_deleted = sum(
+            1
+            for award in pending
+            if award.get("status", PENDING_AWARD_STATUS_PENDING)
+            == PENDING_AWARD_STATUS_DELETED
+        )
+        skipped_stale = sum(
+            1
+            for award in pending
+            if award.get("status", PENDING_AWARD_STATUS_PENDING)
+            == PENDING_AWARD_STATUS_STALE
+        )
+        purge_processed_awards_if_safe(storage)
+        return FlushOutcome(
+            flushed=0,
+            total=len(pending),
+            skipped_stale=skipped_stale,
+            skipped_deleted=skipped_deleted,
+            pending_remaining=0,
         )
 
     credentials = storage.load_login_credentials()
@@ -204,12 +297,22 @@ def flush_pending_awards(storage: Storage, config_data: dict) -> FlushOutcome:
             flushed=0,
             total=len(pending),
             skipped_stale=0,
+            pending_remaining=len(pending),
             last_error="No login credentials available",
         )
 
     user_agent = storage.load_user_agent(FALLBACK_USER_AGENT)
     refreshed = refresh_and_load_achievement_ids(
-        storage, credentials, user_agent, config_data
+        storage,
+        credentials,
+        user_agent,
+        config_data,
+        [
+            award
+            for award in pending
+            if award.get("status", PENDING_AWARD_STATUS_PENDING)
+            == PENDING_AWARD_STATUS_PENDING
+        ],
     )
     if refreshed is None:
         LOGGER.warning("Flush aborted: could not refresh live achievement data")
@@ -217,25 +320,45 @@ def flush_pending_awards(storage: Storage, config_data: dict) -> FlushOutcome:
             flushed=0,
             total=len(pending),
             skipped_stale=0,
+            pending_remaining=len(pending),
             last_error="Could not refresh achievement data from server",
         )
 
     known_achievement_ids, game_ids = refreshed
     flushed = 0
+    skipped_deleted = 0
     skipped_stale = 0
 
     for award in pending:
         achievement_id = award["achievementId"]
+        status = award.get("status", PENDING_AWARD_STATUS_PENDING)
+
+        if status == PENDING_AWARD_STATUS_DELETED:
+            skipped_deleted += 1
+            continue
+
+        if status == PENDING_AWARD_STATUS_STALE:
+            skipped_stale += 1
+            continue
+
+        if status == PENDING_AWARD_STATUS_FLUSHED:
+            continue
+
         if is_hardcore_award(award):
+            award["status"] = PENDING_AWARD_STATUS_STALE
+            award["lastError"] = (
+                "Hardcore award cannot be flushed because hardcore mode is not supported"
+            )
+            storage.update_pending_award(award)
             LOGGER.info(
-                "Flush dropping hardcore pending award: achievementId=%s",
+                "Flush marked hardcore pending award stale: achievementId=%s",
                 achievement_id,
             )
-            storage.delete_pending_award(achievement_id)
-            flushed += 1
+            skipped_stale += 1
             continue
 
         if known_achievement_ids and achievement_id not in known_achievement_ids:
+            award["status"] = PENDING_AWARD_STATUS_STALE
             award["lastError"] = (
                 f"Achievement {achievement_id} not found in live server data"
             )
@@ -250,10 +373,13 @@ def flush_pending_awards(storage: Storage, config_data: dict) -> FlushOutcome:
 
         outcome, message = send_award(award, config_data)
         if outcome == "success":
-            storage.delete_pending_award(achievement_id)
+            award["status"] = PENDING_AWARD_STATUS_FLUSHED
+            award["lastError"] = None
+            storage.update_pending_award(award)
             flushed += 1
             LOGGER.info("Flush succeeded: achievementId=%s", achievement_id)
         elif outcome == "auth_error":
+            award["status"] = PENDING_AWARD_STATUS_PENDING
             award["lastError"] = message
             storage.update_pending_award(award)
             LOGGER.warning(
@@ -263,28 +389,65 @@ def flush_pending_awards(storage: Storage, config_data: dict) -> FlushOutcome:
             )
         else:
             award["retryCount"] = int(award.get("retryCount", 0)) + 1
+            award["status"] = PENDING_AWARD_STATUS_PENDING
             award["lastError"] = message
             storage.update_pending_award(award)
-            LOGGER.warning(
-                "Flush network error: achievementId=%s retryCount=%s lastError=%s",
-                achievement_id,
-                award["retryCount"],
-                message,
-            )
+            if int(award["retryCount"]) >= MAX_RETRIES:
+                LOGGER.warning(
+                    "Flush network error reached max retries: achievementId=%s retryCount=%s lastError=%s",
+                    achievement_id,
+                    award["retryCount"],
+                    message,
+                )
+            else:
+                LOGGER.warning(
+                    "Flush network error: achievementId=%s retryCount=%s lastError=%s",
+                    achievement_id,
+                    award["retryCount"],
+                    message,
+                )
 
     if flushed:
         time.sleep(3)
+        proxied_user_agent = proxy_user_agent(user_agent)
         for game_id in game_ids:
-            cache_unlocks(game_id, credentials, user_agent, config_data)
+            cache_unlocks(game_id, credentials, proxied_user_agent, config_data)
             cache_session(game_id, credentials, storage)
 
+    purge_processed_awards_if_safe(storage)
+    pending_remaining = sum(
+        1
+        for award in storage.get_pending_awards()
+        if award.get("status", PENDING_AWARD_STATUS_PENDING)
+        == PENDING_AWARD_STATUS_PENDING
+    )
+
     LOGGER.info(
-        "Flush complete: total=%s flushed=%s skipped_stale=%s",
+        "Flush complete: total=%s flushed=%s skipped_deleted=%s skipped_stale=%s pending_remaining=%s",
         len(pending),
         flushed,
+        skipped_deleted,
         skipped_stale,
+        pending_remaining,
     )
 
     return FlushOutcome(
-        flushed=flushed, total=len(pending), skipped_stale=skipped_stale
+        flushed=flushed,
+        total=len(pending),
+        skipped_stale=skipped_stale,
+        skipped_deleted=skipped_deleted,
+        pending_remaining=pending_remaining,
+    )
+
+
+def purge_processed_awards_if_safe(storage: Storage) -> None:
+    if storage.pending_awards_exist_by_status(PENDING_AWARD_STATUS_PENDING):
+        return
+
+    storage.delete_pending_awards_by_statuses(
+        [
+            PENDING_AWARD_STATUS_DELETED,
+            PENDING_AWARD_STATUS_STALE,
+            PENDING_AWARD_STATUS_FLUSHED,
+        ]
     )
