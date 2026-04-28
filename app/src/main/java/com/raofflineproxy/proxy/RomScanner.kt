@@ -170,7 +170,7 @@ suspend fun scanRomFolder(
         onProgress(index + 1, total, file.name ?: "")
         val hash = hashRom(context, file)
         if (hash == null) { skipped++; continue }
-        val gameId = fetchGameId(context, hash, credentials, userAgent)
+        val gameId = fetchGameId(context, hash, credentials, userAgent, db)
         if (gameId == null) { skipped++; continue }
         cacheGame(context, gameId, credentials, userAgent, db)
         cachedGameIds.add(gameId.toString())
@@ -189,7 +189,13 @@ private fun shouldScanFile(file: DocumentFile): Boolean {
         && !name.endsWith(".xml", ignoreCase = true)
 }
 
-private fun fetchGameId(context: Context, hash: String, creds: LoginCredentials, userAgent: String): Int? =
+private suspend fun fetchGameId(
+    context: Context,
+    hash: String,
+    creds: LoginCredentials,
+    userAgent: String,
+    db: AppDatabase
+): Int? =
     run {
         val url = buildApiUrl(
             RA_HOST,
@@ -204,6 +210,12 @@ private fun fetchGameId(context: Context, hash: String, creds: LoginCredentials,
             is HttpGetResult.Success -> {
                 val gameId = runCatching { JSONObject(result.body).optInt("GameID", 0) }.getOrDefault(0)
                 if (gameId > 0) {
+                    db.cacheDao().upsert(
+                        CacheEntry(
+                            cacheKey = CacheKeys.gameId(hash),
+                            responseBody = result.body
+                        )
+                    )
                     Log.i(TAG, "fetchGameId matched hash=$hash gameId=$gameId")
                     gameId
                 } else {
