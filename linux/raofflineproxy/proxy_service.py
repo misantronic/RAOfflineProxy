@@ -449,6 +449,7 @@ class ProxyRuntimeServer(ThreadingTCPServer):
             "queuedAt": queued_at,
             "retryCount": 0,
             "lastError": None,
+            "status": "pending",
             "payloadHash": payload_hash,
             "prevHash": prev_hash,
             "signature": signature,
@@ -480,16 +481,20 @@ class ProxyRuntimeServer(ThreadingTCPServer):
             outcome = flush_pending_awards(self.storage, self.config_data)
             if outcome.total:
                 LOGGER.info(
-                    "Flush outcome: total=%s flushed=%s skipped_stale=%s last_error=%s",
+                    "Flush outcome: total=%s flushed=%s skipped_deleted=%s skipped_stale=%s pending_remaining=%s last_error=%s",
                     outcome.total,
                     outcome.flushed,
+                    outcome.skipped_deleted,
                     outcome.skipped_stale,
+                    outcome.pending_remaining,
                     outcome.last_error,
                 )
             return {
                 "flushed": outcome.flushed,
                 "total": outcome.total,
+                "skipped_deleted": outcome.skipped_deleted,
                 "skipped_stale": outcome.skipped_stale,
+                "pending_remaining": outcome.pending_remaining,
                 "last_error": outcome.last_error,
             }
 

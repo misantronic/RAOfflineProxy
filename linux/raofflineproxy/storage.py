@@ -14,6 +14,11 @@ except ModuleNotFoundError:
 
 JSON_STORE_FILE = DATABASE_FILE.with_suffix(".json")
 
+PENDING_AWARD_STATUS_PENDING = "pending"
+PENDING_AWARD_STATUS_DELETED = "deleted"
+PENDING_AWARD_STATUS_STALE = "stale"
+PENDING_AWARD_STATUS_FLUSHED = "flushed"
+
 
 class Storage:
     def __init__(self, database_path: Path = DATABASE_FILE):
@@ -61,6 +66,7 @@ class Storage:
                     queuedAt INTEGER NOT NULL,
                     retryCount INTEGER NOT NULL DEFAULT 0,
                     lastError TEXT,
+                    status TEXT NOT NULL DEFAULT 'pending',
                     payloadHash TEXT NOT NULL DEFAULT '',
                     prevHash TEXT NOT NULL DEFAULT '',
                     signature TEXT NOT NULL DEFAULT '',
@@ -68,6 +74,16 @@ class Storage:
                 );
                 """
             )
+            columns = {
+                row["name"]
+                for row in self._connection.execute(
+                    "PRAGMA table_info(pending_awards)"
+                ).fetchall()
+            }
+            if "status" not in columns:
+                self._connection.execute(
+                    "ALTER TABLE pending_awards ADD COLUMN status TEXT NOT NULL DEFAULT 'pending'"
+                )
             self._connection.commit()
 
     def _initialize_json(self) -> None:
@@ -311,11 +327,12 @@ class Storage:
                     queuedAt,
                     retryCount,
                     lastError,
+                    status,
                     payloadHash,
                     prevHash,
                     signature,
                     signedAt
-                ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(achievementId) DO UPDATE SET
                     queryString = excluded.queryString,
                     requestBody = excluded.requestBody,
@@ -323,6 +340,7 @@ class Storage:
                     queuedAt = excluded.queuedAt,
                     retryCount = excluded.retryCount,
                     lastError = excluded.lastError,
+                    status = excluded.status,
                     payloadHash = excluded.payloadHash,
                     prevHash = excluded.prevHash,
                     signature = excluded.signature,
@@ -336,6 +354,7 @@ class Storage:
                     award["queuedAt"],
                     award.get("retryCount", 0),
                     award.get("lastError"),
+                    award.get("status", PENDING_AWARD_STATUS_PENDING),
                     award.get("payloadHash", ""),
                     award.get("prevHash", ""),
                     award.get("signature", ""),
@@ -361,6 +380,7 @@ class Storage:
             )
             materialized.setdefault("retryCount", 0)
             materialized.setdefault("lastError", None)
+            materialized.setdefault("status", PENDING_AWARD_STATUS_PENDING)
             materialized.setdefault("payloadHash", "")
             materialized.setdefault("prevHash", "")
             materialized.setdefault("signature", "")
@@ -392,6 +412,45 @@ class Storage:
                 item
                 for item in self._json_state["pending_awards"]
                 if item["achievementId"] != achievement_id
+            ]
+            self._write_json_state()
+
+    def pending_awards_exist_by_status(self, status: str) -> bool:
+        if self._use_sqlite:
+            assert self._connection is not None
+            with self._lock:
+                row = self._connection.execute(
+                    "SELECT 1 FROM pending_awards WHERE status = ? LIMIT 1",
+                    (status,),
+                ).fetchone()
+            return row is not None
+
+        assert self._json_state is not None
+        with self._lock:
+            return any(
+                item.get("status", PENDING_AWARD_STATUS_PENDING) == status
+                for item in self._json_state["pending_awards"]
+            )
+
+    def delete_pending_awards_by_statuses(self, statuses: list[str]) -> None:
+        if self._use_sqlite:
+            assert self._connection is not None
+            placeholders = ",".join("?" for _ in statuses)
+            with self._lock:
+                self._connection.execute(
+                    f"DELETE FROM pending_awards WHERE status IN ({placeholders})",
+                    tuple(statuses),
+                )
+                self._connection.commit()
+            return
+
+        assert self._json_state is not None
+        with self._lock:
+            status_set = set(statuses)
+            self._json_state["pending_awards"] = [
+                item
+                for item in self._json_state["pending_awards"]
+                if item.get("status", PENDING_AWARD_STATUS_PENDING) not in status_set
             ]
             self._write_json_state()
 

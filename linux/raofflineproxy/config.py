@@ -3,7 +3,7 @@ import os
 from pathlib import Path
 
 RA_HOST = "https://retroachievements.org"
-PROXY_UA_TAG = "RAOfflineProxy/Linux"
+PROXY_UA_TAG = "RAOfflineProxy/Linux/1.0.0-alpha1"
 FALLBACK_USER_AGENT = "rcheevos/11.4.0"
 
 DEFAULT_PROXY_PORT = 8080
