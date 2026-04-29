@@ -25,6 +25,7 @@ import com.raofflineproxy.proxyPort
 import com.raofflineproxy.data.AppDatabase
 import com.raofflineproxy.data.CacheKeys
 import com.raofflineproxy.proxy.AwardFlusher
+import com.raofflineproxy.proxy.GameActivity
 import com.raofflineproxy.proxy.ProxyServer
 import com.raofflineproxy.proxy.cacheGame
 import com.raofflineproxy.proxy.loadLoginCredentials
@@ -45,7 +46,7 @@ private const val CHANNEL_ID = "proxy_service"
 private const val NOTIFICATION_ID = 1
 private const val REFRESH_INTERVAL_MS = 60L * 60 * 1000 // 1 hour
 private const val CACHE_TTL_MS = 7L * 24 * 60 * 60 * 1000 // 7 days
-private const val OFFLINE_GAME_ACTIVE_WINDOW_MS = 15_000L
+private const val OFFLINE_PING_IDLE_TIMEOUT_MS = 150_000L
 
 class ProxyService : Service() {
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
@@ -59,17 +60,20 @@ class ProxyService : Service() {
     private var refreshJob: Job? = null
     private var flushJob: Job? = null
     private var pendingObserverJob: Job? = null
-    private var offlineGameTimeoutJob: Job? = null
+    private var offlineIdleTimeoutJob: Job? = null
     private var pendingCount = 0
     private var cfgCleanupAttempted = false
-    @Volatile private var activeOfflineGameId: String? = null
-    @Volatile private var activeOfflineGameTitle: String? = null
-    @Volatile private var lastOfflineCacheServedAt = 0L
+    @Volatile private var recentGameId: String? = null
+    @Volatile private var recentGameTitle: String? = null
+    @Volatile private var lastGameActivityAt = 0L
+    @Volatile private var lastOfflinePingAt = 0L
 
     private val networkCallback = object : ConnectivityManager.NetworkCallback() {
         override fun onAvailable(network: Network) {
             Log.i(TAG, "Network available")
             isOnline = true
+            lastOfflinePingAt = 0L
+            offlineIdleTimeoutJob?.cancel()
             requestFlush()
             updateNotification()
         }
@@ -77,6 +81,9 @@ class ProxyService : Service() {
         override fun onLost(network: Network) {
             Log.i(TAG, "Network lost")
             isOnline = false
+            if (recentGameId != null) {
+                scheduleOfflineIdleTimeout(currentOfflineActivityAt())
+            }
             updateNotification()
         }
     }
@@ -92,7 +99,7 @@ class ProxyService : Service() {
             scope = serviceScope,
             port = proxyPort(this),
             isOnline = { isOnline },
-            onOfflineCacheServed = ::onOfflineCacheServed
+            onGameActivity = ::onGameActivity
         )
         connectivityManager = getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager
     }
@@ -242,43 +249,45 @@ class ProxyService : Service() {
             .notify(NOTIFICATION_ID, buildNotification())
     }
 
-    private fun onOfflineCacheServed(gameId: String) {
-        lastOfflineCacheServedAt = System.currentTimeMillis()
-        if (gameId != activeOfflineGameId) {
-            activeOfflineGameId = gameId
-            activeOfflineGameTitle = null
+    private fun onGameActivity(activity: GameActivity) {
+        val gameId = activity.gameId
+        lastGameActivityAt = System.currentTimeMillis()
+        if (gameId != recentGameId) {
+            recentGameId = gameId
+            recentGameTitle = null
             serviceScope.launch {
                 val title = loadCachedGameTitle(gameId)
-                if (activeOfflineGameId == gameId) {
-                    activeOfflineGameTitle = title
+                if (recentGameId == gameId) {
+                    recentGameTitle = title
                     if (!isOnline) {
                         updateNotification()
                     }
                 }
             }
         }
-        offlineGameTimeoutJob?.cancel()
-        offlineGameTimeoutJob = serviceScope.launch {
-            delay(OFFLINE_GAME_ACTIVE_WINDOW_MS)
-            if (!isOnline) {
-                updateNotification()
-            }
+
+        if (!isOnline && activity.action == "ping") {
+            lastOfflinePingAt = lastGameActivityAt
         }
+
         if (!isOnline) {
+            scheduleOfflineIdleTimeout(currentOfflineActivityAt())
             updateNotification()
         }
     }
 
     private fun resolveOfflineStatusText(): String {
-        val lastServedAt = lastOfflineCacheServedAt
-        if (lastServedAt == 0L) return getString(R.string.notification_offline_idle_text)
-        if (System.currentTimeMillis() - lastServedAt > OFFLINE_GAME_ACTIVE_WINDOW_MS) {
-            activeOfflineGameId = null
-            activeOfflineGameTitle = null
+        val lastActivityAt = currentOfflineActivityAt()
+        if (lastActivityAt == 0L) return getString(R.string.notification_offline_idle_text)
+        if (System.currentTimeMillis() - lastActivityAt > OFFLINE_PING_IDLE_TIMEOUT_MS) {
+            recentGameId = null
+            recentGameTitle = null
+            lastGameActivityAt = 0L
+            lastOfflinePingAt = 0L
             return getString(R.string.notification_offline_idle_text)
         }
 
-        val gameTitle = activeOfflineGameTitle?.takeIf { it.isNotBlank() }
+        val gameTitle = recentGameTitle?.takeIf { it.isNotBlank() }
         return if (gameTitle != null) {
             getString(R.string.notification_offline_active_text, gameTitle)
         } else {
@@ -296,6 +305,19 @@ class ProxyService : Service() {
                 ?: json.optString("Title").takeIf { it.isNotBlank() }
         }.getOrNull()
     }
+
+    private fun scheduleOfflineIdleTimeout(expectedActivityAt: Long) {
+        if (expectedActivityAt == 0L) return
+        offlineIdleTimeoutJob?.cancel()
+        offlineIdleTimeoutJob = serviceScope.launch {
+            delay(OFFLINE_PING_IDLE_TIMEOUT_MS)
+            if (!isOnline && currentOfflineActivityAt() == expectedActivityAt) {
+                updateNotification()
+            }
+        }
+    }
+
+    private fun currentOfflineActivityAt(): Long = maxOf(lastGameActivityAt, lastOfflinePingAt)
 
     private fun revertPatchedCfgIfNeeded() {
         if (cfgCleanupAttempted) return
