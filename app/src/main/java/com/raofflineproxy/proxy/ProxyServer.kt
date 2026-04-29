@@ -73,13 +73,19 @@ internal sealed interface QueueAwardResult {
     data class Error(val message: String) : QueueAwardResult
 }
 
+data class GameActivity(
+    val gameId: String,
+    val action: String?,
+    val gameTitle: String?
+)
+
 class ProxyServer(
     private val context: android.content.Context,
     private val db: AppDatabase,
     private val scope: CoroutineScope,
     private val port: Int,
     private val isOnline: () -> Boolean,
-    private val onOfflineCacheServed: (String) -> Unit = {}
+    private val onGameActivity: (GameActivity) -> Unit = {}
 ) {
     private val executor = ThreadPoolExecutor(
         2, MAX_WORKER_THREADS,
@@ -204,6 +210,7 @@ class ProxyServer(
     private fun processRequest(method: String, path: String, rawBody: String, headers: Map<String, String>): String {
         val action = extractAction(path, rawBody)
         Log.i(TAG, "Request: $method ${redactTokens(path)} body=${redactFormBody(rawBody)} action=$action online=${isOnline()}")
+        extractGameActivity(path, rawBody, action)?.let(onGameActivity)
 
         val userAgent = headers["user-agent"]
         if (!userAgent.isNullOrEmpty()) {
@@ -275,7 +282,6 @@ class ProxyServer(
 
         return if (cached != null) {
             Log.i(TAG, "Served synthetic startsession for gameId=$gameId user=$user")
-            onOfflineCacheServed(gameId.toString())
             httpOk(cached!!.responseBody)
         } else {
             Log.e(TAG, "Failed to synthesize startsession for gameId=$gameId user=$user")
@@ -338,7 +344,6 @@ class ProxyServer(
         latch.await(3, TimeUnit.SECONDS)
         return if (cached != null) {
             Log.i(TAG, "Cache HIT: $key (${cached!!.responseBody.length} bytes)")
-            extractOfflineServedGameId(path, rawBody)?.let(onOfflineCacheServed)
             httpOk(cached!!.responseBody)
         } else {
             Log.e(TAG, "Cache MISS: $key")
@@ -569,9 +574,17 @@ internal fun proxyExtractParam(param: String, path: String, body: String): Strin
     return extractFormParam(body, param)
 }
 
-internal fun extractOfflineServedGameId(path: String, body: String): String? =
-    proxyExtractParam("g", path, body)
+internal fun extractGameActivity(path: String, body: String, action: String? = proxyExtractAction(path, body)): GameActivity? {
+    val gameId = proxyExtractParam("g", path, body)
         ?: proxyExtractParam("i", path, body)
+        ?: return null
+
+    return GameActivity(
+        gameId = gameId,
+        action = action,
+        gameTitle = null
+    )
+}
 
 internal fun buildPendingAward(
     path: String,
