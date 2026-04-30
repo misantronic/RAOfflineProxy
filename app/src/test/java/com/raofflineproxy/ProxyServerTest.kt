@@ -1,22 +1,26 @@
 package com.raofflineproxy
 
+import com.raofflineproxy.proxy.awaitPendingAwardWrite
+import com.raofflineproxy.proxy.buildPendingAward
+import com.raofflineproxy.proxy.contentTypeForFile
+import com.raofflineproxy.proxy.isStaticAssetRequest
+import com.raofflineproxy.proxy.parseContentLength
+import com.raofflineproxy.proxy.parseRequestLine
+import com.raofflineproxy.proxy.ParsedRequestLineResult
 import com.raofflineproxy.proxy.proxyCacheKey
 import com.raofflineproxy.proxy.proxyExtractAction
 import com.raofflineproxy.proxy.proxyExtractParam
 import com.raofflineproxy.proxy.proxyHttpError
-import com.raofflineproxy.proxy.proxyHttpResponse
 import com.raofflineproxy.proxy.proxyHttpGameIdCacheMiss
+import com.raofflineproxy.proxy.proxyHttpNoContent
 import com.raofflineproxy.proxy.proxyHttpOk
+import com.raofflineproxy.proxy.proxyHttpFile
+import com.raofflineproxy.proxy.proxyHttpResponse
 import com.raofflineproxy.proxy.proxyIsHardcoreRequest
-import com.raofflineproxy.proxy.ParsedRequestLineResult
-import com.raofflineproxy.proxy.UpstreamResult
-import com.raofflineproxy.proxy.buildPendingAward
-import com.raofflineproxy.proxy.awaitPendingAwardWrite
-import com.raofflineproxy.proxy.parseContentLength
-import com.raofflineproxy.proxy.parseRequestLine
 import com.raofflineproxy.proxy.sanitizeHttpReasonPhrase
 import com.raofflineproxy.proxy.shouldCacheResponse
 import com.raofflineproxy.proxy.shouldQueueAward
+import com.raofflineproxy.proxy.UpstreamResult
 import com.raofflineproxy.proxy.validateBodyRead
 import com.raofflineproxy.proxy.validateTransferEncoding
 import org.junit.Assert.assertEquals
@@ -28,8 +32,16 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import java.io.File
 
 class ProxyServerTest {
+
+    private fun ByteArray.indexOf(needle: ByteArray): Int {
+        for (index in 0..size - needle.size) {
+            if (needle.indices.all { this[index + it] == needle[it] }) return index
+        }
+        return -1
+    }
 
     // ── proxyExtractAction() ──
 
@@ -197,6 +209,38 @@ class ProxyServerTest {
         assertFalse(proxyIsHardcoreRequest("/dorequest.php?h=0", "h=1"))
     }
 
+    // ── isStaticAssetRequest() ──
+
+    @Test
+    fun isStaticAssetRequest_acceptsBadgePath() {
+        assertTrue(isStaticAssetRequest("/Badge/83577.png"))
+    }
+
+    @Test
+    fun isStaticAssetRequest_acceptsImagesPath() {
+        assertTrue(isStaticAssetRequest("/Images/025742.png"))
+    }
+
+    @Test
+    fun isStaticAssetRequest_acceptsUserPicPath() {
+        assertTrue(isStaticAssetRequest("/UserPic/player.png?size=64"))
+    }
+
+    @Test
+    fun isStaticAssetRequest_isCaseInsensitive() {
+        assertTrue(isStaticAssetRequest("/badge/83577.png"))
+    }
+
+    @Test
+    fun isStaticAssetRequest_rejectsApiPath() {
+        assertFalse(isStaticAssetRequest("/dorequest.php?r=patch&g=42"))
+    }
+
+    @Test
+    fun isStaticAssetRequest_rejectsLookalikePath() {
+        assertFalse(isStaticAssetRequest("/BadgeHack/83577.png"))
+    }
+
     // ── parser helpers ──
 
     @Test
@@ -338,6 +382,55 @@ class ProxyServerTest {
         val response = proxyHttpOk(body)
         assertTrue(response.contains("Content-Length: ${body.toByteArray().size}"))
         assertTrue(response.endsWith(body))
+    }
+
+    // ── proxyHttpNoContent() ──
+
+    @Test
+    fun httpNoContent_is204() {
+        val response = proxyHttpNoContent()
+        assertTrue(response.startsWith("HTTP/1.1 204 No Content\r\n"))
+    }
+
+    @Test
+    fun httpNoContent_hasZeroContentLength() {
+        val response = proxyHttpNoContent()
+        assertTrue(response.contains("Content-Length: 0"))
+    }
+
+    @Test
+    fun httpNoContent_hasNoBody() {
+        val response = proxyHttpNoContent()
+        assertTrue(response.endsWith("\r\n\r\n"))
+        assertEquals("", response.substringAfter("\r\n\r\n"))
+    }
+
+    @Test
+    fun httpFile_writesBinaryBodyAfterHeaders() {
+        val file = File.createTempFile("proxy", ".png")
+        try {
+            val body = byteArrayOf(0, 1, 2, -1)
+            file.writeBytes(body)
+
+            val response = proxyHttpFile(file)
+            val separator = "\r\n\r\n".toByteArray(Charsets.US_ASCII)
+            val separatorIndex = response.indexOf(separator)
+
+            assertTrue(separatorIndex > 0)
+            assertEquals(body.toList(), response.copyOfRange(separatorIndex + separator.size, response.size).toList())
+        } finally {
+            file.delete()
+        }
+    }
+
+    @Test
+    fun contentTypeForFile_detectsJpeg() {
+        assertEquals("image/jpeg", contentTypeForFile(File("badge.jpg")))
+    }
+
+    @Test
+    fun contentTypeForFile_defaultsToPng() {
+        assertEquals("image/png", contentTypeForFile(File("badge.png")))
     }
 
     // ── proxyHttpError() ──

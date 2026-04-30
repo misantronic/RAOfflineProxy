@@ -10,6 +10,7 @@ import java.io.File
 
 private const val IMAGE_CACHE_DIR = "image_cache"
 private const val GAMES_DIR = "games"
+private const val STATIC_DIR = "static"
 private const val TAG = "RAProxy/ImageCache"
 
 private fun imageCacheRoot(context: Context): File =
@@ -18,7 +19,13 @@ private fun imageCacheRoot(context: Context): File =
 private fun gameImageDir(context: Context, gameId: Int): File =
     File(imageCacheRoot(context), "$GAMES_DIR/$gameId")
 
-private fun gameIconFile(context: Context, gameId: Int, imagePath: String): File {
+private fun staticAssetFile(context: Context, imagePath: String): File =
+    File(imageCacheRoot(context), "$STATIC_DIR/${imagePath.trimStart('/').substringBefore('?')}")
+
+private fun originalImageFile(context: Context, gameId: Int, imagePath: String): File =
+    File(gameImageDir(context, gameId), imagePath.substringAfterLast('/').substringBefore('?'))
+
+private fun legacyGameIconFile(context: Context, gameId: Int, imagePath: String): File {
     val extension = imagePath.substringAfterLast('.', "png").substringBefore('?')
     return File(gameImageDir(context, gameId), "icon.$extension")
 }
@@ -39,6 +46,12 @@ private fun fetchFile(url: String, userAgent: String, target: File) {
     }
 }
 
+private fun mirrorFile(source: File, target: File) {
+    if (target.exists()) return
+    target.parentFile?.mkdirs()
+    source.copyTo(target, overwrite = true)
+}
+
 private fun trimStaleImages(context: Context, gameId: Int, keepNames: Set<String>) {
     val dir = gameImageDir(context, gameId)
     if (!dir.exists()) return
@@ -52,8 +65,14 @@ private fun trimStaleImages(context: Context, gameId: Int, keepNames: Set<String
 fun resolveCachedGameIconPath(context: Context, gameId: Int): String? =
     gameImageDir(context, gameId)
         .listFiles()
-        ?.firstOrNull { it.name.startsWith("icon.") && it.isFile }
+        ?.firstOrNull { (it.name.startsWith("icon.") || !it.name.startsWith("badge_")) && it.isFile }
         ?.absolutePath
+
+fun resolveCachedStaticAsset(context: Context, path: String): File? {
+    val cleanPath = path.substringBefore('?')
+    val asset = staticAssetFile(context, cleanPath)
+    return asset.takeIf { it.isFile }
+}
 
 fun deleteCachedImagesForGame(context: Context, gameId: String) {
     gameId.toIntOrNull()?.let { gameImageDir(context, it).deleteRecursively() }
@@ -70,11 +89,15 @@ fun cachePatchImages(context: Context, gameId: Int, userAgent: String, patchResp
 
         val imagePath = patchData.optString("ImageIcon").takeIf { it.isNotEmpty() }
         if (imagePath != null) {
-            val target = gameIconFile(context, gameId, imagePath)
+            val target = originalImageFile(context, gameId, imagePath)
+            val legacyTarget = legacyGameIconFile(context, gameId, imagePath)
+            val staticTarget = staticAssetFile(context, imagePath)
             keepNames += target.name
+            keepNames += legacyTarget.name
             if (!target.exists()) {
                 fetchFile("$RA_HOST$imagePath", userAgent, target)
             }
+            mirrorFile(target, staticTarget)
         }
 
         val achievements = patchData.optJSONArray("Achievements")
@@ -87,6 +110,7 @@ fun cachePatchImages(context: Context, gameId: Int, userAgent: String, patchResp
                 if (!badgeTarget.exists()) {
                     fetchFile("$RA_HOST/Badge/$badgeName.png", userAgent, badgeTarget)
                 }
+                mirrorFile(badgeTarget, staticAssetFile(context, "/Badge/$badgeName.png"))
             }
         }
 
