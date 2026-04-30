@@ -26,8 +26,8 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONException
 import org.json.JSONObject
 import java.io.BufferedReader
+import java.io.File
 import java.io.InputStreamReader
-import java.io.PrintWriter
 import java.net.InetAddress
 import java.net.ServerSocket
 import java.net.Socket
@@ -136,7 +136,7 @@ class ProxyServer(
                 socket.soTimeout = SOCKET_TIMEOUT_MS
 
                 val reader = BufferedReader(InputStreamReader(socket.getInputStream(), Charsets.UTF_8))
-                val writer = PrintWriter(socket.getOutputStream(), true)
+                val output = socket.getOutputStream()
 
                 val requestLine = reader.readLine() ?: return
                 val headers = mutableMapOf<String, String>()
@@ -152,8 +152,7 @@ class ProxyServer(
 
                 val parsedRequestLine = parseRequestLine(requestLine)
                 if (parsedRequestLine is ParsedRequestLineResult.Invalid) {
-                    writer.print(httpError(parsedRequestLine.statusCode, parsedRequestLine.message))
-                    writer.flush()
+                    writeTextResponse(output, httpError(parsedRequestLine.statusCode, parsedRequestLine.message))
                     return
                 }
                 parsedRequestLine as ParsedRequestLineResult.Valid
@@ -163,23 +162,19 @@ class ProxyServer(
                 val transferEncoding = headers["transfer-encoding"]
                 val transferEncodingError = validateTransferEncoding(transferEncoding)
                 if (transferEncodingError != null) {
-                    writer.print(httpError(transferEncodingError.first, transferEncodingError.second))
-                    writer.flush()
+                    writeTextResponse(output, httpError(transferEncodingError.first, transferEncodingError.second))
                     return
                 }
 
                 val contentLengthHeader = headers["content-length"]
                 val parsedContentLength = parseContentLength(contentLengthHeader)
                 if (parsedContentLength == null) {
-                    writer.print(httpError(400, "bad content length"))
-                    writer.flush()
+                    writeTextResponse(output, httpError(400, "bad content length"))
                     return
                 }
                 val contentLength = parsedContentLength
                 if (contentLength < 0 || contentLength > MAX_REQUEST_BODY_BYTES) {
-                    val response = httpError(413, "request body too large")
-                    writer.print(response)
-                    writer.flush()
+                    writeTextResponse(output, httpError(413, "request body too large"))
                     return
                 }
                 val bodyChars = CharArray(contentLength)
@@ -191,15 +186,14 @@ class ProxyServer(
                 }
                 val bodyReadError = validateBodyRead(contentLength, totalRead)
                 if (bodyReadError != null) {
-                    writer.print(httpError(bodyReadError.first, bodyReadError.second))
-                    writer.flush()
+                    writeTextResponse(output, httpError(bodyReadError.first, bodyReadError.second))
                     return
                 }
                 val rawBody = String(bodyChars, 0, totalRead)
 
                 val response = processRequest(method, path, rawBody, headers)
-                writer.print(response)
-                writer.flush()
+                output.write(response)
+                output.flush()
             } catch (e: SocketTimeoutException) {
                 Log.w(TAG, "Connection timed out: ${e.message}")
             } catch (e: Exception) {
@@ -208,7 +202,22 @@ class ProxyServer(
         }
     }
 
-    private fun processRequest(method: String, path: String, rawBody: String, headers: Map<String, String>): String {
+    private fun processRequest(method: String, path: String, rawBody: String, headers: Map<String, String>): ByteArray {
+        if (isStaticAssetRequest(path)) {
+            val cachedAsset = resolveCachedStaticAsset(context, path)
+            if (cachedAsset != null) {
+                Log.d(TAG, "Static asset served from cache: ${redactTokens(path)}")
+                return httpFile(cachedAsset)
+            }
+            Log.d(TAG, "Static asset skipped: ${redactTokens(path)}")
+            return httpNoContent().toHttpBytes()
+        }
+
+        return processApiRequest(method, path, rawBody, headers).toHttpBytes()
+    }
+
+    private fun processApiRequest(method: String, path: String, rawBody: String, headers: Map<String, String>): String {
+
         val action = extractAction(path, rawBody)
         if (action == "ping") {
             Log.d(TAG, "Request: $method action=ping online=${isOnline()}")
@@ -513,6 +522,15 @@ class ProxyServer(
 
     private fun httpError(code: Int, message: String): String = proxyHttpError(code, message)
 
+    private fun httpNoContent(): String = proxyHttpNoContent()
+
+    private fun httpFile(file: File): ByteArray = proxyHttpFile(file)
+
+    private fun writeTextResponse(output: java.io.OutputStream, response: String) {
+        output.write(response.toHttpBytes())
+        output.flush()
+    }
+
     private fun httpResponse(code: Int, message: String, body: String): String =
         proxyHttpResponse(code, message, body)
 
@@ -525,6 +543,13 @@ class ProxyServer(
 
 internal fun proxyIsHardcoreRequest(path: String, rawBody: String): Boolean =
     proxyExtractParam("h", path, rawBody) == "1"
+
+internal fun isStaticAssetRequest(path: String): Boolean {
+    val cleanPath = path.substringBefore('?')
+    return cleanPath.startsWith("/Badge/", ignoreCase = true) ||
+        cleanPath.startsWith("/Images/", ignoreCase = true) ||
+        cleanPath.startsWith("/UserPic/", ignoreCase = true)
+}
 
 internal fun parseRequestLine(requestLine: String): ParsedRequestLineResult {
     val parts = requestLine.trim().split(Regex("\\s+"), limit = 3)
@@ -700,6 +725,29 @@ internal fun proxyHttpResponse(code: Int, message: String, body: String): String
 
 internal fun proxyHttpOk(body: String): String =
     proxyHttpResponse(200, "OK", body)
+
+internal fun proxyHttpNoContent(): String =
+    "HTTP/1.1 204 No Content\r\n" +
+        "Content-Length: 0\r\n" +
+        "Connection: close\r\n\r\n"
+
+internal fun proxyHttpFile(file: File): ByteArray {
+    val bytes = file.readBytes()
+    val headers = "HTTP/1.1 200 OK\r\n" +
+        "Content-Type: ${contentTypeForFile(file)}\r\n" +
+        "Content-Length: ${bytes.size}\r\n" +
+        "Connection: close\r\n\r\n"
+    return headers.toByteArray(Charsets.US_ASCII) + bytes
+}
+
+private fun String.toHttpBytes(): ByteArray = toByteArray(Charsets.UTF_8)
+
+internal fun contentTypeForFile(file: File): String = when (file.extension.lowercase()) {
+    "jpg", "jpeg" -> "image/jpeg"
+    "webp" -> "image/webp"
+    "gif" -> "image/gif"
+    else -> "image/png"
+}
 
 internal fun proxyHttpGameIdCacheMiss(): String =
     proxyHttpOk("""{"Success":false,"Error":"Game not cached. Launch this game while online first.","GameID":0}""")
