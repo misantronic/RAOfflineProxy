@@ -47,6 +47,7 @@ private const val NOTIFICATION_ID = 1
 private const val REFRESH_INTERVAL_MS = 60L * 60 * 1000 // 1 hour
 private const val CACHE_TTL_MS = 7L * 24 * 60 * 60 * 1000 // 7 days
 private const val OFFLINE_PING_IDLE_TIMEOUT_MS = 150_000L
+private const val ONLINE_REFRESH_IDLE_DELAY_MS = 5L * 60 * 1000
 
 class ProxyService : Service() {
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
@@ -66,6 +67,7 @@ class ProxyService : Service() {
     @Volatile private var recentGameId: String? = null
     @Volatile private var recentGameTitle: String? = null
     @Volatile private var lastGameActivityAt = 0L
+    @Volatile private var lastProxyActivityAt = 0L
     @Volatile private var lastOfflinePingAt = 0L
 
     private val networkCallback = object : ConnectivityManager.NetworkCallback() {
@@ -167,6 +169,12 @@ class ProxyService : Service() {
         while (true) {
             delay(REFRESH_INTERVAL_MS)
             if (!isOnline) continue
+            val idleDelayMs = onlineRefreshIdleDelayMs()
+            if (idleDelayMs > 0) {
+                Log.i(TAG, "Periodic refresh deferred; proxy active recently")
+                delay(idleDelayMs)
+                if (!isOnline || onlineRefreshIdleDelayMs() > 0) continue
+            }
             Log.i(TAG, "Periodic refresh started")
             val credentials = loadLoginCredentials(db)
             if (credentials == null) {
@@ -179,7 +187,11 @@ class ProxyService : Service() {
                 .distinct()
             Log.i(TAG, "Periodic refresh: ${gameIds.size} game(s)")
             for (gameId in gameIds) {
-                cacheGame(this@ProxyService, gameId, credentials, userAgent, db)
+                if (onlineRefreshIdleDelayMs() > 0) {
+                    Log.i(TAG, "Periodic refresh paused; proxy became active")
+                    break
+                }
+                cacheGame(this@ProxyService, gameId, credentials, userAgent, db, cacheImages = false)
             }
             db.cacheDao().evictOlderThan(System.currentTimeMillis() - CACHE_TTL_MS)
             Log.i(TAG, "Periodic refresh complete")
@@ -252,6 +264,7 @@ class ProxyService : Service() {
     private fun onGameActivity(activity: GameActivity) {
         val gameId = activity.gameId
         lastGameActivityAt = System.currentTimeMillis()
+        lastProxyActivityAt = lastGameActivityAt
         if (gameId != recentGameId) {
             recentGameId = gameId
             recentGameTitle = null
@@ -318,6 +331,12 @@ class ProxyService : Service() {
     }
 
     private fun currentOfflineActivityAt(): Long = maxOf(lastGameActivityAt, lastOfflinePingAt)
+
+    private fun onlineRefreshIdleDelayMs(): Long {
+        val lastActivityAt = maxOf(lastGameActivityAt, lastProxyActivityAt)
+        if (lastActivityAt == 0L) return 0L
+        return (ONLINE_REFRESH_IDLE_DELAY_MS - (System.currentTimeMillis() - lastActivityAt)).coerceAtLeast(0L)
+    }
 
     private fun revertPatchedCfgIfNeeded() {
         if (cfgCleanupAttempted) return
