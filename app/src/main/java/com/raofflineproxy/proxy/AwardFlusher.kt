@@ -274,7 +274,7 @@ class AwardFlusher(
         val ids = mutableSetOf<Int>()
         val ua = proxyUserAgent(userAgent)
         for (gameId in gameIds) {
-            val responseBody = refreshGamePatch(context, gameId, creds, ua, db)
+            val responseBody = refreshGamePatch(context, gameId, creds, ua, db, cacheImages = false)
                 ?: return null
 
             runCatching {

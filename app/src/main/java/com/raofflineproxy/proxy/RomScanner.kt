@@ -98,7 +98,8 @@ suspend fun refreshGamePatch(
     gameId: Int,
     creds: LoginCredentials,
     userAgent: String,
-    db: AppDatabase
+    db: AppDatabase,
+    cacheImages: Boolean = true
 ): String? {
     val url = buildApiUrl(
         RA_HOST,
@@ -131,7 +132,9 @@ suspend fun refreshGamePatch(
         cacheKey = CacheKeys.patch(gameId, creds.user),
         responseBody = responseBody
     ))
-    cachePatchImages(context, gameId, userAgent, responseBody)
+    if (cacheImages) {
+        cachePatchImages(context, gameId, userAgent, responseBody)
+    }
     Log.i(TAG, "refreshGamePatch: updated cache for gameId=$gameId")
     return responseBody
 }
@@ -233,7 +236,14 @@ private suspend fun fetchGameId(
         }
     }
 
-internal suspend fun cacheGame(context: Context, gameId: Int, creds: LoginCredentials, userAgent: String, db: AppDatabase) {
+internal suspend fun cacheGame(
+    context: Context,
+    gameId: Int,
+    creds: LoginCredentials,
+    userAgent: String,
+    db: AppDatabase,
+    cacheImages: Boolean = true
+) {
     val patchUrl = buildApiUrl(
         RA_HOST,
         "patch",
@@ -251,7 +261,9 @@ internal suspend fun cacheGame(context: Context, gameId: Int, creds: LoginCreden
                     responseBody = result.body
                 )
             )
-            cachePatchImages(context, gameId, userAgent, result.body)
+            if (cacheImages) {
+                cachePatchImages(context, gameId, userAgent, result.body)
+            }
         }
         is HttpGetResult.Failure -> {
             val logDetails = result.logMessage("patch", patchUrl)

@@ -87,19 +87,19 @@ class ProxyServer(
     private val isOnline: () -> Boolean,
     private val onGameActivity: (GameActivity) -> Unit = {}
 ) {
-    private val executor = ThreadPoolExecutor(
-        2, MAX_WORKER_THREADS,
-        60L, TimeUnit.SECONDS,
-        LinkedBlockingQueue()
-    )
+    @Volatile private var executor = newExecutor()
 
     @Volatile private var serverSocket: ServerSocket? = null
+    @Volatile private var lastCachedUserAgent: String? = null
     @Volatile var running = false
         private set
 
     fun start() {
         if (running) return
         running = true
+        if (executor.isShutdown || executor.isTerminated) {
+            executor = newExecutor()
+        }
         val bindHost = proxyHost()
         serverSocket = ServerSocket(port, 50, InetAddress.getByName(bindHost))
         executor.execute { acceptLoop() }
@@ -110,6 +110,7 @@ class ProxyServer(
         running = false
         serverSocket?.close()
         serverSocket = null
+        executor.shutdownNow()
         Log.i(TAG, "Proxy stopped")
     }
 
@@ -209,11 +210,16 @@ class ProxyServer(
 
     private fun processRequest(method: String, path: String, rawBody: String, headers: Map<String, String>): String {
         val action = extractAction(path, rawBody)
-        Log.i(TAG, "Request: $method ${redactTokens(path)} body=${redactFormBody(rawBody)} action=$action online=${isOnline()}")
+        if (action == "ping") {
+            Log.d(TAG, "Request: $method action=ping online=${isOnline()}")
+        } else {
+            Log.i(TAG, "Request: $method ${redactTokens(path)} body=${redactFormBody(rawBody)} action=$action online=${isOnline()}")
+        }
         extractGameActivity(path, rawBody, action)?.let(onGameActivity)
 
         val userAgent = headers["user-agent"]
-        if (!userAgent.isNullOrEmpty()) {
+        if (!userAgent.isNullOrEmpty() && userAgent != lastCachedUserAgent) {
+            lastCachedUserAgent = userAgent
             scope.launch(Dispatchers.IO) {
                 db.cacheDao().upsert(CacheEntry(cacheKey = CacheKeys.USER_AGENT, responseBody = userAgent))
             }
@@ -509,6 +515,12 @@ class ProxyServer(
 
     private fun httpResponse(code: Int, message: String, body: String): String =
         proxyHttpResponse(code, message, body)
+
+    private fun newExecutor(): ThreadPoolExecutor = ThreadPoolExecutor(
+        2, MAX_WORKER_THREADS,
+        60L, TimeUnit.SECONDS,
+        LinkedBlockingQueue()
+    )
 }
 
 internal fun proxyIsHardcoreRequest(path: String, rawBody: String): Boolean =
