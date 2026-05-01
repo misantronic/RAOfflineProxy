@@ -13,6 +13,7 @@ from .platform import (
     resolve_retroarch_cfg,
     resolve_rom_root,
 )
+from .pending_awards import delete_pending_award, list_pending_awards
 from .retroarch_cfg import patch_retroarch_cfg, revert_retroarch_cfg
 from .rom_browser import (
     add_rom_to_cache,
@@ -166,7 +167,9 @@ class MenuSdlSession:
         self.message: tuple[str, float] | None = None
         self.storage = Storage()
         self.cached_games = []
+        self.pending_awards = []
         self.active_game = None
+        self.active_pending_award = None
         self.browser_dir: Path | None = None
         self.browser_entries: list[Path] = []
         self.view_positions: dict[str, tuple[int, int]] = {}
@@ -276,6 +279,16 @@ class MenuSdlSession:
             cached = [game.title for game in self.cached_games]
             return ["Add ROM", *cached, "Clear cache", "Back"]
 
+        if self.view == "pending_awards":
+            labels = []
+            for award in self.pending_awards:
+                labels.extend([award.game_title, award.summary_text, ""])
+            labels.append("Back")
+            return labels
+
+        if self.view == "pending_award_actions":
+            return ["Delete pending award", "Back"]
+
         if self.view == "game_actions":
             return ["Remove cache", "Back"]
 
@@ -301,7 +314,8 @@ class MenuSdlSession:
                 else "Enable autostart"
             )
         if self.storage.load_login_credentials() is not None:
-            labels.append("Cached games")
+            labels.append(f"Cached games ({len(self.cached_games)})")
+        labels.append(f"Pending awards ({len(self.pending_awards)})")
         labels.extend(["Uninstall", "Exit Menu"])
         return labels
 
@@ -311,6 +325,14 @@ class MenuSdlSession:
     def title_for_view(self) -> str:
         if self.view == "cached_games":
             return "Cached Games"
+        if self.view == "pending_awards":
+            return "Pending Awards"
+        if self.view == "pending_award_actions":
+            return (
+                self.active_pending_award.game_title
+                if self.active_pending_award is not None
+                else "Pending Award"
+            )
         if self.view == "game_actions":
             return (
                 self.active_game.title
@@ -322,13 +344,21 @@ class MenuSdlSession:
         return "RAOfflineProxy"
 
     def item_text_color(self, label: str) -> tuple[int, int, int]:
-        if label in {"Back", "Cancel"}:
+        if label in {"Back", "Cancel", ""}:
             return SECONDARY_TEXT_COLOR
         return TEXT_COLOR
 
     def status_text(self, running: bool) -> str:
         if self.view == "cached_games":
             return f"CACHED: {len(self.cached_games)}"
+        if self.view == "pending_awards":
+            return f"PENDING: {len(self.pending_awards)}"
+        if self.view == "pending_award_actions":
+            return (
+                self.active_pending_award.summary_text
+                if self.active_pending_award is not None
+                else "No pending award selected"
+            )
         if self.view == "game_actions":
             return (
                 f"GAME ID: {self.active_game.game_id}"
@@ -450,6 +480,14 @@ class MenuSdlSession:
             self.activate_cached_games_selected()
             return
 
+        if self.view == "pending_awards":
+            self.activate_pending_awards_selected()
+            return
+
+        if self.view == "pending_award_actions":
+            self.activate_pending_award_actions_selected()
+            return
+
         if self.view == "game_actions":
             self.activate_game_actions_selected()
             return
@@ -473,11 +511,18 @@ class MenuSdlSession:
             self.toggle_autostart(config_data)
             return
 
-        if selected_label == "Cached games":
+        if selected_label.startswith("Cached games ("):
             self.save_view_position("main")
             self.view = "cached_games"
             self.restore_view_position("cached_games")
             self.refresh_cached_games()
+            return
+
+        if selected_label.startswith("Pending awards ("):
+            self.save_view_position("main")
+            self.view = "pending_awards"
+            self.restore_view_position("pending_awards")
+            self.refresh_pending_awards()
             return
 
         if selected_label == "Uninstall":
@@ -514,6 +559,42 @@ class MenuSdlSession:
             self.view = "game_actions"
             self.reset_selection()
             return
+
+    def activate_pending_awards_selected(self) -> None:
+        back_index = len(self.pending_awards) * 3
+        if self.selected_index == back_index:
+            self.save_view_position("pending_awards")
+            self.view = "main"
+            self.restore_view_position("main")
+            return
+
+        award_index = self.selected_index // 3
+        if 0 <= award_index < len(self.pending_awards):
+            self.save_view_position("pending_awards")
+            self.active_pending_award = self.pending_awards[award_index]
+            self.view = "pending_award_actions"
+            self.reset_selection()
+
+    def activate_pending_award_actions_selected(self) -> None:
+        if self.active_pending_award is None:
+            self.view = "pending_awards"
+            self.restore_view_position("pending_awards")
+            self.refresh_pending_awards()
+            return
+
+        if self.selected_index == 0:
+            delete_pending_award(self.storage, self.active_pending_award.achievement_id)
+            removed_title = self.active_pending_award.achievement_title
+            self.active_pending_award = None
+            self.refresh_pending_awards()
+            self.view = "pending_awards"
+            self.restore_view_position("pending_awards")
+            self.message = (f"Removed {removed_title}", time.monotonic() + 1.5)
+            return
+
+        self.active_pending_award = None
+        self.view = "pending_awards"
+        self.restore_view_position("pending_awards")
 
     def activate_game_actions_selected(self) -> None:
         if self.active_game is None:
@@ -591,8 +672,12 @@ class MenuSdlSession:
 
     def refresh_cached_games(self) -> None:
         self.cached_games = list_cached_games(self.storage)
+        self.pending_awards = list_pending_awards(self.storage)
         self.preview_surface = None
         self.preview_game_id = None
+
+    def refresh_pending_awards(self) -> None:
+        self.pending_awards = list_pending_awards(self.storage)
 
     def go_back(self) -> None:
         if self.view == "file_browser":
@@ -624,6 +709,18 @@ class MenuSdlSession:
             self.save_view_position("cached_games")
             self.view = "main"
             self.restore_view_position("main")
+            return
+
+        if self.view == "pending_awards":
+            self.save_view_position("pending_awards")
+            self.view = "main"
+            self.restore_view_position("main")
+            return
+
+        if self.view == "pending_award_actions":
+            self.active_pending_award = None
+            self.view = "pending_awards"
+            self.restore_view_position("pending_awards")
             return
 
         if self.view == "game_actions":
@@ -658,6 +755,18 @@ class MenuSdlSession:
             game_index = self.selected_index - 1
             if 0 <= game_index < len(self.cached_games):
                 return self.cached_games[game_index]
+            return None
+
+        if (
+            self.view == "pending_award_actions"
+            and self.active_pending_award is not None
+        ):
+            game_id = self.active_pending_award.game_id
+            if game_id is None:
+                return None
+            for game in self.cached_games:
+                if game.game_id == game_id:
+                    return game
             return None
 
         if self.view == "game_actions":
@@ -774,6 +883,8 @@ class MenuSdlSession:
                 current_y += GROUP_GAP
             if self.view == "cached_games" and clear_cache_index == 1 and index == 0:
                 current_y -= GROUP_GAP
+            if self.view == "pending_awards" and (index + 1) % 3 == 0:
+                current_y += GROUP_GAP
         return positions
 
     def bottom_limit(self) -> int:
