@@ -102,6 +102,44 @@ class LinuxRomHashingTests(unittest.TestCase):
         self.assertIn(".lnx", extensions)
         self.assertIn(".cart", extensions)
         self.assertIn(".z64", extensions)
+        self.assertIn(".nds", extensions)
+        self.assertIn(".iso", extensions)
+        self.assertIn(".bin", extensions)
+        self.assertIn(".pbp", extensions)
+
+    def test_has_supercard_header_detects_known_pattern(self) -> None:
+        header = bytearray(512)
+        header[0] = 0x2E
+        header[1] = 0x00
+        header[2] = 0x00
+        header[3] = 0xEA
+        header[0xB0] = 0x44
+        header[0xB1] = 0x46
+        header[0xB2] = 0x96
+        header[0xB3] = 0x00
+
+        self.assertTrue(rom_hashing.has_supercard_header(bytes(header)))
+
+    def test_parse_psx_boot_path_extracts_cdrom_path(self) -> None:
+        system_cnf = "BOOT = cdrom:\\SLUS_123.45;1\n"
+
+        self.assertEqual(
+            rom_hashing.parse_psx_boot_path(system_cnf),
+            "SLUS_123.45",
+        )
+
+    def test_names_equal_ignores_case_and_iso_version(self) -> None:
+        self.assertTrue(rom_hashing.names_equal("SYSTEM.CNF", "system.cnf;1"))
+
+    def test_pbp_hash_falls_back_to_generic_md5(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            rom_path = Path(temp_dir) / "test.pbp"
+            rom_path.write_bytes(b"pbpdata")
+
+            self.assertEqual(
+                rom_hashing.hash_rom(rom_path),
+                hashlib.md5(b"pbpdata").hexdigest(),
+            )
 
 
 if __name__ == "__main__":
