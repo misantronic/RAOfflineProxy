@@ -4,10 +4,19 @@ import time
 from pathlib import Path
 
 from .batocera_conf import patch_batocera_conf, revert_batocera_conf
-from .config import CONFIG_DIR, detect_retroarch_cfg, load_config
+from .config import CONFIG_DIR, load_config
+from .platform import resolve_retroarch_cfg, resolve_rom_root
 from .retroarch_cfg import patch_retroarch_cfg, revert_retroarch_cfg
+from .rom_browser import (
+    add_rom_to_cache,
+    ensure_game_preview,
+    list_browser_entries,
+    list_cached_games,
+    remove_cached_game,
+)
 from .service import service_status, start_service_process, stop_service_process
 from .state import load_patch_state, save_patch_state
+from .storage import Storage
 from .menu import (
     BTN_DPAD_DOWN,
     BTN_DPAD_LEFT,
@@ -42,6 +51,11 @@ SELECTED_COLOR = SECONDARY_COLOR
 STATUS_COLOR = (180, 180, 180)
 ERROR_SECONDS = 3
 FPS = 30
+LEFT_MARGIN = 32
+INITIAL_NAV_INTERVAL_SECONDS = 0.08
+FAST_NAV_INTERVAL_SECONDS = 0.03
+FAST_NAV_TRIGGER_SECONDS = 0.35
+NAV_RESET_SECONDS = 0.18
 FONT_CANDIDATES = [
     "Press Start 2P",
     "Pixel Operator",
@@ -83,7 +97,7 @@ def remove_stale_hook() -> None:
 
 def runtime_config() -> tuple[dict, str]:
     config_data = load_config()
-    cfg_path = config_data.get("retroarch_cfg") or detect_retroarch_cfg()
+    cfg_path = resolve_retroarch_cfg(config_data)
     return config_data, cfg_path
 
 
@@ -134,13 +148,24 @@ class MenuSdlSession:
         self.height = height
         self.pygame = pygame
         self.running = True
+        self.view = "main"
         self.selected_index = 0
+        self.scroll_offset = 0
         self.last_navigation_at = 0.0
+        self.last_navigation_delta = 0
+        self.navigation_hold_started_at = 0.0
         self.message: tuple[str, float] | None = None
+        self.storage = Storage()
+        self.cached_games = []
+        self.active_game = None
+        self.browser_dir: Path | None = None
+        self.browser_entries: list[Path] = []
+        self.preview_surface = None
+        self.preview_game_id = None
         self.input_handles = open_input_devices()
-        self.title_font = self.load_font(max(38, height // 16), bold=True)
-        self.status_font = self.load_font(max(28, height // 24))
-        self.item_font = self.load_font(max(28, height // 24), bold=True)
+        self.title_font = self.load_font(max(30, height // 19), bold=True)
+        self.status_font = self.load_font(max(20, height // 30))
+        self.item_font = self.load_font(max(22, height // 30), bold=True)
         self.clock = pygame.time.Clock()
         for joystick_index in range(pygame.joystick.get_count()):
             joystick = pygame.joystick.Joystick(joystick_index)
@@ -152,6 +177,7 @@ class MenuSdlSession:
         log_menu_sdl(
             f"MenuSdlSession init width={width} height={height} input_handles={len(self.input_handles)}"
         )
+        self.refresh_cached_games()
 
     def load_font(self, size: int, bold: bool = False):
         for font_name in FONT_CANDIDATES:
@@ -180,30 +206,36 @@ class MenuSdlSession:
                 self.clock.tick(FPS)
         finally:
             close_input_devices(self.input_handles)
+            self.storage.close()
 
     def render(self) -> None:
         self.surface.fill(BACKGROUND_COLOR)
 
-        title = self.title_font.render("RAOfflineProxy", False, PRIMARY_COLOR)
-        title_rect = title.get_rect(
-            center=(self.width // 2, max(50, self.height // 10))
-        )
+        title_text = self.title_for_view()
+        title = self.title_font.render(title_text, False, PRIMARY_COLOR)
+        title_rect = title.get_rect(topleft=(LEFT_MARGIN, max(36, self.height // 12)))
         self.surface.blit(title, title_rect)
 
         running = self.proxy_running()
-        status_text = "PROXY: RUNNING" if running else "PROXY: STOPPED"
+        status_text = self.status_text(running)
         status = self.status_font.render(status_text, False, STATUS_COLOR)
-        status_rect = status.get_rect(center=(self.width // 2, title_rect.bottom + 40))
+        status_rect = status.get_rect(topleft=(LEFT_MARGIN, title_rect.bottom + 20))
         self.surface.blit(status, status_rect)
 
-        items = self.labels(running)
-        start_y = status_rect.bottom + 70
-        gap = max(self.item_font.get_height() + 12, self.height // 14)
-        for index, label in enumerate(items):
-            color = SELECTED_COLOR if index == self.selected_index else TEXT_COLOR
-            prefix = "> " if index == self.selected_index else "  "
+        items = self.current_labels(running)
+        start_y = status_rect.bottom + 34
+        gap = max(self.item_font.get_height() + 6, self.height // 18)
+        self.normalize_selection(items, start_y, gap)
+        self.render_game_preview()
+        visible_offset, visible_items = self.visible_items(items, start_y, gap)
+        for visible_index, label in enumerate(visible_items):
+            actual_index = visible_offset + visible_index
+            color = (
+                SELECTED_COLOR if actual_index == self.selected_index else TEXT_COLOR
+            )
+            prefix = "> " if actual_index == self.selected_index else "  "
             text = self.item_font.render(f"{prefix}{label}", False, color)
-            rect = text.get_rect(center=(self.width // 2, start_y + (index * gap)))
+            rect = text.get_rect(topleft=(LEFT_MARGIN, start_y + (visible_index * gap)))
             self.surface.blit(text, rect)
 
         if self.message is not None:
@@ -212,16 +244,62 @@ class MenuSdlSession:
                 self.message = None
             else:
                 overlay = self.status_font.render(text, False, SELECTED_COLOR)
-                overlay_rect = overlay.get_rect(
-                    center=(self.width // 2, self.height - 60)
-                )
+                overlay_rect = overlay.get_rect(topleft=(LEFT_MARGIN, self.height - 56))
                 self.surface.blit(overlay, overlay_rect)
 
         self.pygame.display.flip()
 
     def labels(self, running: bool) -> list[str]:
+        if self.view == "cached_games":
+            cached = [game.title for game in self.cached_games]
+            return ["Add ROM", *cached, "Back"]
+
+        if self.view == "game_actions":
+            return ["Remove cache", "Back"]
+
+        if self.view == "file_browser":
+            if self.browser_dir is None:
+                return ["Cancel"]
+
+            labels = []
+            root = resolve_rom_root(load_config())
+            if self.browser_dir.parent != self.browser_dir and self.browser_dir != root:
+                labels.append("..")
+            labels.extend(entry.name for entry in self.browser_entries)
+            labels.append("Cancel")
+            return labels
+
         toggle = "Stop proxy" if running else "Start proxy"
-        return [toggle, "Uninstall", "Exit menu"]
+        return [toggle, "Cached games", "Uninstall", "Exit Menu"]
+
+    def current_labels(self, running: bool | None = None) -> list[str]:
+        return self.labels(self.proxy_running() if running is None else running)
+
+    def title_for_view(self) -> str:
+        if self.view == "cached_games":
+            return "Cached Games"
+        if self.view == "game_actions":
+            return (
+                self.active_game.title
+                if self.active_game is not None
+                else "Cached Game"
+            )
+        if self.view == "file_browser":
+            return "Add ROM"
+        return "RAOfflineProxy"
+
+    def status_text(self, running: bool) -> str:
+        if self.view == "cached_games":
+            return f"CACHED: {len(self.cached_games)}"
+        if self.view == "game_actions":
+            return (
+                f"GAME ID: {self.active_game.game_id}"
+                if self.active_game is not None
+                else "No game selected"
+            )
+        if self.view == "file_browser":
+            return str(self.browser_dir or "No ROM directory")
+        return "PROXY: RUNNING" if running else "PROXY: STOPPED"
 
     def handle_events(self) -> None:
         for event in self.pygame.event.get():
@@ -270,7 +348,7 @@ class MenuSdlSession:
             return
 
         if key in {KEY_ESC, KEY_BACKSPACE, KEY_Q, BTN_EAST, BTN_SELECT}:
-            self.running = False
+            self.go_back()
 
     def handle_key(self, key: int) -> None:
         if key in {self.pygame.K_UP, self.pygame.K_LEFT}:
@@ -283,24 +361,50 @@ class MenuSdlSession:
             self.activate_selected()
             return
         if key in {self.pygame.K_ESCAPE, self.pygame.K_BACKSPACE, self.pygame.K_q}:
-            self.running = False
+            self.go_back()
 
     def handle_joy_button(self, button: int) -> None:
         if button in {0, 7}:
             self.activate_selected()
             return
         if button in {1, 6}:
-            self.running = False
+            self.go_back()
 
     def navigate(self, delta: int) -> None:
         now = time.monotonic()
-        if (now - self.last_navigation_at) < 0.08:
+        if (
+            delta != self.last_navigation_delta
+            or (now - self.last_navigation_at) > NAV_RESET_SECONDS
+        ):
+            self.navigation_hold_started_at = now
+            self.last_navigation_delta = delta
+
+        interval = INITIAL_NAV_INTERVAL_SECONDS
+        if (now - self.navigation_hold_started_at) >= FAST_NAV_TRIGGER_SECONDS:
+            interval = FAST_NAV_INTERVAL_SECONDS
+
+        if (now - self.last_navigation_at) < interval:
             return
+
         self.last_navigation_at = now
-        self.selected_index = (self.selected_index + delta) % 3
+        item_count = max(1, len(self.current_labels()))
+        self.selected_index = (self.selected_index + delta) % item_count
+        self.ensure_selection_visible(item_count)
         log_menu_sdl(f"navigate delta={delta} selected={self.selected_index}")
 
     def activate_selected(self) -> None:
+        if self.view == "cached_games":
+            self.activate_cached_games_selected()
+            return
+
+        if self.view == "game_actions":
+            self.activate_game_actions_selected()
+            return
+
+        if self.view == "file_browser":
+            self.activate_file_browser_selected()
+            return
+
         running = self.proxy_running()
         if self.selected_index == 0:
             if running:
@@ -309,9 +413,248 @@ class MenuSdlSession:
                 self.start_proxy()
             return
         if self.selected_index == 1:
+            self.view = "cached_games"
+            self.reset_selection()
+            self.refresh_cached_games()
+            return
+        if self.selected_index == 2:
             self.uninstall()
             return
         self.running = False
+
+    def activate_cached_games_selected(self) -> None:
+        back_index = len(self.cached_games) + 1
+        if self.selected_index == 0:
+            self.open_file_browser()
+            return
+
+        if self.selected_index == back_index:
+            self.view = "main"
+            self.reset_selection()
+            return
+
+        game_index = self.selected_index - 1
+        if 0 <= game_index < len(self.cached_games):
+            self.active_game = self.cached_games[game_index]
+            self.view = "game_actions"
+            self.reset_selection()
+            return
+
+    def activate_game_actions_selected(self) -> None:
+        if self.active_game is None:
+            self.view = "cached_games"
+            self.reset_selection()
+            self.refresh_cached_games()
+            return
+
+        if self.selected_index == 0:
+            remove_cached_game(self.storage, self.active_game.game_id)
+            removed_title = self.active_game.title
+            self.active_game = None
+            self.refresh_cached_games()
+            self.view = "cached_games"
+            self.reset_selection()
+            self.message = (f"Removed {removed_title}", time.monotonic() + 1.5)
+            return
+
+        self.active_game = None
+        self.view = "cached_games"
+        self.reset_selection()
+
+    def activate_file_browser_selected(self) -> None:
+        if self.browser_dir is None:
+            self.view = "cached_games"
+            self.reset_selection()
+            return
+
+        root = resolve_rom_root(load_config())
+        has_parent = (
+            self.browser_dir.parent != self.browser_dir and self.browser_dir != root
+        )
+        first_entry_index = 1 if has_parent else 0
+        cancel_index = first_entry_index + len(self.browser_entries)
+        if has_parent and self.selected_index == 0:
+            self.set_browser_dir(self.browser_dir.parent)
+            return
+        if self.selected_index == cancel_index:
+            self.view = "cached_games"
+            self.reset_selection()
+            self.refresh_cached_games()
+            return
+
+        entry = self.browser_entries[self.selected_index - first_entry_index]
+        if entry.is_dir():
+            self.set_browser_dir(entry)
+            return
+
+        result = add_rom_to_cache(entry, self.storage, load_config())
+        self.message = (result.message, time.monotonic() + ERROR_SECONDS)
+        self.view = "cached_games"
+        self.reset_selection()
+        self.refresh_cached_games()
+
+    def open_file_browser(self) -> None:
+        try:
+            root = resolve_rom_root(load_config())
+            self.set_browser_dir(root)
+            self.view = "file_browser"
+            self.reset_selection()
+        except Exception as exc:
+            self.message = (f"Browse failed: {exc}", time.monotonic() + ERROR_SECONDS)
+
+    def set_browser_dir(self, path: Path) -> None:
+        self.browser_dir = path
+        self.browser_entries = list_browser_entries(path)
+        self.reset_selection()
+
+    def refresh_cached_games(self) -> None:
+        self.cached_games = list_cached_games(self.storage)
+        self.preview_surface = None
+        self.preview_game_id = None
+
+    def go_back(self) -> None:
+        if self.view == "file_browser":
+            if self.browser_dir is None:
+                self.view = "cached_games"
+                self.reset_selection()
+                self.refresh_cached_games()
+                return
+
+            root = resolve_rom_root(load_config())
+            if self.browser_dir == root:
+                self.view = "cached_games"
+                self.reset_selection()
+                self.refresh_cached_games()
+                return
+
+            if self.browser_dir.parent != self.browser_dir:
+                self.set_browser_dir(self.browser_dir.parent)
+                return
+
+            self.view = "cached_games"
+            self.reset_selection()
+            self.refresh_cached_games()
+            return
+
+        if self.view == "cached_games":
+            self.view = "main"
+            self.reset_selection()
+            return
+
+        if self.view == "game_actions":
+            self.active_game = None
+            self.view = "cached_games"
+            self.reset_selection()
+            return
+
+        self.running = False
+
+    def render_game_preview(self) -> None:
+        game = self.preview_target_game()
+        if game is None:
+            self.preview_surface = None
+            self.preview_game_id = None
+            return
+
+        if self.preview_game_id != game.game_id or self.preview_surface is None:
+            self.preview_surface = self.load_game_preview_surface(game)
+            self.preview_game_id = (
+                game.game_id if self.preview_surface is not None else None
+            )
+
+        if self.preview_surface is None:
+            return
+
+        preview_rect = self.preview_surface.get_rect(topright=(self.width - 24, 24))
+        self.surface.blit(self.preview_surface, preview_rect)
+
+    def preview_target_game(self):
+        if self.view == "cached_games":
+            game_index = self.selected_index - 1
+            if 0 <= game_index < len(self.cached_games):
+                return self.cached_games[game_index]
+            return None
+
+        if self.view == "game_actions":
+            return self.active_game
+
+        return None
+
+    def load_game_preview_surface(self, game):
+        try:
+            preview_path = ensure_game_preview(game, self.storage, load_config())
+            if preview_path is None:
+                return None
+
+            image = self.pygame.image.load(str(preview_path))
+            image = (
+                image.convert_alpha()
+                if image.get_alpha() is not None
+                else image.convert()
+            )
+            scaled_size = self.fit_preview_size(image.get_width(), image.get_height())
+            return self.pygame.transform.smoothscale(image, scaled_size)
+        except Exception as exc:
+            log_menu_sdl(f"preview load failed gameId={game.game_id} error={exc}")
+            return None
+
+    def fit_preview_size(self, width: int, height: int) -> tuple[int, int]:
+        max_width = max(96, self.width // 4)
+        max_height = max(96, self.height // 3)
+        scale = min(max_width / max(1, width), max_height / max(1, height), 1.0)
+        return max(1, int(width * scale)), max(1, int(height * scale))
+
+    def reset_selection(self) -> None:
+        self.selected_index = 0
+        self.scroll_offset = 0
+        self.last_navigation_delta = 0
+        self.navigation_hold_started_at = 0.0
+
+    def normalize_selection(self, items: list[str], start_y: int, gap: int) -> None:
+        if not items:
+            self.selected_index = 0
+            self.scroll_offset = 0
+            return
+
+        self.selected_index = max(0, min(self.selected_index, len(items) - 1))
+        max_visible = self.max_visible_items(start_y, gap)
+        max_offset = max(0, len(items) - max_visible)
+        self.scroll_offset = max(0, min(self.scroll_offset, max_offset))
+        self.ensure_selection_visible(len(items), max_visible)
+
+    def visible_items(
+        self,
+        items: list[str],
+        start_y: int,
+        gap: int,
+    ) -> tuple[int, list[str]]:
+        max_visible = self.max_visible_items(start_y, gap)
+        end_offset = min(len(items), self.scroll_offset + max_visible)
+        return self.scroll_offset, items[self.scroll_offset : end_offset]
+
+    def max_visible_items(self, start_y: int, gap: int) -> int:
+        message_padding = 44 if self.message is not None else 4
+        bottom_limit = self.height - message_padding
+        item_height = max(1, self.item_font.get_height())
+        available_height = max(1, bottom_limit - start_y - item_height)
+        return max(1, 1 + (available_height // max(1, gap)))
+
+    def ensure_selection_visible(
+        self,
+        item_count: int,
+        max_visible: int | None = None,
+    ) -> None:
+        visible_count = max_visible or item_count
+        if self.selected_index < self.scroll_offset:
+            self.scroll_offset = self.selected_index
+            return
+
+        if self.selected_index >= self.scroll_offset + visible_count:
+            self.scroll_offset = self.selected_index - visible_count + 1
+            return
+
+        max_offset = max(0, item_count - visible_count)
+        self.scroll_offset = max(0, min(self.scroll_offset, max_offset))
 
     def proxy_running(self) -> bool:
         try:

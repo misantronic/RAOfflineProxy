@@ -2,7 +2,7 @@ import json
 import time
 
 from . import cache_keys
-from .config import FALLBACK_USER_AGENT, proxy_base, upstream_host
+from .config import FALLBACK_USER_AGENT, upstream_host
 from .network import build_api_url, http_get
 from .storage import Storage
 
@@ -41,7 +41,7 @@ def cache_unlocks(
     game_id: int, credentials: dict, user_agent: str, config_data: dict
 ) -> str | None:
     url = build_api_url(
-        proxy_base(config_data),
+        upstream_host(config_data),
         "unlocks",
         {
             "g": str(game_id),
@@ -51,9 +51,15 @@ def cache_unlocks(
         },
     )
     try:
-        return http_get(url, user_agent)
+        response_body = http_get(url, user_agent)
+        payload = json.loads(response_body)
     except Exception:
         return None
+
+    if not payload.get("Success"):
+        return None
+
+    return response_body
 
 
 def build_unlocks_array(
@@ -97,20 +103,24 @@ def cache_game(
     storage: Storage,
     config_data: dict,
 ) -> None:
-    patch_url = build_api_url(
-        proxy_base(config_data),
-        "patch",
-        {
-            "g": str(game_id),
-            "u": credentials["user"],
-            "t": credentials["token"],
-        },
+    refresh_game_patch(
+        game_id,
+        credentials,
+        user_agent or FALLBACK_USER_AGENT,
+        storage,
+        config_data,
     )
 
-    try:
-        http_get(patch_url, user_agent or FALLBACK_USER_AGENT)
-    except Exception:
-        pass
+    unlocks_body = cache_unlocks(
+        game_id,
+        credentials,
+        user_agent or FALLBACK_USER_AGENT,
+        config_data,
+    )
+    if unlocks_body is not None:
+        storage.upsert_cache(
+            cache_keys.unlocks(game_id, credentials["user"]),
+            unlocks_body,
+        )
 
-    cache_unlocks(game_id, credentials, user_agent or FALLBACK_USER_AGENT, config_data)
     cache_session(game_id, credentials, storage)
