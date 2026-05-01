@@ -22,7 +22,11 @@ What is already working in the experimental implementation:
 - KNULLI installation through a single-file `RAOfflineProxy Install.sh` Tools entry
 - a single KNULLI Tools entry for `RAOfflineProxy Menu`
 - on-screen install/status feedback using `fbv`
-- an interactive SDL-based KNULLI menu for Start, Stop, Uninstall, and Exit
+- an interactive SDL-based KNULLI menu for Start, Stop, Cached Games, Uninstall, and Exit
+- controller-driven cached game management inside the SDL menu
+- manual ROM adding from a file browser rooted in RetroArch/KNULLI paths
+- cached game preview images in the SDL menu
+- Linux ROM hashing support for multiple RetroAchievements platforms
 
 ## KNULLI Flow
 
@@ -38,9 +42,18 @@ After install, this Tools entry is created:
 
 Current on-device feedback behavior:
 
-- `RAOfflineProxy Menu` is the primary interactive KNULLI UI for Start, Stop, Uninstall, and Exit
+- `RAOfflineProxy Menu` is the primary interactive KNULLI UI for Start, Stop, Cached Games, Uninstall, and Exit
 - `RAOfflineProxy Menu` now uses the SDL/`pygame` menu path for responsive controller navigation
 - `RAOfflineProxy Install` still displays a short framebuffer feedback screen during installation
+
+Current SDL menu capabilities:
+
+- `Cached Games` lists currently cached games from local `patch:*` cache entries
+- `Add ROM` opens a fullscreen file browser rooted from the platform's RetroArch ROM directory resolution
+- selecting a cached game opens a per-game action menu
+- `Remove cache` removes the selected game's `patch`, `unlocks`, and `startsession` entries
+- `Clear cache` removes game-related cache entries while preserving cached login and User-Agent data
+- cached games can show their game image in the top-right of the screen when patch metadata provides one
 
 Current install UX:
 
@@ -54,6 +67,19 @@ What is still rough:
 - KNULLI integration is still being hardened and simplified
 - visual presentation is still being tuned for device-specific KNULLI behavior
 - the SDL menu depends on `pygame` being available on-device; the launcher automatically adds `/userdata/roms/pygame` to `PYTHONPATH` when present
+- clearing cache while the proxy is actively running does not stop the service first, so live requests can repopulate game cache entries again
 - Android remains the only fully documented and supported target
+
+Current Linux ROM hashing coverage includes:
+
+- Game Boy / Game Boy Color / Game Boy Advance
+- NES / FDS / SNES
+- PC Engine
+- Atari 7800 / Atari Lynx
+- Super Cassette Vision
+- Nintendo 64
+- Nintendo DS
+- PSP
+- PSX
 
 Treat Linux support as a development preview rather than an officially supported feature for now.
