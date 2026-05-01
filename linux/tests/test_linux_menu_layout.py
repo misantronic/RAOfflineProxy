@@ -30,6 +30,21 @@ class MenuLayoutTests(unittest.TestCase):
 
         self.assertGreaterEqual(session.scroll_offset, 0)
 
+    def test_restore_view_position_restores_selection_and_scroll(self) -> None:
+        session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
+        session.view_positions = {"cached_games": (5, 2)}
+        session.selected_index = 0
+        session.scroll_offset = 0
+        session.last_navigation_delta = 1
+        session.navigation_hold_started_at = 10.0
+
+        session.restore_view_position("cached_games")
+
+        self.assertEqual(session.selected_index, 5)
+        self.assertEqual(session.scroll_offset, 2)
+        self.assertEqual(session.last_navigation_delta, 0)
+        self.assertEqual(session.navigation_hold_started_at, 0.0)
+
 
 if __name__ == "__main__":
     unittest.main()

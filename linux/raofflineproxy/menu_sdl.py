@@ -162,6 +162,8 @@ class MenuSdlSession:
         self.active_game = None
         self.browser_dir: Path | None = None
         self.browser_entries: list[Path] = []
+        self.view_positions: dict[str, tuple[int, int]] = {}
+        self.browser_positions: dict[str, tuple[int, int]] = {}
         self.preview_surface = None
         self.preview_game_id = None
         self.input_handles = open_input_devices()
@@ -425,8 +427,9 @@ class MenuSdlSession:
                 self.start_proxy()
             return
         if self.selected_index == 1:
+            self.save_view_position("main")
             self.view = "cached_games"
-            self.reset_selection()
+            self.restore_view_position("cached_games")
             self.refresh_cached_games()
             return
         if self.selected_index == 2:
@@ -445,17 +448,19 @@ class MenuSdlSession:
             self.storage.clear_cache()
             self.active_game = None
             self.refresh_cached_games()
-            self.reset_selection()
+            self.restore_view_position("cached_games")
             self.message = ("Cache cleared", time.monotonic() + 1.5)
             return
 
         if self.selected_index == back_index:
+            self.save_view_position("cached_games")
             self.view = "main"
-            self.reset_selection()
+            self.restore_view_position("main")
             return
 
         game_index = self.selected_index - 1
         if 0 <= game_index < len(self.cached_games):
+            self.save_view_position("cached_games")
             self.active_game = self.cached_games[game_index]
             self.view = "game_actions"
             self.reset_selection()
@@ -464,7 +469,7 @@ class MenuSdlSession:
     def activate_game_actions_selected(self) -> None:
         if self.active_game is None:
             self.view = "cached_games"
-            self.reset_selection()
+            self.restore_view_position("cached_games")
             self.refresh_cached_games()
             return
 
@@ -474,13 +479,13 @@ class MenuSdlSession:
             self.active_game = None
             self.refresh_cached_games()
             self.view = "cached_games"
-            self.reset_selection()
+            self.restore_view_position("cached_games")
             self.message = (f"Removed {removed_title}", time.monotonic() + 1.5)
             return
 
         self.active_game = None
         self.view = "cached_games"
-        self.reset_selection()
+        self.restore_view_position("cached_games")
 
     def activate_file_browser_selected(self) -> None:
         if self.browser_dir is None:
@@ -495,37 +500,44 @@ class MenuSdlSession:
         first_entry_index = 1 if has_parent else 0
         cancel_index = first_entry_index + len(self.browser_entries)
         if has_parent and self.selected_index == 0:
-            self.set_browser_dir(self.browser_dir.parent)
+            self.save_browser_position()
+            self.set_browser_dir(self.browser_dir.parent, restore=True)
             return
         if self.selected_index == cancel_index:
+            self.save_browser_position()
             self.view = "cached_games"
-            self.reset_selection()
+            self.restore_view_position("cached_games")
             self.refresh_cached_games()
             return
 
         entry = self.browser_entries[self.selected_index - first_entry_index]
         if entry.is_dir():
-            self.set_browser_dir(entry)
+            self.save_browser_position()
+            self.set_browser_dir(entry, restore=True)
             return
 
         result = add_rom_to_cache(entry, self.storage, load_config())
         self.message = (result.message, time.monotonic() + ERROR_SECONDS)
+        self.save_browser_position()
         self.view = "cached_games"
-        self.reset_selection()
+        self.restore_view_position("cached_games")
         self.refresh_cached_games()
 
     def open_file_browser(self) -> None:
         try:
+            self.save_view_position("cached_games")
             root = resolve_rom_root(load_config())
-            self.set_browser_dir(root)
+            self.set_browser_dir(root, restore=True)
             self.view = "file_browser"
-            self.reset_selection()
         except Exception as exc:
             self.message = (f"Browse failed: {exc}", time.monotonic() + ERROR_SECONDS)
 
-    def set_browser_dir(self, path: Path) -> None:
+    def set_browser_dir(self, path: Path, restore: bool = False) -> None:
         self.browser_dir = path
         self.browser_entries = list_browser_entries(path)
+        if restore:
+            self.restore_browser_position(path)
+            return
         self.reset_selection()
 
     def refresh_cached_games(self) -> None:
@@ -537,35 +549,38 @@ class MenuSdlSession:
         if self.view == "file_browser":
             if self.browser_dir is None:
                 self.view = "cached_games"
-                self.reset_selection()
+                self.restore_view_position("cached_games")
                 self.refresh_cached_games()
                 return
 
             root = resolve_rom_root(load_config())
             if self.browser_dir == root:
+                self.save_browser_position()
                 self.view = "cached_games"
-                self.reset_selection()
+                self.restore_view_position("cached_games")
                 self.refresh_cached_games()
                 return
 
             if self.browser_dir.parent != self.browser_dir:
-                self.set_browser_dir(self.browser_dir.parent)
+                self.save_browser_position()
+                self.set_browser_dir(self.browser_dir.parent, restore=True)
                 return
 
             self.view = "cached_games"
-            self.reset_selection()
+            self.restore_view_position("cached_games")
             self.refresh_cached_games()
             return
 
         if self.view == "cached_games":
+            self.save_view_position("cached_games")
             self.view = "main"
-            self.reset_selection()
+            self.restore_view_position("main")
             return
 
         if self.view == "game_actions":
             self.active_game = None
             self.view = "cached_games"
-            self.reset_selection()
+            self.restore_view_position("cached_games")
             return
 
         self.running = False
@@ -638,6 +653,38 @@ class MenuSdlSession:
     def reset_selection(self) -> None:
         self.selected_index = 0
         self.scroll_offset = 0
+        self.last_navigation_delta = 0
+        self.navigation_hold_started_at = 0.0
+
+    def save_view_position(self, view: str | None = None) -> None:
+        key = view or self.view
+        self.view_positions[key] = (self.selected_index, self.scroll_offset)
+
+    def restore_view_position(self, view: str) -> None:
+        saved = self.view_positions.get(view)
+        if saved is None:
+            self.reset_selection()
+            return
+
+        self.selected_index, self.scroll_offset = saved
+        self.last_navigation_delta = 0
+        self.navigation_hold_started_at = 0.0
+
+    def save_browser_position(self) -> None:
+        if self.browser_dir is None:
+            return
+        self.browser_positions[str(self.browser_dir)] = (
+            self.selected_index,
+            self.scroll_offset,
+        )
+
+    def restore_browser_position(self, path: Path) -> None:
+        saved = self.browser_positions.get(str(path))
+        if saved is None:
+            self.reset_selection()
+            return
+
+        self.selected_index, self.scroll_offset = saved
         self.last_navigation_delta = 0
         self.navigation_hold_started_at = 0.0
 
