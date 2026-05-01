@@ -140,7 +140,7 @@ class MenuSdlSession:
         self.input_handles = open_input_devices()
         self.title_font = self.load_font(max(38, height // 16), bold=True)
         self.status_font = self.load_font(max(28, height // 24))
-        self.item_font = self.load_font(max(46, height // 12), bold=True)
+        self.item_font = self.load_font(max(28, height // 24), bold=True)
         self.clock = pygame.time.Clock()
         for joystick_index in range(pygame.joystick.get_count()):
             joystick = pygame.joystick.Joystick(joystick_index)
@@ -184,7 +184,7 @@ class MenuSdlSession:
     def render(self) -> None:
         self.surface.fill(BACKGROUND_COLOR)
 
-        title = self.title_font.render("RAOfflineProxy Menu", False, PRIMARY_COLOR)
+        title = self.title_font.render("RAOfflineProxy", False, PRIMARY_COLOR)
         title_rect = title.get_rect(
             center=(self.width // 2, max(50, self.height // 10))
         )
@@ -198,7 +198,7 @@ class MenuSdlSession:
 
         items = self.labels(running)
         start_y = status_rect.bottom + 70
-        gap = max(54, self.height // 10)
+        gap = max(self.item_font.get_height() + 12, self.height // 14)
         for index, label in enumerate(items):
             color = SELECTED_COLOR if index == self.selected_index else TEXT_COLOR
             prefix = "> " if index == self.selected_index else "  "
@@ -220,8 +220,8 @@ class MenuSdlSession:
         self.pygame.display.flip()
 
     def labels(self, running: bool) -> list[str]:
-        toggle = "STOP PROXY" if running else "START PROXY"
-        return [toggle, "UNINSTALL", "EXIT"]
+        toggle = "Stop proxy" if running else "Start proxy"
+        return [toggle, "Uninstall", "Exit menu"]
 
     def handle_events(self) -> None:
         for event in self.pygame.event.get():
