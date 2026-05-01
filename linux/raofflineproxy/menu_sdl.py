@@ -5,7 +5,14 @@ from pathlib import Path
 
 from .batocera_conf import patch_batocera_conf, revert_batocera_conf
 from .config import CONFIG_DIR, load_config
-from .platform import resolve_retroarch_cfg, resolve_rom_root
+from .platform import (
+    autostart_enabled,
+    autostart_supported,
+    disable_autostart,
+    enable_autostart,
+    resolve_retroarch_cfg,
+    resolve_rom_root,
+)
 from .retroarch_cfg import patch_retroarch_cfg, revert_retroarch_cfg
 from .rom_browser import (
     add_rom_to_cache,
@@ -255,6 +262,12 @@ class MenuSdlSession:
                 overlay = self.status_font.render(text, False, SELECTED_COLOR)
                 overlay_rect = overlay.get_rect(topleft=(LEFT_MARGIN, self.height - 56))
                 self.surface.blit(overlay, overlay_rect)
+        else:
+            hint = self.bottom_hint_text()
+            if hint is not None:
+                overlay = self.status_font.render(hint, False, SELECTED_COLOR)
+                overlay_rect = overlay.get_rect(topleft=(LEFT_MARGIN, self.height - 56))
+                self.surface.blit(overlay, overlay_rect)
 
         self.pygame.display.flip()
 
@@ -279,7 +292,16 @@ class MenuSdlSession:
             return labels
 
         toggle = "Stop proxy" if running else "Start proxy"
-        return [toggle, "Cached games", "Uninstall", "Exit Menu"]
+        labels = [toggle]
+        config_data = load_config()
+        if autostart_supported(config_data):
+            labels.append(
+                "Disable autostart"
+                if autostart_enabled(config_data)
+                else "Enable autostart"
+            )
+        labels.extend(["Cached games", "Uninstall", "Exit Menu"])
+        return labels
 
     def current_labels(self, running: bool | None = None) -> list[str]:
         return self.labels(self.proxy_running() if running is None else running)
@@ -313,7 +335,19 @@ class MenuSdlSession:
             )
         if self.view == "file_browser":
             return str(self.browser_dir or "No ROM directory")
-        return "PROXY: RUNNING" if running else "PROXY: STOPPED"
+        logged_in = self.storage.load_login_credentials() is not None
+        proxy_status = "RUNNING" if running else "STOPPED"
+        login_status = "LOGGED IN" if logged_in else "NOT LOGGED IN"
+        return f"PROXY: {proxy_status}, STATUS: {login_status}"
+
+    def bottom_hint_text(self) -> str | None:
+        if self.view != "main":
+            return None
+
+        if self.storage.load_login_credentials() is not None:
+            return None
+
+        return '"Start proxy" and start a game to login.'
 
     def handle_events(self) -> None:
         for event in self.pygame.event.get():
@@ -429,13 +463,22 @@ class MenuSdlSession:
             else:
                 self.start_proxy()
             return
-        if self.selected_index == 1:
+
+        index = 1
+        config_data = load_config()
+        if autostart_supported(config_data):
+            if self.selected_index == index:
+                self.toggle_autostart(config_data)
+                return
+            index += 1
+
+        if self.selected_index == index:
             self.save_view_position("main")
             self.view = "cached_games"
             self.restore_view_position("cached_games")
             self.refresh_cached_games()
             return
-        if self.selected_index == 2:
+        if self.selected_index == index + 1:
             self.uninstall()
             return
         self.running = False
@@ -790,11 +833,28 @@ class MenuSdlSession:
         except Exception as exc:
             self.message = (f"Stop failed: {exc}", time.monotonic() + ERROR_SECONDS)
 
+    def toggle_autostart(self, config_data: dict) -> None:
+        try:
+            if autostart_enabled(config_data):
+                disable_autostart(config_data)
+                self.message = ("Autostart disabled", time.monotonic() + 1.2)
+            else:
+                enable_autostart(config_data)
+                self.message = ("Autostart enabled", time.monotonic() + 1.2)
+        except Exception as exc:
+            self.message = (
+                f"Autostart failed: {exc}",
+                time.monotonic() + ERROR_SECONDS,
+            )
+
     def uninstall(self) -> None:
-        self.running = False
-        subprocess.run(
-            ["/userdata/system/raofflineproxy/bin/raofflineproxy-uninstall"],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            check=False,
-        )
+        launcher = "/userdata/system/raofflineproxy/bin/raofflineproxy-uninstall"
+        try:
+            self.storage.close()
+        except Exception:
+            pass
+        try:
+            close_input_devices(self.input_handles)
+        except Exception:
+            pass
+        os.execv(launcher, [launcher])

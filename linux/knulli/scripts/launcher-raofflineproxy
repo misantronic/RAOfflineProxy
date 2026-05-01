@@ -5,6 +5,9 @@ BASE_DIR="/userdata/system/raofflineproxy"
 PYGAME_DIR="/userdata/roms/pygame"
 PYTHONPATH_ENTRIES="${BASE_DIR}/app"
 
+export HOME="/userdata/system"
+export XDG_CONFIG_HOME="/userdata/system/.config"
+
 if [ -d "${PYGAME_DIR}" ]; then
   PYTHONPATH_ENTRIES="${PYTHONPATH_ENTRIES}:${PYGAME_DIR}"
 fi

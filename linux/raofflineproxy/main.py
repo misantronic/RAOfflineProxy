@@ -3,6 +3,7 @@ import sys
 from pathlib import Path
 
 from .config import CONFIG_FILE, detect_retroarch_cfg, load_config, proxy_value
+from .platform import autostart_enabled, disable_autostart, enable_autostart
 from .batocera_conf import patch_batocera_conf, revert_batocera_conf
 from .retroarch_cfg import (
     patch_retroarch_cfg,
@@ -72,6 +73,9 @@ def main() -> None:
         choices=[
             "start-proxy",
             "stop-proxy",
+            "enable-autostart",
+            "disable-autostart",
+            "autostart-status",
             "status",
             "run-service",
             "ui",
@@ -193,6 +197,20 @@ def main() -> None:
         if args.command == "stop-proxy":
             for line in safe_stop_proxy(config_data, args.retroarch_cfg or cfg_path):
                 print(line)
+            return
+
+        if args.command == "enable-autostart":
+            enable_autostart(config_data)
+            print("Autostart enabled")
+            return
+
+        if args.command == "disable-autostart":
+            disable_autostart(config_data)
+            print("Autostart disabled")
+            return
+
+        if args.command == "autostart-status":
+            print("enabled" if autostart_enabled(config_data) else "disabled")
             return
 
         status = status_retroarch_cfg(cfg_path, config_data)

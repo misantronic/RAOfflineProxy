@@ -23,6 +23,7 @@ What is already working in the experimental implementation:
 - a single KNULLI Tools entry for `RAOfflineProxy Menu`
 - on-screen install/status feedback using `fbv`
 - an interactive SDL-based KNULLI menu for Start, Stop, Cached Games, Uninstall, and Exit
+- autostart toggle support from the SDL root menu
 - controller-driven cached game management inside the SDL menu
 - manual ROM adding from a file browser rooted in RetroArch/KNULLI paths
 - cached game preview images in the SDL menu
@@ -48,6 +49,7 @@ Current on-device feedback behavior:
 
 Current SDL menu capabilities:
 
+- `Enable autostart` / `Disable autostart` is available at the root when the platform supports startup hooks
 - `Cached Games` lists currently cached games from local `patch:*` cache entries
 - `Add ROM` opens a fullscreen file browser rooted from the platform's RetroArch ROM directory resolution
 - selecting a cached game opens a per-game action menu
@@ -55,11 +57,18 @@ Current SDL menu capabilities:
 - `Clear cache` removes game-related cache entries while preserving cached login and User-Agent data
 - cached games can show their game image in the top-right of the screen when patch metadata provides one
 
+Current KNULLI persistence behavior:
+
+- the launcher now forces a stable config/cache location under `/userdata/system/.config/raofflineproxy`
+- this keeps online-cached login/game data available to both interactive launches and autostarted services after reboot
+- autostart uses `/userdata/system/custom.sh` on KNULLI/Batocera-style systems
+
 Current install UX:
 
 - after running `RAOfflineProxy Install`, the installer asks the user to `Please Update Gamelists.`
 - the installer removes itself after a successful install
 - the Tools list is expected to expose only `RAOfflineProxy Menu`
+- uninstall stops the proxy, disables autostart, and removes RAOfflineProxy app/config/cache data locations on KNULLI, including legacy RAOfflineProxy-owned paths from older builds
 
 What is still rough:
 
@@ -68,6 +77,7 @@ What is still rough:
 - visual presentation is still being tuned for device-specific KNULLI behavior
 - the SDL menu depends on `pygame` being available on-device; the launcher automatically adds `/userdata/roms/pygame` to `PYTHONPATH` when present
 - clearing cache while the proxy is actively running does not stop the service first, so live requests can repopulate game cache entries again
+- autostart is currently implemented for KNULLI/Batocera-style startup hooks, not every Linux environment
 - Android remains the only fully documented and supported target
 
 Current Linux ROM hashing coverage includes:

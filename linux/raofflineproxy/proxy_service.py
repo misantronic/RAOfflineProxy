@@ -42,14 +42,6 @@ SOCKET_TIMEOUT_SECONDS = 30
 
 AWARD_ACTIONS = {"awardachievement", "submitlbentry"}
 FAKE_OFFLINE_SUCCESS_ACTIONS = {"ping"}
-CACHEABLE_ACTIONS = {
-    "patch",
-    "gameid",
-    "achievements",
-    "hashlibrary",
-    "login2",
-    "unlocks",
-}
 
 
 def cache_key_for_request(path: str, body: str) -> str:
@@ -65,8 +57,14 @@ def cache_key_for_request(path: str, body: str) -> str:
 
     if action == "gameid":
         return cache_keys.game_id(hash_value)
+    if action == "login2":
+        return cache_keys.login(user)
     if action == "startsession":
         return cache_keys.start_session(game_id, user)
+    if action == "patch":
+        return cache_keys.patch(game_id, user)
+    if action == "unlocks":
+        return cache_keys.unlocks(game_id, user)
     if hardcore:
         return f"{action}:{game_id}:{user}:{hardcore}"
     return f"{action}:{game_id}:{user}"
@@ -74,6 +72,14 @@ def cache_key_for_request(path: str, body: str) -> str:
 
 def should_cache_response(response_body: str) -> bool:
     return '"Success":true' in response_body or '"Success": true' in response_body
+
+
+def should_cache_action(action: str | None, path: str) -> bool:
+    return (
+        action is not None
+        and path.startswith("/dorequest.php")
+        and action != "startsession"
+    )
 
 
 def response_bytes(code: int, body: str, reason: str | None = None) -> bytes:
@@ -300,7 +306,7 @@ class ProxyRuntimeServer(ThreadingTCPServer):
 
         if response_body is None:
             return error_json(503, "invalid upstream response")
-        if should_cache_response(response_body) and action in CACHEABLE_ACTIONS:
+        if should_cache_response(response_body) and should_cache_action(action, path):
             key = cache_key_for_request(path, raw_body)
             self.storage.upsert_cache(key, response_body)
             if action == "patch":
@@ -319,7 +325,7 @@ class ProxyRuntimeServer(ThreadingTCPServer):
     def handle_offline_request(
         self, path: str, raw_body: str, action: str | None
     ) -> bytes:
-        if action not in CACHEABLE_ACTIONS:
+        if not should_cache_action(action, path):
             return error_json(503, "offline")
 
         key = cache_key_for_request(path, raw_body)

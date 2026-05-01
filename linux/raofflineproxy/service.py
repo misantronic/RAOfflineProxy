@@ -16,6 +16,11 @@ from .state import (
     save_service_status,
 )
 
+SERVICE_COMMAND_MARKERS = [
+    "-m raofflineproxy.main run-service",
+    "-m linux.raofflineproxy.main run-service",
+]
+
 
 def process_is_running(pid: int) -> bool:
     try:
@@ -38,9 +43,66 @@ def process_has_exited(pid: int) -> bool:
     return "Z" in status
 
 
-def start_service_process(config_data: dict) -> dict:
+def process_matches_service(pid: int) -> bool:
+    try:
+        command = subprocess.check_output(
+            ["ps", "-p", str(pid), "-o", "command="], text=True
+        ).strip()
+    except subprocess.CalledProcessError:
+        return False
+
+    if not command:
+        return False
+    return any(marker in command for marker in SERVICE_COMMAND_MARKERS)
+
+
+def discover_service_pid() -> int | None:
+    try:
+        output = subprocess.check_output(["ps", "-eo", "pid=,command="], text=True)
+    except subprocess.CalledProcessError:
+        return None
+
+    for raw_line in output.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        pid_text, _, command = line.partition(" ")
+        if not pid_text or not command:
+            continue
+        if any(marker in command for marker in SERVICE_COMMAND_MARKERS):
+            try:
+                return int(pid_text)
+            except ValueError:
+                continue
+    return None
+
+
+def tracked_or_discovered_service_pid() -> int | None:
     pid = load_pid()
-    if pid is not None and process_is_running(pid):
+    if pid is not None and process_is_running(pid) and process_matches_service(pid):
+        return pid
+    return discover_service_pid()
+
+
+def save_running_service_state(
+    pid: int, config_data: dict, started_at: int | None = None
+) -> None:
+    save_pid(pid)
+    save_service_status(
+        {
+            "running": True,
+            "pid": pid,
+            "startedAt": started_at or int(time.time()),
+            "proxyHost": config_data.get("proxy_host", "127.0.0.1"),
+            "proxyPort": int(config_data.get("proxy_port", 8080)),
+        }
+    )
+
+
+def start_service_process(config_data: dict) -> dict:
+    pid = tracked_or_discovered_service_pid()
+    if pid is not None:
+        save_running_service_state(pid, config_data)
         return {"started": False, "already_running": True, "pid": pid}
 
     LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
@@ -54,22 +116,14 @@ def start_service_process(config_data: dict) -> dict:
             start_new_session=True,
         )
 
-    save_pid(process.pid)
-    save_service_status(
-        {
-            "running": True,
-            "pid": process.pid,
-            "startedAt": int(time.time()),
-            "proxyHost": config_data.get("proxy_host", "127.0.0.1"),
-            "proxyPort": int(config_data.get("proxy_port", 8080)),
-        }
-    )
+    save_running_service_state(process.pid, config_data)
     return {"started": True, "already_running": False, "pid": process.pid}
 
 
 def stop_service_process(timeout_seconds: int = 10) -> dict:
-    pid = load_pid()
+    pid = tracked_or_discovered_service_pid()
     if pid is None:
+        clear_pid()
         clear_service_status()
         return {"stopped": False, "already_stopped": True}
 
@@ -94,7 +148,7 @@ def stop_service_process(timeout_seconds: int = 10) -> dict:
 
 
 def service_status() -> dict:
-    pid = load_pid()
+    pid = tracked_or_discovered_service_pid()
     status = load_service_status() or {}
     running = pid is not None and process_is_running(pid)
 
@@ -105,8 +159,14 @@ def service_status() -> dict:
             status["pid"] = pid
         save_service_status(status)
     else:
+        if "startedAt" not in status:
+            status["startedAt"] = int(time.time())
         status["running"] = True
         status["pid"] = pid
+        status["proxyHost"] = status.get("proxyHost", "127.0.0.1")
+        status["proxyPort"] = int(status.get("proxyPort", 8080))
+        save_pid(pid)
+        save_service_status(status)
 
     return status
 
