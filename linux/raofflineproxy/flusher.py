@@ -20,7 +20,6 @@ from .utils import (
     extract_form_param,
     parse_form_params,
     proxy_user_agent,
-    redact_form_tokens,
     redact_query_tokens,
     replace_or_append_form_param,
     sha256_hex,
@@ -210,11 +209,6 @@ def send_award(award: dict, config_data: dict) -> tuple[str, str]:
         was_clamped,
         user_agent,
         redact_query_tokens(award["queryString"]),
-    )
-    LOGGER.info(
-        "Flush sending body: achievementId=%s body=%s",
-        award["achievementId"],
-        redact_form_tokens(body),
     )
     status, _reason, response_body = http_post(
         url,

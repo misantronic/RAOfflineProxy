@@ -54,6 +54,14 @@ The reconnect award flush now mirrors the Android client more closely:
   - `RAOfflineProxy/Linux/1.0.0-alpha1`
 - tamper-chain metadata is attached to queued award replays
 
+On KNULLI/Batocera-style installs, the launcher also forces a stable config/cache location under:
+
+```text
+/userdata/system/.config/raofflineproxy
+```
+
+This avoids cache mismatches between interactive menu launches, autostart, and SSH sessions after reboot.
+
 `stop-proxy` stops the service first, then reverts the RetroArch config patch.
 
 ## Layout
@@ -136,12 +144,23 @@ The installer removes itself after a successful install and creates this Tools e
 
 `RAOfflineProxy Menu` now launches the SDL/`pygame` menu path. The KNULLI launcher automatically adds `/userdata/roms/pygame` to `PYTHONPATH` when that directory exists on-device.
 
+On KNULLI/Batocera-style installs, the launcher also exports:
+
+- `HOME=/userdata/system`
+- `XDG_CONFIG_HOME=/userdata/system/.config`
+
 ## Config
 
 Optional config file:
 
 ```text
 ~/.config/raofflineproxy/config.json
+```
+
+On KNULLI/Batocera-style systems, the effective config path is typically:
+
+```text
+/userdata/system/.config/raofflineproxy/config.json
 ```
 
 Supported keys:
@@ -180,6 +199,12 @@ Service files are stored in:
 ~/.config/raofflineproxy/service_status.json
 ~/.config/raofflineproxy/menu-sdl.log
 ~/.config/raofflineproxy/ui-state.txt
+```
+
+On KNULLI/Batocera-style systems, these files are normally stored under:
+
+```text
+/userdata/system/.config/raofflineproxy/
 ```
 
 If Python includes `sqlite3`, cache and award data are stored in `proxy.sqlite3`.
@@ -228,6 +253,7 @@ It is intended to allow controller-driven access to:
 
 - Start proxy
 - Stop proxy
+- Enable autostart / Disable autostart
 - Cached games
 - Uninstall
 - Exit Menu
@@ -257,6 +283,46 @@ Selecting a cached game opens a per-game action menu with:
 - `startsession:*`
 
 `Clear cache` removes all game-related cache entries while preserving cached login and User-Agent data.
+
+### Autostart
+
+The SDL root menu can expose:
+
+- `Enable autostart`
+- `Disable autostart`
+
+This is implemented through the platform abstraction.
+
+On KNULLI/Batocera-style systems, enabling autostart currently manages a block inside:
+
+```text
+/userdata/system/custom.sh
+```
+
+That startup block runs:
+
+```text
+/userdata/system/raofflineproxy/bin/raofflineproxy start-proxy
+```
+
+CLI equivalents are also available:
+
+- `enable-autostart`
+- `disable-autostart`
+- `autostart-status`
+
+### Uninstall Behavior
+
+On KNULLI/Batocera-style installs, uninstall now performs a full cleanup:
+
+- stops the proxy
+- disables autostart
+- removes the Tools entry
+- removes the installed app bundle
+- removes the persistent config/cache directory
+- removes legacy root-home config/cache data from older builds when present
+
+That means cached login data, local cache entries, queued awards, logs, preview images, and related RAOfflineProxy state are deleted during uninstall.
 
 The `Add ROM` file browser currently supports manual caching for these ROM families:
 

@@ -2,6 +2,22 @@ import json
 import os
 from pathlib import Path
 
+
+def resolve_config_dir() -> Path:
+    configured = os.environ.get("RAOFFLINEPROXY_CONFIG_DIR")
+    if configured:
+        return Path(configured).expanduser()
+
+    xdg_config_home = os.environ.get("XDG_CONFIG_HOME")
+    if xdg_config_home:
+        return Path(xdg_config_home).expanduser() / "raofflineproxy"
+
+    if Path("/userdata/system").exists():
+        return Path("/userdata/system/.config/raofflineproxy")
+
+    return Path.home() / ".config" / "raofflineproxy"
+
+
 RA_HOST = "https://retroachievements.org"
 PROXY_UA_TAG = "RAOfflineProxy/Linux/1.0.0-alpha1"
 FALLBACK_USER_AGENT = "rcheevos/11.4.0"
@@ -10,7 +26,7 @@ DEFAULT_PROXY_PORT = 8080
 MIN_PROXY_PORT = 1024
 MAX_PROXY_PORT = 65535
 
-CONFIG_DIR = Path.home() / ".config" / "raofflineproxy"
+CONFIG_DIR = resolve_config_dir()
 CONFIG_FILE = CONFIG_DIR / "config.json"
 STATE_FILE = CONFIG_DIR / "retroarch_patch_state.json"
 DATABASE_FILE = CONFIG_DIR / "proxy.sqlite3"

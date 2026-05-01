@@ -28,6 +28,7 @@ The current `RAOfflineProxy Menu` implementation uses SDL/`pygame` for responsiv
 Current SDL menu features:
 
 - Start / Stop proxy
+- Enable / Disable autostart
 - Cached Games view
 - Add ROM from a controller-driven file browser
 - per-game cache actions
@@ -43,6 +44,17 @@ Cached Games currently supports:
 - manual ROM adding for multiple RetroAchievements-supported hash formats including Game Boy, NES, SNES, N64, NDS, PSP, and PSX families
 
 This bundle now patches RetroArch config and launches the background Linux proxy service.
+
+Autostart support currently uses:
+
+- `/userdata/system/custom.sh` as the startup hook
+- `/userdata/system/.config/raofflineproxy/` as the stable config/cache directory
+
+This keeps the same cached login/game data visible to:
+
+- the SDL menu
+- manual CLI launches
+- autostarted proxy services after reboot
 
 ## Build
 
@@ -72,3 +84,16 @@ The installer removes itself after a successful install.
 ## Uninstall
 
 Use `Uninstall` inside `RAOfflineProxy Menu`.
+
+The KNULLI uninstall flow now:
+
+- stops the proxy first
+- disables autostart
+- removes the Tools entry
+- removes the installed bundle
+- removes the persistent RAOfflineProxy config/cache directory
+- removes legacy root-home RAOfflineProxy config/cache data from older builds when present
+
+This clears cached game data, cached login/token data, queued awards, logs, and other RAOfflineProxy state on uninstall.
+
+On KNULLI, the final file cleanup is performed by a short detached cleanup step after the menu/uninstall process exits, so RAOfflineProxy-owned config/cache files are not recreated by the still-running app during shutdown.

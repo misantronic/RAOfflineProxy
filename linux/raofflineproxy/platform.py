@@ -3,10 +3,13 @@ from pathlib import Path
 from .config import detect_retroarch_cfg
 
 DEFAULT_KNULLI_ROMS_ROOT = Path("/userdata/roms")
+DEFAULT_KNULLI_STARTUP_SCRIPT = Path("/userdata/system/custom.sh")
 ROM_DIRECTORY_KEYS = [
     "rgui_browser_directory",
     "content_directory",
 ]
+AUTOSTART_SENTINEL_START = "# RAOfflineProxy autostart start"
+AUTOSTART_SENTINEL_END = "# RAOfflineProxy autostart end"
 
 
 def resolve_retroarch_cfg(config_data: dict) -> str:
@@ -42,3 +45,88 @@ def read_retroarch_cfg_values(cfg_path: Path) -> dict[str, str]:
         key, value = line.split("=", 1)
         values[key.strip()] = value.strip().strip('"')
     return values
+
+
+def autostart_supported(config_data: dict) -> bool:
+    return resolve_startup_script_path(config_data) is not None
+
+
+def autostart_enabled(config_data: dict) -> bool:
+    startup_script = resolve_startup_script_path(config_data)
+    if startup_script is None or not startup_script.exists():
+        return False
+
+    content = startup_script.read_text(encoding="utf-8", errors="replace")
+    return AUTOSTART_SENTINEL_START in content and AUTOSTART_SENTINEL_END in content
+
+
+def enable_autostart(config_data: dict) -> None:
+    startup_script = resolve_startup_script_path(config_data)
+    if startup_script is None:
+        raise ValueError("Autostart is not supported on this platform")
+
+    startup_script.parent.mkdir(parents=True, exist_ok=True)
+    existing = (
+        startup_script.read_text(encoding="utf-8", errors="replace")
+        if startup_script.exists()
+        else ""
+    )
+    cleaned = strip_autostart_block(existing).rstrip()
+    block = autostart_block(config_data)
+    new_content = f"{cleaned}\n\n{block}\n" if cleaned else f"{block}\n"
+    startup_script.write_text(new_content, encoding="utf-8")
+
+
+def disable_autostart(config_data: dict) -> None:
+    startup_script = resolve_startup_script_path(config_data)
+    if startup_script is None or not startup_script.exists():
+        return
+
+    existing = startup_script.read_text(encoding="utf-8", errors="replace")
+    cleaned = strip_autostart_block(existing).strip()
+    startup_script.write_text(f"{cleaned}\n" if cleaned else "", encoding="utf-8")
+
+
+def resolve_startup_script_path(config_data: dict) -> Path | None:
+    configured = config_data.get("startup_script")
+    if configured:
+        return Path(str(configured))
+
+    if Path("/userdata/system").exists():
+        return DEFAULT_KNULLI_STARTUP_SCRIPT
+
+    return None
+
+
+def autostart_block(config_data: dict) -> str:
+    startup_command = autostart_command(config_data)
+    return "\n".join(
+        [
+            AUTOSTART_SENTINEL_START,
+            f'if [ -x "{startup_command[0]}" ]; then',
+            f"  {startup_command[0]} start-proxy >/dev/null 2>&1 || true",
+            "fi",
+            AUTOSTART_SENTINEL_END,
+        ]
+    )
+
+
+def autostart_command(config_data: dict) -> tuple[str]:
+    launcher = str(
+        config_data.get("autostart_launcher")
+        or "/userdata/system/raofflineproxy/bin/raofflineproxy"
+    )
+    return (launcher,)
+
+
+def strip_autostart_block(content: str) -> str:
+    start = content.find(AUTOSTART_SENTINEL_START)
+    if start < 0:
+        return content
+
+    end = content.find(AUTOSTART_SENTINEL_END, start)
+    if end < 0:
+        return content[:start]
+
+    end += len(AUTOSTART_SENTINEL_END)
+    return f"{content[:start]}{content[end:]}"
