@@ -300,7 +300,9 @@ class MenuSdlSession:
                 if autostart_enabled(config_data)
                 else "Enable autostart"
             )
-        labels.extend(["Cached games", "Uninstall", "Exit Menu"])
+        if self.storage.load_login_credentials() is not None:
+            labels.append("Cached games")
+        labels.extend(["Uninstall", "Exit Menu"])
         return labels
 
     def current_labels(self, running: bool | None = None) -> list[str]:
@@ -456,6 +458,8 @@ class MenuSdlSession:
             self.activate_file_browser_selected()
             return
 
+        labels = self.current_labels()
+        selected_label = labels[self.selected_index] if labels else ""
         running = self.proxy_running()
         if self.selected_index == 0:
             if running:
@@ -464,23 +468,22 @@ class MenuSdlSession:
                 self.start_proxy()
             return
 
-        index = 1
         config_data = load_config()
-        if autostart_supported(config_data):
-            if self.selected_index == index:
-                self.toggle_autostart(config_data)
-                return
-            index += 1
+        if selected_label in {"Enable autostart", "Disable autostart"}:
+            self.toggle_autostart(config_data)
+            return
 
-        if self.selected_index == index:
+        if selected_label == "Cached games":
             self.save_view_position("main")
             self.view = "cached_games"
             self.restore_view_position("cached_games")
             self.refresh_cached_games()
             return
-        if self.selected_index == index + 1:
+
+        if selected_label == "Uninstall":
             self.uninstall()
             return
+
         self.running = False
 
     def activate_cached_games_selected(self) -> None:
