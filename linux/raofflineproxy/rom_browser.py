@@ -9,10 +9,11 @@ from . import cache_keys
 from .config import CONFIG_DIR, FALLBACK_USER_AGENT, ensure_config_dir, upstream_host
 from .network import build_api_url, http_get
 from .rom_cache import cache_game
+from .rom_hashing import hash_rom, supported_rom_extensions
 from .storage import Storage
 from .utils import proxy_user_agent
 
-SUPPORTED_ROM_EXTENSIONS = {".gb", ".gbc", ".gba"}
+SUPPORTED_ROM_EXTENSIONS = supported_rom_extensions()
 
 
 @dataclass
@@ -84,17 +85,6 @@ def directory_has_supported_roms(path: Path) -> bool:
     return False
 
 
-def hash_rom_file(path: Path) -> str:
-    md5 = hashlib.md5()
-    with path.open("rb") as handle:
-        while True:
-            chunk = handle.read(8192)
-            if not chunk:
-                break
-            md5.update(chunk)
-    return md5.hexdigest()
-
-
 def fetch_game_id(
     hash_value: str,
     credentials: dict,
@@ -128,7 +118,9 @@ def add_rom_to_cache(path: Path, storage: Storage, config_data: dict) -> AddRomR
 
     user_agent = storage.load_user_agent(FALLBACK_USER_AGENT)
     try:
-        hash_value = hash_rom_file(path)
+        hash_value = hash_rom(path)
+        if hash_value is None:
+            return AddRomResult(False, "Hash failed: unsupported or unreadable ROM")
     except Exception as exc:
         return AddRomResult(False, f"Hash failed: {exc}")
 

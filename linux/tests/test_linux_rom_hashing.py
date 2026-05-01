@@ -1,0 +1,108 @@
+import hashlib
+import tempfile
+import unittest
+from pathlib import Path
+
+from linux.raofflineproxy import rom_hashing
+
+
+class LinuxRomHashingTests(unittest.TestCase):
+    def test_nes_hash_skips_16_byte_header(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            rom_path = Path(temp_dir) / "test.nes"
+            body = b"NESDATA"
+            rom_path.write_bytes(b"NES\x1a" + b"\x00" * 12 + body)
+
+            self.assertEqual(
+                rom_hashing.hash_rom(rom_path), hashlib.md5(body).hexdigest()
+            )
+
+    def test_fds_hash_skips_16_byte_header(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            rom_path = Path(temp_dir) / "test.fds"
+            body = b"FDSDATA"
+            rom_path.write_bytes(b"FDS\x1a" + b"\x00" * 12 + body)
+
+            self.assertEqual(
+                rom_hashing.hash_rom(rom_path), hashlib.md5(body).hexdigest()
+            )
+
+    def test_snes_hash_skips_512_byte_copier_header(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            rom_path = Path(temp_dir) / "test.smc"
+            body = b"A" * 8192
+            rom_path.write_bytes(b"H" * 512 + body)
+
+            self.assertEqual(
+                rom_hashing.hash_rom(rom_path), hashlib.md5(body).hexdigest()
+            )
+
+    def test_pce_hash_skips_512_byte_header_when_file_size_has_512_bit(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            rom_path = Path(temp_dir) / "test.pce"
+            body = b"B" * 1024
+            rom_path.write_bytes(b"H" * 512 + body)
+
+            self.assertEqual(
+                rom_hashing.hash_rom(rom_path), hashlib.md5(body).hexdigest()
+            )
+
+    def test_atari_7800_hash_skips_header(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            rom_path = Path(temp_dir) / "test.a78"
+            header = bytearray(128)
+            header[1:10] = b"ATARI7800"
+            body = b"ROMDATA"
+            rom_path.write_bytes(bytes(header) + body)
+
+            self.assertEqual(
+                rom_hashing.hash_rom(rom_path), hashlib.md5(body).hexdigest()
+            )
+
+    def test_atari_lynx_hash_skips_header(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            rom_path = Path(temp_dir) / "test.lnx"
+            body = b"LYNXDATA"
+            rom_path.write_bytes(b"LYNX" + b"\x00" * 60 + body)
+
+            self.assertEqual(
+                rom_hashing.hash_rom(rom_path), hashlib.md5(body).hexdigest()
+            )
+
+    def test_super_cassette_vision_hash_skips_header(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            rom_path = Path(temp_dir) / "test.cart"
+            body = b"SCVDATA"
+            rom_path.write_bytes(b"EmuSCV" + b"\x00" * 26 + body)
+
+            self.assertEqual(
+                rom_hashing.hash_rom(rom_path), hashlib.md5(body).hexdigest()
+            )
+
+    def test_n64_little_endian_hash_normalizes_bytes(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            rom_path = Path(temp_dir) / "test.n64"
+            little_endian = bytes([0x40, 0x12, 0x37, 0x80, 0xDD, 0xCC, 0xBB, 0xAA])
+            normalized = bytes([0x80, 0x37, 0x12, 0x40, 0xAA, 0xBB, 0xCC, 0xDD])
+            rom_path.write_bytes(little_endian)
+
+            self.assertEqual(
+                rom_hashing.hash_rom(rom_path),
+                hashlib.md5(normalized).hexdigest(),
+            )
+
+    def test_supported_extensions_include_new_formats(self) -> None:
+        extensions = rom_hashing.supported_rom_extensions()
+
+        self.assertIn(".nes", extensions)
+        self.assertIn(".fds", extensions)
+        self.assertIn(".smc", extensions)
+        self.assertIn(".pce", extensions)
+        self.assertIn(".a78", extensions)
+        self.assertIn(".lnx", extensions)
+        self.assertIn(".cart", extensions)
+        self.assertIn(".z64", extensions)
+
+
+if __name__ == "__main__":
+    unittest.main()

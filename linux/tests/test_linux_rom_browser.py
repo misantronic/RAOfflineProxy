@@ -53,7 +53,7 @@ class LinuxRomBrowserTests(unittest.TestCase):
             rom_path.write_bytes(b"abc")
 
             self.assertEqual(
-                rom_browser.hash_rom_file(rom_path),
+                rom_browser.hash_rom(rom_path),
                 "900150983cd24fb0d6963f7d28e17f72",
             )
 
