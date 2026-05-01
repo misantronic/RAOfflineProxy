@@ -49,9 +49,11 @@ SECONDARY_COLOR = (210, 164, 72)
 TEXT_COLOR = (255, 255, 255)
 SELECTED_COLOR = SECONDARY_COLOR
 STATUS_COLOR = (180, 180, 180)
+SECONDARY_TEXT_COLOR = (110, 110, 110)
 ERROR_SECONDS = 3
 FPS = 30
 LEFT_MARGIN = 32
+GROUP_GAP = 14
 INITIAL_NAV_INTERVAL_SECONDS = 0.08
 FAST_NAV_INTERVAL_SECONDS = 0.03
 FAST_NAV_TRIGGER_SECONDS = 0.35
@@ -227,15 +229,17 @@ class MenuSdlSession:
         gap = max(self.item_font.get_height() + 6, self.height // 18)
         self.normalize_selection(items, start_y, gap)
         self.render_game_preview()
-        visible_offset, visible_items = self.visible_items(items, start_y, gap)
-        for visible_index, label in enumerate(visible_items):
-            actual_index = visible_offset + visible_index
+        positions = self.item_positions(items, start_y, gap)
+        visible_offset, visible_items = self.visible_items(items, positions)
+        for visible_index, (actual_index, label) in enumerate(visible_items):
             color = (
-                SELECTED_COLOR if actual_index == self.selected_index else TEXT_COLOR
+                SELECTED_COLOR
+                if actual_index == self.selected_index
+                else self.item_text_color(label)
             )
             prefix = "> " if actual_index == self.selected_index else "  "
             text = self.item_font.render(f"{prefix}{label}", False, color)
-            rect = text.get_rect(topleft=(LEFT_MARGIN, start_y + (visible_index * gap)))
+            rect = text.get_rect(topleft=(LEFT_MARGIN, positions[actual_index]))
             self.surface.blit(text, rect)
 
         if self.message is not None:
@@ -287,6 +291,11 @@ class MenuSdlSession:
         if self.view == "file_browser":
             return "Add ROM"
         return "RAOfflineProxy"
+
+    def item_text_color(self, label: str) -> tuple[int, int, int]:
+        if label in {"Back", "Cancel"}:
+            return SECONDARY_TEXT_COLOR
+        return TEXT_COLOR
 
     def status_text(self, running: bool) -> str:
         if self.view == "cached_games":
@@ -387,9 +396,12 @@ class MenuSdlSession:
             return
 
         self.last_navigation_at = now
-        item_count = max(1, len(self.current_labels()))
+        items = self.current_labels()
+        item_count = max(1, len(items))
         self.selected_index = (self.selected_index + delta) % item_count
-        self.ensure_selection_visible(item_count)
+        start_y = self.item_start_y()
+        gap = self.item_gap()
+        self.ensure_selection_visible(items, start_y, gap)
         log_menu_sdl(f"navigate delta={delta} selected={self.selected_index}")
 
     def activate_selected(self) -> None:
@@ -613,6 +625,16 @@ class MenuSdlSession:
         scale = min(max_width / max(1, width), max_height / max(1, height), 1.0)
         return max(1, int(width * scale)), max(1, int(height * scale))
 
+    def item_start_y(self) -> int:
+        title_top = max(36, self.height // 12)
+        title_height = self.title_font.get_height()
+        status_top = title_top + title_height + 20
+        status_height = self.status_font.get_height()
+        return status_top + status_height + 34
+
+    def item_gap(self) -> int:
+        return max(self.item_font.get_height() + 6, self.height // 18)
+
     def reset_selection(self) -> None:
         self.selected_index = 0
         self.scroll_offset = 0
@@ -626,44 +648,77 @@ class MenuSdlSession:
             return
 
         self.selected_index = max(0, min(self.selected_index, len(items) - 1))
-        max_visible = self.max_visible_items(start_y, gap)
-        max_offset = max(0, len(items) - max_visible)
+        max_offset = max(0, len(items) - 1)
         self.scroll_offset = max(0, min(self.scroll_offset, max_offset))
-        self.ensure_selection_visible(len(items), max_visible)
+        self.ensure_selection_visible(items, start_y, gap)
 
     def visible_items(
         self,
         items: list[str],
-        start_y: int,
-        gap: int,
-    ) -> tuple[int, list[str]]:
-        max_visible = self.max_visible_items(start_y, gap)
-        end_offset = min(len(items), self.scroll_offset + max_visible)
-        return self.scroll_offset, items[self.scroll_offset : end_offset]
+        positions: list[int],
+    ) -> tuple[int, list[tuple[int, str]]]:
+        end_offset = self.visible_end_offset(positions, self.scroll_offset)
+        visible = [
+            (index, items[index]) for index in range(self.scroll_offset, end_offset)
+        ]
+        return self.scroll_offset, visible
 
-    def max_visible_items(self, start_y: int, gap: int) -> int:
+    def item_positions(self, items: list[str], start_y: int, gap: int) -> list[int]:
+        positions: list[int] = []
+        current_y = start_y
+        clear_cache_index = len(self.cached_games) + 1
+        last_game_index = len(self.cached_games)
+        for index, _label in enumerate(items):
+            positions.append(current_y)
+            current_y += gap
+            if self.view == "cached_games" and index == 0:
+                current_y += GROUP_GAP
+            if self.view == "cached_games" and index == last_game_index:
+                current_y += GROUP_GAP
+            if self.view == "cached_games" and clear_cache_index == 1 and index == 0:
+                current_y -= GROUP_GAP
+        return positions
+
+    def bottom_limit(self) -> int:
         message_padding = 44 if self.message is not None else 4
-        bottom_limit = self.height - message_padding
+        return self.height - message_padding
+
+    def visible_end_offset(self, positions: list[int], offset: int) -> int:
+        if not positions:
+            return 0
+
+        bottom_limit = self.bottom_limit()
         item_height = max(1, self.item_font.get_height())
-        available_height = max(1, bottom_limit - start_y - item_height)
-        return max(1, 1 + (available_height // max(1, gap)))
+        end_offset = offset
+        while end_offset < len(positions):
+            if (
+                positions[end_offset] + item_height > bottom_limit
+                and end_offset > offset
+            ):
+                break
+            if (
+                positions[end_offset] + item_height > bottom_limit
+                and end_offset == offset
+            ):
+                end_offset += 1
+                break
+            end_offset += 1
+        return end_offset
 
     def ensure_selection_visible(
         self,
-        item_count: int,
-        max_visible: int | None = None,
+        items: list[str],
+        start_y: int,
+        gap: int,
     ) -> None:
-        visible_count = max_visible or item_count
         if self.selected_index < self.scroll_offset:
             self.scroll_offset = self.selected_index
-            return
-
-        if self.selected_index >= self.scroll_offset + visible_count:
-            self.scroll_offset = self.selected_index - visible_count + 1
-            return
-
-        max_offset = max(0, item_count - visible_count)
-        self.scroll_offset = max(0, min(self.scroll_offset, max_offset))
+        positions = self.item_positions(items, start_y, gap)
+        end_offset = self.visible_end_offset(positions, self.scroll_offset)
+        while self.selected_index >= end_offset and self.scroll_offset < len(items) - 1:
+            self.scroll_offset += 1
+            end_offset = self.visible_end_offset(positions, self.scroll_offset)
+        self.scroll_offset = max(0, min(self.scroll_offset, max(0, len(items) - 1)))
 
     def proxy_running(self) -> bool:
         try:
