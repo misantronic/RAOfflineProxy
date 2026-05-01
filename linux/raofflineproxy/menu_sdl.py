@@ -252,7 +252,7 @@ class MenuSdlSession:
     def labels(self, running: bool) -> list[str]:
         if self.view == "cached_games":
             cached = [game.title for game in self.cached_games]
-            return ["Add ROM", *cached, "Back"]
+            return ["Add ROM", *cached, "Clear cache", "Back"]
 
         if self.view == "game_actions":
             return ["Remove cache", "Back"]
@@ -423,9 +423,18 @@ class MenuSdlSession:
         self.running = False
 
     def activate_cached_games_selected(self) -> None:
-        back_index = len(self.cached_games) + 1
+        clear_cache_index = len(self.cached_games) + 1
+        back_index = len(self.cached_games) + 2
         if self.selected_index == 0:
             self.open_file_browser()
+            return
+
+        if self.selected_index == clear_cache_index:
+            self.storage.clear_cache()
+            self.active_game = None
+            self.refresh_cached_games()
+            self.reset_selection()
+            self.message = ("Cache cleared", time.monotonic() + 1.5)
             return
 
         if self.selected_index == back_index:

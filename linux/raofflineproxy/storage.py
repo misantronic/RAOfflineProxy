@@ -246,6 +246,36 @@ class Storage:
             ]
             self._write_json_state()
 
+    def clear_cache(self) -> None:
+        if self._use_sqlite:
+            assert self._connection is not None
+            with self._lock:
+                self._connection.execute(
+                    """
+                    DELETE FROM api_cache
+                    WHERE cacheKey LIKE 'patch:%'
+                       OR cacheKey LIKE 'unlocks:%'
+                       OR cacheKey LIKE 'startsession:%'
+                       OR cacheKey LIKE 'gameid:%'
+                    """
+                )
+                self._connection.commit()
+            return
+
+        assert self._json_state is not None
+        with self._lock:
+            self._json_state["api_cache"] = [
+                item
+                for item in self._json_state["api_cache"]
+                if not (
+                    item["cacheKey"].startswith(cache_keys.PREFIX_PATCH)
+                    or item["cacheKey"].startswith(cache_keys.PREFIX_UNLOCKS)
+                    or item["cacheKey"].startswith(cache_keys.PREFIX_STARTSESSION)
+                    or item["cacheKey"].startswith(cache_keys.PREFIX_GAMEID)
+                )
+            ]
+            self._write_json_state()
+
     def evict_cache_older_than(self, before: int) -> None:
         if self._use_sqlite:
             assert self._connection is not None
