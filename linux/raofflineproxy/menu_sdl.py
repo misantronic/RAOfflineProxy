@@ -232,7 +232,8 @@ class MenuSdlSession:
         self.normalize_selection(items, start_y, gap)
         self.render_game_preview()
         positions = self.item_positions(items, start_y, gap)
-        visible_offset, visible_items = self.visible_items(items, positions)
+        visible_offset, visible_items = self.visible_items(items, positions, start_y)
+        scroll_base_y = positions[visible_offset] - start_y if visible_items else 0
         for visible_index, (actual_index, label) in enumerate(visible_items):
             color = (
                 SELECTED_COLOR
@@ -241,7 +242,9 @@ class MenuSdlSession:
             )
             prefix = "> " if actual_index == self.selected_index else "  "
             text = self.item_font.render(f"{prefix}{label}", False, color)
-            rect = text.get_rect(topleft=(LEFT_MARGIN, positions[actual_index]))
+            rect = text.get_rect(
+                topleft=(LEFT_MARGIN, positions[actual_index] - scroll_base_y)
+            )
             self.surface.blit(text, rect)
 
         if self.message is not None:
@@ -703,8 +706,9 @@ class MenuSdlSession:
         self,
         items: list[str],
         positions: list[int],
+        start_y: int,
     ) -> tuple[int, list[tuple[int, str]]]:
-        end_offset = self.visible_end_offset(positions, self.scroll_offset)
+        end_offset = self.visible_end_offset(positions, self.scroll_offset, start_y)
         visible = [
             (index, items[index]) for index in range(self.scroll_offset, end_offset)
         ]
@@ -730,23 +734,21 @@ class MenuSdlSession:
         message_padding = 44 if self.message is not None else 4
         return self.height - message_padding
 
-    def visible_end_offset(self, positions: list[int], offset: int) -> int:
+    def visible_end_offset(
+        self, positions: list[int], offset: int, start_y: int
+    ) -> int:
         if not positions:
             return 0
 
         bottom_limit = self.bottom_limit()
         item_height = max(1, self.item_font.get_height())
+        scroll_base_y = positions[offset] - start_y
         end_offset = offset
         while end_offset < len(positions):
-            if (
-                positions[end_offset] + item_height > bottom_limit
-                and end_offset > offset
-            ):
+            relative_y = positions[end_offset] - scroll_base_y
+            if relative_y + item_height > bottom_limit and end_offset > offset:
                 break
-            if (
-                positions[end_offset] + item_height > bottom_limit
-                and end_offset == offset
-            ):
+            if relative_y + item_height > bottom_limit and end_offset == offset:
                 end_offset += 1
                 break
             end_offset += 1
@@ -761,10 +763,10 @@ class MenuSdlSession:
         if self.selected_index < self.scroll_offset:
             self.scroll_offset = self.selected_index
         positions = self.item_positions(items, start_y, gap)
-        end_offset = self.visible_end_offset(positions, self.scroll_offset)
+        end_offset = self.visible_end_offset(positions, self.scroll_offset, start_y)
         while self.selected_index >= end_offset and self.scroll_offset < len(items) - 1:
             self.scroll_offset += 1
-            end_offset = self.visible_end_offset(positions, self.scroll_offset)
+            end_offset = self.visible_end_offset(positions, self.scroll_offset, start_y)
         self.scroll_offset = max(0, min(self.scroll_offset, max(0, len(items) - 1)))
 
     def proxy_running(self) -> bool:
