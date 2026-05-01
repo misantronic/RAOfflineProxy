@@ -46,6 +46,14 @@ The background service:
 - queues softcore award requests while offline or when upstream is unreachable
 - flushes queued awards when connectivity returns
 
+The reconnect award flush now mirrors the Android client more closely:
+
+- backdated awards include the `o` parameter clamped to 14 days
+- the award validation hash `v` is recalculated during replay
+- replay requests use the original RetroArch User-Agent with a Linux-specific proxy suffix:
+  - `RAOfflineProxy/Linux/1.0.0-alpha1`
+- tamper-chain metadata is attached to queued award replays
+
 `stop-proxy` stops the service first, then reverts the RetroArch config patch.
 
 ## Layout
@@ -170,6 +178,8 @@ Service files are stored in:
 ~/.config/raofflineproxy/service.pid
 ~/.config/raofflineproxy/service.log
 ~/.config/raofflineproxy/service_status.json
+~/.config/raofflineproxy/menu-sdl.log
+~/.config/raofflineproxy/ui-state.txt
 ```
 
 If Python includes `sqlite3`, cache and award data are stored in `proxy.sqlite3`.
@@ -218,12 +228,55 @@ It is intended to allow controller-driven access to:
 
 - Start proxy
 - Stop proxy
+- Cached games
 - Uninstall
-- Exit
+- Exit Menu
 
 The KNULLI Tools installer exposes this as `RAOfflineProxy Menu`.
 
 The current primary implementation is the SDL menu. The older `fbv` menu code remains in the repo as a fallback implementation, but it is no longer the default KNULLI path.
+
+### Cached Games
+
+The SDL menu now includes a `Cached games` flow with:
+
+- `Add ROM`
+- list of cached games derived from local `patch:*` entries
+- `Clear cache`
+- `Back`
+
+Selecting a cached game opens a per-game action menu with:
+
+- `Remove cache`
+- `Back`
+
+`Remove cache` deletes the selected game's:
+
+- `patch:*`
+- `unlocks:*`
+- `startsession:*`
+
+`Clear cache` removes all game-related cache entries while preserving cached login and User-Agent data.
+
+The `Add ROM` file browser currently supports manual caching for these ROM families:
+
+- Game Boy / Game Boy Color / Game Boy Advance
+- NES / FDS / SNES
+- PC Engine
+- Atari 7800 / Atari Lynx
+- Super Cassette Vision
+- Nintendo 64
+- Nintendo DS
+- PSP
+- PSX
+
+The browser resolves its initial ROM root through a small platform abstraction so Linux targets can provide their own RetroArch/ROM directory discovery logic later.
+
+When patch metadata includes an image path, the selected cached game can show a preview image in the top-right of the SDL menu. Preview images are cached under:
+
+```text
+~/.config/raofflineproxy/game-previews/
+```
 
 ## Current Limitations
 

@@ -25,6 +25,23 @@ This is still considered experimental and may need additional hardening across d
 
 The current `RAOfflineProxy Menu` implementation uses SDL/`pygame` for responsive controller-driven navigation. The launcher adds `/userdata/roms/pygame` to `PYTHONPATH` automatically when that directory exists.
 
+Current SDL menu features:
+
+- Start / Stop proxy
+- Cached Games view
+- Add ROM from a controller-driven file browser
+- per-game cache actions
+- Clear cache
+- Uninstall
+- Exit Menu
+
+Cached Games currently supports:
+
+- previewing cached game images in the top-right corner when available
+- removing a selected cached game's cache entries
+- clearing game-related cache entries while preserving cached login and User-Agent data
+- manual ROM adding for multiple RetroAchievements-supported hash formats including Game Boy, NES, SNES, N64, NDS, PSP, and PSX families
+
 This bundle now patches RetroArch config and launches the background Linux proxy service.
 
 ## Build
