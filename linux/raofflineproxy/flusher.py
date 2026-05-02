@@ -406,7 +406,9 @@ def flush_pending_awards(storage: Storage, config_data: dict) -> FlushOutcome:
         time.sleep(3)
         proxied_user_agent = proxy_user_agent(user_agent)
         for game_id in game_ids:
-            cache_unlocks(game_id, credentials, proxied_user_agent, config_data)
+            cache_unlocks(
+                game_id, credentials, proxied_user_agent, config_data, storage
+            )
             cache_session(game_id, credentials, storage)
 
     purge_processed_awards_if_safe(storage)

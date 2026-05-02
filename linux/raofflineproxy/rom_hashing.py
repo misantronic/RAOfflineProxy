@@ -352,18 +352,33 @@ ROM_HASH_STRATEGIES = [
 
 
 def hash_rom(path: Path) -> str | None:
+    candidates = hash_rom_candidates(path)
+    return candidates[0] if candidates else None
+
+
+def hash_rom_candidates(path: Path) -> list[str]:
     rom_input = RomHashInput(
         file_name=path.name,
         file_size=path.stat().st_size,
         path=path,
     )
+    candidates: list[str] = []
     for strategy in ROM_HASH_STRATEGIES:
         if not strategy.matches(rom_input.file_name):
             continue
         hash_value = strategy.hash(rom_input)
         if hash_value is not None:
-            return hash_value
-    return GenericMd5RomHashStrategy().hash(rom_input)
+            normalized = hash_value.strip().lower()
+            if normalized and normalized not in candidates:
+                candidates.append(normalized)
+
+    fallback = GenericMd5RomHashStrategy().hash(rom_input)
+    if fallback is not None:
+        normalized = fallback.strip().lower()
+        if normalized and normalized not in candidates:
+            candidates.append(normalized)
+
+    return candidates
 
 
 def supported_rom_extensions() -> set[str]:

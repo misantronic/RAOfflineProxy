@@ -10,7 +10,7 @@ from .auth import resolve_credentials
 from .config import CONFIG_DIR, FALLBACK_USER_AGENT, ensure_config_dir, upstream_host
 from .network import build_api_url, http_get
 from .rom_cache import cache_game
-from .rom_hashing import hash_rom, supported_rom_extensions
+from .rom_hashing import hash_rom, hash_rom_candidates, supported_rom_extensions
 from .storage import Storage
 from .utils import proxy_user_agent
 
@@ -119,21 +119,33 @@ def add_rom_to_cache(path: Path, storage: Storage, config_data: dict) -> AddRomR
         return AddRomResult(False, "RetroAchievements login required")
 
     try:
-        hash_value = hash_rom(path)
-        if hash_value is None:
+        hash_candidates = hash_rom_candidates(path)
+        if not hash_candidates:
             return AddRomResult(False, "Hash failed: unsupported or unreadable ROM")
     except Exception as exc:
         return AddRomResult(False, f"Hash failed: {exc}")
 
-    try:
-        game_id = fetch_game_id(
-            hash_value, credentials, user_agent, config_data, storage
-        )
-    except Exception as exc:
-        return AddRomResult(False, f"Game lookup failed: {exc}")
+    game_id = None
+    used_hash = None
+    for hash_value in hash_candidates:
+        try:
+            candidate_game_id = fetch_game_id(
+                hash_value, credentials, user_agent, config_data, storage
+            )
+        except Exception as exc:
+            return AddRomResult(False, f"Game lookup failed: {exc}")
+
+        if candidate_game_id is None:
+            continue
+
+        game_id = candidate_game_id
+        used_hash = hash_value
+        break
 
     if game_id is None:
         return AddRomResult(False, "No RetroAchievements match")
+
+    persist_game_id_aliases(storage, hash_candidates, used_hash, game_id)
 
     try:
         cache_game(
@@ -154,6 +166,19 @@ def add_rom_to_cache(path: Path, storage: Storage, config_data: dict) -> AddRomR
         return AddRomResult(False, "Caching failed: patch data was not stored")
 
     return AddRomResult(True, f"Cached {game.title}", game=game)
+
+
+def persist_game_id_aliases(
+    storage: Storage,
+    hash_candidates: list[str],
+    used_hash: str | None,
+    game_id: int,
+) -> None:
+    response_body = json.dumps({"GameID": game_id}, separators=(",", ":"))
+    for hash_value in hash_candidates:
+        if hash_value == used_hash:
+            continue
+        storage.upsert_cache(cache_keys.game_id(hash_value), response_body)
 
 
 def remove_cached_game(storage: Storage, game_id: int) -> None:
