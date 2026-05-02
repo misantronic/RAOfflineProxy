@@ -285,6 +285,7 @@ def flush_pending_awards(storage: Storage, config_data: dict) -> FlushOutcome:
             pending_remaining=0,
         )
 
+    user_agent = storage.load_user_agent(FALLBACK_USER_AGENT)
     credentials = resolve_credentials(storage, config_data, user_agent)
     if credentials is None:
         LOGGER.warning("Flush aborted: no RetroAchievements credentials")
@@ -296,7 +297,6 @@ def flush_pending_awards(storage: Storage, config_data: dict) -> FlushOutcome:
             last_error="No RetroAchievements credentials available",
         )
 
-    user_agent = storage.load_user_agent(FALLBACK_USER_AGENT)
     refreshed = refresh_and_load_achievement_ids(
         storage,
         credentials,
