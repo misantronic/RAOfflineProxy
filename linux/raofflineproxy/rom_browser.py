@@ -15,6 +15,7 @@ from .storage import Storage
 from .utils import proxy_user_agent
 
 SUPPORTED_ROM_EXTENSIONS = supported_rom_extensions()
+MAX_CACHED_GAMES = 50
 
 
 @dataclass
@@ -144,6 +145,14 @@ def add_rom_to_cache(path: Path, storage: Storage, config_data: dict) -> AddRomR
 
     if game_id is None:
         return AddRomResult(False, "No RetroAchievements match")
+
+    cached_games = list_cached_games(storage)
+    if len(cached_games) >= MAX_CACHED_GAMES and not any(
+        game.game_id == game_id for game in cached_games
+    ):
+        return AddRomResult(
+            False, f"Cache limit reached: {MAX_CACHED_GAMES} / {MAX_CACHED_GAMES}"
+        )
 
     persist_game_id_aliases(storage, hash_candidates, used_hash, game_id)
 
