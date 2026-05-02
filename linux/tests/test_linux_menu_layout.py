@@ -206,6 +206,28 @@ class MenuLayoutTests(unittest.TestCase):
 
         menu_sdl.MenuSdlSession.render_home_logo(cached_session)
 
+    def test_navigate_uses_fast_interval_after_shorter_hold(self) -> None:
+        session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
+        session.selected_index = 0
+        session.scroll_offset = 0
+        session.last_navigation_at = 100.0
+        session.last_navigation_delta = 1
+        session.navigation_hold_started_at = 100.0
+        session.current_labels = lambda running=None: ["One", "Two", "Three"]
+        session.item_start_y = lambda: 100
+        session.item_gap = lambda: 28
+        session.ensure_selection_visible = lambda items, start_y, gap: None
+
+        original_monotonic = menu_sdl.time.monotonic
+        try:
+            menu_sdl.time.monotonic = lambda: 100.23
+
+            menu_sdl.MenuSdlSession.navigate(session, 1)
+
+            self.assertEqual(session.selected_index, 1)
+        finally:
+            menu_sdl.time.monotonic = original_monotonic
+
 
 if __name__ == "__main__":
     unittest.main()
