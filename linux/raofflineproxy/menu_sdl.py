@@ -4,7 +4,6 @@ import traceback
 import time
 from pathlib import Path
 
-from .auth import resolve_credentials
 from .batocera_conf import patch_batocera_conf, revert_batocera_conf
 from .config import CONFIG_DIR, load_config
 from .platform import (
@@ -175,9 +174,6 @@ class MenuSdlSession:
         self.view = "main"
         self.selected_index = 0
         self.scroll_offset = 0
-        self.last_navigation_at = 0.0
-        self.last_navigation_delta = 0
-        self.navigation_hold_started_at = 0.0
         self.message: tuple[str, float] | None = None
         self.storage = Storage()
         self.cached_games = []
@@ -235,7 +231,7 @@ class MenuSdlSession:
                 self.handle_events()
                 self.handle_raw_input()
                 self.render()
-                self.clock.tick()
+                self.clock.tick(FPS)
         finally:
             close_input_devices(self.input_handles)
             self.storage.close()
@@ -865,8 +861,6 @@ class MenuSdlSession:
     def reset_selection(self) -> None:
         self.selected_index = 0
         self.scroll_offset = 0
-        self.last_navigation_delta = 0
-        self.navigation_hold_started_at = 0.0
 
     def refresh_main_menu_state(self, force: bool = False) -> None:
         if not hasattr(self, "main_state_refreshed_at"):
@@ -930,8 +924,6 @@ class MenuSdlSession:
             return
 
         self.selected_index, self.scroll_offset = saved
-        self.last_navigation_delta = 0
-        self.navigation_hold_started_at = 0.0
 
     def save_browser_position(self) -> None:
         if self.browser_dir is None:
@@ -948,8 +940,6 @@ class MenuSdlSession:
             return
 
         self.selected_index, self.scroll_offset = saved
-        self.last_navigation_delta = 0
-        self.navigation_hold_started_at = 0.0
 
     def normalize_selection(self, items: list[str], start_y: int, gap: int) -> None:
         if not items:
