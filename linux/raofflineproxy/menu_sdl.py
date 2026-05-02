@@ -19,6 +19,8 @@ from .retroarch_cfg import patch_retroarch_cfg, revert_retroarch_cfg
 from .rom_browser import (
     MAX_CACHED_GAMES,
     add_rom_to_cache,
+    cached_unlock_count,
+    cached_unlock_titles,
     clear_cached_games,
     ensure_game_preview,
     list_browser_entries,
@@ -28,7 +30,7 @@ from .rom_browser import (
 from .service import service_status, start_service_process, stop_service_process
 from .state import load_patch_state, save_patch_state
 from .storage import Storage
-from .menu import (
+from .menu_input import (
     BTN_DPAD_DOWN,
     BTN_DPAD_LEFT,
     BTN_DPAD_RIGHT,
@@ -299,7 +301,8 @@ class MenuSdlSession:
             return ["Delete pending award", "Back"]
 
         if self.view == "game_actions":
-            return ["Remove cache", "Back"]
+            unlock_titles = self.game_actions_unlock_titles()
+            return ["Remove cache", *unlock_titles, "Back"]
 
         if self.view == "file_browser":
             if self.browser_dir is None:
@@ -363,6 +366,11 @@ class MenuSdlSession:
             return SECONDARY_TEXT_COLOR
         return TEXT_COLOR
 
+    def game_actions_unlock_titles(self) -> list[str]:
+        if self.active_game is None:
+            return []
+        return cached_unlock_titles(self.storage, self.active_game.game_id)
+
     def status_text(self, running: bool) -> str:
         if self.view == "cached_games":
             return f"CACHED: {len(self.cached_games)} / {MAX_CACHED_GAMES}"
@@ -375,11 +383,12 @@ class MenuSdlSession:
                 else "No pending award selected"
             )
         if self.view == "game_actions":
-            return (
-                f"GAME ID: {self.active_game.game_id}"
-                if self.active_game is not None
-                else "No game selected"
-            )
+            if self.active_game is None:
+                return "No game selected"
+            unlock_count = cached_unlock_count(self.storage, self.active_game.game_id)
+            if unlock_count is None:
+                return f"GAME ID: {self.active_game.game_id}, UNLOCKS: unknown"
+            return f"GAME ID: {self.active_game.game_id}, UNLOCKS: {unlock_count}"
         if self.view == "file_browser":
             return str(self.browser_dir or "No ROM directory")
         logged_in = self.is_logged_in()
@@ -628,9 +637,10 @@ class MenuSdlSession:
             self.message = (f"Removed {removed_title}", time.monotonic() + 1.5)
             return
 
-        self.active_game = None
-        self.view = "cached_games"
-        self.restore_view_position("cached_games")
+        if self.selected_index == len(self.game_actions_unlock_titles()) + 1:
+            self.active_game = None
+            self.view = "cached_games"
+            self.restore_view_position("cached_games")
 
     def activate_file_browser_selected(self) -> None:
         if self.browser_dir is None:
@@ -928,6 +938,10 @@ class MenuSdlSession:
                 current_y += GROUP_GAP
             if self.view == "cached_games" and clear_cache_index == 1 and index == 0:
                 current_y -= GROUP_GAP
+            if self.view == "game_actions" and index == 0:
+                current_y += GROUP_GAP
+            if self.view == "game_actions" and index == len(items) - 2:
+                current_y += GROUP_GAP
             if self.view == "pending_awards" and (index + 1) % 3 == 0:
                 current_y += GROUP_GAP
         return positions

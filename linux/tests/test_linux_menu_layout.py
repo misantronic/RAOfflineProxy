@@ -94,6 +94,43 @@ class MenuLayoutTests(unittest.TestCase):
             "CACHED: 5 / 50",
         )
 
+    def test_game_actions_status_includes_cached_unlock_count(self) -> None:
+        session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
+        session.view = "game_actions"
+        session.active_game = type("Game", (), {"game_id": 10701, "title": "Tetris"})()
+        session.storage = object()
+
+        original_cached_unlock_count = menu_sdl.cached_unlock_count
+        try:
+            menu_sdl.cached_unlock_count = lambda _storage, _game_id: 12
+
+            self.assertEqual(
+                menu_sdl.MenuSdlSession.status_text(session, running=False),
+                "GAME ID: 10701, UNLOCKS: 12",
+            )
+        finally:
+            menu_sdl.cached_unlock_count = original_cached_unlock_count
+
+    def test_game_actions_labels_include_unlock_titles(self) -> None:
+        session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
+        session.view = "game_actions"
+        session.active_game = type("Game", (), {"game_id": 10701, "title": "Tetris"})()
+        session.storage = object()
+
+        original_cached_unlock_titles = menu_sdl.cached_unlock_titles
+        try:
+            menu_sdl.cached_unlock_titles = lambda _storage, _game_id: [
+                "First Steps",
+                "Commander",
+            ]
+
+            self.assertEqual(
+                menu_sdl.MenuSdlSession.labels(session, running=False),
+                ["Remove cache", "First Steps", "Commander", "Back"],
+            )
+        finally:
+            menu_sdl.cached_unlock_titles = original_cached_unlock_titles
+
     def test_root_labels_hide_cached_count_and_empty_pending_awards(self) -> None:
         session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
         session.view = "main"
@@ -161,6 +198,33 @@ class MenuLayoutTests(unittest.TestCase):
             )
             menu_sdl.MenuSdlSession.refresh_cached_games = original_refresh_cached_games
             menu_sdl.load_config = original_load_config
+
+    def test_activate_game_actions_selected_uses_back_index_after_unlock_titles(
+        self,
+    ) -> None:
+        session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
+        session.active_game = type("Game", (), {"game_id": 10701, "title": "Tetris"})()
+        session.selected_index = 3
+        session.refresh_cached_games = lambda: None
+        session.restore_view_position = lambda _view: None
+
+        original_game_actions_unlock_titles = (
+            menu_sdl.MenuSdlSession.game_actions_unlock_titles
+        )
+        try:
+            menu_sdl.MenuSdlSession.game_actions_unlock_titles = lambda self: [
+                "First Steps",
+                "Commander",
+            ]
+
+            menu_sdl.MenuSdlSession.activate_game_actions_selected(session)
+
+            self.assertIsNone(session.active_game)
+            self.assertEqual(session.view, "cached_games")
+        finally:
+            menu_sdl.MenuSdlSession.game_actions_unlock_titles = (
+                original_game_actions_unlock_titles
+            )
 
     def test_render_home_logo_only_draws_on_main_view(self) -> None:
         fake_logo = type(
