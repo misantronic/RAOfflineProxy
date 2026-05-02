@@ -339,9 +339,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
                 val result = withContext(Dispatchers.IO) { patchRetroArchCfg(app, treeUri) }
                 if (result.needsSafGrant) {
+                    PrefsConstants.clearSafUri(app)
                     _state.value = _state.value.copy(
                         needsSafGrant = true
                     )
+                    return@launch
+                }
+                if (result.invalidSafGrant) {
+                    PrefsConstants.clearSafUri(app)
                     SnackbarManager.showError(result.message)
                     return@launch
                 }
@@ -410,9 +415,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     cfgCopyBackPath = result.copyBackPath
                 )
 
+                if (result.needsSafGrant) {
+                    PrefsConstants.clearSafUri(app)
+                } else if (result.invalidSafGrant) {
+                    PrefsConstants.clearSafUri(app)
+                }
+
                 if (revertedTarget) {
                     SnackbarManager.showMessage(str(R.string.proxy_stopped_success))
-                } else {
+                } else if (!result.needsSafGrant) {
                     SnackbarManager.showError(result.message)
                 }
             } finally {

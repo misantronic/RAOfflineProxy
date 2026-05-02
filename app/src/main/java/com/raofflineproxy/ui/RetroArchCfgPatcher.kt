@@ -39,6 +39,7 @@ data class PatchResult(
     val success: Boolean,
     val message: String,
     val needsSafGrant: Boolean = false,
+    val invalidSafGrant: Boolean = false,
     val copyBackPath: String? = null,
     val hardcoreWasEnabled: Boolean = false,
     val credentials: RetroArchCfgCredentials? = null
@@ -55,10 +56,10 @@ private class CfgStrings(
     val errorSaf: Int,
     val successFile: Int,
     val errorFile: Int,
-    val noWriteGrantFolder: Int,
-    val notFoundGrantFolder: Int,
-    val manualEditRequired: Int
+    val manualEditMode: ManualEditMode
 )
+
+private enum class ManualEditMode { Patch, Revert }
 
 private val PATCH_STRINGS = CfgStrings(
     noOpMessage = R.string.patch_already_configured,
@@ -66,9 +67,7 @@ private val PATCH_STRINGS = CfgStrings(
     errorSaf = R.string.patch_error_saf,
     successFile = R.string.patch_success,
     errorFile = R.string.patch_error_file,
-    noWriteGrantFolder = R.string.patch_cfg_no_write_grant_folder,
-    notFoundGrantFolder = R.string.patch_cfg_not_found_grant_folder,
-    manualEditRequired = R.string.patch_manual_edit_required
+    manualEditMode = ManualEditMode.Patch
 )
 
 private val REVERT_STRINGS = CfgStrings(
@@ -77,9 +76,7 @@ private val REVERT_STRINGS = CfgStrings(
     errorSaf = R.string.revert_error_saf,
     successFile = R.string.revert_success,
     errorFile = R.string.revert_error_file,
-    noWriteGrantFolder = R.string.revert_cfg_no_write_grant_folder,
-    notFoundGrantFolder = R.string.revert_cfg_not_found_grant_folder,
-    manualEditRequired = R.string.revert_manual_edit_required
+    manualEditMode = ManualEditMode.Revert
 )
 
 internal fun patchManualEditInstructions(proxyAddress: String): String =
@@ -144,10 +141,7 @@ private fun applyCfgTransform(
         if (directCandidate != null || treeUri == null) {
             return PatchResult(
                 success = false,
-                message = if (directCandidate != null)
-                    context.getString(strings.noWriteGrantFolder)
-                else
-                    context.getString(strings.notFoundGrantFolder),
+                message = context.getString(R.string.saf_dialog_message),
                 needsSafGrant = true
             )
         }
@@ -155,10 +149,9 @@ private fun applyCfgTransform(
 
     return PatchResult(
         success = false,
-        message = when (strings.manualEditRequired) {
-            R.string.patch_manual_edit_required -> patchManualEditInstructions(proxyValue(context))
-            R.string.revert_manual_edit_required -> revertManualEditInstructions()
-            else -> context.getString(strings.manualEditRequired, proxyValue(context))
+        message = when (strings.manualEditMode) {
+            ManualEditMode.Patch -> patchManualEditInstructions(proxyValue(context))
+            ManualEditMode.Revert -> revertManualEditInstructions()
         }
     )
 }
@@ -217,7 +210,8 @@ private fun transformViaSaf(
 
     return PatchResult(
         success = false,
-        message = context.getString(R.string.patch_cfg_not_in_folder)
+        message = context.getString(R.string.patch_cfg_not_in_folder),
+        invalidSafGrant = true
     )
 }
 
