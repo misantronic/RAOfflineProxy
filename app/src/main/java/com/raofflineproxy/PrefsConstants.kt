@@ -26,6 +26,11 @@ object PrefsConstants {
             .edit { putString(KEY_SAF_TREE_URI, uri.toString()) }
     }
 
+    fun clearSafUri(context: Context) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit { remove(KEY_SAF_TREE_URI) }
+    }
+
     fun loadProxyPort(context: Context): Int =
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .getInt(KEY_PROXY_PORT, DEFAULT_PROXY_PORT)

@@ -38,9 +38,6 @@
     <string name="saf_dialog_grant">Grant Access</string>
     <string name="action_ok">OK</string>
     <!-- CFG patcher messages -->
-    <string name="patch_cfg_not_found">retroarch.cfg not found.</string>
-    <string name="patch_cfg_no_write_grant_folder">retroarch.cfg found but cannot be written directly. Tap \'Grant Folder Access\' to allow in-place patching.</string>
-    <string name="patch_cfg_not_found_grant_folder">retroarch.cfg not found via direct access. Tap \'Grant Folder Access\' to let the app find and patch it.</string>
     <string name="patch_could_not_read">Could not read %s via folder access.</string>
     <string name="patch_already_configured">Already configured — no changes needed.</string>
     <string name="patch_could_not_write">Could not open %s for writing.</string>
@@ -49,17 +46,13 @@
     <string name="patch_cfg_not_in_folder">retroarch.cfg not found in the granted folder. Please grant access to Android/data/, Android/data/com.retroarch, or Android/data/com.retroarch/files.</string>
     <string name="patch_success">Patched successfully.</string>
     <string name="patch_error_file">Error patching %1$s: %2$s</string>
-    <string name="patch_manual_edit_required">Could not patch retroarch.cfg automatically.\n\nGrant Folder Access, or edit retroarch.cfg manually and set these exact lines:\n\ncheevos_custom_host = "%1$s"\ncheevos_hardcore_mode_enable = "false"</string>
 
     <!-- CFG revert messages -->
-    <string name="revert_cfg_no_write_grant_folder">retroarch.cfg found but cannot be written directly. Tap \'Grant Folder Access\' to allow reverting.</string>
-    <string name="revert_cfg_not_found_grant_folder">retroarch.cfg not found via direct access. Tap \'Grant Folder Access\' to let the app find and revert it.</string>
     <string name="revert_already_reverted">Already reverted — no changes needed.</string>
     <string name="revert_success_saf">Reverted successfully via folder access.</string>
     <string name="revert_error_saf">Error reverting via folder access: %s</string>
     <string name="revert_success">Reverted successfully.</string>
     <string name="revert_error_file">Error reverting %1$s: %2$s</string>
-    <string name="revert_manual_edit_required">Could not revert retroarch.cfg automatically.\n\nGrant Folder Access, or edit retroarch.cfg manually and set these exact lines:\n\ncheevos_custom_host = ""\ncheevos_hardcore_mode_enable = "true" if you want to restore hardcore mode.</string>
 
     <!-- Flush messages -->
     <string name="flush_started">Flushing awards…</string>
