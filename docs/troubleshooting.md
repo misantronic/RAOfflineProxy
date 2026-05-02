@@ -51,7 +51,7 @@
 
 **Cause:** On Android 12 and below, the app found `retroarch.cfg` but cannot write to it directly due to storage restrictions.
 
-**Fix:** Tap **Grant** in the dialog and navigate to the folder that contains `retroarch.cfg` (usually inside the RetroArch data folder). Grant read + write access. The app will patch the config and start the proxy automatically.
+**Fix:** Tap **Grant** in the dialog. The picker should open at RetroArch's Android data `files` folder. Grant read + write access to the suggested folder, usually `Android/data/com.retroarch.aarch64/files` or `Android/data/com.retroarch/files`. The app will patch the config and start the proxy automatically.
 
 ---
 

@@ -12,7 +12,7 @@ Patching and reverting happen **automatically** when you start and stop the prox
 
 ## Automatic Patching (Start Proxy)
 
-When you press **Start proxy** in the action bar, the app reads `cheevos_username` and `cheevos_token`, patches `retroarch.cfg`, then starts the proxy service. If the app needs folder access to write the file, it shows a dialog prompting you to grant access.
+When you press **Start proxy** in the action bar, the app reads `cheevos_username` and `cheevos_token`, patches `retroarch.cfg`, then starts the proxy service. If the app needs folder access to write the file, it shows a dialog prompting you to grant access to RetroArch's Android data `files` folder.
 
 Before patching, the app also checks for a one-time sibling backup named `retroarch.raofflineproxy.cfg`. If that file does not already exist, RAOfflineProxy creates it from the current `retroarch.cfg`.
 
@@ -32,7 +32,14 @@ The app checks common RetroArch installation paths for a writable `retroarch.cfg
 
 ### Strategy 3 — Folder Access Prompt (Android 12 and below)
 
-On Android 12 and below, if the file is found but not directly writable, the app shows a dialog asking you to grant folder access. Tapping **Grant** opens the system folder picker. Grant access to the folder containing `retroarch.cfg` (typically inside the RetroArch data folder). After granting, the app retries automatically.
+On Android 12 and below, if the file is found but not directly writable, the app shows a dialog asking you to grant folder access. Tapping **Grant** opens the system folder picker at RetroArch's Android data `files` folder when possible.
+
+Grant access to the suggested folder, usually one of:
+
+- `Android/data/com.retroarch.aarch64/files`
+- `Android/data/com.retroarch/files`
+
+After granting, the app retries automatically. If the selected folder does not contain `retroarch.cfg`, the app shows an error and asks again the next time you start the proxy.
 
 ### Strategy 4 — Staging Copy
 

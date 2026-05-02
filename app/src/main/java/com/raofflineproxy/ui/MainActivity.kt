@@ -7,6 +7,8 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Environment
+import android.provider.DocumentsContract
 import android.view.Menu
 import android.view.MenuItem
 import androidx.activity.OnBackPressedCallback
@@ -17,7 +19,6 @@ import androidx.appcompat.app.ActionBarDrawerToggle
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
-import androidx.core.net.toUri
 import androidx.core.view.GravityCompat
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
@@ -28,14 +29,74 @@ import com.raofflineproxy.PrefsConstants
 import com.raofflineproxy.R
 import com.raofflineproxy.databinding.ActivityMainBinding
 import com.raofflineproxy.service.ProxyService
+import java.io.File
 import java.util.ArrayDeque
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 @SuppressLint("UseKtx")
-private val ANDROID_DATA_URI: Uri =
-    "content://com.android.externalstorage.documents/document/primary%3AAndroid%2Fdata".toUri()
+private const val EXTERNAL_STORAGE_PROVIDER = "com.android.externalstorage.documents"
+
+private fun initialTreeUriForPath(path: String): Uri? {
+    val normalized = path.replace('\\', '/').trim().trimEnd('/')
+    if (normalized.isEmpty()) return null
+
+    val canonical = runCatching { File(path).canonicalPath.replace('\\', '/').trim().trimEnd('/') }
+        .getOrNull()
+    val normalizedCandidates = buildList {
+        add(normalized)
+        if (!canonical.isNullOrEmpty() && !canonical.equals(normalized, ignoreCase = true)) {
+            add(canonical)
+        }
+    }
+
+    val externalStorageRoot = Environment.getExternalStorageDirectory().path
+        .replace('\\', '/')
+        .trim()
+        .trimEnd('/')
+
+    val primaryPrefixes = listOf(
+        "/storage/emulated/0",
+        "/storage/self/primary",
+        externalStorageRoot,
+        "storage/emulated/0",
+        "storage/self/primary",
+        externalStorageRoot.trimStart('/')
+    )
+
+    val primaryRelative = normalizedCandidates.firstNotNullOfOrNull { candidate ->
+        primaryPrefixes.firstNotNullOfOrNull { prefix ->
+            when {
+                candidate.equals(prefix, ignoreCase = true) -> ""
+                candidate.startsWith("$prefix/", ignoreCase = true) -> candidate.substring(prefix.length).trimStart('/')
+                else -> null
+            }
+        }
+    }
+
+    if (primaryRelative != null) {
+        val docId = if (primaryRelative.isEmpty()) "primary:" else "primary:$primaryRelative"
+        return DocumentsContract.buildDocumentUri(EXTERNAL_STORAGE_PROVIDER, docId)
+    }
+
+    val storagePrefix = "/storage/"
+    for (candidate in normalizedCandidates) {
+        if (candidate.startsWith(storagePrefix, ignoreCase = true)) {
+            val afterStorage = candidate.substring(storagePrefix.length)
+            val volume = afterStorage.substringBefore('/').takeIf { it.isNotEmpty() }
+            if (volume != null) {
+                val relative = afterStorage.substringAfter('/', "")
+                val docId = if (relative.isEmpty()) "$volume:" else "$volume:$relative"
+                return DocumentsContract.buildDocumentUri(EXTERNAL_STORAGE_PROVIDER, docId)
+            }
+        }
+    }
+
+    val fallbackRelative = normalizedCandidates.first().trimStart('/')
+    val fallbackDocId = if (fallbackRelative.isEmpty()) "primary:" else "primary:$fallbackRelative"
+    return DocumentsContract.buildDocumentUri(EXTERNAL_STORAGE_PROVIDER, fallbackDocId)
+}
 
 class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
@@ -442,7 +503,8 @@ private data class QueuedError(
 private class OpenAndroidDataTree : ActivityResultContract<Unit, Uri?>() {
     override fun createIntent(context: Context, input: Unit): Intent =
         Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).apply {
-            putExtra("android.provider.extra.INITIAL_URI", ANDROID_DATA_URI)
+            initialTreeUriForPath("/storage/emulated/0/Android/data/${resolveRetroArchPackage(context)}/files")
+                ?.let { putExtra(DocumentsContract.EXTRA_INITIAL_URI, it) }
             addFlags(
                 Intent.FLAG_GRANT_READ_URI_PERMISSION or
                 Intent.FLAG_GRANT_WRITE_URI_PERMISSION or
@@ -453,4 +515,10 @@ private class OpenAndroidDataTree : ActivityResultContract<Unit, Uri?>() {
 
     override fun parseResult(resultCode: Int, intent: Intent?): Uri? =
         if (resultCode == android.app.Activity.RESULT_OK) intent?.data else null
+
+    private fun resolveRetroArchPackage(context: Context): String =
+        RETROARCH_PACKAGE_CANDIDATES.firstOrNull { packageName ->
+            runCatching { context.packageManager.getPackageInfo(packageName, 0) }
+                .isSuccess
+        } ?: RETROARCH_PACKAGE_CANDIDATES.first()
 }

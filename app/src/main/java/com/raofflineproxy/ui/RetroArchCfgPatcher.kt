@@ -13,12 +13,18 @@ import java.io.File
 private val EXT_STORAGE by lazy { Environment.getExternalStorageDirectory().path }
 private const val CFG_BACKUP_NAME = "retroarch.raofflineproxy.cfg"
 
+internal val RETROARCH_PACKAGE_CANDIDATES = listOf(
+    "com.retroarch.aarch64",
+    "com.retroarch"
+)
+
 private val SOURCE_CANDIDATES by lazy {
-    listOf(
-        "$EXT_STORAGE/Android/data/com.retroarch.aarch64/files/retroarch.cfg",
-        "/storage/emulated/0/Android/data/com.retroarch.aarch64/files/retroarch.cfg",
-        "$EXT_STORAGE/Android/data/com.retroarch/files/retroarch.cfg",
-        "/storage/emulated/0/Android/data/com.retroarch/files/retroarch.cfg",
+    RETROARCH_PACKAGE_CANDIDATES.flatMap { packageName ->
+        listOf(
+            "$EXT_STORAGE/Android/data/$packageName/files/retroarch.cfg",
+            "/storage/emulated/0/Android/data/$packageName/files/retroarch.cfg"
+        )
+    } + listOf(
         "$EXT_STORAGE/RetroArch/retroarch.cfg",
         "/storage/emulated/0/RetroArch/retroarch.cfg"
     )
@@ -28,9 +34,7 @@ private val SOURCE_CANDIDATES by lazy {
 // Covers: granted Android/data/ → full path needed
 //         granted com.retroarch.aarch64 or com.retroarch → skip the package segment
 //         granted files/ → skip package + files
-private val SAF_CFG_PATHS = listOf(
-    listOf("com.retroarch.aarch64", "files", "retroarch.cfg"),
-    listOf("com.retroarch", "files", "retroarch.cfg"),
+private val SAF_CFG_PATHS = RETROARCH_PACKAGE_CANDIDATES.map { listOf(it, "files", "retroarch.cfg") } + listOf(
     listOf("files", "retroarch.cfg"),
     listOf("retroarch.cfg")
 )

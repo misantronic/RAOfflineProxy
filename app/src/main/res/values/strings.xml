@@ -34,7 +34,7 @@
 
     <!-- SAF grant dialog -->
     <string name="saf_dialog_title">Folder Access Required</string>
-    <string name="saf_dialog_message">This app needs access to the Android/data folder to patch retroarch.cfg. Please grant access to the folder containing RetroArch\'s data.</string>
+    <string name="saf_dialog_message">This app needs access to RetroArch\'s files folder to patch retroarch.cfg. Grant access to the suggested Android/data/RetroArch package/files folder.</string>
     <string name="saf_dialog_grant">Grant Access</string>
     <string name="action_ok">OK</string>
     <!-- CFG patcher messages -->
@@ -43,7 +43,7 @@
     <string name="patch_could_not_write">Could not open %s for writing.</string>
     <string name="patch_success_saf">Patched successfully via folder access.</string>
     <string name="patch_error_saf">Error patching via folder access: %s</string>
-    <string name="patch_cfg_not_in_folder">retroarch.cfg not found in the granted folder. Please grant access to Android/data/, Android/data/com.retroarch, or Android/data/com.retroarch/files.</string>
+    <string name="patch_cfg_not_in_folder">retroarch.cfg not found in the granted folder. Please grant access to RetroArch\'s Android/data package files folder, such as Android/data/com.retroarch.aarch64/files or Android/data/com.retroarch/files.</string>
     <string name="patch_success">Patched successfully.</string>
     <string name="patch_error_file">Error patching %1$s: %2$s</string>
 
