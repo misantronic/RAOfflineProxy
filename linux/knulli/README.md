@@ -97,6 +97,12 @@ Then run `RAOfflineProxy Install` from EmulationStation Tools.
 
 The installer removes itself after a successful install.
 
+When updating an existing install, the installer now preserves prior proxy running state:
+
+- if the proxy was already running, it is stopped before files are replaced
+- after installation, it is started again so the updated code is active immediately
+- if the proxy was stopped before install, it stays stopped
+
 ## Uninstall
 
 Use `Uninstall` inside `RAOfflineProxy Menu`.

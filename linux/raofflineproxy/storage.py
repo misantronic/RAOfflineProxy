@@ -1,3 +1,4 @@
+import contextlib
 import json
 import threading
 import time
@@ -6,6 +7,11 @@ from typing import Any
 
 from . import cache_keys
 from .config import DATABASE_FILE, ensure_config_dir
+
+try:
+    import fcntl
+except ModuleNotFoundError:
+    fcntl = None
 
 try:
     import sqlite3
@@ -26,7 +32,10 @@ class Storage:
         self._database_path = database_path
         self._lock = threading.RLock()
         self._use_sqlite = sqlite3 is not None
-        self._json_path = JSON_STORE_FILE
+        self._json_path = database_path.with_suffix(".json")
+        self._json_lock_path = self._json_path.with_suffix(
+            f"{self._json_path.suffix}.lock"
+        )
         self._json_state: dict[str, Any] | None = None
         self._connection = None
 
@@ -88,24 +97,45 @@ class Storage:
 
     def _initialize_json(self) -> None:
         with self._lock:
-            if self._json_path.exists():
-                with self._json_path.open(encoding="utf-8") as handle:
-                    data = json.load(handle)
-                if not isinstance(data, dict):
-                    raise ValueError(f"Invalid JSON storage file: {self._json_path}")
-                self._json_state = data
-            else:
-                self._json_state = {"api_cache": [], "pending_awards": []}
-                self._write_json_state()
+            with self._json_file_lock(exclusive=True):
+                self._reload_json_state_unlocked()
+                if not self._json_path.exists():
+                    self._write_json_state_unlocked()
 
-            self._json_state.setdefault("api_cache", [])
-            self._json_state.setdefault("pending_awards", [])
+    @contextlib.contextmanager
+    def _json_file_lock(self, exclusive: bool):
+        ensure_config_dir()
+        self._json_lock_path.parent.mkdir(parents=True, exist_ok=True)
+        with self._json_lock_path.open("a+") as handle:
+            if fcntl is not None:
+                mode = fcntl.LOCK_EX if exclusive else fcntl.LOCK_SH
+                fcntl.flock(handle.fileno(), mode)
+            try:
+                yield
+            finally:
+                if fcntl is not None:
+                    fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
-    def _write_json_state(self) -> None:
+    def _reload_json_state_unlocked(self) -> None:
+        if self._json_path.exists():
+            with self._json_path.open(encoding="utf-8") as handle:
+                data = json.load(handle)
+            if not isinstance(data, dict):
+                raise ValueError(f"Invalid JSON storage file: {self._json_path}")
+            self._json_state = data
+        else:
+            self._json_state = {"api_cache": [], "pending_awards": []}
+
+        self._json_state.setdefault("api_cache", [])
+        self._json_state.setdefault("pending_awards", [])
+
+    def _write_json_state_unlocked(self) -> None:
         assert self._json_state is not None
-        with self._json_path.open("w", encoding="utf-8") as handle:
+        temp_path = self._json_path.with_suffix(f"{self._json_path.suffix}.tmp")
+        with temp_path.open("w", encoding="utf-8") as handle:
             json.dump(self._json_state, handle, indent=2, sort_keys=True)
             handle.write("\n")
+        temp_path.replace(self._json_path)
 
     def upsert_cache(
         self, cache_key: str, response_body: str, cached_at: int | None = None
@@ -139,30 +169,32 @@ class Storage:
             self._connection.commit()
 
     def _upsert_cache_json(self, cache_key: str, response_body: str, now: int) -> None:
-        assert self._json_state is not None
         with self._lock:
-            existing = next(
-                (
-                    entry
-                    for entry in self._json_state["api_cache"]
-                    if entry["cacheKey"] == cache_key
-                ),
-                None,
-            )
-            if existing is None:
-                self._json_state["api_cache"].append(
-                    {
-                        "id": next_json_id(self._json_state["api_cache"]),
-                        "cacheKey": cache_key,
-                        "responseBody": response_body,
-                        "cachedAt": now,
-                        "firstCachedAt": now,
-                    }
+            with self._json_file_lock(exclusive=True):
+                self._reload_json_state_unlocked()
+                assert self._json_state is not None
+                existing = next(
+                    (
+                        entry
+                        for entry in self._json_state["api_cache"]
+                        if entry["cacheKey"] == cache_key
+                    ),
+                    None,
                 )
-            else:
-                existing["responseBody"] = response_body
-                existing["cachedAt"] = now
-            self._write_json_state()
+                if existing is None:
+                    self._json_state["api_cache"].append(
+                        {
+                            "id": next_json_id(self._json_state["api_cache"]),
+                            "cacheKey": cache_key,
+                            "responseBody": response_body,
+                            "cachedAt": now,
+                            "firstCachedAt": now,
+                        }
+                    )
+                else:
+                    existing["responseBody"] = response_body
+                    existing["cachedAt"] = now
+                self._write_json_state_unlocked()
 
     def get_cache(self, cache_key: str) -> dict | None:
         if self._use_sqlite:
@@ -174,17 +206,19 @@ class Storage:
                 ).fetchone()
             return row_to_dict(row)
 
-        assert self._json_state is not None
         with self._lock:
-            entry = next(
-                (
-                    item
-                    for item in self._json_state["api_cache"]
-                    if item["cacheKey"] == cache_key
-                ),
-                None,
-            )
-            return dict(entry) if entry is not None else None
+            with self._json_file_lock(exclusive=False):
+                self._reload_json_state_unlocked()
+                assert self._json_state is not None
+                entry = next(
+                    (
+                        item
+                        for item in self._json_state["api_cache"]
+                        if item["cacheKey"] == cache_key
+                    ),
+                    None,
+                )
+                return dict(entry) if entry is not None else None
 
     def get_cache_by_prefix(self, prefix: str) -> dict | None:
         if self._use_sqlite:
@@ -196,17 +230,19 @@ class Storage:
                 ).fetchone()
             return row_to_dict(row)
 
-        assert self._json_state is not None
         with self._lock:
-            entry = next(
-                (
-                    item
-                    for item in self._json_state["api_cache"]
-                    if item["cacheKey"].startswith(prefix)
-                ),
-                None,
-            )
-            return dict(entry) if entry is not None else None
+            with self._json_file_lock(exclusive=False):
+                self._reload_json_state_unlocked()
+                assert self._json_state is not None
+                entry = next(
+                    (
+                        item
+                        for item in self._json_state["api_cache"]
+                        if item["cacheKey"].startswith(prefix)
+                    ),
+                    None,
+                )
+                return dict(entry) if entry is not None else None
 
     def get_all_cache_by_prefix(self, prefix: str) -> list[dict]:
         if self._use_sqlite:
@@ -218,13 +254,15 @@ class Storage:
                 ).fetchall()
             return [row_to_dict(row) for row in rows]
 
-        assert self._json_state is not None
         with self._lock:
-            matches = [
-                dict(item)
-                for item in self._json_state["api_cache"]
-                if item["cacheKey"].startswith(prefix)
-            ]
+            with self._json_file_lock(exclusive=False):
+                self._reload_json_state_unlocked()
+                assert self._json_state is not None
+                matches = [
+                    dict(item)
+                    for item in self._json_state["api_cache"]
+                    if item["cacheKey"].startswith(prefix)
+                ]
         return sorted(matches, key=lambda item: item.get("cachedAt", 0), reverse=True)
 
     def delete_cache_by_prefix(self, prefix: str) -> None:
@@ -237,14 +275,16 @@ class Storage:
                 self._connection.commit()
             return
 
-        assert self._json_state is not None
         with self._lock:
-            self._json_state["api_cache"] = [
-                item
-                for item in self._json_state["api_cache"]
-                if not item["cacheKey"].startswith(prefix)
-            ]
-            self._write_json_state()
+            with self._json_file_lock(exclusive=True):
+                self._reload_json_state_unlocked()
+                assert self._json_state is not None
+                self._json_state["api_cache"] = [
+                    item
+                    for item in self._json_state["api_cache"]
+                    if not item["cacheKey"].startswith(prefix)
+                ]
+                self._write_json_state_unlocked()
 
     def clear_cache(self) -> None:
         if self._use_sqlite:
@@ -262,19 +302,21 @@ class Storage:
                 self._connection.commit()
             return
 
-        assert self._json_state is not None
         with self._lock:
-            self._json_state["api_cache"] = [
-                item
-                for item in self._json_state["api_cache"]
-                if not (
-                    item["cacheKey"].startswith(cache_keys.PREFIX_PATCH)
-                    or item["cacheKey"].startswith(cache_keys.PREFIX_UNLOCKS)
-                    or item["cacheKey"].startswith(cache_keys.PREFIX_STARTSESSION)
-                    or item["cacheKey"].startswith(cache_keys.PREFIX_GAMEID)
-                )
-            ]
-            self._write_json_state()
+            with self._json_file_lock(exclusive=True):
+                self._reload_json_state_unlocked()
+                assert self._json_state is not None
+                self._json_state["api_cache"] = [
+                    item
+                    for item in self._json_state["api_cache"]
+                    if not (
+                        item["cacheKey"].startswith(cache_keys.PREFIX_PATCH)
+                        or item["cacheKey"].startswith(cache_keys.PREFIX_UNLOCKS)
+                        or item["cacheKey"].startswith(cache_keys.PREFIX_STARTSESSION)
+                        or item["cacheKey"].startswith(cache_keys.PREFIX_GAMEID)
+                    )
+                ]
+                self._write_json_state_unlocked()
 
     def evict_cache_older_than(self, before: int) -> None:
         if self._use_sqlite:
@@ -292,16 +334,18 @@ class Storage:
                 self._connection.commit()
             return
 
-        assert self._json_state is not None
         with self._lock:
-            self._json_state["api_cache"] = [
-                item
-                for item in self._json_state["api_cache"]
-                if item["cachedAt"] >= before
-                or item["cacheKey"].startswith(cache_keys.PREFIX_LOGIN)
-                or item["cacheKey"] == cache_keys.USER_AGENT
-            ]
-            self._write_json_state()
+            with self._json_file_lock(exclusive=True):
+                self._reload_json_state_unlocked()
+                assert self._json_state is not None
+                self._json_state["api_cache"] = [
+                    item
+                    for item in self._json_state["api_cache"]
+                    if item["cachedAt"] >= before
+                    or item["cacheKey"].startswith(cache_keys.PREFIX_LOGIN)
+                    or item["cacheKey"] == cache_keys.USER_AGENT
+                ]
+                self._write_json_state_unlocked()
 
     def get_pending_awards(self) -> list[dict]:
         if self._use_sqlite:
@@ -312,9 +356,11 @@ class Storage:
                 ).fetchall()
             return [row_to_dict(row) for row in rows]
 
-        assert self._json_state is not None
         with self._lock:
-            awards = [dict(item) for item in self._json_state["pending_awards"]]
+            with self._json_file_lock(exclusive=False):
+                self._reload_json_state_unlocked()
+                assert self._json_state is not None
+                awards = [dict(item) for item in self._json_state["pending_awards"]]
         return sorted(awards, key=lambda item: item.get("queuedAt", 0))
 
     def get_latest_pending_award(self) -> dict | None:
@@ -331,12 +377,14 @@ class Storage:
                 ).fetchone()
             return row is not None
 
-        assert self._json_state is not None
         with self._lock:
-            return any(
-                item["achievementId"] == achievement_id
-                for item in self._json_state["pending_awards"]
-            )
+            with self._json_file_lock(exclusive=False):
+                self._reload_json_state_unlocked()
+                assert self._json_state is not None
+                return any(
+                    item["achievementId"] == achievement_id
+                    for item in self._json_state["pending_awards"]
+                )
 
     def upsert_pending_award(self, award: dict) -> None:
         if self._use_sqlite:
@@ -394,33 +442,35 @@ class Storage:
             self._connection.commit()
 
     def _upsert_pending_award_json(self, award: dict) -> None:
-        assert self._json_state is not None
         with self._lock:
-            existing = next(
-                (
-                    item
-                    for item in self._json_state["pending_awards"]
-                    if item["achievementId"] == award["achievementId"]
-                ),
-                None,
-            )
-            materialized = dict(award)
-            materialized.setdefault(
-                "id", next_json_id(self._json_state["pending_awards"])
-            )
-            materialized.setdefault("retryCount", 0)
-            materialized.setdefault("lastError", None)
-            materialized.setdefault("status", PENDING_AWARD_STATUS_PENDING)
-            materialized.setdefault("payloadHash", "")
-            materialized.setdefault("prevHash", "")
-            materialized.setdefault("signature", "")
-            materialized.setdefault("signedAt", 0)
-            if existing is None:
-                self._json_state["pending_awards"].append(materialized)
-            else:
-                materialized["id"] = existing.get("id", materialized["id"])
-                existing.update(materialized)
-            self._write_json_state()
+            with self._json_file_lock(exclusive=True):
+                self._reload_json_state_unlocked()
+                assert self._json_state is not None
+                existing = next(
+                    (
+                        item
+                        for item in self._json_state["pending_awards"]
+                        if item["achievementId"] == award["achievementId"]
+                    ),
+                    None,
+                )
+                materialized = dict(award)
+                materialized.setdefault(
+                    "id", next_json_id(self._json_state["pending_awards"])
+                )
+                materialized.setdefault("retryCount", 0)
+                materialized.setdefault("lastError", None)
+                materialized.setdefault("status", PENDING_AWARD_STATUS_PENDING)
+                materialized.setdefault("payloadHash", "")
+                materialized.setdefault("prevHash", "")
+                materialized.setdefault("signature", "")
+                materialized.setdefault("signedAt", 0)
+                if existing is None:
+                    self._json_state["pending_awards"].append(materialized)
+                else:
+                    materialized["id"] = existing.get("id", materialized["id"])
+                    existing.update(materialized)
+                self._write_json_state_unlocked()
 
     def update_pending_award(self, award: dict) -> None:
         self.upsert_pending_award(award)
@@ -436,14 +486,16 @@ class Storage:
                 self._connection.commit()
             return
 
-        assert self._json_state is not None
         with self._lock:
-            self._json_state["pending_awards"] = [
-                item
-                for item in self._json_state["pending_awards"]
-                if item["achievementId"] != achievement_id
-            ]
-            self._write_json_state()
+            with self._json_file_lock(exclusive=True):
+                self._reload_json_state_unlocked()
+                assert self._json_state is not None
+                self._json_state["pending_awards"] = [
+                    item
+                    for item in self._json_state["pending_awards"]
+                    if item["achievementId"] != achievement_id
+                ]
+                self._write_json_state_unlocked()
 
     def pending_awards_exist_by_status(self, status: str) -> bool:
         if self._use_sqlite:
@@ -455,12 +507,14 @@ class Storage:
                 ).fetchone()
             return row is not None
 
-        assert self._json_state is not None
         with self._lock:
-            return any(
-                item.get("status", PENDING_AWARD_STATUS_PENDING) == status
-                for item in self._json_state["pending_awards"]
-            )
+            with self._json_file_lock(exclusive=False):
+                self._reload_json_state_unlocked()
+                assert self._json_state is not None
+                return any(
+                    item.get("status", PENDING_AWARD_STATUS_PENDING) == status
+                    for item in self._json_state["pending_awards"]
+                )
 
     def delete_pending_awards_by_statuses(self, statuses: list[str]) -> None:
         if self._use_sqlite:
@@ -474,15 +528,18 @@ class Storage:
                 self._connection.commit()
             return
 
-        assert self._json_state is not None
         with self._lock:
-            status_set = set(statuses)
-            self._json_state["pending_awards"] = [
-                item
-                for item in self._json_state["pending_awards"]
-                if item.get("status", PENDING_AWARD_STATUS_PENDING) not in status_set
-            ]
-            self._write_json_state()
+            with self._json_file_lock(exclusive=True):
+                self._reload_json_state_unlocked()
+                assert self._json_state is not None
+                status_set = set(statuses)
+                self._json_state["pending_awards"] = [
+                    item
+                    for item in self._json_state["pending_awards"]
+                    if item.get("status", PENDING_AWARD_STATUS_PENDING)
+                    not in status_set
+                ]
+                self._write_json_state_unlocked()
 
     def load_login_credentials(self) -> dict | None:
         entry = self.get_cache_by_prefix(cache_keys.PREFIX_LOGIN)

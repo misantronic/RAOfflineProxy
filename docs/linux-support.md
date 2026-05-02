@@ -83,6 +83,8 @@ Current install UX:
 
 - after running `RAOfflineProxy Install`, the installer asks the user to `Please Update Gamelists.`
 - the installer removes itself after a successful install
+- if the proxy was already running before install, the installer now restarts it automatically so the updated service code is active immediately
+- if the proxy was stopped before install, the installer leaves it stopped
 - the Tools list is expected to expose only `RAOfflineProxy Menu`
 - uninstall stops the proxy, disables autostart, and removes RAOfflineProxy app/config/cache data locations on KNULLI, including legacy RAOfflineProxy-owned paths from older builds
 

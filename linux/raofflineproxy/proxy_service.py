@@ -338,6 +338,16 @@ class ProxyRuntimeServer(ThreadingTCPServer):
             return ok_json(cached["responseBody"])
 
         if action == "gameid":
+            LOGGER.warning(
+                "Offline gameid cache miss requestedKey=%s sampleKeys=%s",
+                key,
+                [
+                    entry["cacheKey"]
+                    for entry in self.storage.get_all_cache_by_prefix(
+                        cache_keys.PREFIX_GAMEID
+                    )[:10]
+                ],
+            )
             return game_id_cache_miss()
         return error_json(503, "no cached response")
 

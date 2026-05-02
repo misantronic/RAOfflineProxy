@@ -73,6 +73,30 @@ class GenericMd5RomHashStrategy(RomHashStrategy):
         )
 
 
+class GameBoyRomHashStrategy(RomHashStrategy):
+    def matches(self, file_name: str) -> bool:
+        return has_extension(file_name, "gb")
+
+    def hash(self, rom_input: RomHashInput) -> str | None:
+        return GenericMd5RomHashStrategy().hash(rom_input)
+
+
+class GameBoyColorRomHashStrategy(RomHashStrategy):
+    def matches(self, file_name: str) -> bool:
+        return has_extension(file_name, "gbc")
+
+    def hash(self, rom_input: RomHashInput) -> str | None:
+        return GenericMd5RomHashStrategy().hash(rom_input)
+
+
+class GameBoyAdvanceRomHashStrategy(RomHashStrategy):
+    def matches(self, file_name: str) -> bool:
+        return has_extension(file_name, "gba")
+
+    def hash(self, rom_input: RomHashInput) -> str | None:
+        return GenericMd5RomHashStrategy().hash(rom_input)
+
+
 class NesRomHashStrategy(RomHashStrategy):
     def matches(self, file_name: str) -> bool:
         return has_extension(file_name, "nes")
@@ -337,6 +361,9 @@ class PspRomHashStrategy(RomHashStrategy):
 
 
 ROM_HASH_STRATEGIES = [
+    GameBoyAdvanceRomHashStrategy(),
+    GameBoyColorRomHashStrategy(),
+    GameBoyRomHashStrategy(),
     PspRomHashStrategy(),
     PsxRomHashStrategy(),
     NintendoDsRomHashStrategy(),
