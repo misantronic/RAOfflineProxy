@@ -19,11 +19,11 @@ This is still considered experimental and may need additional hardening across d
 - installs the Python app under `/userdata/system/raofflineproxy/app`
 - installs small launcher scripts under `/userdata/system/raofflineproxy/bin`
 - adds EmulationStation Tools entries for:
-  - `RAOfflineProxy Menu`
+  - `RAOfflineProxy`
 
-`RAOfflineProxy Menu` is the primary experimental interactive fullscreen UI. It provides one place to launch Start, Stop, Uninstall, and Exit actions.
+`RAOfflineProxy` is the primary experimental interactive fullscreen UI. It provides one place to launch Start, Stop, Uninstall, and Exit actions.
 
-The current `RAOfflineProxy Menu` implementation uses SDL/`pygame` for responsive controller-driven navigation. The launcher adds `/userdata/roms/pygame` to `PYTHONPATH` automatically when that directory exists.
+The current `RAOfflineProxy` implementation uses SDL/`pygame` for responsive controller-driven navigation. The launcher adds `/userdata/roms/pygame` to `PYTHONPATH` automatically when that directory exists.
 
 Current SDL menu features:
 
@@ -82,7 +82,6 @@ From repo root:
 
 This creates:
 
-- `linux/knulli/dist/raofflineproxy-knulli-bundle.tar.gz`
 - `linux/knulli/dist/RAOfflineProxy Install.sh`
 
 ## Install On KNULLI
@@ -105,7 +104,7 @@ When updating an existing install, the installer now preserves prior proxy runni
 
 ## Uninstall
 
-Use `Uninstall` inside `RAOfflineProxy Menu`.
+Use `Uninstall` inside `RAOfflineProxy`.
 
 The KNULLI uninstall flow now:
 

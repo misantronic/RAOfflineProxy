@@ -7,8 +7,10 @@ DIST_DIR="${SCRIPT_DIR}/dist"
 BUILD_DIR="${DIST_DIR}/raofflineproxy-knulli-bundle"
 APP_DIR="${BUILD_DIR}/app"
 INSTALLER_PATH="${DIST_DIR}/RAOfflineProxy Install.sh"
+TEMP_TARBALL="${DIST_DIR}/.raofflineproxy-knulli-bundle.tar.gz"
 
 rm -rf "${BUILD_DIR}"
+rm -f "${DIST_DIR}/raofflineproxy-knulli-bundle.tar.gz"
 mkdir -p "${APP_DIR}"
 
 export COPYFILE_DISABLE=1
@@ -29,7 +31,8 @@ chmod +x "${BUILD_DIR}/scripts/launcher-raofflineproxy"
 chmod +x "${BUILD_DIR}/scripts/launcher-raofflineproxy-uninstall"
 
 mkdir -p "${DIST_DIR}"
-tar -czf "${DIST_DIR}/raofflineproxy-knulli-bundle.tar.gz" -C "${DIST_DIR}" "raofflineproxy-knulli-bundle"
+rm -f "${TEMP_TARBALL}"
+tar -czf "${TEMP_TARBALL}" -C "${DIST_DIR}" "raofflineproxy-knulli-bundle"
 
 cat > "${INSTALLER_PATH}" <<'EOF'
 #!/usr/bin/env bash
@@ -58,8 +61,10 @@ exit 0
 __RAOFFLINEPROXY_PAYLOAD_BELOW__
 EOF
 
-base64 -i "${DIST_DIR}/raofflineproxy-knulli-bundle.tar.gz" >> "${INSTALLER_PATH}"
+base64 -i "${TEMP_TARBALL}" >> "${INSTALLER_PATH}"
 chmod +x "${INSTALLER_PATH}"
 
-echo "Created ${DIST_DIR}/raofflineproxy-knulli-bundle.tar.gz"
+rm -f "${TEMP_TARBALL}"
+rm -rf "${BUILD_DIR}"
+
 echo "Created ${INSTALLER_PATH}"

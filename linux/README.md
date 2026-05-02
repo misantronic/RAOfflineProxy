@@ -142,7 +142,6 @@ This creates:
 
 ```text
 path/to/RAOfflineProxy/linux/knulli/dist/RAOfflineProxy Install.sh
-path/to/RAOfflineProxy/linux/knulli/dist/raofflineproxy-knulli-bundle.tar.gz
 ```
 
 Recommended install flow:
@@ -155,9 +154,9 @@ Then run `RAOfflineProxy Install` from EmulationStation Tools.
 
 The installer removes itself after a successful install and creates this Tools entry:
 
-- `RAOfflineProxy Menu`
+- `RAOfflineProxy`
 
-`RAOfflineProxy Menu` now launches the SDL/`pygame` menu path. The KNULLI launcher automatically adds `/userdata/roms/pygame` to `PYTHONPATH` when that directory exists on-device.
+`RAOfflineProxy` now launches the SDL/`pygame` menu path. The KNULLI launcher automatically adds `/userdata/roms/pygame` to `PYTHONPATH` when that directory exists on-device.
 
 On upgrade installs, the KNULLI installer now preserves prior proxy running state:
 
@@ -266,7 +265,7 @@ PYTHONPATH=. python3 -m raofflineproxy.main start-proxy --retroarch-cfg /path/to
 
 `status` reports both config patch state and daemon state, including whether the service is running and its PID.
 
-## RAOfflineProxy Menu
+## RAOfflineProxy
 
 The experimental `menu` command provides a single-entry fullscreen menu for KNULLI-style environments.
 
@@ -279,7 +278,7 @@ It is intended to allow controller-driven access to:
 - Uninstall
 - Exit Menu
 
-The KNULLI Tools installer exposes this as `RAOfflineProxy Menu`.
+The KNULLI Tools installer exposes this as `RAOfflineProxy`.
 
 The current primary implementation is the SDL menu. The older `fbv` menu code remains in the repo as a fallback implementation, but it is no longer the default KNULLI path.
 
