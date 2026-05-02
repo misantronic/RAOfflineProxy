@@ -159,6 +159,12 @@ The installer removes itself after a successful install and creates this Tools e
 
 `RAOfflineProxy Menu` now launches the SDL/`pygame` menu path. The KNULLI launcher automatically adds `/userdata/roms/pygame` to `PYTHONPATH` when that directory exists on-device.
 
+On upgrade installs, the KNULLI installer now preserves prior proxy running state:
+
+- if the proxy was running before install, the installer stops it before replacing files
+- after install, it starts the proxy again so the running service loads the updated code
+- if the proxy was not running before install, it remains stopped
+
 On KNULLI/Batocera-style installs, the launcher also exports:
 
 - `HOME=/userdata/system`

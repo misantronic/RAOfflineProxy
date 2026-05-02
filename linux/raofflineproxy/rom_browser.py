@@ -1,5 +1,6 @@
 import hashlib
 import json
+import logging
 import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
@@ -14,6 +15,7 @@ from .rom_hashing import hash_rom, hash_rom_candidates, supported_rom_extensions
 from .storage import Storage
 from .utils import proxy_user_agent
 
+LOGGER = logging.getLogger("raofflineproxy")
 SUPPORTED_ROM_EXTENSIONS = supported_rom_extensions()
 MAX_CACHED_GAMES = 50
 
@@ -123,6 +125,11 @@ def add_rom_to_cache(path: Path, storage: Storage, config_data: dict) -> AddRomR
         hash_candidates = hash_rom_candidates(path)
         if not hash_candidates:
             return AddRomResult(False, "Hash failed: unsupported or unreadable ROM")
+        LOGGER.info(
+            "Manual cache hash candidates path=%s candidates=%s",
+            path,
+            hash_candidates,
+        )
     except Exception as exc:
         return AddRomResult(False, f"Hash failed: {exc}")
 

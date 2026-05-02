@@ -141,6 +141,16 @@ class LinuxRomHashingTests(unittest.TestCase):
                 hashlib.md5(b"pbpdata").hexdigest(),
             )
 
+    def test_gba_hash_uses_generic_md5_strategy(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            rom_path = Path(temp_dir) / "test.gba"
+            rom_path.write_bytes(b"gbadata")
+
+            self.assertEqual(
+                rom_hashing.hash_rom(rom_path),
+                hashlib.md5(b"gbadata").hexdigest(),
+            )
+
 
 if __name__ == "__main__":
     unittest.main()
