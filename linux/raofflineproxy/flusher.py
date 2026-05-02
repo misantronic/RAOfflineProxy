@@ -4,6 +4,7 @@ import time
 from dataclasses import dataclass
 
 from . import cache_keys
+from .auth import resolve_credentials
 from .award_signing import public_key_base64, verify_award
 from .config import FALLBACK_USER_AGENT, MAX_PROXY_PORT, upstream_host
 from .network import build_api_url, http_post
@@ -284,15 +285,15 @@ def flush_pending_awards(storage: Storage, config_data: dict) -> FlushOutcome:
             pending_remaining=0,
         )
 
-    credentials = storage.load_login_credentials()
+    credentials = resolve_credentials(storage, config_data, user_agent)
     if credentials is None:
-        LOGGER.warning("Flush aborted: no cached login credentials")
+        LOGGER.warning("Flush aborted: no RetroAchievements credentials")
         return FlushOutcome(
             flushed=0,
             total=len(pending),
             skipped_stale=0,
             pending_remaining=len(pending),
-            last_error="No login credentials available",
+            last_error="No RetroAchievements credentials available",
         )
 
     user_agent = storage.load_user_agent(FALLBACK_USER_AGENT)

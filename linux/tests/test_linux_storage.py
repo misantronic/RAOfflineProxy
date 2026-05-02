@@ -29,6 +29,26 @@ class LinuxStorageTests(unittest.TestCase):
             finally:
                 store.close()
 
+    def test_load_login_credentials_prefers_retroarch_cfg_token(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            db_path = root / "test.sqlite3"
+            store = storage.Storage(database_path=db_path)
+            try:
+                store.upsert_cache(
+                    "login2::cached-user",
+                    '{"User":"cached-user","Token":"cached-token"}',
+                )
+
+                credentials = store.load_login_credentials()
+
+                self.assertEqual(
+                    credentials,
+                    {"user": "cached-user", "token": "cached-token"},
+                )
+            finally:
+                store.close()
+
 
 if __name__ == "__main__":
     unittest.main()

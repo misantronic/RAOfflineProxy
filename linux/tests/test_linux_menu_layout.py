@@ -45,6 +45,39 @@ class MenuLayoutTests(unittest.TestCase):
         self.assertEqual(session.last_navigation_delta, 0)
         self.assertEqual(session.navigation_hold_started_at, 0.0)
 
+    def test_bottom_hint_points_to_system_login(self) -> None:
+        session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
+        session.view = "main"
+        session.storage = type(
+            "Storage",
+            (),
+            {"load_login_credentials": lambda self, _config=None: None},
+        )()
+
+        self.assertEqual(
+            menu_sdl.MenuSdlSession.bottom_hint_text(session),
+            "Login to RetroAchievements in system settings.",
+        )
+
+    def test_status_reports_logged_in_when_retroarch_credentials_exist(self) -> None:
+        session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
+        session.view = "main"
+        session.storage = type(
+            "Storage",
+            (),
+            {
+                "load_login_credentials": lambda self, _config=None: {
+                    "user": "misantronic",
+                    "token": "token",
+                }
+            },
+        )()
+
+        self.assertEqual(
+            menu_sdl.MenuSdlSession.status_text(session, running=True),
+            "PROXY: RUNNING, STATUS: LOGGED IN",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

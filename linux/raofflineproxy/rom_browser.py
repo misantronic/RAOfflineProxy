@@ -6,6 +6,7 @@ from pathlib import Path
 from urllib.parse import urljoin
 
 from . import cache_keys
+from .auth import resolve_credentials
 from .config import CONFIG_DIR, FALLBACK_USER_AGENT, ensure_config_dir, upstream_host
 from .network import build_api_url, http_get
 from .rom_cache import cache_game
@@ -112,11 +113,11 @@ def fetch_game_id(
 
 
 def add_rom_to_cache(path: Path, storage: Storage, config_data: dict) -> AddRomResult:
-    credentials = storage.load_login_credentials()
-    if credentials is None:
-        return AddRomResult(False, "Login required")
-
     user_agent = storage.load_user_agent(FALLBACK_USER_AGENT)
+    credentials = resolve_credentials(storage, config_data, user_agent)
+    if credentials is None:
+        return AddRomResult(False, "RetroAchievements login required")
+
     try:
         hash_value = hash_rom(path)
         if hash_value is None:
@@ -147,8 +148,11 @@ def add_rom_to_cache(path: Path, storage: Storage, config_data: dict) -> AddRomR
 
     game = next(
         (entry for entry in list_cached_games(storage) if entry.game_id == game_id),
-        CachedGameEntry(game_id=game_id, title=f"Game {game_id}"),
+        None,
     )
+    if game is None:
+        return AddRomResult(False, "Caching failed: patch data was not stored")
+
     return AddRomResult(True, f"Cached {game.title}", game=game)
 
 

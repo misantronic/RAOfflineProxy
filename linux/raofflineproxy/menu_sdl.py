@@ -3,6 +3,7 @@ import subprocess
 import time
 from pathlib import Path
 
+from .auth import resolve_credentials
 from .batocera_conf import patch_batocera_conf, revert_batocera_conf
 from .config import CONFIG_DIR, load_config
 from .platform import (
@@ -313,11 +314,16 @@ class MenuSdlSession:
                 if autostart_enabled(config_data)
                 else "Enable autostart"
             )
-        if self.storage.load_login_credentials() is not None:
+        if self.is_logged_in(config_data):
             labels.append(f"Cached games ({len(self.cached_games)})")
         labels.append(f"Pending awards ({len(self.pending_awards)})")
         labels.extend(["Uninstall", "Exit Menu"])
         return labels
+
+    def is_logged_in(self, config_data: dict | None = None) -> bool:
+        return (
+            resolve_credentials(self.storage, config_data or load_config()) is not None
+        )
 
     def current_labels(self, running: bool | None = None) -> list[str]:
         return self.labels(self.proxy_running() if running is None else running)
@@ -367,7 +373,7 @@ class MenuSdlSession:
             )
         if self.view == "file_browser":
             return str(self.browser_dir or "No ROM directory")
-        logged_in = self.storage.load_login_credentials() is not None
+        logged_in = self.is_logged_in()
         proxy_status = "RUNNING" if running else "STOPPED"
         login_status = "LOGGED IN" if logged_in else "NOT LOGGED IN"
         return f"PROXY: {proxy_status}, STATUS: {login_status}"
@@ -376,10 +382,10 @@ class MenuSdlSession:
         if self.view != "main":
             return None
 
-        if self.storage.load_login_credentials() is not None:
+        if self.is_logged_in():
             return None
 
-        return '"Start proxy" and start a game to login.'
+        return "Login to RetroAchievements in system settings."
 
     def handle_events(self) -> None:
         for event in self.pygame.event.get():

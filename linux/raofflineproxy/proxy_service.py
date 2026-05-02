@@ -9,6 +9,7 @@ from http.server import BaseHTTPRequestHandler
 from urllib.parse import urlsplit
 
 from . import cache_keys
+from .auth import resolve_credentials
 from .award_signing import sign_award
 from .batocera_conf import enforce_batocera_conf
 from .config import FALLBACK_USER_AGENT, proxy_host, proxy_port, upstream_host
@@ -545,10 +546,14 @@ class PeriodicRefresh(threading.Thread):
         while not self.stop_event.wait(self.interval_seconds):
             if not self.server.is_online():
                 continue
-            credentials = self.server.storage.load_login_credentials()
+            user_agent = self.server.storage.load_user_agent(FALLBACK_USER_AGENT)
+            credentials = resolve_credentials(
+                self.server.storage,
+                self.server.config_data,
+                user_agent,
+            )
             if credentials is None:
                 continue
-            user_agent = self.server.storage.load_user_agent(FALLBACK_USER_AGENT)
             patch_entries = self.server.storage.get_all_cache_by_prefix(
                 cache_keys.PREFIX_PATCH
             )
