@@ -2,15 +2,7 @@
 
 > You are installing the current alpha build: `v1.0.0-alpha1`.
 
-## Step 1: Install RAOfflineProxy
-
-Install the APK on your Android device. You can download the latest alpha prerelease from [GitHub Releases](https://github.com/misantronic/RAOfflineProxy/releases) or build from source.
-
-::: tip Minimum Android version
-Android **8.0** or newer is required.
-:::
-
-## Step 2: Enter Your RetroAchievements Credentials in RetroArch
+## Prerequisites
 
 Before using RAOfflineProxy, enter your RetroAchievements account details in RetroArch. RetroArch saves your username and API token in `retroarch.cfg`, and RAOfflineProxy imports that token when the proxy starts.
 
@@ -19,20 +11,22 @@ In RetroArch:
 2. Enter your RetroAchievements **Username** and **Password** (or API Token)
 3. Save the settings
 
-## Step 3: Start the Proxy and Import Your Login
+## Step 1: Install RAOfflineProxy
 
-Starting the proxy automatically patches RetroArch's config file to redirect achievement traffic to the local proxy. It also imports your saved RetroAchievements username and token from `retroarch.cfg`. If direct file access is unavailable, the app asks you to grant access to RetroArch's Android data `files` folder.
+Install the APK on your Android device. You can download the latest alpha prerelease from [GitHub Releases](https://github.com/misantronic/RAOfflineProxy/releases) or build from source.
+
+## Step 2: Start the Proxy
+
+Start the proxy while you are online. RAOfflineProxy will import your saved RetroAchievements login automatically. On some devices, you may also need to grant folder access.
 
 1. Make sure you are **online**
 2. Start the proxy
-
-If `retroarch.cfg` does not contain a saved token yet, open RetroArch, log in to RetroAchievements while online, save the settings, then start the proxy again.
 
 ::: warning Shutdown caveat
 On some devices, swiping the app away or crashing while the proxy is active does not reliably revert `retroarch.cfg` immediately. Stop sync before killing the app. If that happens, reopen RAOfflineProxy once so it can clean up `retroarch.cfg`.
 :::
 
-## Step 4: Cache Your Games
+## Step 3: Cache Your Games
 
 Once the proxy has been started and your credentials have been imported, you can cache games for offline use.
 
@@ -51,7 +45,7 @@ Caching also happens automatically when you open a game in RetroArch while the p
 
 See [Caching Games](./caching-games) for full details.
 
-## Step 5: Play Offline
+## Step 4: Play Offline
 
 1. Start the proxy service (press **Start proxy** in the action bar, or enable auto-start)
 2. Launch RetroArch and load a cached game
