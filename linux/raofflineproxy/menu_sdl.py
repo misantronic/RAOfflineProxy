@@ -1,5 +1,6 @@
 import os
 import subprocess
+import traceback
 import time
 from pathlib import Path
 
@@ -15,7 +16,11 @@ from .platform import (
     resolve_rom_root,
 )
 from .pending_awards import delete_pending_award, list_pending_awards
-from .retroarch_cfg import patch_retroarch_cfg, revert_retroarch_cfg
+from .retroarch_cfg import (
+    load_retroarch_credentials,
+    patch_retroarch_cfg,
+    revert_retroarch_cfg,
+)
 from .rom_browser import (
     MAX_CACHED_GAMES,
     add_rom_to_cache,
@@ -51,7 +56,7 @@ from .menu_input import (
     KEY_UP,
     close_input_devices,
     open_input_devices,
-    read_key,
+    read_keys,
 )
 
 SDL_LOG_PATH = CONFIG_DIR / "menu-sdl.log"
@@ -67,10 +72,7 @@ ERROR_SECONDS = 3
 FPS = 60
 LEFT_MARGIN = 32
 GROUP_GAP = 14
-INITIAL_NAV_INTERVAL_SECONDS = 0.06
-FAST_NAV_INTERVAL_SECONDS = 0.02
-FAST_NAV_TRIGGER_SECONDS = 0.2
-NAV_RESET_SECONDS = 0.14
+MAIN_MENU_STATE_REFRESH_SECONDS = 1.0
 FONT_CANDIDATES = [
     "DejaVu Sans Mono",
     "Monospace",
@@ -90,7 +92,6 @@ def run_menu_sdl(command_runner: str) -> None:
 
     pygame.init()
     pygame.font.init()
-    pygame.joystick.init()
 
     try:
         surface = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
@@ -98,6 +99,9 @@ def run_menu_sdl(command_runner: str) -> None:
         log_menu_sdl(f"run_menu_sdl start width={width} height={height}")
         session = MenuSdlSession(command_runner, surface, width, height, pygame)
         session.run()
+    except Exception:
+        log_menu_sdl(traceback.format_exc().rstrip())
+        raise
     finally:
         pygame.quit()
 
@@ -166,6 +170,7 @@ class MenuSdlSession:
         self.width = width
         self.height = height
         self.pygame = pygame
+        self.config_data = load_config()
         self.running = True
         self.view = "main"
         self.selected_index = 0
@@ -186,21 +191,24 @@ class MenuSdlSession:
         self.preview_surface = None
         self.preview_game_id = None
         self.logo_surface = None
+        self.main_state_refreshed_at = 0.0
+        self.main_running = False
+        self.main_logged_in = False
+        self.main_autostart_supported = False
+        self.main_autostart_enabled = False
+        self.active_game_unlock_game_id = None
+        self.active_game_unlock_count_cached = None
+        self.active_game_unlock_titles_cached: list[str] = []
         self.input_handles = open_input_devices()
         self.title_font = self.load_font(max(30, height // 19), bold=True)
         self.status_font = self.load_font(max(20, height // 30))
         self.item_font = self.load_font(max(22, height // 30), bold=False)
         self.clock = pygame.time.Clock()
-        for joystick_index in range(pygame.joystick.get_count()):
-            joystick = pygame.joystick.Joystick(joystick_index)
-            joystick.init()
-            log_menu_sdl(
-                f"joystick init index={joystick_index} name={joystick.get_name()}"
-            )
 
         log_menu_sdl(
             f"MenuSdlSession init width={width} height={height} input_handles={len(self.input_handles)}"
         )
+        self.refresh_main_menu_state(force=True)
         self.refresh_cached_games()
 
     def load_font(self, size: int, bold: bool = False):
@@ -227,7 +235,7 @@ class MenuSdlSession:
                 self.handle_events()
                 self.handle_raw_input()
                 self.render()
-                self.clock.tick(FPS)
+                self.clock.tick()
         finally:
             close_input_devices(self.input_handles)
             self.storage.close()
@@ -262,7 +270,8 @@ class MenuSdlSession:
                 else self.item_text_color(label)
             )
             prefix = "> " if actual_index == self.selected_index else "  "
-            text = self.item_font.render(f"{prefix}{label}", False, color)
+            font = self.item_font_for_index(actual_index)
+            text = font.render(f"{prefix}{label}", False, color)
             rect = text.get_rect(
                 topleft=(LEFT_MARGIN, positions[actual_index] - scroll_base_y)
             )
@@ -293,7 +302,7 @@ class MenuSdlSession:
         if self.view == "pending_awards":
             labels = []
             for award in self.pending_awards:
-                labels.extend([award.game_title, award.summary_text, ""])
+                labels.extend([award.game_title, award.summary_text])
             labels.append("Back")
             return labels
 
@@ -318,14 +327,14 @@ class MenuSdlSession:
 
         toggle = "Stop proxy" if running else "Start proxy"
         labels = [toggle]
-        config_data = load_config()
-        if autostart_supported(config_data):
+        self.refresh_main_menu_state()
+        if self.main_autostart_supported:
             labels.append(
                 "Disable autostart"
-                if autostart_enabled(config_data)
+                if self.main_autostart_enabled
                 else "Enable autostart"
             )
-        if self.is_logged_in(config_data):
+        if self.main_logged_in:
             labels.append("Cached games")
         if self.pending_awards:
             labels.append(f"Pending awards ({len(self.pending_awards)})")
@@ -333,8 +342,15 @@ class MenuSdlSession:
         return labels
 
     def is_logged_in(self, config_data: dict | None = None) -> bool:
+        if config_data is None:
+            self.refresh_main_menu_state()
+            return bool(getattr(self, "main_logged_in", False))
+
+        if self.storage.load_login_credentials() is not None:
+            return True
+
         return (
-            resolve_credentials(self.storage, config_data or load_config()) is not None
+            load_retroarch_credentials(resolve_retroarch_cfg(config_data)) is not None
         )
 
     def current_labels(self, running: bool | None = None) -> list[str]:
@@ -366,10 +382,24 @@ class MenuSdlSession:
             return SECONDARY_TEXT_COLOR
         return TEXT_COLOR
 
+    def item_font_for_index(self, index: int):
+        if self.view != "pending_awards":
+            return self.item_font
+
+        if index < len(self.pending_awards) * 2 and index % 2 == 0:
+            return self.title_font
+
+        return self.item_font
+
     def game_actions_unlock_titles(self) -> list[str]:
         if self.active_game is None:
             return []
-        return cached_unlock_titles(self.storage, self.active_game.game_id)
+        if (
+            getattr(self, "active_game_unlock_game_id", None)
+            != self.active_game.game_id
+        ):
+            self.refresh_active_game_unlocks()
+        return list(getattr(self, "active_game_unlock_titles_cached", []))
 
     def status_text(self, running: bool) -> str:
         if self.view == "cached_games":
@@ -385,13 +415,19 @@ class MenuSdlSession:
         if self.view == "game_actions":
             if self.active_game is None:
                 return "No game selected"
-            unlock_count = cached_unlock_count(self.storage, self.active_game.game_id)
+            if (
+                getattr(self, "active_game_unlock_game_id", None)
+                != self.active_game.game_id
+            ):
+                self.refresh_active_game_unlocks()
+            unlock_count = getattr(self, "active_game_unlock_count_cached", None)
             if unlock_count is None:
                 return f"GAME ID: {self.active_game.game_id}, UNLOCKS: unknown"
             return f"GAME ID: {self.active_game.game_id}, UNLOCKS: {unlock_count}"
         if self.view == "file_browser":
             return str(self.browser_dir or "No ROM directory")
-        logged_in = self.is_logged_in()
+        self.refresh_main_menu_state()
+        logged_in = bool(getattr(self, "main_logged_in", False))
         proxy_status = "RUNNING" if running else "STOPPED"
         login_status = "LOGGED IN" if logged_in else "NOT LOGGED IN"
         return f"PROXY: {proxy_status}, STATUS: {login_status}"
@@ -416,43 +452,23 @@ class MenuSdlSession:
                 self.handle_key(event.key)
                 continue
 
-            if event.type == self.pygame.JOYHATMOTION:
-                log_menu_sdl(f"pygame hat value={event.value}")
-                x, y = event.value
-                if y == 1:
-                    self.navigate(-1)
-                elif y == -1:
-                    self.navigate(1)
-                elif x == -1:
-                    self.navigate(-1)
-                elif x == 1:
-                    self.navigate(1)
+    def handle_raw_input(self) -> None:
+        for key in read_keys(self.input_handles):
+            log_menu_sdl(f"raw key={key}")
+            if key in {KEY_UP, KEY_LEFT, BTN_DPAD_UP, BTN_DPAD_LEFT}:
+                self.navigate(-1)
                 continue
 
-            if event.type == self.pygame.JOYBUTTONDOWN:
-                log_menu_sdl(f"pygame joybutton button={event.button}")
-                self.handle_joy_button(event.button)
+            if key in {KEY_DOWN, KEY_RIGHT, BTN_DPAD_DOWN, BTN_DPAD_RIGHT}:
+                self.navigate(1)
+                continue
 
-    def handle_raw_input(self) -> None:
-        key = read_key(self.input_handles)
-        if key is None:
-            return
+            if key in {KEY_ENTER, KEY_SPACE, KEY_S, BTN_SOUTH, BTN_START}:
+                self.activate_selected()
+                continue
 
-        log_menu_sdl(f"raw key={key}")
-        if key in {KEY_UP, KEY_LEFT, BTN_DPAD_UP, BTN_DPAD_LEFT}:
-            self.navigate(-1)
-            return
-
-        if key in {KEY_DOWN, KEY_RIGHT, BTN_DPAD_DOWN, BTN_DPAD_RIGHT}:
-            self.navigate(1)
-            return
-
-        if key in {KEY_ENTER, KEY_SPACE, KEY_S, BTN_SOUTH, BTN_START}:
-            self.activate_selected()
-            return
-
-        if key in {KEY_ESC, KEY_BACKSPACE, KEY_Q, BTN_EAST, BTN_SELECT}:
-            self.go_back()
+            if key in {KEY_ESC, KEY_BACKSPACE, KEY_Q, BTN_EAST, BTN_SELECT}:
+                self.go_back()
 
     def handle_key(self, key: int) -> None:
         if key in {self.pygame.K_UP, self.pygame.K_LEFT}:
@@ -467,30 +483,7 @@ class MenuSdlSession:
         if key in {self.pygame.K_ESCAPE, self.pygame.K_BACKSPACE, self.pygame.K_q}:
             self.go_back()
 
-    def handle_joy_button(self, button: int) -> None:
-        if button in {0, 7}:
-            self.activate_selected()
-            return
-        if button in {1, 6}:
-            self.go_back()
-
     def navigate(self, delta: int) -> None:
-        now = time.monotonic()
-        if (
-            delta != self.last_navigation_delta
-            or (now - self.last_navigation_at) > NAV_RESET_SECONDS
-        ):
-            self.navigation_hold_started_at = now
-            self.last_navigation_delta = delta
-
-        interval = INITIAL_NAV_INTERVAL_SECONDS
-        if (now - self.navigation_hold_started_at) >= FAST_NAV_TRIGGER_SECONDS:
-            interval = FAST_NAV_INTERVAL_SECONDS
-
-        if (now - self.last_navigation_at) < interval:
-            return
-
-        self.last_navigation_at = now
         items = self.current_labels()
         item_count = max(1, len(items))
         self.selected_index = (self.selected_index + delta) % item_count
@@ -530,7 +523,7 @@ class MenuSdlSession:
                 self.start_proxy()
             return
 
-        config_data = load_config()
+        config_data = getattr(self, "config_data", {})
         if selected_label in {"Enable autostart", "Disable autostart"}:
             self.toggle_autostart(config_data)
             return
@@ -580,19 +573,20 @@ class MenuSdlSession:
         if 0 <= game_index < len(self.cached_games):
             self.save_view_position("cached_games")
             self.active_game = self.cached_games[game_index]
+            self.refresh_active_game_unlocks()
             self.view = "game_actions"
             self.reset_selection()
             return
 
     def activate_pending_awards_selected(self) -> None:
-        back_index = len(self.pending_awards) * 3
+        back_index = len(self.pending_awards) * 2
         if self.selected_index == back_index:
             self.save_view_position("pending_awards")
             self.view = "main"
             self.restore_view_position("main")
             return
 
-        award_index = self.selected_index // 3
+        award_index = self.selected_index // 2
         if 0 <= award_index < len(self.pending_awards):
             self.save_view_position("pending_awards")
             self.active_pending_award = self.pending_awards[award_index]
@@ -631,6 +625,7 @@ class MenuSdlSession:
             remove_cached_game(self.storage, self.active_game.game_id)
             removed_title = self.active_game.title
             self.active_game = None
+            self.clear_active_game_unlocks()
             self.refresh_cached_games()
             self.view = "cached_games"
             self.restore_view_position("cached_games")
@@ -639,6 +634,7 @@ class MenuSdlSession:
 
         if self.selected_index == len(self.game_actions_unlock_titles()) + 1:
             self.active_game = None
+            self.clear_active_game_unlocks()
             self.view = "cached_games"
             self.restore_view_position("cached_games")
 
@@ -733,12 +729,14 @@ class MenuSdlSession:
         if self.view == "cached_games":
             self.save_view_position("cached_games")
             self.view = "main"
+            self.refresh_main_menu_state(force=True)
             self.restore_view_position("main")
             return
 
         if self.view == "pending_awards":
             self.save_view_position("pending_awards")
             self.view = "main"
+            self.refresh_main_menu_state(force=True)
             self.restore_view_position("main")
             return
 
@@ -750,6 +748,7 @@ class MenuSdlSession:
 
         if self.view == "game_actions":
             self.active_game = None
+            self.clear_active_game_unlocks()
             self.view = "cached_games"
             self.restore_view_position("cached_games")
             return
@@ -869,6 +868,57 @@ class MenuSdlSession:
         self.last_navigation_delta = 0
         self.navigation_hold_started_at = 0.0
 
+    def refresh_main_menu_state(self, force: bool = False) -> None:
+        if not hasattr(self, "main_state_refreshed_at"):
+            self.main_state_refreshed_at = 0.0
+        if not hasattr(self, "config_data"):
+            self.config_data = {}
+        if not hasattr(self, "main_running"):
+            self.main_running = False
+        if not hasattr(self, "main_logged_in"):
+            self.main_logged_in = False
+        if not hasattr(self, "main_autostart_supported"):
+            self.main_autostart_supported = False
+        if not hasattr(self, "main_autostart_enabled"):
+            self.main_autostart_enabled = False
+
+        if not force and self.view != "main":
+            return
+
+        now = time.monotonic()
+        if (
+            not force
+            and (now - self.main_state_refreshed_at) < MAIN_MENU_STATE_REFRESH_SECONDS
+        ):
+            return
+
+        self.config_data = load_config()
+        self.main_running = self.read_proxy_running()
+        self.main_logged_in = self.is_logged_in(self.config_data)
+        self.main_autostart_supported = autostart_supported(self.config_data)
+        self.main_autostart_enabled = (
+            self.main_autostart_supported and autostart_enabled(self.config_data)
+        )
+        self.main_state_refreshed_at = now
+
+    def clear_active_game_unlocks(self) -> None:
+        self.active_game_unlock_game_id = None
+        self.active_game_unlock_count_cached = None
+        self.active_game_unlock_titles_cached = []
+
+    def refresh_active_game_unlocks(self) -> None:
+        if self.active_game is None:
+            self.clear_active_game_unlocks()
+            return
+
+        self.active_game_unlock_game_id = self.active_game.game_id
+        self.active_game_unlock_count_cached = cached_unlock_count(
+            self.storage, self.active_game.game_id
+        )
+        self.active_game_unlock_titles_cached = cached_unlock_titles(
+            self.storage, self.active_game.game_id
+        )
+
     def save_view_position(self, view: str | None = None) -> None:
         key = view or self.view
         self.view_positions[key] = (self.selected_index, self.scroll_offset)
@@ -942,7 +992,7 @@ class MenuSdlSession:
                 current_y += GROUP_GAP
             if self.view == "game_actions" and index == len(items) - 2:
                 current_y += GROUP_GAP
-            if self.view == "pending_awards" and (index + 1) % 3 == 0:
+            if self.view == "pending_awards" and index % 2 == 1:
                 current_y += GROUP_GAP
         return positions
 
@@ -985,16 +1035,24 @@ class MenuSdlSession:
             end_offset = self.visible_end_offset(positions, self.scroll_offset, start_y)
         self.scroll_offset = max(0, min(self.scroll_offset, max(0, len(items) - 1)))
 
-    def proxy_running(self) -> bool:
+    def read_proxy_running(self) -> bool:
         try:
             service = service_status() or {}
         except Exception:
             return False
         return bool(service.get("running"))
 
+    def proxy_running(self) -> bool:
+        if self.view == "main":
+            self.refresh_main_menu_state()
+            return self.main_running
+
+        return self.read_proxy_running()
+
     def start_proxy(self) -> None:
         try:
             start_proxy_inline()
+            self.refresh_main_menu_state(force=True)
             self.message = ("Proxy started", time.monotonic() + 1.2)
         except Exception as exc:
             self.message = (f"Start failed: {exc}", time.monotonic() + ERROR_SECONDS)
@@ -1002,6 +1060,7 @@ class MenuSdlSession:
     def stop_proxy(self) -> None:
         try:
             stop_proxy_inline()
+            self.refresh_main_menu_state(force=True)
             self.message = ("Proxy stopped", time.monotonic() + 1.2)
         except Exception as exc:
             self.message = (f"Stop failed: {exc}", time.monotonic() + ERROR_SECONDS)
@@ -1014,6 +1073,7 @@ class MenuSdlSession:
             else:
                 enable_autostart(config_data)
                 self.message = ("Autostart enabled", time.monotonic() + 1.2)
+            self.refresh_main_menu_state(force=True)
         except Exception as exc:
             self.message = (
                 f"Autostart failed: {exc}",

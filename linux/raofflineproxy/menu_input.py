@@ -1,3 +1,4 @@
+import os
 import select
 import struct
 from pathlib import Path
@@ -36,6 +37,7 @@ def open_input_devices() -> list[object]:
     for path in sorted(INPUT_DIR.glob("event*")):
         try:
             handle = open(path, "rb", buffering=0)
+            os.set_blocking(handle.fileno(), False)
         except OSError:
             continue
         handles.append(handle)
@@ -50,31 +52,38 @@ def close_input_devices(handles: list[object]) -> None:
             pass
 
 
-def read_key(handles: list[object]) -> int | None:
+def read_keys(handles: list[object]) -> list[int]:
     if not handles:
-        return None
+        return []
 
+    keys: list[int] = []
     readable, _, _ = select.select(handles, [], [], 0)
     for handle in readable:
-        try:
-            event = handle.read(EVENT_SIZE)
-        except OSError:
-            continue
-        if len(event) != EVENT_SIZE:
-            continue
+        while True:
+            try:
+                event = handle.read(EVENT_SIZE)
+            except BlockingIOError:
+                break
+            except OSError:
+                break
+            if event is None:
+                break
+            if len(event) != EVENT_SIZE:
+                break
 
-        _seconds, _micros, event_type, code, value = struct.unpack("llHHi", event)
-        if event_type == EV_KEY and value == 1:
-            return code
-        if event_type == EV_ABS:
-            if code == ABS_HAT0Y:
-                if value < 0:
-                    return BTN_DPAD_UP
-                if value > 0:
-                    return BTN_DPAD_DOWN
-            if code == ABS_HAT0X:
-                if value < 0:
-                    return BTN_DPAD_LEFT
-                if value > 0:
-                    return BTN_DPAD_RIGHT
-    return None
+            _seconds, _micros, event_type, code, value = struct.unpack("llHHi", event)
+            if event_type == EV_KEY and value == 1:
+                keys.append(code)
+                continue
+            if event_type == EV_ABS:
+                if code == ABS_HAT0Y:
+                    if value < 0:
+                        keys.append(BTN_DPAD_UP)
+                    elif value > 0:
+                        keys.append(BTN_DPAD_DOWN)
+                if code == ABS_HAT0X:
+                    if value < 0:
+                        keys.append(BTN_DPAD_LEFT)
+                    elif value > 0:
+                        keys.append(BTN_DPAD_RIGHT)
+    return keys

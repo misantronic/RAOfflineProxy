@@ -98,38 +98,25 @@ class MenuLayoutTests(unittest.TestCase):
         session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
         session.view = "game_actions"
         session.active_game = type("Game", (), {"game_id": 10701, "title": "Tetris"})()
-        session.storage = object()
+        session.active_game_unlock_game_id = 10701
+        session.active_game_unlock_count_cached = 12
 
-        original_cached_unlock_count = menu_sdl.cached_unlock_count
-        try:
-            menu_sdl.cached_unlock_count = lambda _storage, _game_id: 12
-
-            self.assertEqual(
-                menu_sdl.MenuSdlSession.status_text(session, running=False),
-                "GAME ID: 10701, UNLOCKS: 12",
-            )
-        finally:
-            menu_sdl.cached_unlock_count = original_cached_unlock_count
+        self.assertEqual(
+            menu_sdl.MenuSdlSession.status_text(session, running=False),
+            "GAME ID: 10701, UNLOCKS: 12",
+        )
 
     def test_game_actions_labels_include_unlock_titles(self) -> None:
         session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
         session.view = "game_actions"
         session.active_game = type("Game", (), {"game_id": 10701, "title": "Tetris"})()
-        session.storage = object()
+        session.active_game_unlock_game_id = 10701
+        session.active_game_unlock_titles_cached = ["First Steps", "Commander"]
 
-        original_cached_unlock_titles = menu_sdl.cached_unlock_titles
-        try:
-            menu_sdl.cached_unlock_titles = lambda _storage, _game_id: [
-                "First Steps",
-                "Commander",
-            ]
-
-            self.assertEqual(
-                menu_sdl.MenuSdlSession.labels(session, running=False),
-                ["Remove cache", "First Steps", "Commander", "Back"],
-            )
-        finally:
-            menu_sdl.cached_unlock_titles = original_cached_unlock_titles
+        self.assertEqual(
+            menu_sdl.MenuSdlSession.labels(session, running=False),
+            ["Remove cache", "First Steps", "Commander", "Back"],
+        )
 
     def test_root_labels_hide_cached_count_and_empty_pending_awards(self) -> None:
         session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
@@ -270,27 +257,148 @@ class MenuLayoutTests(unittest.TestCase):
 
         menu_sdl.MenuSdlSession.render_home_logo(cached_session)
 
-    def test_navigate_uses_fast_interval_after_shorter_hold(self) -> None:
+    def test_navigate_advances_immediately_on_each_call(self) -> None:
         session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
         session.selected_index = 0
         session.scroll_offset = 0
-        session.last_navigation_at = 100.0
-        session.last_navigation_delta = 1
-        session.navigation_hold_started_at = 100.0
         session.current_labels = lambda running=None: ["One", "Two", "Three"]
         session.item_start_y = lambda: 100
         session.item_gap = lambda: 28
         session.ensure_selection_visible = lambda items, start_y, gap: None
 
-        original_monotonic = menu_sdl.time.monotonic
-        try:
-            menu_sdl.time.monotonic = lambda: 100.23
+        menu_sdl.MenuSdlSession.navigate(session, 1)
+        menu_sdl.MenuSdlSession.navigate(session, 1)
 
-            menu_sdl.MenuSdlSession.navigate(session, 1)
+        self.assertEqual(session.selected_index, 2)
 
-            self.assertEqual(session.selected_index, 1)
-        finally:
-            menu_sdl.time.monotonic = original_monotonic
+    def test_pending_awards_labels_do_not_include_blank_spacer_rows(self) -> None:
+        session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
+        session.view = "pending_awards"
+        session.pending_awards = [
+            type(
+                "Award",
+                (),
+                {
+                    "game_title": "Tetris",
+                    "summary_text": "First Line | 2026-01-01 12:00 | 5pts.",
+                },
+            )(),
+            type(
+                "Award",
+                (),
+                {
+                    "game_title": "Mega Man",
+                    "summary_text": "Boss Down | 2026-01-01 12:05 | 10pts.",
+                },
+            )(),
+        ]
+
+        self.assertEqual(
+            menu_sdl.MenuSdlSession.labels(session, running=False),
+            [
+                "Tetris",
+                "First Line | 2026-01-01 12:00 | 5pts.",
+                "Mega Man",
+                "Boss Down | 2026-01-01 12:05 | 10pts.",
+                "Back",
+            ],
+        )
+
+    def test_pending_awards_uses_title_font_for_game_rows(self) -> None:
+        session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
+        session.view = "pending_awards"
+        session.pending_awards = [object(), object()]
+        session.title_font = object()
+        session.item_font = object()
+
+        self.assertIs(
+            menu_sdl.MenuSdlSession.item_font_for_index(session, 0),
+            session.title_font,
+        )
+        self.assertIs(
+            menu_sdl.MenuSdlSession.item_font_for_index(session, 1),
+            session.item_font,
+        )
+        self.assertIs(
+            menu_sdl.MenuSdlSession.item_font_for_index(session, 2),
+            session.title_font,
+        )
+        self.assertIs(
+            menu_sdl.MenuSdlSession.item_font_for_index(session, 4),
+            session.item_font,
+        )
+
+    def test_activate_pending_awards_selected_uses_two_rows_per_award(self) -> None:
+        session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
+        session.pending_awards = [object(), object()]
+        session.selected_index = 2
+        session.active_pending_award = None
+        session.save_view_position = lambda _view: None
+        session.reset_selection = lambda: None
+
+        menu_sdl.MenuSdlSession.activate_pending_awards_selected(session)
+
+        self.assertIs(session.active_pending_award, session.pending_awards[1])
+        self.assertEqual(session.view, "pending_award_actions")
+
+    def test_is_logged_in_uses_cached_main_menu_state_without_config(self) -> None:
+        session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
+        session.main_logged_in = True
+        session.refresh_main_menu_state = lambda force=False: None
+
+        self.assertTrue(menu_sdl.MenuSdlSession.is_logged_in(session))
+
+    def test_game_actions_unlock_titles_uses_cached_values_for_active_game(
+        self,
+    ) -> None:
+        session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
+        session.active_game = type("Game", (), {"game_id": 42})()
+        session.active_game_unlock_game_id = 42
+        session.active_game_unlock_titles_cached = ["First Steps"]
+        session.refresh_active_game_unlocks = lambda: (_ for _ in ()).throw(
+            AssertionError("should not refresh unlocks")
+        )
+
+        self.assertEqual(
+            menu_sdl.MenuSdlSession.game_actions_unlock_titles(session),
+            ["First Steps"],
+        )
+
+    def test_handle_events_ignores_joystick_events(self) -> None:
+        session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
+        session.running = True
+        session.handle_key = lambda _key: (_ for _ in ()).throw(
+            AssertionError("keyboard handler should not run")
+        )
+        session.navigate = lambda _delta: (_ for _ in ()).throw(
+            AssertionError("joystick navigation should not run")
+        )
+
+        class FakePygame:
+            QUIT = 1
+            KEYDOWN = 2
+            JOYHATMOTION = 3
+            JOYBUTTONDOWN = 4
+
+            class event:
+                @staticmethod
+                def get():
+                    return [
+                        type(
+                            "Event",
+                            (),
+                            {"type": FakePygame.JOYHATMOTION, "value": (1, 0)},
+                        )(),
+                        type(
+                            "Event", (), {"type": FakePygame.JOYBUTTONDOWN, "button": 0}
+                        )(),
+                    ]
+
+        session.pygame = FakePygame
+
+        menu_sdl.MenuSdlSession.handle_events(session)
+
+        self.assertTrue(session.running)
 
 
 if __name__ == "__main__":
