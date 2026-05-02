@@ -8,15 +8,15 @@ from linux.raofflineproxy import utils
 
 class LinuxAwardParityTests(unittest.TestCase):
     def test_proxy_user_agent_uses_linux_suffix(self) -> None:
-        user_agent = utils.proxy_user_agent("rcheevos/11.4.0")
+        user_agent = utils.proxy_user_agent("RetroArch/1.21.0 (Linux)")
 
         self.assertEqual(
             user_agent,
-            f"rcheevos/11.4.0 {config.PROXY_UA_TAG}",
+            f"RetroArch/1.21.0 (Linux) {config.PROXY_UA_TAG}",
         )
 
     def test_proxy_user_agent_is_idempotent(self) -> None:
-        original = f"rcheevos/11.4.0 {config.PROXY_UA_TAG}"
+        original = f"RetroArch/1.21.0 (Linux) {config.PROXY_UA_TAG}"
 
         self.assertEqual(utils.proxy_user_agent(original), original)
 
@@ -34,7 +34,7 @@ class LinuxAwardParityTests(unittest.TestCase):
             "achievementId": 1234,
             "queryString": "/dorequest.php?r=awardachievement",
             "requestBody": "a=1234&u=testuser&h=0&v=oldhash",
-            "userAgent": "rcheevos/11.4.0",
+            "userAgent": "RetroArch/1.21.0 (Linux)",
             "queuedAt": 1_000,
             "payloadHash": "payload123",
             "prevHash": "genesis",
