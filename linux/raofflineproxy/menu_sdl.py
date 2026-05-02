@@ -180,7 +180,7 @@ class MenuSdlSession:
         self.input_handles = open_input_devices()
         self.title_font = self.load_font(max(30, height // 19), bold=True)
         self.status_font = self.load_font(max(20, height // 30))
-        self.item_font = self.load_font(max(22, height // 30), bold=True)
+        self.item_font = self.load_font(max(22, height // 30), bold=False)
         self.clock = pygame.time.Clock()
         for joystick_index in range(pygame.joystick.get_count()):
             joystick = pygame.joystick.Joystick(joystick_index)
@@ -315,8 +315,9 @@ class MenuSdlSession:
                 else "Enable autostart"
             )
         if self.is_logged_in(config_data):
-            labels.append(f"Cached games ({len(self.cached_games)})")
-        labels.append(f"Pending awards ({len(self.pending_awards)})")
+            labels.append("Cached games")
+        if self.pending_awards:
+            labels.append(f"Pending awards ({len(self.pending_awards)})")
         labels.extend(["Uninstall", "Exit Menu"])
         return labels
 
@@ -517,7 +518,7 @@ class MenuSdlSession:
             self.toggle_autostart(config_data)
             return
 
-        if selected_label.startswith("Cached games ("):
+        if selected_label == "Cached games":
             self.save_view_position("main")
             self.view = "cached_games"
             self.restore_view_position("cached_games")

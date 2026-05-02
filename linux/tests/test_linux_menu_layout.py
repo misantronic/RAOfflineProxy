@@ -78,6 +78,74 @@ class MenuLayoutTests(unittest.TestCase):
             "PROXY: RUNNING, STATUS: LOGGED IN",
         )
 
+    def test_root_labels_hide_cached_count_and_empty_pending_awards(self) -> None:
+        session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
+        session.view = "main"
+        session.cached_games = [
+            type("Game", (), {"title": "Tetris", "game_id": 10701})()
+        ]
+        session.pending_awards = []
+        session.storage = object()
+
+        original_load_config = menu_sdl.load_config
+        original_autostart_supported = menu_sdl.autostart_supported
+        original_is_logged_in = menu_sdl.MenuSdlSession.is_logged_in
+        try:
+            menu_sdl.load_config = lambda: {}
+            menu_sdl.autostart_supported = lambda _config: False
+            menu_sdl.MenuSdlSession.is_logged_in = lambda self, _config=None: True
+
+            labels = menu_sdl.MenuSdlSession.labels(session, running=False)
+
+            self.assertIn("Cached games", labels)
+            self.assertNotIn("Cached games (1)", labels)
+            self.assertNotIn("Pending awards (0)", labels)
+        finally:
+            menu_sdl.load_config = original_load_config
+            menu_sdl.autostart_supported = original_autostart_supported
+            menu_sdl.MenuSdlSession.is_logged_in = original_is_logged_in
+
+    def test_activate_selected_opens_cached_games_without_counter_label(self) -> None:
+        session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
+        session.view = "main"
+        session.selected_index = 1
+        session.cached_games = []
+        session.pending_awards = []
+        session.running = True
+        session.storage = object()
+
+        original_current_labels = menu_sdl.MenuSdlSession.current_labels
+        original_proxy_running = menu_sdl.MenuSdlSession.proxy_running
+        original_save_view_position = menu_sdl.MenuSdlSession.save_view_position
+        original_restore_view_position = menu_sdl.MenuSdlSession.restore_view_position
+        original_refresh_cached_games = menu_sdl.MenuSdlSession.refresh_cached_games
+        original_load_config = menu_sdl.load_config
+        try:
+            menu_sdl.MenuSdlSession.current_labels = lambda self, running=None: [
+                "Start proxy",
+                "Cached games",
+                "Uninstall",
+                "Exit Menu",
+            ]
+            menu_sdl.MenuSdlSession.proxy_running = lambda self: False
+            menu_sdl.MenuSdlSession.save_view_position = lambda self, key: None
+            menu_sdl.MenuSdlSession.restore_view_position = lambda self, key: None
+            menu_sdl.MenuSdlSession.refresh_cached_games = lambda self: None
+            menu_sdl.load_config = lambda: {}
+
+            menu_sdl.MenuSdlSession.activate_selected(session)
+
+            self.assertEqual(session.view, "cached_games")
+        finally:
+            menu_sdl.MenuSdlSession.current_labels = original_current_labels
+            menu_sdl.MenuSdlSession.proxy_running = original_proxy_running
+            menu_sdl.MenuSdlSession.save_view_position = original_save_view_position
+            menu_sdl.MenuSdlSession.restore_view_position = (
+                original_restore_view_position
+            )
+            menu_sdl.MenuSdlSession.refresh_cached_games = original_refresh_cached_games
+            menu_sdl.load_config = original_load_config
+
 
 if __name__ == "__main__":
     unittest.main()
