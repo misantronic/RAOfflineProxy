@@ -2,6 +2,7 @@ package com.raofflineproxy.proxy
 
 import android.content.Context
 import android.net.Uri
+import android.os.Build
 import android.util.Log
 import androidx.documentfile.provider.DocumentFile
 import com.raofflineproxy.MAX_CACHED_GAMES
@@ -22,9 +23,10 @@ import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
 
-private const val FALLBACK_USER_AGENT = "rcheevos/11.4.0"
 private const val TAG = "RAProxy"
 private const val HTTP_ERROR_BODY_LOG_LIMIT = 512
+
+private val FALLBACK_USER_AGENT = "RetroArch/1.21.0 (Android ${Build.VERSION.RELEASE ?: "Unknown"})"
 
 data class ScanResult(
     val matched: Int,
@@ -345,8 +347,8 @@ private suspend fun buildUnlocksArray(db: AppDatabase, gameId: Int, user: String
 }
 
 internal fun httpGet(url: String, userAgent: String): HttpGetResult {
-    if (url.startsWith("$RA_HOST/dorequest.php")) {
-        val action = url.substringAfter("r=", "request").substringBefore('&')
+    val action = apiActionFromUrl(url)
+    if (action != null) {
         throttleRetroAchievementsApiRequest("GET $action")
     }
 
@@ -384,3 +386,6 @@ internal fun httpGet(url: String, userAgent: String): HttpGetResult {
         connection.disconnect()
     }
 }
+
+private fun apiActionFromUrl(url: String): String? =
+    url.substringAfter("r=", "").substringBefore('&').takeIf { it.isNotEmpty() }

@@ -458,7 +458,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             var matched = 0
             var skipped = 0
             var limitReached = false
-            val userAgent = withContext(Dispatchers.IO) { loadUserAgent(db) }
+            val userAgent = withContext(Dispatchers.IO) { proxyUserAgent(loadUserAgent(db)) }
             for ((index, uri) in fileUris.withIndex()) {
                 if (_state.value.cachedGames.size >= MAX_CACHED_GAMES) {
                     skipped += total - index
@@ -532,7 +532,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             val startingMessage = str(R.string.scan_starting)
             _state.value = _state.value.copy(scanInProgress = true, scanProgress = startingMessage)
             SnackbarManager.showProgress(startingMessage)
-            val userAgent = withContext(Dispatchers.IO) { loadUserAgent(db) }
+            val userAgent = withContext(Dispatchers.IO) { proxyUserAgent(loadUserAgent(db)) }
             val result = withContext(Dispatchers.IO) {
                 scanRomFolder(app, treeUri, credentials, userAgent, db) { current, total, fileName ->
                     val progressMessage = str(R.string.scan_progress, current, total, fileName)
@@ -570,7 +570,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             val startingMessage = str(R.string.refresh_progress, 0, games.size)
             _state.value = _state.value.copy(scanInProgress = true, scanProgress = startingMessage)
             SnackbarManager.showProgress(startingMessage)
-            val userAgent = withContext(Dispatchers.IO) { loadUserAgent(db) }
+            val userAgent = withContext(Dispatchers.IO) { proxyUserAgent(loadUserAgent(db)) }
             withContext(Dispatchers.IO) {
                 for ((index, game) in games.withIndex()) {
                     val progressMessage = str(R.string.refresh_progress_named, index + 1, games.size, game.title)
