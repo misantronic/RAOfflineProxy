@@ -1,6 +1,6 @@
 # Privacy Policy
 
-**Last updated: April 12, 2026**
+**Last updated: May 02, 2026**
 
 RAOfflineProxy ("the app") is a local proxy tool for Android that enables offline RetroAchievements support with RetroArch. This privacy policy explains what data is handled by the app, how it is stored, and when it is transmitted.
 
@@ -16,7 +16,7 @@ RAOfflineProxy ("the app") is a local proxy tool for Android that enables offlin
 
 ### RetroAchievements credentials (username and API token)
 
-When RetroArch logs in to RetroAchievements through the proxy, the app caches the login response — which includes your RA username and API token — in a local SQLite database on your device. This cache is used to authenticate requests when your device is offline.
+When the proxy starts, the app reads your saved RetroAchievements username and API token from RetroArch's `retroarch.cfg` and caches them in a local SQLite database on your device. If RetroArch logs in through the proxy later, that login response can also refresh the cached credentials. This cache is used to authenticate requests when your device is offline.
 
 Your credentials are **never sent to the app developer**. They are only ever forwarded to `retroachievements.org`, exactly as RetroArch would do directly.
 

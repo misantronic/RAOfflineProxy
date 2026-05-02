@@ -20,6 +20,7 @@ import com.raofflineproxy.RequestFailureNotifier
 import com.raofflineproxy.parseFormParams
 import com.raofflineproxy.proxyUserAgent
 import com.raofflineproxy.data.AppDatabase
+import com.raofflineproxy.data.CacheEntry
 import com.raofflineproxy.data.CacheKeys
 import com.raofflineproxy.data.CachedGame
 import com.raofflineproxy.data.PendingAward
@@ -360,6 +361,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         result.hardcoreWasEnabled
                     )
                 }
+                result.credentials?.let { credentials ->
+                    withContext(Dispatchers.IO) { cacheRetroArchCredentials(credentials) }
+                }
                 ProxyService.start(app)
                 _state.value = _state.value.copy(
                     proxyRunning = true,
@@ -629,7 +633,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private fun buildPendingAwardsByGameId(
-        patchEntries: List<com.raofflineproxy.data.CacheEntry>,
+        patchEntries: List<CacheEntry>,
         awards: List<PendingAward>
     ): Map<String, Int> {
         if (patchEntries.isEmpty() || awards.isEmpty()) return emptyMap()
@@ -647,7 +651,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private fun buildAchievementGameIds(
-        patchEntries: List<com.raofflineproxy.data.CacheEntry>
+        patchEntries: List<CacheEntry>
     ): Map<Int, String> = buildMap {
         patchEntries.forEach { entry ->
             val gameId = CacheKeys.parseGameIdStringFromPatchKey(entry.cacheKey) ?: return@forEach
@@ -726,4 +730,18 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun loadSafUri(): Uri? =
         PrefsConstants.loadSafUri(getApplication())
+
+    private suspend fun cacheRetroArchCredentials(credentials: RetroArchCfgCredentials) {
+        val body = JSONObject().apply {
+            put("Success", true)
+            put("User", credentials.username)
+            put("Token", credentials.token)
+        }.toString()
+        db.cacheDao().upsert(
+            CacheEntry(
+                cacheKey = CacheKeys.login(credentials.username),
+                responseBody = body
+            )
+        )
+    }
 }

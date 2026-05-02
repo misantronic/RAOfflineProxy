@@ -5,6 +5,7 @@ import com.raofflineproxy.ui.buildPatchedContent
 import com.raofflineproxy.ui.buildRevertedContent
 import com.raofflineproxy.ui.detectHardcoreEnabled
 import com.raofflineproxy.ui.ensureBackupFileExists
+import com.raofflineproxy.ui.extractRetroArchCredentials
 import com.raofflineproxy.ui.isPatchedContent
 import com.raofflineproxy.ui.patchManualEditInstructions
 import com.raofflineproxy.ui.revertManualEditInstructions
@@ -60,6 +61,54 @@ class RetroArchCfgPatcherTest {
     @Test
     fun detectHardcoreEnabled_emptyString() {
         assertFalse(detectHardcoreEnabled(""))
+    }
+
+    @Test
+    fun extractRetroArchCredentials_returnsUsernameAndToken() {
+        val cfg = """
+            cheevos_username = "player1"
+            cheevos_token = "secret-token"
+        """.trimIndent()
+
+        val credentials = extractRetroArchCredentials(cfg)
+
+        assertEquals("player1", credentials?.username)
+        assertEquals("secret-token", credentials?.token)
+    }
+
+    @Test
+    fun extractRetroArchCredentials_handlesLeadingWhitespace() {
+        val cfg = "  cheevos_username = \"player1\"\n  cheevos_token = \"secret-token\""
+
+        val credentials = extractRetroArchCredentials(cfg)
+
+        assertEquals("player1", credentials?.username)
+        assertEquals("secret-token", credentials?.token)
+    }
+
+    @Test
+    fun extractRetroArchCredentials_nullWhenTokenEmpty() {
+        val cfg = """
+            cheevos_username = "player1"
+            cheevos_token = ""
+        """.trimIndent()
+
+        assertEquals(null, extractRetroArchCredentials(cfg))
+    }
+
+    @Test
+    fun extractRetroArchCredentials_nullWhenUsernameEmpty() {
+        val cfg = """
+            cheevos_username = ""
+            cheevos_token = "secret-token"
+        """.trimIndent()
+
+        assertEquals(null, extractRetroArchCredentials(cfg))
+    }
+
+    @Test
+    fun extractRetroArchCredentials_nullWhenMissing() {
+        assertEquals(null, extractRetroArchCredentials("cheevos_enable = \"true\""))
     }
 
     @Test

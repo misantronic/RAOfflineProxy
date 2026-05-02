@@ -52,8 +52,9 @@ Before syncing, the proxy checks each queued achievement against your cached gam
 If you see a red error message on a pending award saying something like "Invalid token" or "Invalid credentials", your RetroAchievements session may need to be refreshed. To fix this:
 
 1. Open RetroArch
-2. Go to **Settings → Achievements** and log in again
-3. Return to RAOfflineProxy — the next sync attempt should succeed
+2. Go to **Settings → Achievements**, log in again, and save the settings
+3. Return to RAOfflineProxy and restart the proxy so the refreshed token is imported from `retroarch.cfg`
+4. The next sync attempt should use the new token
 
 ## What RetroArch Sees When You're Offline
 

@@ -2,16 +2,17 @@
 
 ## Overview
 
-RetroArch stores its configuration in a file called `retroarch.cfg`. To redirect achievement traffic to the local proxy, RAOfflineProxy changes two settings in this file:
+RetroArch stores its configuration in a file called `retroarch.cfg`. To redirect achievement traffic to the local proxy, RAOfflineProxy changes two settings in this file and reads your saved RetroAchievements login token:
 
 - The **custom achievement server** is pointed at the proxy on your device
 - **Hardcore mode** is disabled (since it is not supported)
+- The saved `cheevos_username` and `cheevos_token` are imported into RAOfflineProxy's local credential cache
 
 Patching and reverting happen **automatically** when you start and stop the proxy — there is no separate setup step.
 
 ## Automatic Patching (Start Proxy)
 
-When you press **Start proxy** in the action bar, the app patches `retroarch.cfg` before starting the proxy service. If the app needs folder access to write the file, it shows a dialog prompting you to grant access.
+When you press **Start proxy** in the action bar, the app reads `cheevos_username` and `cheevos_token`, patches `retroarch.cfg`, then starts the proxy service. If the app needs folder access to write the file, it shows a dialog prompting you to grant access.
 
 Before patching, the app also checks for a one-time sibling backup named `retroarch.raofflineproxy.cfg`. If that file does not already exist, RAOfflineProxy creates it from the current `retroarch.cfg`.
 
