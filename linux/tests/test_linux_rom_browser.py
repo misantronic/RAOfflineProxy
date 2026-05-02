@@ -3,6 +3,7 @@ import unittest
 from pathlib import Path
 
 from linux.raofflineproxy import platform
+from linux.raofflineproxy import proxy_service
 from linux.raofflineproxy import rom_browser
 from linux.raofflineproxy import rom_cache
 from linux.raofflineproxy import storage
@@ -235,6 +236,55 @@ class LinuxRomBrowserTests(unittest.TestCase):
             finally:
                 rom_browser.hash_rom = original_hash_rom
                 rom_browser.resolve_credentials = original_resolve_credentials
+                rom_browser.fetch_game_id = original_fetch_game_id
+                rom_browser.cache_game = original_cache_game
+                store.close()
+
+    def test_add_rom_to_cache_persists_hash_aliases_for_offline_gameid(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            db_path = root / "test.sqlite3"
+            rom_path = root / "tetris.gb"
+            rom_path.write_bytes(b"rom")
+            store = storage.Storage(database_path=db_path)
+            original_resolve_credentials = rom_browser.resolve_credentials
+            original_hash_candidates = rom_browser.hash_rom_candidates
+            original_fetch_game_id = rom_browser.fetch_game_id
+            original_cache_game = rom_browser.cache_game
+            try:
+                rom_browser.resolve_credentials = lambda _store, _config, _ua: {
+                    "user": "misantronic",
+                    "token": "token",
+                }
+                rom_browser.hash_rom_candidates = lambda _path: ["primary", "retroarch"]
+                rom_browser.fetch_game_id = (
+                    lambda _hash, _credentials, _user_agent, _config_data, _store: 10701
+                )
+
+                def fake_cache_game(
+                    game_id, credentials, _user_agent, cache_store, _config_data
+                ):
+                    cache_store.upsert_cache(
+                        cache_keys.patch(game_id, credentials["user"]),
+                        '{"Success":true,"PatchData":{"Title":"Tetris"}}',
+                    )
+
+                rom_browser.cache_game = fake_cache_game
+
+                result = rom_browser.add_rom_to_cache(rom_path, store, {})
+                runtime = object.__new__(proxy_service.ProxyRuntimeServer)
+                runtime.storage = store
+                response = runtime.handle_offline_request(
+                    "/dorequest.php?r=gameid&m=retroarch&u=misantronic&t=token",
+                    "",
+                    "gameid",
+                )
+
+                self.assertTrue(result.success)
+                self.assertIn(b'"GameID":10701', response)
+            finally:
+                rom_browser.resolve_credentials = original_resolve_credentials
+                rom_browser.hash_rom_candidates = original_hash_candidates
                 rom_browser.fetch_game_id = original_fetch_game_id
                 rom_browser.cache_game = original_cache_game
                 store.close()

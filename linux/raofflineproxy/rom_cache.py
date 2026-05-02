@@ -49,7 +49,11 @@ def refresh_game_patch(
 
 
 def cache_unlocks(
-    game_id: int, credentials: dict, user_agent: str, config_data: dict
+    game_id: int,
+    credentials: dict,
+    user_agent: str,
+    config_data: dict,
+    storage: Storage | None = None,
 ) -> str | None:
     url = build_api_url(
         upstream_host(config_data),
@@ -69,6 +73,12 @@ def cache_unlocks(
 
     if not payload.get("Success"):
         return None
+
+    if storage is not None:
+        storage.upsert_cache(
+            cache_keys.unlocks(game_id, credentials["user"]),
+            response_body,
+        )
 
     return response_body
 
@@ -129,11 +139,6 @@ def cache_game(
         credentials,
         user_agent or FALLBACK_USER_AGENT,
         config_data,
+        storage,
     )
-    if unlocks_body is not None:
-        storage.upsert_cache(
-            cache_keys.unlocks(game_id, credentials["user"]),
-            unlocks_body,
-        )
-
     cache_session(game_id, credentials, storage)

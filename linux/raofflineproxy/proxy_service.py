@@ -320,6 +320,7 @@ class ProxyRuntimeServer(ThreadingTCPServer):
                         {"user": user, "token": token},
                         headers.get("User-Agent") or FALLBACK_USER_AGENT,
                         self.config_data,
+                        self.storage,
                     )
         return response_bytes(status_code, response_body, reason)
 
@@ -569,7 +570,11 @@ class PeriodicRefresh(threading.Thread):
                         self.server.config_data,
                     )
                     cache_unlocks(
-                        game_id, credentials, user_agent, self.server.config_data
+                        game_id,
+                        credentials,
+                        user_agent,
+                        self.server.config_data,
+                        self.server.storage,
                     )
                     cache_session(game_id, credentials, self.server.storage)
                     game_ids.append(game_id)

@@ -8,15 +8,15 @@ PREFIX_GAMEID = "gameid:"
 
 
 def login(user: str) -> str:
-    return f"login2::{user}"
+    return f"login2::{normalize_user(user)}"
 
 
 def game_id(hash_value: str) -> str:
-    return f"gameid:{hash_value}"
+    return f"gameid:{normalize_hash(hash_value)}"
 
 
 def patch(game_id_value: int | str, user: str) -> str:
-    return f"patch:{game_id_value}:{user}"
+    return f"patch:{game_id_value}:{normalize_user(user)}"
 
 
 def patch_prefix(game_id_value: int | str) -> str:
@@ -24,11 +24,19 @@ def patch_prefix(game_id_value: int | str) -> str:
 
 
 def unlocks(game_id_value: int | str, user: str) -> str:
-    return f"unlocks:{game_id_value}:{user}:0"
+    return f"unlocks:{game_id_value}:{normalize_user(user)}:0"
 
 
 def start_session(game_id_value: int | str, user: str) -> str:
-    return f"startsession:{game_id_value}:{user}:0"
+    return f"startsession:{game_id_value}:{normalize_user(user)}:0"
+
+
+def normalize_hash(hash_value: str) -> str:
+    return hash_value.strip().lower()
+
+
+def normalize_user(user: str) -> str:
+    return user.strip()
 
 
 def parse_game_id_from_patch_key(cache_key: str) -> int | None:
