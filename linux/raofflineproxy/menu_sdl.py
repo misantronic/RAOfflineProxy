@@ -68,14 +68,17 @@ FAST_NAV_INTERVAL_SECONDS = 0.03
 FAST_NAV_TRIGGER_SECONDS = 0.35
 NAV_RESET_SECONDS = 0.18
 FONT_CANDIDATES = [
-    "Press Start 2P",
-    "Pixel Operator",
-    "Terminus",
-    "Perfect DOS VGA 437",
-    "Fixed",
+    "DejaVu Sans Mono",
     "Monospace",
+    "DejaVu Sans",
+    "DejaVu Sans Condensed",
+    "Noto Sans JP",
+    "Noto Sans SC",
+    "Noto Sans KR",
+    "Noto Sans TC",
+    "Noto Sans HK",
 ]
-LOGO_PATH = Path(__file__).resolve().parent / "logo.png"
+LOGO_PATH = Path(__file__).resolve().parent / "logo-320.png"
 
 
 def run_menu_sdl(command_runner: str) -> None:
