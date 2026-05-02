@@ -1,10 +1,27 @@
+import logging
 import urllib.error
 import urllib.parse
 import urllib.request
-from urllib.parse import urlsplit
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from .config import FALLBACK_USER_AGENT, upstream_host
 from .utils import proxy_user_agent
+
+LOGGER = logging.getLogger("raofflineproxy")
+REDACTED_QUERY_KEYS = {"p", "t", "token", "password"}
+
+
+def redacted_url(url: str) -> str:
+    parsed = urlsplit(url)
+    query = urlencode(
+        [
+            (key, "<redacted>" if key.lower() in REDACTED_QUERY_KEYS else value)
+            for key, value in parse_qsl(parsed.query, keep_blank_values=True)
+        ]
+    )
+    return urlunsplit(
+        (parsed.scheme, parsed.netloc, parsed.path, query, parsed.fragment)
+    )
 
 
 def read_response_bytes(response: object) -> bytes:
@@ -48,9 +65,28 @@ def http_get(url: str, user_agent: str) -> str:
         method="GET",
     )
 
-    with urllib.request.urlopen(request, timeout=10) as response:
-        body = read_response_bytes(response)
-        return decode_response_body(body, response_content_type(response))
+    try:
+        with urllib.request.urlopen(request, timeout=10) as response:
+            body = read_response_bytes(response)
+            return decode_response_body(body, response_content_type(response))
+    except urllib.error.HTTPError as error:
+        LOGGER.warning(
+            "GET failed status=%s reason=%s url=%s",
+            error.code,
+            error.reason,
+            redacted_url(url),
+        )
+        raise
+    except urllib.error.URLError as error:
+        LOGGER.warning(
+            "GET connection failed reason=%s url=%s",
+            error.reason,
+            redacted_url(url),
+        )
+        raise
+    except Exception:
+        LOGGER.exception("GET failed url=%s", redacted_url(url))
+        raise
 
 
 def http_post(
@@ -80,11 +116,27 @@ def http_post(
             )
     except urllib.error.HTTPError as error:
         response_body = error.read()
+        LOGGER.warning(
+            "POST failed status=%s reason=%s url=%s",
+            error.code,
+            error.reason,
+            redacted_url(url),
+        )
         return (
             error.code,
             error.reason,
             decode_response_body(response_body, error.headers.get("Content-Type")),
         )
+    except urllib.error.URLError as error:
+        LOGGER.warning(
+            "POST connection failed reason=%s url=%s",
+            error.reason,
+            redacted_url(url),
+        )
+        raise
+    except Exception:
+        LOGGER.exception("POST failed url=%s", redacted_url(url))
+        raise
 
 
 def online_check(config_data: dict) -> bool:

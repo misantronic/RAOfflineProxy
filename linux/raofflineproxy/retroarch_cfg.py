@@ -8,10 +8,57 @@ from .state import clear_patch_state, load_patch_state, save_patch_state
 HOST_KEY = "cheevos_custom_host"
 ENABLE_KEY = "cheevos_enable"
 HARDCORE_KEY = "cheevos_hardcore_mode_enable"
+USERNAME_KEY = "cheevos_username"
+TOKEN_KEY = "cheevos_token"
+PASSWORD_KEY = "cheevos_password"
 
 
 def detect_hardcore_enabled(content: str) -> bool:
     return _extract_config_value(content, HARDCORE_KEY) == "true"
+
+
+def load_retroarch_credentials(cfg_path: str | None) -> dict | None:
+    token_credentials = load_retroarch_token_credentials(cfg_path)
+    if token_credentials is not None:
+        return token_credentials
+
+    return load_retroarch_password_credentials(cfg_path)
+
+
+def load_retroarch_token_credentials(cfg_path: str | None) -> dict | None:
+    if not cfg_path:
+        return None
+
+    target = Path(cfg_path)
+    if not target.exists():
+        return None
+
+    content = target.read_text(encoding="utf-8", errors="replace")
+    user = _extract_config_value(content, USERNAME_KEY)
+    token = _extract_config_value(content, TOKEN_KEY)
+    if not user or not token:
+        return None
+    return {"user": user, "token": token}
+
+
+def load_retroarch_password_credentials(cfg_path: str | None) -> dict | None:
+    if not cfg_path:
+        return None
+
+    target = Path(cfg_path)
+    if not target.exists():
+        return None
+
+    content = target.read_text(encoding="utf-8", errors="replace")
+    user = _extract_config_value(content, USERNAME_KEY)
+    password = _extract_config_value(content, PASSWORD_KEY)
+    if not user or not password:
+        return None
+    return {"user": user, "password": password}
+
+
+def retroarch_has_token(cfg_path: str | None) -> bool:
+    return load_retroarch_credentials(cfg_path) is not None
 
 
 def is_patched_content(content: str, proxy_address: str) -> bool:
@@ -161,12 +208,19 @@ def enforce_patched_cfg(cfg_path: str, config_data: dict) -> bool:
 
 
 def _extract_config_value(content: str, key: str) -> str | None:
-    match = re.search(
-        rf'^\s*{re.escape(key)}\s*=\s*"?(.*?)"?\s*$', content, re.MULTILINE
-    )
-    if match is None:
-        return None
-    return match.group(1)
+    key_pattern = re.compile(rf"^\s*{re.escape(key)}\s*=\s*(.*?)\s*$")
+    for raw_line in content.splitlines():
+        match = key_pattern.match(raw_line)
+        if match is None:
+            continue
+
+        value = match.group(1).strip()
+        if len(value) >= 2 and value[0] == '"' and value[-1] == '"':
+            return value[1:-1]
+        if value.startswith('"'):
+            return value[1:].strip()
+        return value
+    return None
 
 
 def _upsert_config_value(content: str, key: str, value: str) -> str:

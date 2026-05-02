@@ -5,7 +5,7 @@ import subprocess
 import sys
 import time
 
-from .config import LOG_FILE
+from .config import LOG_FILE, configure_logging
 from .proxy_service import run_proxy_service
 from .state import (
     clear_pid,
@@ -181,10 +181,7 @@ def run_service_foreground(config_data: dict) -> None:
     signal.signal(signal.SIGTERM, handle_signal)
     signal.signal(signal.SIGINT, handle_signal)
 
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s %(levelname)s %(name)s %(message)s",
-    )
+    configure_logging()
 
     stop_event = __import__("threading").Event()
 

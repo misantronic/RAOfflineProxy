@@ -7,6 +7,17 @@ from .network import build_api_url, http_get
 from .storage import Storage
 
 
+class CacheGameError(RuntimeError):
+    pass
+
+
+def api_error_message(action: str, payload: dict) -> str:
+    message = payload.get("Error") or payload.get("Message") or payload.get("error")
+    if message:
+        return f"{action} failed: {message}"
+    return f"{action} failed"
+
+
 def refresh_game_patch(
     game_id: int,
     credentials: dict,
@@ -27,11 +38,11 @@ def refresh_game_patch(
     try:
         response_body = http_get(url, user_agent)
         payload = json.loads(response_body)
-    except Exception:
-        return None
+    except Exception as exc:
+        raise CacheGameError(f"patch request failed: {exc}") from exc
 
     if not payload.get("Success"):
-        return None
+        raise CacheGameError(api_error_message("patch", payload))
 
     storage.upsert_cache(cache_keys.patch(game_id, credentials["user"]), response_body)
     return response_body
@@ -103,13 +114,15 @@ def cache_game(
     storage: Storage,
     config_data: dict,
 ) -> None:
-    refresh_game_patch(
+    patch_body = refresh_game_patch(
         game_id,
         credentials,
         user_agent or FALLBACK_USER_AGENT,
         storage,
         config_data,
     )
+    if patch_body is None:
+        raise CacheGameError("patch failed")
 
     unlocks_body = cache_unlocks(
         game_id,

@@ -2,7 +2,13 @@ import argparse
 import sys
 from pathlib import Path
 
-from .config import CONFIG_FILE, detect_retroarch_cfg, load_config, proxy_value
+from .config import (
+    CONFIG_FILE,
+    configure_logging,
+    detect_retroarch_cfg,
+    load_config,
+    proxy_value,
+)
 from .platform import autostart_enabled, disable_autostart, enable_autostart
 from .batocera_conf import patch_batocera_conf, revert_batocera_conf
 from .retroarch_cfg import (
@@ -67,6 +73,8 @@ def safe_stop_proxy(config_data: dict, cfg_path: str | None) -> list[str]:
 
 
 def main() -> None:
+    configure_logging()
+
     parser = argparse.ArgumentParser(description="RAOfflineProxy Linux client")
     parser.add_argument(
         "command",
