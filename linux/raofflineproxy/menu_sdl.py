@@ -75,6 +75,7 @@ FONT_CANDIDATES = [
     "Fixed",
     "Monospace",
 ]
+LOGO_PATH = Path(__file__).resolve().parent / "logo.png"
 
 
 def run_menu_sdl(command_runner: str) -> None:
@@ -177,6 +178,7 @@ class MenuSdlSession:
         self.browser_positions: dict[str, tuple[int, int]] = {}
         self.preview_surface = None
         self.preview_game_id = None
+        self.logo_surface = None
         self.input_handles = open_input_devices()
         self.title_font = self.load_font(max(30, height // 19), bold=True)
         self.status_font = self.load_font(max(20, height // 30))
@@ -242,6 +244,7 @@ class MenuSdlSession:
         gap = max(self.item_font.get_height() + 6, self.height // 18)
         self.normalize_selection(items, start_y, gap)
         self.render_game_preview()
+        self.render_home_logo()
         positions = self.item_positions(items, start_y, gap)
         visible_offset, visible_items = self.visible_items(items, positions, start_y)
         scroll_base_y = positions[visible_offset] - start_y if visible_items else 0
@@ -757,6 +760,19 @@ class MenuSdlSession:
         preview_rect = self.preview_surface.get_rect(topright=(self.width - 24, 24))
         self.surface.blit(self.preview_surface, preview_rect)
 
+    def render_home_logo(self) -> None:
+        if self.view != "main":
+            return
+
+        if self.logo_surface is None:
+            self.logo_surface = self.load_logo_surface()
+
+        if self.logo_surface is None:
+            return
+
+        logo_rect = self.logo_surface.get_rect(topright=(self.width - 24, 24))
+        self.surface.blit(self.logo_surface, logo_rect)
+
     def preview_target_game(self):
         if self.view == "cached_games":
             game_index = self.selected_index - 1
@@ -797,6 +813,23 @@ class MenuSdlSession:
             return self.pygame.transform.smoothscale(image, scaled_size)
         except Exception as exc:
             log_menu_sdl(f"preview load failed gameId={game.game_id} error={exc}")
+            return None
+
+    def load_logo_surface(self):
+        try:
+            if not LOGO_PATH.exists():
+                return None
+
+            image = self.pygame.image.load(str(LOGO_PATH))
+            image = (
+                image.convert_alpha()
+                if image.get_alpha() is not None
+                else image.convert()
+            )
+            scaled_size = self.fit_preview_size(image.get_width(), image.get_height())
+            return self.pygame.transform.smoothscale(image, scaled_size)
+        except Exception as exc:
+            log_menu_sdl(f"logo load failed path={LOGO_PATH} error={exc}")
             return None
 
     def fit_preview_size(self, width: int, height: int) -> tuple[int, int]:

@@ -15,6 +15,7 @@ export COPYFILE_DISABLE=1
 
 cp -r "${LINUX_DIR}/raofflineproxy" "${APP_DIR}/raofflineproxy"
 cp "${LINUX_DIR}/requirements.txt" "${APP_DIR}/requirements.txt"
+cp "${LINUX_DIR}/../docs/public/logo.png" "${APP_DIR}/raofflineproxy/logo.png"
 cp -r "${SCRIPT_DIR}/scripts" "${BUILD_DIR}/scripts"
 cp "${SCRIPT_DIR}/scripts/install.sh" "${BUILD_DIR}/install.sh"
 cp "${SCRIPT_DIR}/scripts/uninstall.sh" "${BUILD_DIR}/uninstall.sh"
