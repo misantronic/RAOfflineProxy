@@ -1,5 +1,6 @@
 import json
 import logging
+from pathlib import Path
 import socket
 import socketserver
 import threading
@@ -14,6 +15,7 @@ from .award_signing import sign_award
 from .batocera_conf import enforce_batocera_conf
 from .config import FALLBACK_USER_AGENT, proxy_host, proxy_port, upstream_host
 from .flusher import flush_pending_awards
+from .image_cache import resolve_cached_static_asset
 from .network import (
     build_forward_headers,
     decode_response_body,
@@ -43,6 +45,24 @@ SOCKET_TIMEOUT_SECONDS = 30
 
 AWARD_ACTIONS = {"awardachievement", "submitlbentry"}
 FAKE_OFFLINE_SUCCESS_ACTIONS = {"ping"}
+
+
+def is_static_asset_request(path: str) -> bool:
+    clean_path = path.split("?", 1)[0]
+    return clean_path.startswith("/Badge/")
+
+
+def guess_content_type(path: Path) -> str:
+    suffix = path.suffix.lower()
+    if suffix == ".png":
+        return "image/png"
+    if suffix in {".jpg", ".jpeg"}:
+        return "image/jpeg"
+    if suffix == ".gif":
+        return "image/gif"
+    if suffix == ".webp":
+        return "image/webp"
+    return "application/octet-stream"
 
 
 def cache_key_for_request(path: str, body: str) -> str:
@@ -207,6 +227,19 @@ class ProxyRuntimeServer(ThreadingTCPServer):
     def process_proxy_request(
         self, method: str, path: str, raw_body: str, headers: dict[str, str]
     ) -> bytes:
+        if is_static_asset_request(path):
+            cached_asset = resolve_cached_static_asset(path)
+            if cached_asset is not None:
+                return raw_response_bytes(
+                    200,
+                    cached_asset.read_bytes(),
+                    guess_content_type(cached_asset),
+                    "OK",
+                )
+            return raw_response_bytes(
+                204, b"", "application/octet-stream", "No Content"
+            )
+
         user_agent = headers.get("User-Agent") or headers.get("user-agent")
         if user_agent:
             self.storage.upsert_cache(cache_keys.USER_AGENT, user_agent)
