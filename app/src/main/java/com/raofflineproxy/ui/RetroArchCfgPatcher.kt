@@ -40,7 +40,13 @@ data class PatchResult(
     val message: String,
     val needsSafGrant: Boolean = false,
     val copyBackPath: String? = null,
-    val hardcoreWasEnabled: Boolean = false
+    val hardcoreWasEnabled: Boolean = false,
+    val credentials: RetroArchCfgCredentials? = null
+)
+
+data class RetroArchCfgCredentials(
+    val username: String,
+    val token: String
 )
 
 private class CfgStrings(
@@ -90,12 +96,28 @@ internal fun revertManualEditInstructions(): String =
 
 fun patchRetroArchCfg(context: Context, treeUri: Uri?): PatchResult {
     val transform: (String) -> String = { buildPatchedContent(it, proxyValue(context)) }
-    return applyCfgTransform(context, treeUri, transform, PATCH_STRINGS, detectHardcore = true, ensureBackup = true)
+    return applyCfgTransform(
+        context,
+        treeUri,
+        transform,
+        PATCH_STRINGS,
+        detectHardcore = true,
+        ensureBackup = true,
+        extractCredentials = true
+    )
 }
 
 fun revertRetroArchCfg(context: Context, treeUri: Uri?, restoreHardcore: Boolean = false): PatchResult {
     val transform: (String) -> String = { buildRevertedContent(it, restoreHardcore) }
-    return applyCfgTransform(context, treeUri, transform, REVERT_STRINGS, detectHardcore = false, ensureBackup = false)
+    return applyCfgTransform(
+        context,
+        treeUri,
+        transform,
+        REVERT_STRINGS,
+        detectHardcore = false,
+        ensureBackup = false,
+        extractCredentials = false
+    )
 }
 
 private fun applyCfgTransform(
@@ -104,17 +126,18 @@ private fun applyCfgTransform(
     transform: (String) -> String,
     strings: CfgStrings,
     detectHardcore: Boolean,
-    ensureBackup: Boolean
+    ensureBackup: Boolean,
+    extractCredentials: Boolean
 ): PatchResult {
     if (treeUri != null) {
-        val safResult = transformViaSaf(context, treeUri, transform, strings, detectHardcore, ensureBackup)
+        val safResult = transformViaSaf(context, treeUri, transform, strings, detectHardcore, ensureBackup, extractCredentials)
         if (safResult != null) return safResult
     }
 
     val directCandidate = SOURCE_CANDIDATES.map(::File).firstOrNull { it.exists() }
 
     if (directCandidate != null && directCandidate.canWrite()) {
-        return transformViaFile(context, directCandidate, transform, strings, detectHardcore, ensureBackup)
+        return transformViaFile(context, directCandidate, transform, strings, detectHardcore, ensureBackup, extractCredentials)
     }
 
     if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.S_V2) {
@@ -146,7 +169,8 @@ private fun transformViaSaf(
     transform: (String) -> String,
     strings: CfgStrings,
     detectHardcore: Boolean,
-    ensureBackup: Boolean
+    ensureBackup: Boolean,
+    extractCredentials: Boolean
 ): PatchResult? {
     val tree = DocumentFile.fromTreeUri(context, treeUri) ?: return null
 
@@ -166,14 +190,25 @@ private fun transformViaSaf(
             }
 
             val hardcoreWas = if (detectHardcore) detectHardcoreEnabled(original) else false
+            val credentials = if (extractCredentials) extractRetroArchCredentials(original) else null
             val transformed = transform(original)
             if (transformed == original) {
-                PatchResult(success = true, message = context.getString(strings.noOpMessage), hardcoreWasEnabled = hardcoreWas)
+                PatchResult(
+                    success = true,
+                    message = context.getString(strings.noOpMessage),
+                    hardcoreWasEnabled = hardcoreWas,
+                    credentials = credentials
+                )
             } else {
                 context.contentResolver.openOutputStream(cfgFile.uri, "wt")
                     ?.use { it.write(transformed.toByteArray()) }
                     ?: return PatchResult(success = false, message = context.getString(R.string.patch_could_not_write, cfgFile.name))
-                PatchResult(success = true, message = context.getString(strings.successSaf), hardcoreWasEnabled = hardcoreWas)
+                PatchResult(
+                    success = true,
+                    message = context.getString(strings.successSaf),
+                    hardcoreWasEnabled = hardcoreWas,
+                    credentials = credentials
+                )
             }
         } catch (e: Exception) {
             PatchResult(success = false, message = context.getString(strings.errorSaf, e.message))
@@ -192,7 +227,8 @@ private fun transformViaFile(
     transform: (String) -> String,
     strings: CfgStrings,
     detectHardcore: Boolean,
-    ensureBackup: Boolean
+    ensureBackup: Boolean,
+    extractCredentials: Boolean
 ): PatchResult =
     try {
         val original = target.readText()
@@ -200,12 +236,23 @@ private fun transformViaFile(
             ensureBackupFileExists(target, original)
         }
         val hardcoreWas = if (detectHardcore) detectHardcoreEnabled(original) else false
+        val credentials = if (extractCredentials) extractRetroArchCredentials(original) else null
         val transformed = transform(original)
         if (transformed == original) {
-            PatchResult(success = true, message = context.getString(strings.noOpMessage), hardcoreWasEnabled = hardcoreWas)
+            PatchResult(
+                success = true,
+                message = context.getString(strings.noOpMessage),
+                hardcoreWasEnabled = hardcoreWas,
+                credentials = credentials
+            )
         } else {
             writeFileAtomically(target, transformed)
-            PatchResult(success = true, message = context.getString(strings.successFile), hardcoreWasEnabled = hardcoreWas)
+            PatchResult(
+                success = true,
+                message = context.getString(strings.successFile),
+                hardcoreWasEnabled = hardcoreWas,
+                credentials = credentials
+            )
         }
     } catch (e: Exception) {
         PatchResult(success = false, message = context.getString(strings.errorFile, target.path, e.message))
@@ -248,6 +295,20 @@ private fun writeFileAtomically(target: File, content: String) {
 fun detectHardcoreEnabled(content: String): Boolean =
     Regex("""^\s*cheevos_hardcore_mode_enable\s*=\s*"true"\s*$""", RegexOption.MULTILINE)
         .containsMatchIn(content)
+
+internal fun extractRetroArchCredentials(content: String): RetroArchCfgCredentials? {
+    val username = extractRetroArchCfgValue(content, "cheevos_username")?.takeIf { it.isNotBlank() } ?: return null
+    val token = extractRetroArchCfgValue(content, "cheevos_token")?.takeIf { it.isNotBlank() } ?: return null
+
+    return RetroArchCfgCredentials(username = username, token = token)
+}
+
+private fun extractRetroArchCfgValue(content: String, key: String): String? =
+    Regex("""^\s*${Regex.escape(key)}\s*=\s*"(.*)"\s*$""", RegexOption.MULTILINE)
+        .find(content)
+        ?.groupValues
+        ?.get(1)
+        ?.trim()
 
 fun buildPatchedContent(content: String, proxyAddress: String): String {
     val hostRegex = Regex("""^(\s*cheevos_custom_host\s*=\s*).*$""", RegexOption.MULTILINE)

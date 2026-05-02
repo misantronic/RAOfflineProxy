@@ -33,8 +33,8 @@ RAOfflineProxy runs a tiny local proxy on your device. It sits between RetroArch
 
 1. Install [RAOfflineProxy](https://github.com/misantronic/RAOfflineProxy/releases) and open it
 2. Enter your RetroAchievements credentials in RetroArch
-3. Start the proxy while online, then start any game in RetroArch and wait for a successful RA login
-4. Cache your games from **Cached Games**, or just start them while online to cache them automatically
+3. Start the proxy while online so RAOfflineProxy can import your saved RA token from `retroarch.cfg`
+4. Cache your games from **Cached Games**, or start them in RetroArch while online to cache them automatically
 5. Play offline
 
 ## Important Shutdown Behavior

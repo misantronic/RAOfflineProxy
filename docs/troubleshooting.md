@@ -33,7 +33,7 @@
 
 **Cause 1:** Authentication error — your RA token may need to be refreshed.
 
-**Fix:** Open RetroArch → Settings → Achievements, log in again, then return to RAOfflineProxy. The next sync attempt should succeed.
+**Fix:** Open RetroArch → Settings → Achievements, log in again, save the settings, then return to RAOfflineProxy and restart the proxy so the refreshed token is imported from `retroarch.cfg`.
 
 **Cause 2:** The hash chain is broken.
 

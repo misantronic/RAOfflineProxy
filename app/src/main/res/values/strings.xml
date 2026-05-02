@@ -29,7 +29,7 @@
     <string name="home_description">RAOfflineProxy acts as a local proxy between RetroArch and RetroAchievements. It caches game data so you can play offline and earn achievements, then syncs them when you go back online.</string>
     <string name="home_docs_link">For setup instructions and tips, visit our documentation.</string>
     <string name="home_docs_url">https://raofflineproxy.com/introduction.html</string>
-    <string name="home_token_warning">Please start a game in RetroArch while online with RetroAchievements logged in to refresh your session.</string>
+    <string name="home_token_warning">No RetroAchievements credentials were found in retroarch.cfg, or the saved token is no longer valid. Open RetroArch and log in while online, then start the proxy again.</string>
     <string name="home_go_to_cached_games">Go to Cached Games</string>
 
     <!-- SAF grant dialog -->
@@ -80,7 +80,7 @@
     <string name="request_failed_award_sync">Queued award sync failed for achievement #%1$d: %2$s</string>
 
     <!-- Scan / add ROM messages -->
-    <string name="scan_no_login">No login data found. Please launch RetroArch and log in to RetroAchievements while online first.</string>
+    <string name="scan_no_login">No RetroAchievements credentials found. Start the proxy to import them from retroarch.cfg, or open RetroArch and log in while online first.</string>
     <string name="scan_hashing">Hashing file %1$d/%2$d…</string>
     <string name="scan_looking_up">Looking up %1$d/%2$d: %3$s</string>
     <string name="scan_add_complete">Added: %1$d of %2$d game(s) cached, %3$d skipped.</string>
@@ -132,8 +132,8 @@
     <string name="contact_feedback_url">https://forms.gle/XPRfWe2hAqzYy3JX9</string>
 
     <!-- Cached games header -->
-    <string name="cached_games_scan_hint">Go online and make sure RAOfflineProxy has a cached RetroAchievements login to manage cached games.</string>
-    <string name="cached_games_credentials_hint">Launch a game through the proxy while online first so RAOfflineProxy can cache your RetroAchievements login.</string>
+    <string name="cached_games_scan_hint">Go online and make sure RAOfflineProxy has imported your RetroAchievements credentials from retroarch.cfg to manage cached games.</string>
+    <string name="cached_games_credentials_hint">Start the proxy to import credentials from retroarch.cfg.</string>
     <string name="cached_games_offline_hint">Go online to add, scan, or refresh cached games.</string>
     <string name="cached_games_counter">%1$d/%2$d cached</string>
     <string name="cached_games_limit_reached">You already have %d cached games. Clear some games to add more.</string>
@@ -141,7 +141,7 @@
     <string name="cached_games_add_rom">Add ROM</string>
     <string name="cached_games_scan_folder">Scan ROM folder</string>
     <string name="cached_games_clear_all">Clear all cache</string>
-    <string name="cached_games_empty">No games cached yet. Load a game online first.</string>
+    <string name="cached_games_empty">No games cached yet. Add a ROM or scan your ROM folder while online.</string>
 
     <!-- Pending awards header -->
     <string name="pending_awards_empty">No pending awards.</string>
