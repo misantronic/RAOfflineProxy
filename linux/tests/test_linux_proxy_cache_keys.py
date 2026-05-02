@@ -4,6 +4,7 @@ from pathlib import Path
 
 from linux.raofflineproxy import proxy_service
 from linux.raofflineproxy import cache_keys
+from linux.raofflineproxy import image_cache
 from linux.raofflineproxy import storage
 
 
@@ -92,6 +93,28 @@ class LinuxProxyCacheKeyTests(unittest.TestCase):
                 self.assertIn(b'"UserUnlocks":[52113]', unlocks_response)
             finally:
                 store.close()
+
+    def test_static_badge_request_serves_cached_asset(self) -> None:
+        badge_path = image_cache.static_asset_path("/Badge/test.png")
+        badge_path.parent.mkdir(parents=True, exist_ok=True)
+        badge_path.write_bytes(b"png")
+        runtime = object.__new__(proxy_service.ProxyRuntimeServer)
+        try:
+            response = runtime.process_proxy_request(
+                "GET",
+                "/Badge/test.png",
+                "",
+                {},
+            )
+
+            self.assertIn(b"HTTP/1.1 200 OK", response)
+            self.assertTrue(response.endswith(b"png"))
+        finally:
+            if badge_path.exists():
+                badge_path.unlink()
+            badge_dir = badge_path.parent
+            if badge_dir.exists() and not any(badge_dir.iterdir()):
+                badge_dir.rmdir()
 
 
 if __name__ == "__main__":

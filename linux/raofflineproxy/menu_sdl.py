@@ -19,6 +19,7 @@ from .retroarch_cfg import patch_retroarch_cfg, revert_retroarch_cfg
 from .rom_browser import (
     MAX_CACHED_GAMES,
     add_rom_to_cache,
+    clear_cached_games,
     ensure_game_preview,
     list_browser_entries,
     list_cached_games,
@@ -553,7 +554,7 @@ class MenuSdlSession:
             return
 
         if self.selected_index == clear_cache_index:
-            self.storage.clear_cache()
+            clear_cached_games(self.storage)
             self.active_game = None
             self.refresh_cached_games()
             self.restore_view_position("cached_games")

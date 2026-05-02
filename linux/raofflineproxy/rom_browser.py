@@ -9,6 +9,7 @@ from urllib.parse import urljoin
 from . import cache_keys
 from .auth import resolve_credentials
 from .config import CONFIG_DIR, FALLBACK_USER_AGENT, ensure_config_dir, upstream_host
+from .image_cache import clear_all_cached_images, delete_cached_images_for_game
 from .network import build_api_url, http_get
 from .rom_cache import cache_game
 from .rom_hashing import hash_rom, hash_rom_candidates, supported_rom_extensions
@@ -201,6 +202,12 @@ def remove_cached_game(storage: Storage, game_id: int) -> None:
     storage.delete_cache_by_prefix(cache_keys.patch_prefix(game_id))
     storage.delete_cache_by_prefix(f"{cache_keys.PREFIX_UNLOCKS}{game_id}:")
     storage.delete_cache_by_prefix(f"{cache_keys.PREFIX_STARTSESSION}{game_id}:")
+    delete_cached_images_for_game(game_id)
+
+
+def clear_cached_games(storage: Storage) -> None:
+    storage.clear_cache()
+    clear_all_cached_images()
 
 
 def ensure_game_preview(

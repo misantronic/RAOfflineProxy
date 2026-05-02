@@ -4,6 +4,7 @@ import unittest
 from pathlib import Path
 
 from linux.raofflineproxy import platform
+from linux.raofflineproxy import image_cache
 from linux.raofflineproxy import proxy_service
 from linux.raofflineproxy import rom_browser
 from linux.raofflineproxy import rom_cache
@@ -352,6 +353,34 @@ class LinuxRomBrowserTests(unittest.TestCase):
                     store.get_all_cache_by_prefix("startsession:10701:"),
                     [],
                 )
+            finally:
+                store.close()
+
+    def test_remove_cached_game_deletes_cached_images(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "test.sqlite3"
+            image_dir = image_cache.game_image_dir(10701)
+            image_dir.mkdir(parents=True, exist_ok=True)
+            (image_dir / "icon.png").write_bytes(b"png")
+            store = storage.Storage(database_path=db_path)
+            try:
+                rom_browser.remove_cached_game(store, 10701)
+
+                self.assertFalse(image_dir.exists())
+            finally:
+                store.close()
+
+    def test_clear_cached_games_deletes_cached_images(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "test.sqlite3"
+            static_dir = image_cache.STATIC_DIR / "Badge"
+            static_dir.mkdir(parents=True, exist_ok=True)
+            (static_dir / "test.png").write_bytes(b"png")
+            store = storage.Storage(database_path=db_path)
+            try:
+                rom_browser.clear_cached_games(store)
+
+                self.assertFalse(image_cache.IMAGE_CACHE_DIR.exists())
             finally:
                 store.close()
 

@@ -3,6 +3,7 @@ import time
 
 from . import cache_keys
 from .config import FALLBACK_USER_AGENT, upstream_host
+from .image_cache import cache_patch_images
 from .network import build_api_url, http_get
 from .storage import Storage
 
@@ -45,6 +46,7 @@ def refresh_game_patch(
         raise CacheGameError(api_error_message("patch", payload))
 
     storage.upsert_cache(cache_keys.patch(game_id, credentials["user"]), response_body)
+    cache_patch_images(game_id, user_agent, response_body, config_data)
     return response_body
 
 
