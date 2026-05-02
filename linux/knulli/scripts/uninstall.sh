@@ -43,7 +43,7 @@ if [ -x "${BASE_DIR}/bin/raofflineproxy" ]; then
   fi
 fi
 
-rm -f "${TOOLS_DIR}/RAOfflineProxy Menu.sh"
+rm -f "${TOOLS_DIR}/RAOfflineProxy.sh"
 rm -f "/userdata/system/scripts/RAOfflineProxy_game_hook.sh"
 
 nohup /bin/sh -c '

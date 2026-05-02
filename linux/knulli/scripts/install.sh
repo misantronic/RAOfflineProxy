@@ -42,11 +42,11 @@ if [ "${WAS_RUNNING}" -eq 1 ]; then
   fi
 fi
 
-cat > "${TOOLS_DIR}/RAOfflineProxy Menu.sh" <<'EOF'
+cat > "${TOOLS_DIR}/RAOfflineProxy.sh" <<'EOF'
 #!/bin/sh
 exec /userdata/system/raofflineproxy/bin/raofflineproxy menu
 EOF
-chmod +x "${TOOLS_DIR}/RAOfflineProxy Menu.sh"
+chmod +x "${TOOLS_DIR}/RAOfflineProxy.sh"
 
 rm -f "${INSTALL_SCRIPT}"
 

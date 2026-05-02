@@ -20,7 +20,7 @@ What is already working in the experimental implementation:
 - queuing softcore achievement awards while offline
 - flushing queued awards automatically when connectivity returns
 - KNULLI installation through a single-file `RAOfflineProxy Install.sh` Tools entry
-- a single KNULLI Tools entry for `RAOfflineProxy Menu`
+- a single KNULLI Tools entry for `RAOfflineProxy`
 - on-screen install/status feedback using `fbv`
 - an interactive SDL-based KNULLI menu for Start, Stop, Cached Games, Uninstall, and Exit
 - autostart toggle support from the SDL root menu
@@ -40,12 +40,12 @@ The current experimental KNULLI flow is:
 
 After install, this Tools entry is created:
 
-- `RAOfflineProxy Menu`
+- `RAOfflineProxy`
 
 Current on-device feedback behavior:
 
-- `RAOfflineProxy Menu` is the primary interactive KNULLI UI for Start, Stop, Cached Games, Uninstall, and Exit
-- `RAOfflineProxy Menu` now uses the SDL/`pygame` menu path for responsive controller navigation
+- `RAOfflineProxy` is the primary interactive KNULLI UI for Start, Stop, Cached Games, Uninstall, and Exit
+- `RAOfflineProxy` now uses the SDL/`pygame` menu path for responsive controller navigation
 - `RAOfflineProxy Install` still displays a short framebuffer feedback screen during installation
 
 Current SDL menu capabilities:
@@ -85,7 +85,7 @@ Current install UX:
 - the installer removes itself after a successful install
 - if the proxy was already running before install, the installer now restarts it automatically so the updated service code is active immediately
 - if the proxy was stopped before install, the installer leaves it stopped
-- the Tools list is expected to expose only `RAOfflineProxy Menu`
+- the Tools list is expected to expose only `RAOfflineProxy`
 - uninstall stops the proxy, disables autostart, and removes RAOfflineProxy app/config/cache data locations on KNULLI, including legacy RAOfflineProxy-owned paths from older builds
 
 What is still rough:
