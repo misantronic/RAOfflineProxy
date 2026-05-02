@@ -205,6 +205,84 @@ def remove_cached_game(storage: Storage, game_id: int) -> None:
     delete_cached_images_for_game(game_id)
 
 
+def cached_unlock_count(storage: Storage, game_id: int) -> int | None:
+    for entry in storage.get_all_cache_by_prefix(
+        f"{cache_keys.PREFIX_UNLOCKS}{game_id}:"
+    ):
+        try:
+            payload = json.loads(entry["responseBody"])
+        except Exception:
+            continue
+
+        unlock_ids = payload.get("UserUnlocks")
+        if isinstance(unlock_ids, list):
+            return len(unlock_ids)
+
+    return None
+
+
+def cached_unlock_titles(storage: Storage, game_id: int) -> list[str]:
+    unlock_ids: list[int] | None = None
+    for entry in storage.get_all_cache_by_prefix(
+        f"{cache_keys.PREFIX_UNLOCKS}{game_id}:"
+    ):
+        try:
+            payload = json.loads(entry["responseBody"])
+        except Exception:
+            continue
+
+        value = payload.get("UserUnlocks")
+        if isinstance(value, list):
+            unlock_ids = [item for item in value if isinstance(item, int)]
+            break
+
+    if unlock_ids is None:
+        return []
+
+    patch_entry = next(
+        (
+            entry
+            for entry in storage.get_all_cache_by_prefix(
+                cache_keys.patch_prefix(game_id)
+            )
+        ),
+        None,
+    )
+    if patch_entry is None:
+        return []
+
+    try:
+        patch_payload = json.loads(patch_entry["responseBody"])
+    except Exception:
+        return []
+
+    achievements = patch_payload.get("PatchData", {}).get("Achievements")
+    title_by_id: dict[int, str] = {}
+    if isinstance(achievements, list):
+        for achievement in achievements:
+            if not isinstance(achievement, dict):
+                continue
+            achievement_id = achievement.get("ID")
+            title = achievement.get("Title")
+            if isinstance(achievement_id, int) and isinstance(title, str):
+                title_by_id[achievement_id] = title
+    elif isinstance(achievements, dict):
+        for achievement in achievements.values():
+            if not isinstance(achievement, dict):
+                continue
+            achievement_id = achievement.get("ID")
+            title = achievement.get("Title")
+            if isinstance(achievement_id, int) and isinstance(title, str):
+                title_by_id[achievement_id] = title
+
+    titles = [
+        title_by_id[achievement_id]
+        for achievement_id in unlock_ids
+        if achievement_id in title_by_id
+    ]
+    return titles
+
+
 def clear_cached_games(storage: Storage) -> None:
     storage.clear_cache()
     clear_all_cached_images()
