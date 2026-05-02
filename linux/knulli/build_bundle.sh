@@ -26,9 +26,6 @@ find "${APP_DIR}" -name "*.pyc" -delete
 chmod +x "${BUILD_DIR}/install.sh"
 chmod +x "${BUILD_DIR}/uninstall.sh"
 chmod +x "${BUILD_DIR}/scripts/launcher-raofflineproxy"
-chmod +x "${BUILD_DIR}/scripts/launcher-raofflineproxy-ui"
-chmod +x "${BUILD_DIR}/scripts/launcher-raofflineproxy-start"
-chmod +x "${BUILD_DIR}/scripts/launcher-raofflineproxy-stop"
 chmod +x "${BUILD_DIR}/scripts/launcher-raofflineproxy-uninstall"
 
 mkdir -p "${DIST_DIR}"
