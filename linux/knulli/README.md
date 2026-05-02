@@ -43,6 +43,22 @@ Cached Games currently supports:
 - clearing game-related cache entries while preserving cached login and User-Agent data
 - manual ROM adding for multiple RetroAchievements-supported hash formats including Game Boy, NES, SNES, N64, NDS, PSP, and PSX families
 
+Manual ROM adding and online game launch caching are intended to produce the same local game cache:
+
+- `gameid:<hash>` game lookup entries
+- `patch:<gameId>:<user>` achievement metadata
+- `unlocks:<gameId>:<user>:0` softcore unlock state
+- `startsession:<gameId>:<user>:0` synthetic offline session data built from cached unlocks
+
+Live upstream `startsession` responses are not cached. They are a special case so offline launches use the local synthetic response instead.
+
+KNULLI authentication is bootstrapped from RetroArch's saved achievement settings:
+
+- `cheevos_username`
+- `cheevos_password`
+
+RAOfflineProxy performs a normal `login2` request with those values and caches the returned RA token locally. The saved password is not used as the token for later `patch`, `unlocks`, or award flush requests.
+
 This bundle now patches RetroArch config and launches the background Linux proxy service.
 
 Autostart support currently uses:
