@@ -40,11 +40,26 @@ The Batocera integration uses supported `batocera.conf` keys such as:
 The background service:
 
 - intercepts RetroAchievements API requests on the configured local port
-- caches successful `patch`, `gameid`, `achievements`, `hashlibrary`, `login2`, and `unlocks` responses
+- caches successful `/dorequest.php` responses except live upstream `startsession`
 - bypasses upstream requests while online
 - serves cached responses while offline where possible
 - queues softcore award requests while offline or when upstream is unreachable
 - flushes queued awards when connectivity returns
+
+Authentication on KNULLI/Batocera-style systems is bootstrapped from RetroArch config:
+
+- RetroArch/KNULLI normally stores `cheevos_username` and `cheevos_password`, not a reusable RA API token
+- RAOfflineProxy reads those values, performs one `login2` request, and stores the returned RA token as a local `login2::<user>` cache entry
+- subsequent manual cache, refresh, and award flush requests use the cached token
+- `cheevos_password` is not used as the token for `patch`, `unlocks`, or award requests
+
+Game data cache behavior intentionally mirrors the Android client:
+
+- launching a game online through the proxy and manually adding a ROM from the SDL menu produce compatible local cache data
+- both paths persist `gameid:<hash>`, `patch:<gameId>:<user>`, and `unlocks:<gameId>:<user>:0`
+- upstream `startsession` responses are not cached
+- offline `startsession` is synthesized locally from cached unlocks and stored as `startsession:<gameId>:<user>:0`
+- manual ROM caching stores available hash aliases for the same ROM so RetroArch's later offline `gameid` request can resolve the cached game consistently
 
 The reconnect award flush now mirrors the Android client more closely:
 
@@ -270,6 +285,8 @@ The SDL menu now includes a `Cached games` flow with:
 - list of cached games derived from local `patch:*` entries
 - `Clear cache`
 - `Back`
+
+`Add ROM` performs the same data preparation used by online game launch caching: it identifies the ROM, stores the game lookup response, fetches patch metadata, fetches softcore unlock state, and builds a local synthetic session response for offline startup.
 
 Selecting a cached game opens a per-game action menu with:
 

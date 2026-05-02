@@ -28,6 +28,7 @@ What is already working in the experimental implementation:
 - manual ROM adding from a file browser rooted in RetroArch/KNULLI paths
 - cached game preview images in the SDL menu
 - Linux ROM hashing support for multiple RetroAchievements platforms
+- login bootstrap from RetroArch/KNULLI `cheevos_username` + `cheevos_password`, with the returned RA token cached locally
 
 ## KNULLI Flow
 
@@ -52,6 +53,7 @@ Current SDL menu capabilities:
 - `Enable autostart` / `Disable autostart` is available at the root when the platform supports startup hooks
 - `Cached Games` lists currently cached games from local `patch:*` cache entries
 - `Add ROM` opens a fullscreen file browser rooted from the platform's RetroArch ROM directory resolution
+- `Add ROM` caches the same relevant RA data as launching a game online through the proxy: `gameid`, `patch`, `unlocks`, and a synthetic `startsession`
 - selecting a cached game opens a per-game action menu
 - `Remove cache` removes the selected game's `patch`, `unlocks`, and `startsession` entries
 - `Clear cache` removes game-related cache entries while preserving cached login and User-Agent data
@@ -62,6 +64,20 @@ Current KNULLI persistence behavior:
 - the launcher now forces a stable config/cache location under `/userdata/system/.config/raofflineproxy`
 - this keeps online-cached login/game data available to both interactive launches and autostarted services after reboot
 - autostart uses `/userdata/system/custom.sh` on KNULLI/Batocera-style systems
+
+Current authentication behavior:
+
+- KNULLI stores RetroAchievements username/password in RetroArch config, not a reusable API token
+- RAOfflineProxy reads those values, performs a normal `login2` request once, and stores the returned token in its local cache
+- after that, game caching, queued award flushing, and background refresh use the cached token
+- `cheevos_password` is never treated as the API token
+
+Current cache parity behavior:
+
+- starting a game while online and manually adding a ROM from `Cached Games` write compatible cache entries
+- both paths persist `gameid`, `patch`, and `unlocks` responses locally
+- `startsession` is never cached from upstream; RAOfflineProxy builds a local synthetic `startsession` from cached unlocks for offline launches
+- manual ROM caching stores available hash aliases so RetroArch's later offline `gameid` request can hit the same cached game mapping
 
 Current install UX:
 
