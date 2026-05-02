@@ -78,6 +78,22 @@ class MenuLayoutTests(unittest.TestCase):
             "PROXY: RUNNING, STATUS: LOGGED IN",
         )
 
+    def test_cached_games_status_shows_count_out_of_fifty(self) -> None:
+        session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
+        session.view = "cached_games"
+        session.cached_games = [
+            type("Game", (), {"title": "One", "game_id": 1})(),
+            type("Game", (), {"title": "Two", "game_id": 2})(),
+            type("Game", (), {"title": "Three", "game_id": 3})(),
+            type("Game", (), {"title": "Four", "game_id": 4})(),
+            type("Game", (), {"title": "Five", "game_id": 5})(),
+        ]
+
+        self.assertEqual(
+            menu_sdl.MenuSdlSession.status_text(session, running=False),
+            "CACHED: 5 / 50",
+        )
+
     def test_root_labels_hide_cached_count_and_empty_pending_awards(self) -> None:
         session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
         session.view = "main"

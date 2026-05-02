@@ -1,3 +1,4 @@
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -285,6 +286,51 @@ class LinuxRomBrowserTests(unittest.TestCase):
             finally:
                 rom_browser.resolve_credentials = original_resolve_credentials
                 rom_browser.hash_rom_candidates = original_hash_candidates
+                rom_browser.fetch_game_id = original_fetch_game_id
+                rom_browser.cache_game = original_cache_game
+                store.close()
+
+    def test_add_rom_to_cache_respects_fifty_game_limit(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            db_path = root / "test.sqlite3"
+            rom_path = root / "tetris.gb"
+            rom_path.write_bytes(b"rom")
+            store = storage.Storage(database_path=db_path)
+            original_resolve_credentials = rom_browser.resolve_credentials
+            original_hash_rom_candidates = rom_browser.hash_rom_candidates
+            original_fetch_game_id = rom_browser.fetch_game_id
+            original_cache_game = rom_browser.cache_game
+            try:
+                for game_id in range(1, 51):
+                    store.upsert_cache(
+                        cache_keys.patch(game_id, "misantronic"),
+                        json.dumps(
+                            {
+                                "Success": True,
+                                "PatchData": {"Title": f"Game {game_id}"},
+                            },
+                            separators=(",", ":"),
+                        ),
+                    )
+
+                rom_browser.resolve_credentials = lambda _store, _config, _ua: {
+                    "user": "misantronic",
+                    "token": "token",
+                }
+                rom_browser.hash_rom_candidates = lambda _path: ["abcd"]
+                rom_browser.fetch_game_id = (
+                    lambda _hash, _credentials, _user_agent, _config_data, _store: 10701
+                )
+                rom_browser.cache_game = lambda *args: None
+
+                result = rom_browser.add_rom_to_cache(rom_path, store, {})
+
+                self.assertFalse(result.success)
+                self.assertEqual(result.message, "Cache limit reached: 50 / 50")
+            finally:
+                rom_browser.resolve_credentials = original_resolve_credentials
+                rom_browser.hash_rom_candidates = original_hash_rom_candidates
                 rom_browser.fetch_game_id = original_fetch_game_id
                 rom_browser.cache_game = original_cache_game
                 store.close()

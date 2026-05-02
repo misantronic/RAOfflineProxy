@@ -17,6 +17,7 @@ from .platform import (
 from .pending_awards import delete_pending_award, list_pending_awards
 from .retroarch_cfg import patch_retroarch_cfg, revert_retroarch_cfg
 from .rom_browser import (
+    MAX_CACHED_GAMES,
     add_rom_to_cache,
     ensure_game_preview,
     list_browser_entries,
@@ -363,7 +364,7 @@ class MenuSdlSession:
 
     def status_text(self, running: bool) -> str:
         if self.view == "cached_games":
-            return f"CACHED: {len(self.cached_games)}"
+            return f"CACHED: {len(self.cached_games)} / {MAX_CACHED_GAMES}"
         if self.view == "pending_awards":
             return f"PENDING: {len(self.pending_awards)}"
         if self.view == "pending_award_actions":
