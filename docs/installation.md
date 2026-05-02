@@ -21,7 +21,7 @@ In RetroArch:
 
 ## Step 3: Start the Proxy and Import Your Login
 
-Starting the proxy automatically patches RetroArch's config file to redirect achievement traffic to the local proxy. It also imports your saved RetroAchievements username and token from `retroarch.cfg`. If direct file access is unavailable, the app asks you to grant folder access.
+Starting the proxy automatically patches RetroArch's config file to redirect achievement traffic to the local proxy. It also imports your saved RetroAchievements username and token from `retroarch.cfg`. If direct file access is unavailable, the app asks you to grant access to RetroArch's Android data `files` folder.
 
 1. Make sure you are **online**
 2. Start the proxy
