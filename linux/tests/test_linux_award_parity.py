@@ -1,8 +1,11 @@
 import base64
+import tempfile
 import unittest
+from pathlib import Path
 
 from linux.raofflineproxy import config
 from linux.raofflineproxy import flusher
+from linux.raofflineproxy import storage
 from linux.raofflineproxy import utils
 
 
@@ -124,6 +127,45 @@ class LinuxAwardParityTests(unittest.TestCase):
         self.assertTrue(valid)
         self.assertIsNone(reason)
         self.assertIsNone(index)
+
+    def test_flush_pending_awards_loads_user_agent_before_resolving_credentials(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            store = storage.Storage(database_path=Path(temp_dir) / "test.sqlite3")
+            original_resolve_credentials = flusher.resolve_credentials
+            original_refresh = flusher.refresh_and_load_achievement_ids
+            try:
+                store.upsert_pending_award(
+                    {
+                        "achievementId": 1,
+                        "queryString": "/dorequest.php?r=awardachievement",
+                        "requestBody": "a=1&u=testuser&h=0",
+                        "userAgent": "RetroArch/1.21.0 (Linux)",
+                        "queuedAt": 1_000,
+                    }
+                )
+
+                observed = {}
+
+                def fake_resolve_credentials(_storage, _config_data, user_agent):
+                    observed["user_agent"] = user_agent
+                    return None
+
+                flusher.resolve_credentials = fake_resolve_credentials
+                flusher.refresh_and_load_achievement_ids = lambda *args, **kwargs: None
+
+                outcome = flusher.flush_pending_awards(store, {})
+
+                self.assertEqual(observed["user_agent"], config.FALLBACK_USER_AGENT)
+                self.assertEqual(
+                    outcome.last_error,
+                    "No RetroAchievements credentials available",
+                )
+            finally:
+                flusher.resolve_credentials = original_resolve_credentials
+                flusher.refresh_and_load_achievement_ids = original_refresh
+                store.close()
 
 
 if __name__ == "__main__":
