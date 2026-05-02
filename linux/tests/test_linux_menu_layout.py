@@ -146,6 +146,50 @@ class MenuLayoutTests(unittest.TestCase):
             menu_sdl.MenuSdlSession.refresh_cached_games = original_refresh_cached_games
             menu_sdl.load_config = original_load_config
 
+    def test_render_home_logo_only_draws_on_main_view(self) -> None:
+        fake_logo = type(
+            "Logo",
+            (),
+            {"get_rect": lambda self, **kwargs: kwargs},
+        )()
+
+        main_session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
+        main_session.view = "main"
+        main_session.width = 640
+        main_session.logo_surface = fake_logo
+        main_surface_calls = []
+        main_session.surface = type(
+            "Surface",
+            (),
+            {
+                "blit": lambda self, surface, rect: main_surface_calls.append(
+                    (surface, rect)
+                )
+            },
+        )()
+        main_session.load_logo_surface = lambda: None
+        main_session.pygame = object()
+
+        menu_sdl.MenuSdlSession.render_home_logo(main_session)
+
+        self.assertEqual(len(main_surface_calls), 1)
+
+        cached_session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
+        cached_session.view = "cached_games"
+        cached_session.width = 640
+        cached_session.logo_surface = fake_logo
+        cached_session.surface = type(
+            "Surface",
+            (),
+            {
+                "blit": lambda self, surface, rect: (_ for _ in ()).throw(
+                    AssertionError("should not blit")
+                )
+            },
+        )()
+
+        menu_sdl.MenuSdlSession.render_home_logo(cached_session)
+
 
 if __name__ == "__main__":
     unittest.main()
