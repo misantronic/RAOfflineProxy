@@ -9,7 +9,11 @@ from urllib.parse import urljoin
 from . import cache_keys
 from .auth import resolve_credentials
 from .config import CONFIG_DIR, FALLBACK_USER_AGENT, ensure_config_dir, upstream_host
-from .image_cache import clear_all_cached_images, delete_cached_images_for_game
+from .image_cache import (
+    clear_all_cached_images,
+    delete_cached_images_for_game,
+    game_image_dir,
+)
 from .network import build_api_url, http_get
 from .rom_cache import cache_game
 from .rom_hashing import hash_rom, hash_rom_candidates, supported_rom_extensions
@@ -281,6 +285,43 @@ def cached_unlock_titles(storage: Storage, game_id: int) -> list[str]:
         if achievement_id in title_by_id
     ]
     return titles
+
+
+def cached_unlock_badge_path(storage: Storage, game_id: int, title: str) -> Path | None:
+    patch_entry = next(
+        (
+            entry
+            for entry in storage.get_all_cache_by_prefix(
+                cache_keys.patch_prefix(game_id)
+            )
+        ),
+        None,
+    )
+    if patch_entry is None:
+        return None
+
+    try:
+        patch_payload = json.loads(patch_entry["responseBody"])
+    except Exception:
+        return None
+
+    achievements = patch_payload.get("PatchData", {}).get("Achievements")
+    entries = achievements.values() if isinstance(achievements, dict) else achievements
+    if not isinstance(entries, list) and not hasattr(entries, "__iter__"):
+        return None
+
+    for achievement in entries:
+        if not isinstance(achievement, dict):
+            continue
+        if achievement.get("Title") != title:
+            continue
+        badge_name = achievement.get("BadgeName")
+        if not isinstance(badge_name, str) or not badge_name:
+            return None
+        badge_path = game_image_dir(game_id) / f"badge_{badge_name}.png"
+        return badge_path if badge_path.exists() else None
+
+    return None
 
 
 def clear_cached_games(storage: Storage) -> None:
