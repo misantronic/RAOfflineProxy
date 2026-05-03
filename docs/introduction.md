@@ -4,7 +4,7 @@
 
 ## What is RAOfflineProxy?
 
-RAOfflineProxy is an Android app that acts as a **local proxy** between [RetroArch](https://www.retroarch.com/) and the [RetroAchievements](https://retroachievements.org/) (RA) website.
+RAOfflineProxy is a local proxy that acts between [RetroArch](https://www.retroarch.com/) and the [RetroAchievements](https://retroachievements.org/) (RA) website.
 
 RetroArch's achievement system talks directly to RetroAchievements over the internet. This works great online, but the moment your connection drops, achievements stop unlocking and games may fail to load their achievement lists at all.
 
@@ -44,6 +44,8 @@ RAOfflineProxy (local proxy)
 - If that happens, reopen RAOfflineProxy once so it can clean up the config on launch.
 
 ## Requirements
+
+These requirements are for the Android app:
 
 - Android **8.0** or newer
 - RetroArch installed (any variant)

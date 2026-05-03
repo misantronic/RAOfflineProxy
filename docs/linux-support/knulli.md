@@ -24,6 +24,7 @@ The current experimental KNULLI flow is:
 1. Build `linux/knulli/dist/RAOfflineProxy Install.sh`
 2. Copy it into `/userdata/roms/tools`
 3. Launch `RAOfflineProxy Install` from EmulationStation Tools
+4. Update gamelists if needed so the new Tools entry appears immediately
 
 After install, the main Tools entry is:
 
@@ -34,7 +35,9 @@ After install, the main Tools entry is:
 Current SDL menu capabilities:
 
 - Start / Stop proxy
+- Enable / Disable autostart
 - Cached Games
+- Pending Awards
 - Add ROM
 - Clear cache
 - Uninstall
