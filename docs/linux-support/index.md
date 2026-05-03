@@ -1,0 +1,45 @@
+# Linux Support
+
+Linux support now exists in `RAOfflineProxy`, but it is still **experimental**.
+
+## Overview
+
+The Linux implementation is focused on keeping the same core proxy behavior as Android.
+
+## Current State
+
+The Linux version already covers the main offline proxy flow:
+
+- cache games for offline use
+- queue softcore achievements while offline and send them later
+- manage cached games from an on-device menu on supported targets
+- support manual ROM adding for supported systems
+
+## ROM Hashing
+
+Current Linux ROM hashing coverage includes:
+
+- Game Boy / Game Boy Color / Game Boy Advance
+- NES / FDS / SNES
+- PC Engine
+- Atari 7800 / Atari Lynx
+- Super Cassette Vision
+- Nintendo 64
+- Nintendo DS
+- PSP
+- PSX
+
+Starting a game through RetroArch while the proxy is active still caches that game normally. The ROM hashing list above is specifically about manual ROM adding and offline game identification paths.
+
+## Supported Targets
+
+The first Linux target with a more complete installation and menu flow is:
+
+- [KNULLI](/linux-support/knulli)
+
+Additional Linux targets may be documented later, but they are not considered public install targets yet.
+
+## Important Notes
+
+- Linux support is still a development preview rather than an officially supported feature.
+- Linux-specific install, startup, and UI behavior can vary by firmware and frontend.

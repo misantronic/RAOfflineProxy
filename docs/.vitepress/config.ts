@@ -42,8 +42,15 @@ export default defineConfig({
           { text: 'Caching Games', link: '/caching-games' },
           { text: 'Pending Awards', link: '/pending-awards' },
           { text: 'Anti-Tamper Hash Chain', link: '/hash-chain' },
-          { text: 'Settings & Auto-start', link: '/settings' },
-          { text: 'Linux Support', link: '/linux-support' }
+          { text: 'Settings & Auto-start', link: '/settings' }
+        ],
+      },
+      {
+        text: 'Linux Support',
+        collapsed: true,
+        items: [
+          { text: 'Overview', link: '/linux-support/' },
+          { text: 'KNULLI', link: '/linux-support/knulli' },
         ],
       },
       {
