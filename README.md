@@ -3,7 +3,9 @@
   RAOfflineProxy
 </h1>
 
-An Android app that lets you earn **softcore RetroAchievements** through **RetroArch** without an internet connection.
+An Android-first app that lets you earn **softcore RetroAchievements** through **RetroArch** without an internet connection.
+
+Experimental Linux support now also exists in the repository, with an early KNULLI flow documented in the docs.
 
 > **Current release stage: alpha (`v1.0.0-alpha1`).** This is the first public prerelease and has not gone through formal QA.
 

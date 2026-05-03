@@ -2,7 +2,7 @@
 
 ## Overview
 
-RetroArch stores its configuration in a file called `retroarch.cfg`. To redirect achievement traffic to the local proxy, RAOfflineProxy changes two settings in this file and reads your saved RetroAchievements login token:
+On Android, RetroArch stores its configuration in a file called `retroarch.cfg`. To redirect achievement traffic to the local proxy, RAOfflineProxy changes two settings in this file and reads your saved RetroAchievements login token:
 
 - The **custom achievement server** is pointed at the proxy on your device
 - **Hardcore mode** is disabled (since it is not supported)
@@ -12,7 +12,7 @@ Patching and reverting happen **automatically** when you start and stop the prox
 
 ## Automatic Patching (Start Proxy)
 
-When you press **Start proxy** in the action bar, the app reads `cheevos_username` and `cheevos_token`, patches `retroarch.cfg`, then starts the proxy service. If the app needs folder access to write the file, it shows a dialog prompting you to grant access to RetroArch's Android data `files` folder.
+When you press **Start proxy** in the action bar, the app reads `cheevos_username` and `cheevos_token`, patches `retroarch.cfg`, then starts the proxy service. If the app needs folder access to write the file, it shows a dialog prompting you to grant access to the RetroArch folder that contains `retroarch.cfg`.
 
 Before patching, the app also checks for a one-time sibling backup named `retroarch.raofflineproxy.cfg`. If that file does not already exist, RAOfflineProxy creates it from the current `retroarch.cfg`.
 
@@ -62,7 +62,7 @@ The app checks the patch status on startup. The action bar proxy button reflects
 
 If the app cannot patch the file automatically, you can do it manually via adb, ssh, or smb. Open `retroarch.cfg` and set:
 
-- `cheevos_custom_host` to `127.0.0.1:8080`
+- `cheevos_custom_host` to your current proxy address, for example `127.0.0.1:8080`
 - `cheevos_hardcore_mode_enable` to `false`
 
 To revert manually, clear the custom achievement server value (set it to empty).

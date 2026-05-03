@@ -2,7 +2,7 @@ import { defineConfig } from 'vitepress'
 
 export default defineConfig({
   title: 'RAOfflineProxy',
-  description: 'Play RetroAchievements offline on Android — documentation',
+  description: 'Play RetroAchievements offline with RAOfflineProxy — documentation',
   base: '/',
 
   appearance: 'force-dark',

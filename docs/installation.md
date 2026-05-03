@@ -4,7 +4,9 @@
 
 ## Prerequisites
 
-Before using RAOfflineProxy, enter your RetroAchievements account details in RetroArch. RetroArch saves your username and API token in `retroarch.cfg`, and RAOfflineProxy imports that token when the proxy starts.
+These setup steps are for the Android app.
+
+Before using RAOfflineProxy on Android, enter your RetroAchievements account details in RetroArch. RetroArch saves your username and API token in `retroarch.cfg`, and RAOfflineProxy imports that token when the proxy starts.
 
 In RetroArch:
 1. Open **Settings → Achievements**

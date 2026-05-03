@@ -4,7 +4,7 @@ layout: home
 hero:
   name: RAOfflineProxy
   text: RetroAchievements for RetroArch - Offline
-  tagline: A local Android proxy that lets you earn softcore RetroAchievements through RetroArch without an internet connection.
+  tagline: A local proxy that lets you earn softcore RetroAchievements through RetroArch without an internet connection.
   image:
     src: /logo.png
     alt: RAOfflineProxy
