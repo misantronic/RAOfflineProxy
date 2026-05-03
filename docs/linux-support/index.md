@@ -10,10 +10,10 @@ The Linux implementation is focused on keeping the same core proxy behavior as A
 
 The Linux version already covers the main offline proxy flow:
 
-- cache games for offline use
-- queue softcore achievements while offline and send them later
-- manage cached games from an on-device menu on supported targets
-- support manual ROM adding for supported systems
+- Cache games for offline use
+- Queue softcore achievements while offline and send them later
+- Manage cached games from an on-device menu on supported targets
+- Support manual ROM adding for supported systems
 
 ## ROM Hashing
 
