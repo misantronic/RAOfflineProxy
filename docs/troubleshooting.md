@@ -102,7 +102,7 @@ RAOfflineProxy works at the network level — it is transparent to all RetroArch
 
 RetroArch will keep trying to connect to the proxy, which will fail since nothing is listening. Achievement features in RetroArch will not work until you either:
 - Reinstall RAOfflineProxy, start the proxy, then stop it (which reverts the config), or
-- [Manually clear the custom server setting in `retroarch.cfg`](./cfg-patching#manual-patching)
+- Manually [clear the custom server setting](./cfg-patching#manual-patching) in `retroarch.cfg`
 
 ---
 
