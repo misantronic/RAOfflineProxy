@@ -32,12 +32,9 @@ The app checks common RetroArch installation paths for a writable `retroarch.cfg
 
 ### Strategy 3 — Folder Access Prompt (Android 12 and below)
 
-On Android 12 and below, if the file is found but not directly writable, the app shows a dialog asking you to grant folder access. Tapping **Grant** opens the system folder picker at RetroArch's Android data `files` folder when possible.
+On Android 12 and below, if the file is found but not directly writable, the app shows a dialog asking you to grant folder access. Tapping **Grant** opens the system folder picker directly at the RetroArch folder that contains `retroarch.cfg` when possible.
 
-Grant access to the suggested folder, usually one of:
-
-- `Android/data/com.retroarch.aarch64/files`
-- `Android/data/com.retroarch/files`
+Grant access to the suggested folder.
 
 After granting, the app retries automatically. If the selected folder does not contain `retroarch.cfg`, the app shows an error and asks again the next time you start the proxy.
 
@@ -61,12 +58,12 @@ If hardcore mode was enabled before you started the proxy, it is automatically r
 
 The app checks the patch status on startup. The action bar proxy button reflects whether the proxy is running.
 
-## Manual Patching (adb fallback)
+## Manual Patching
 
-If the app cannot patch the file automatically, you can do it manually via adb. Open `retroarch.cfg` and set:
+If the app cannot patch the file automatically, you can do it manually via adb, ssh, or smb. Open `retroarch.cfg` and set:
 
-- The custom achievement server to `127.0.0.1:8080`
-- Hardcore mode to disabled
+- `cheevos_custom_host` to `127.0.0.1:8080`
+- `cheevos_hardcore_mode_enable` to `false`
 
 To revert manually, clear the custom achievement server value (set it to empty).
 
