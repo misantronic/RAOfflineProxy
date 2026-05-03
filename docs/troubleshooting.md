@@ -39,7 +39,7 @@
 
 **Fix:** A "Chain broken at index N" warning will appear in the Pending Awards screen. This means the local data was modified in a way that broke the integrity chain. You can:
 - Use **Settings → Clear Database** to remove all pending awards and start fresh (awards will be lost)
-- If you believe it is a bug, please report it on [GitHub Issues](https://github.com/misantronic/RAOfflineProxy/issues) or email [misantronic@posteo.se](mailto:misantronic@posteo.se)
+- If you believe it is a bug, please report it on [GitHub Issues](https://github.com/misantronic/RAOfflineProxy/issues) or use the [Contact / Feedback](./contact) page
 
 **Cause 3:** An award has failed 5 or more times.
 
@@ -51,7 +51,7 @@
 
 **Cause:** On Android 12 and below, the app found `retroarch.cfg` but cannot write to it directly due to storage restrictions.
 
-**Fix:** Tap **Grant** in the dialog. The picker should open at RetroArch's Android data `files` folder. Grant read + write access to the suggested folder, usually `Android/data/com.retroarch.aarch64/files` or `Android/data/com.retroarch/files`. The app will patch the config and start the proxy automatically.
+**Fix:** Tap **Grant** in the dialog. The picker should open directly at the RetroArch folder that contains `retroarch.cfg`. Grant read + write access to that folder. The app will patch the config and start the proxy automatically.
 
 ---
 
@@ -102,7 +102,7 @@ RAOfflineProxy works at the network level — it is transparent to all RetroArch
 
 RetroArch will keep trying to connect to the proxy, which will fail since nothing is listening. Achievement features in RetroArch will not work until you either:
 - Reinstall RAOfflineProxy, start the proxy, then stop it (which reverts the config), or
-- Manually clear the custom server setting in `retroarch.cfg`
+- [Manually clear the custom server setting in `retroarch.cfg`](./cfg-patching#manual-patching)
 
 ---
 
