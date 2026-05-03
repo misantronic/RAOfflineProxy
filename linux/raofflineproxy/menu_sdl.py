@@ -23,6 +23,7 @@ from .retroarch_cfg import (
 from .rom_browser import (
     MAX_CACHED_GAMES,
     add_rom_to_cache,
+    cached_unlock_badge_path,
     cached_unlock_count,
     cached_unlock_titles,
     clear_cached_games,
@@ -186,6 +187,9 @@ class MenuSdlSession:
         self.browser_positions: dict[str, tuple[int, int]] = {}
         self.preview_surface = None
         self.preview_game_id = None
+        self.achievement_preview_surface = None
+        self.achievement_preview_game_id = None
+        self.achievement_preview_title = None
         self.logo_surface = None
         self.main_state_refreshed_at = 0.0
         self.main_running = False
@@ -692,6 +696,9 @@ class MenuSdlSession:
         self.pending_awards = list_pending_awards(self.storage)
         self.preview_surface = None
         self.preview_game_id = None
+        self.achievement_preview_surface = None
+        self.achievement_preview_game_id = None
+        self.achievement_preview_title = None
 
     def refresh_pending_awards(self) -> None:
         self.pending_awards = list_pending_awards(self.storage)
@@ -756,6 +763,9 @@ class MenuSdlSession:
         if game is None:
             self.preview_surface = None
             self.preview_game_id = None
+            self.achievement_preview_surface = None
+            self.achievement_preview_game_id = None
+            self.achievement_preview_title = None
             return
 
         if self.preview_game_id != game.game_id or self.preview_surface is None:
@@ -769,6 +779,16 @@ class MenuSdlSession:
 
         preview_rect = self.preview_surface.get_rect(topright=(self.width - 24, 24))
         self.surface.blit(self.preview_surface, preview_rect)
+
+        achievement_surface = self.current_achievement_preview_surface()
+        if achievement_surface is None:
+            return
+
+        award_rect = achievement_surface.get_rect(
+            right=preview_rect.left - 16,
+            centery=preview_rect.centery,
+        )
+        self.surface.blit(achievement_surface, award_rect)
 
     def render_home_logo(self) -> None:
         if self.view != "main":
@@ -842,6 +862,64 @@ class MenuSdlSession:
             log_menu_sdl(f"logo load failed path={LOGO_PATH} error={exc}")
             return None
 
+    def current_achievement_preview_surface(self):
+        if self.view != "game_actions" or self.active_game is None:
+            self.achievement_preview_surface = None
+            self.achievement_preview_game_id = None
+            self.achievement_preview_title = None
+            return None
+
+        unlock_index = self.selected_index - 1
+        unlock_titles = self.game_actions_unlock_titles()
+        if unlock_index < 0 or unlock_index >= len(unlock_titles):
+            self.achievement_preview_surface = None
+            self.achievement_preview_game_id = None
+            self.achievement_preview_title = None
+            return None
+
+        title = unlock_titles[unlock_index]
+        if (
+            self.achievement_preview_surface is not None
+            and self.achievement_preview_game_id == self.active_game.game_id
+            and self.achievement_preview_title == title
+        ):
+            return self.achievement_preview_surface
+
+        self.achievement_preview_surface = self.load_achievement_preview_surface(
+            self.active_game.game_id, title
+        )
+        self.achievement_preview_game_id = self.active_game.game_id
+        self.achievement_preview_title = title
+        return self.achievement_preview_surface
+
+    def load_achievement_preview_surface(self, game_id: int, title: str):
+        try:
+            badge_path = cached_unlock_badge_path(self.storage, game_id, title)
+            if badge_path is None:
+                return None
+
+            image = self.pygame.image.load(str(badge_path))
+            image = (
+                image.convert_alpha()
+                if image.get_alpha() is not None
+                else image.convert()
+            )
+            scaled_size = self.fit_achievement_preview_size(
+                image.get_width(), image.get_height()
+            )
+            return self.pygame.transform.smoothscale(image, scaled_size)
+        except Exception as exc:
+            log_menu_sdl(
+                f"achievement preview load failed gameId={game_id} title={title} error={exc}"
+            )
+            return None
+
+    def fit_achievement_preview_size(self, width: int, height: int) -> tuple[int, int]:
+        max_width = max(64, self.width // 8)
+        max_height = max(64, self.height // 6)
+        scale = min(max_width / max(1, width), max_height / max(1, height), 1.0)
+        return max(1, int(width * scale)), max(1, int(height * scale))
+
     def fit_preview_size(self, width: int, height: int) -> tuple[int, int]:
         max_width = max(96, self.width // 4)
         max_height = max(96, self.height // 3)
@@ -899,6 +977,9 @@ class MenuSdlSession:
         self.active_game_unlock_game_id = None
         self.active_game_unlock_count_cached = None
         self.active_game_unlock_titles_cached = []
+        self.achievement_preview_surface = None
+        self.achievement_preview_game_id = None
+        self.achievement_preview_title = None
 
     def refresh_active_game_unlocks(self) -> None:
         if self.active_game is None:

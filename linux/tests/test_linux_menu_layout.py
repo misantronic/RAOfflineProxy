@@ -396,6 +396,39 @@ class MenuLayoutTests(unittest.TestCase):
 
         self.assertTrue(session.running)
 
+    def test_current_achievement_preview_surface_uses_selected_unlock(self) -> None:
+        session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
+        session.view = "game_actions"
+        session.selected_index = 2
+        session.active_game = type("Game", (), {"game_id": 10701})()
+        session.game_actions_unlock_titles = lambda: ["First Steps", "Commander"]
+        session.achievement_preview_surface = None
+        session.achievement_preview_game_id = None
+        session.achievement_preview_title = None
+        session.load_achievement_preview_surface = lambda game_id, title: (
+            game_id,
+            title,
+        )
+
+        self.assertEqual(
+            menu_sdl.MenuSdlSession.current_achievement_preview_surface(session),
+            (10701, "Commander"),
+        )
+
+    def test_current_achievement_preview_surface_is_none_off_unlock_row(self) -> None:
+        session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
+        session.view = "game_actions"
+        session.selected_index = 0
+        session.active_game = type("Game", (), {"game_id": 10701})()
+        session.game_actions_unlock_titles = lambda: ["First Steps"]
+        session.achievement_preview_surface = "stale"
+        session.achievement_preview_game_id = 10701
+        session.achievement_preview_title = "First Steps"
+
+        self.assertIsNone(
+            menu_sdl.MenuSdlSession.current_achievement_preview_surface(session)
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
