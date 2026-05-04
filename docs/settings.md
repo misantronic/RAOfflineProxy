@@ -34,12 +34,6 @@ Removes **all** data from the database — including cached game data **and all 
 If you have unsynced offline unlocks in the Pending Awards queue, **Clear Database will permanently delete them**. Make sure you are online and all awards have been sent before using this option.
 :::
 
-### Contact / Feedback
-
-Use the **Contact / Send Feedback** button to open your email app and send feedback directly to [misantronic@posteo.se](mailto:misantronic@posteo.se).
-
-If you prefer, you can also use the dedicated [Contact / Feedback](./contact) page in the documentation.
-
 ## Proxy Toggle (Action Bar)
 
 The action bar at the top of every screen has a **Start proxy / Stop proxy** button.
