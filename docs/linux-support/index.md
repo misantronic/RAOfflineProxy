@@ -35,7 +35,8 @@ Starting a game through RetroArch while the proxy is active still caches that ga
 
 The first Linux target with a more complete installation and menu flow is:
 
-- [KNULLI](/linux-support/knulli)
+- [KNULLI](/linux-support/knulli) (experimental)
+- [Onion](/linux-support/onion) (planned)
 
 Additional Linux targets may be documented later, but they are not considered public install targets yet.
 
