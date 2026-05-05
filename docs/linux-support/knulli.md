@@ -48,8 +48,8 @@ Current SDL menu capabilities:
 
 Current authentication behavior:
 
-- KNULLI stores RetroAchievements username/password in RetroArch config, not a reusable API token
-- RAOfflineProxy reads those values, performs a normal `login2` request once, and stores the returned token in its local cache
+- RAOfflineProxy first uses RetroArch's saved `cheevos_token` when present
+- If no token is available, `cheevos_username` and `cheevos_password` are used once to retrieve and cache a token
 - `cheevos_password` is never treated as the API token
 
 ## Notes

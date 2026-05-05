@@ -4,7 +4,10 @@ import logging
 from . import cache_keys
 from .config import FALLBACK_USER_AGENT, detect_retroarch_cfg, upstream_host
 from .network import build_api_url, http_get
-from .retroarch_cfg import load_retroarch_password_credentials
+from .retroarch_cfg import (
+    load_retroarch_password_credentials,
+    load_retroarch_token_credentials,
+)
 from .storage import Storage
 from .utils import proxy_user_agent
 
@@ -16,17 +19,32 @@ def resolve_credentials(
     config_data: dict | None = None,
     user_agent: str = FALLBACK_USER_AGENT,
 ) -> dict | None:
+    config_data = config_data or {}
+    cfg_path = str(config_data.get("retroarch_cfg") or detect_retroarch_cfg())
+    token_credentials = load_retroarch_token_credentials(cfg_path)
+    if token_credentials is not None:
+        return cache_token_credentials(storage, token_credentials)
+
     cached = storage.load_login_credentials()
     if cached is not None:
         return cached
 
-    config_data = config_data or {}
-    cfg_path = str(config_data.get("retroarch_cfg") or detect_retroarch_cfg())
     password_credentials = load_retroarch_password_credentials(cfg_path)
     if password_credentials is None:
         return None
 
     return login_and_cache_token(storage, config_data, password_credentials, user_agent)
+
+
+def cache_token_credentials(storage: Storage, credentials: dict) -> dict | None:
+    user = credentials.get("user")
+    token = credentials.get("token")
+    if not user or not token:
+        return None
+
+    body = json.dumps({"Success": True, "User": user, "Token": token})
+    storage.upsert_cache(cache_keys.login(user), body)
+    return {"user": user, "token": token}
 
 
 def login_and_cache_token(
