@@ -51,6 +51,7 @@ export default defineConfig({
         items: [
           { text: 'Overview', link: '/linux-support/' },
           { text: 'KNULLI', link: '/linux-support/knulli' },
+          { text: 'Onion', link: '/linux-support/onion' },
         ],
       },
       {
