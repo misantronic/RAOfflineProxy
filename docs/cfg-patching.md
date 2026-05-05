@@ -2,17 +2,18 @@
 
 ## Overview
 
-On Android, RetroArch stores its configuration in a file called `retroarch.cfg`. To redirect achievement traffic to the local proxy, RAOfflineProxy changes two settings in this file and reads your saved RetroAchievements login token:
+On Android, RetroArch stores its configuration in a file called `retroarch.cfg`. To redirect achievement traffic to the local proxy, RAOfflineProxy changes two settings in this file and imports your saved RetroAchievements login:
 
 - The **custom achievement server** is pointed at the proxy on your device
 - **Hardcore mode** is disabled (since it is not supported)
-- The saved `cheevos_username` and `cheevos_token` are imported into RAOfflineProxy's local credential cache
+- The saved `cheevos_username` and `cheevos_token` are imported into RAOfflineProxy's local credential cache when present
+- If no token is present, `cheevos_username` and `cheevos_password` are used once to retrieve a token through RA's login endpoint
 
 Patching and reverting happen **automatically** when you start and stop the proxy — there is no separate setup step.
 
 ## Automatic Patching (Start Proxy)
 
-When you press **Start proxy** in the action bar, the app reads `cheevos_username` and `cheevos_token`, patches `retroarch.cfg`, then starts the proxy service. If the app needs folder access to write the file, it shows a dialog prompting you to grant access to the RetroArch folder that contains `retroarch.cfg`.
+When you press **Start proxy** in the action bar, the app imports credentials from `retroarch.cfg`, patches the config, then starts the proxy service. If the app needs folder access to write the file, it shows a dialog prompting you to grant access to the RetroArch folder that contains `retroarch.cfg`.
 
 Before patching, the app also checks for a one-time sibling backup named `retroarch.raofflineproxy.cfg`. If that file does not already exist, RAOfflineProxy creates it from the current `retroarch.cfg`.
 

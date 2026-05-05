@@ -8,6 +8,7 @@ import com.raofflineproxy.ui.ensureBackupFileExists
 import com.raofflineproxy.ui.extractRetroArchCredentials
 import com.raofflineproxy.ui.isPatchedContent
 import com.raofflineproxy.ui.patchManualEditInstructions
+import com.raofflineproxy.ui.RetroArchCfgCredentials
 import com.raofflineproxy.ui.revertManualEditInstructions
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -73,7 +74,8 @@ class RetroArchCfgPatcherTest {
         val credentials = extractRetroArchCredentials(cfg)
 
         assertEquals("player1", credentials?.username)
-        assertEquals("secret-token", credentials?.token)
+        assertTrue(credentials is RetroArchCfgCredentials.Token)
+        assertEquals("secret-token", (credentials as RetroArchCfgCredentials.Token).token)
     }
 
     @Test
@@ -83,17 +85,38 @@ class RetroArchCfgPatcherTest {
         val credentials = extractRetroArchCredentials(cfg)
 
         assertEquals("player1", credentials?.username)
-        assertEquals("secret-token", credentials?.token)
+        assertTrue(credentials is RetroArchCfgCredentials.Token)
+        assertEquals("secret-token", (credentials as RetroArchCfgCredentials.Token).token)
     }
 
     @Test
-    fun extractRetroArchCredentials_nullWhenTokenEmpty() {
+    fun extractRetroArchCredentials_usesPasswordWhenTokenEmpty() {
         val cfg = """
             cheevos_username = "player1"
             cheevos_token = ""
+            cheevos_password = "password"
         """.trimIndent()
 
-        assertEquals(null, extractRetroArchCredentials(cfg))
+        val credentials = extractRetroArchCredentials(cfg)
+
+        assertEquals("player1", credentials?.username)
+        assertTrue(credentials is RetroArchCfgCredentials.Password)
+        assertEquals("password", (credentials as RetroArchCfgCredentials.Password).password)
+    }
+
+    @Test
+    fun extractRetroArchCredentials_prefersTokenOverPassword() {
+        val cfg = """
+            cheevos_username = "player1"
+            cheevos_token = "secret-token"
+            cheevos_password = "password"
+        """.trimIndent()
+
+        val credentials = extractRetroArchCredentials(cfg)
+
+        assertEquals("player1", credentials?.username)
+        assertTrue(credentials is RetroArchCfgCredentials.Token)
+        assertEquals("secret-token", (credentials as RetroArchCfgCredentials.Token).token)
     }
 
     @Test
@@ -109,6 +132,16 @@ class RetroArchCfgPatcherTest {
     @Test
     fun extractRetroArchCredentials_nullWhenMissing() {
         assertEquals(null, extractRetroArchCredentials("cheevos_enable = \"true\""))
+    }
+
+    @Test
+    fun extractRetroArchCredentials_nullWhenOnlyPasswordMissing() {
+        val cfg = """
+            cheevos_username = "player1"
+            cheevos_token = ""
+        """.trimIndent()
+
+        assertEquals(null, extractRetroArchCredentials(cfg))
     }
 
     @Test

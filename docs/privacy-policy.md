@@ -14,9 +14,9 @@ RAOfflineProxy ("the app") is a local proxy tool for Android that enables offlin
 
 ## What data is handled
 
-### RetroAchievements credentials (username and API token)
+### RetroAchievements credentials
 
-When the proxy starts, the app reads your saved RetroAchievements username and API token from RetroArch's `retroarch.cfg` and caches them in a local SQLite database on your device. If RetroArch logs in through the proxy later, that login response can also refresh the cached credentials. This cache is used to authenticate requests when your device is offline.
+When the proxy starts, the app reads your saved RetroAchievements login from RetroArch's `retroarch.cfg`. It first uses `cheevos_token` when present. If no token is available, it uses `cheevos_username` and `cheevos_password` once to retrieve a token from RetroAchievements, then stores that token in its local cache. This cache is used to authenticate requests when your device is offline.
 
 Your credentials are **never sent to the app developer**. They are only ever forwarded to `retroachievements.org`, exactly as RetroArch would do directly.
 

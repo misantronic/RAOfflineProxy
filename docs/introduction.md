@@ -49,7 +49,7 @@ These requirements are for the Android app:
 
 - Android **8.0** or newer
 - RetroArch installed (any variant)
-- A valid RetroAchievements account with your username and API token stored in RetroArch
+- A valid RetroAchievements account configured in RetroArch
 
 ## How the proxy is transparent to RetroArch
 

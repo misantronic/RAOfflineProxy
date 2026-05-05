@@ -16,6 +16,7 @@ import com.raofflineproxy.throttleRetroAchievementsApiRequest
 import com.raofflineproxy.data.AppDatabase
 import com.raofflineproxy.data.CacheEntry
 import com.raofflineproxy.data.CacheKeys
+import com.raofflineproxy.proxyUserAgent
 import kotlinx.coroutines.delay
 import org.json.JSONArray
 import org.json.JSONObject
@@ -36,6 +37,8 @@ data class ScanResult(
 )
 
 data class LoginCredentials(val user: String, val token: String)
+
+data class PasswordCredentials(val user: String, val password: String)
 
 internal sealed interface HttpGetResult {
     data class Success(val body: String) : HttpGetResult
@@ -94,6 +97,45 @@ suspend fun loadLoginCredentials(db: AppDatabase): LoginCredentials? {
 suspend fun loadUserAgent(db: AppDatabase): String =
     db.cacheDao().get(CacheKeys.USER_AGENT)?.responseBody?.takeIf { it.isNotEmpty() }
         ?: FALLBACK_USER_AGENT
+
+fun cacheLoginCredentialsResponse(user: String, token: String): String =
+    JSONObject().apply {
+        put("Success", true)
+        put("User", user)
+        put("Token", token)
+    }.toString()
+
+suspend fun loginAndCacheToken(
+    db: AppDatabase,
+    credentials: PasswordCredentials,
+    userAgent: String
+): LoginCredentials? {
+    val url = buildApiUrl(
+        RA_HOST,
+        "login2",
+        mapOf(
+            "u" to credentials.user,
+            "p" to credentials.password
+        )
+    )
+    return when (val result = httpGet(url, proxyUserAgent(userAgent))) {
+        is HttpGetResult.Success -> {
+            val responseBody = result.body
+            val json = JSONObject(responseBody)
+            val user = json.optString("User").takeIf { it.isNotEmpty() } ?: credentials.user
+            val token = json.optString("Token").takeIf { it.isNotEmpty() } ?: return null
+            if (!json.optBoolean("Success", false)) return null
+
+            db.cacheDao().upsert(CacheEntry(cacheKey = CacheKeys.login(user), responseBody = responseBody))
+            LoginCredentials(user, token)
+        }
+
+        is HttpGetResult.Failure -> {
+            Log.w(TAG, result.logMessage("login2", url))
+            null
+        }
+    }
+}
 
 suspend fun refreshGamePatch(
     context: Context,

@@ -29,11 +29,15 @@ import com.raofflineproxy.data.PENDING_AWARD_STATUS_DELETED
 import com.raofflineproxy.data.UnlockedAchievement
 import com.raofflineproxy.proxy.AwardFlusher
 import com.raofflineproxy.proxy.FlushEvent
+import com.raofflineproxy.proxy.LoginCredentials
+import com.raofflineproxy.proxy.PasswordCredentials
+import com.raofflineproxy.proxy.cacheLoginCredentialsResponse
 import com.raofflineproxy.proxy.cacheGame
 import com.raofflineproxy.proxy.clearAllCachedImages
 import com.raofflineproxy.proxy.deleteCachedImagesForGame
 import com.raofflineproxy.proxy.HttpGetResult
 import com.raofflineproxy.proxy.httpGet
+import com.raofflineproxy.proxy.loginAndCacheToken
 import com.raofflineproxy.proxy.loadLoginCredentials
 import com.raofflineproxy.proxy.loadUserAgent
 import com.raofflineproxy.proxy.resolveCachedGameIconPath
@@ -743,14 +747,22 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         PrefsConstants.loadSafUri(getApplication())
 
     private suspend fun cacheRetroArchCredentials(credentials: RetroArchCfgCredentials) {
-        val body = JSONObject().apply {
-            put("Success", true)
-            put("User", credentials.username)
-            put("Token", credentials.token)
-        }.toString()
+        val tokenCredentials = when (credentials) {
+            is RetroArchCfgCredentials.Token -> LoginCredentials(
+                credentials.username,
+                credentials.token
+            )
+
+            is RetroArchCfgCredentials.Password -> loginAndCacheToken(
+                db,
+                PasswordCredentials(credentials.username, credentials.password),
+                loadUserAgent(db)
+            ) ?: return
+        }
+        val body = cacheLoginCredentialsResponse(tokenCredentials.user, tokenCredentials.token)
         db.cacheDao().upsert(
             CacheEntry(
-                cacheKey = CacheKeys.login(credentials.username),
+                cacheKey = CacheKeys.login(tokenCredentials.user),
                 responseBody = body
             )
         )

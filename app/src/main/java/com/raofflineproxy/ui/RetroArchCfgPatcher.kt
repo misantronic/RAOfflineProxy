@@ -49,10 +49,19 @@ data class PatchResult(
     val credentials: RetroArchCfgCredentials? = null
 )
 
-data class RetroArchCfgCredentials(
-    val username: String,
-    val token: String
-)
+sealed interface RetroArchCfgCredentials {
+    val username: String
+
+    data class Token(
+        override val username: String,
+        val token: String
+    ) : RetroArchCfgCredentials
+
+    data class Password(
+        override val username: String,
+        val password: String
+    ) : RetroArchCfgCredentials
+}
 
 private class CfgStrings(
     val noOpMessage: Int,
@@ -296,9 +305,13 @@ fun detectHardcoreEnabled(content: String): Boolean =
 
 internal fun extractRetroArchCredentials(content: String): RetroArchCfgCredentials? {
     val username = extractRetroArchCfgValue(content, "cheevos_username")?.takeIf { it.isNotBlank() } ?: return null
-    val token = extractRetroArchCfgValue(content, "cheevos_token")?.takeIf { it.isNotBlank() } ?: return null
+    val token = extractRetroArchCfgValue(content, "cheevos_token")?.takeIf { it.isNotBlank() }
+    if (token != null) {
+        return RetroArchCfgCredentials.Token(username = username, token = token)
+    }
 
-    return RetroArchCfgCredentials(username = username, token = token)
+    val password = extractRetroArchCfgValue(content, "cheevos_password")?.takeIf { it.isNotBlank() } ?: return null
+    return RetroArchCfgCredentials.Password(username = username, password = password)
 }
 
 private fun extractRetroArchCfgValue(content: String, key: String): String? =
