@@ -17,7 +17,12 @@ import com.raofflineproxy.PrefsConstants
 import com.raofflineproxy.R
 import com.raofflineproxy.RA_HOST
 import com.raofflineproxy.RequestFailureNotifier
+import com.raofflineproxy.hasValidatedInternet
+import com.raofflineproxy.isValidatedNetwork
+import com.raofflineproxy.isRetroAchievementsReachable
+import com.raofflineproxy.markRetroAchievementsUnreachable
 import com.raofflineproxy.parseFormParams
+import com.raofflineproxy.probeRetroAchievements
 import com.raofflineproxy.proxyUserAgent
 import com.raofflineproxy.data.AppDatabase
 import com.raofflineproxy.data.CacheEntry
@@ -88,18 +93,23 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private val networkCallback = object : ConnectivityManager.NetworkCallback() {
         override fun onAvailable(network: Network) {
-            _state.value = _state.value.copy(isOnline = true)
+            refreshReachability(forceProbe = false)
         }
+
+        override fun onCapabilitiesChanged(network: Network, networkCapabilities: NetworkCapabilities) {
+            refreshReachability(forceProbe = false, capabilities = networkCapabilities)
+        }
+
         override fun onLost(network: Network) {
-            _state.value = _state.value.copy(isOnline = false)
+            refreshReachability(forceProbe = true)
         }
     }
 
     init {
-        val online = connectivityManager.activeNetwork
-            ?.let { connectivityManager.getNetworkCapabilities(it) }
-            ?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true
-        _state.value = _state.value.copy(isOnline = online)
+        _state.value = _state.value.copy(
+            isOnline = hasValidatedInternet(connectivityManager) && isRetroAchievementsReachable()
+        )
+        refreshReachability(forceProbe = true)
 
         recoverPatchedCfgIfProxyStopped()
 
@@ -250,6 +260,28 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             SnackbarManager.showError(str(R.string.scan_no_login))
         }
         return credentials
+    }
+
+    private fun refreshReachability(
+        forceProbe: Boolean,
+        capabilities: NetworkCapabilities? = null
+    ) {
+        val validated = capabilities?.let(::isValidatedNetwork)
+            ?: hasValidatedInternet(connectivityManager)
+
+        if (!validated) {
+            markRetroAchievementsUnreachable()
+            _state.value = _state.value.copy(isOnline = false)
+            return
+        }
+
+        viewModelScope.launch {
+            val userAgent = withContext(Dispatchers.IO) { loadUserAgent(db) }
+            val reachable = withContext(Dispatchers.IO) {
+                probeRetroAchievements(userAgent = userAgent, force = forceProbe)
+            }
+            _state.value = _state.value.copy(isOnline = validated && reachable)
+        }
     }
 
     fun clearTransientMessages() {

@@ -21,6 +21,11 @@ import androidx.annotation.RequiresPermission
 import androidx.core.content.edit
 import com.raofflineproxy.PrefsConstants
 import com.raofflineproxy.R
+import com.raofflineproxy.hasValidatedInternet
+import com.raofflineproxy.isValidatedNetwork
+import com.raofflineproxy.isRetroAchievementsReachable
+import com.raofflineproxy.markRetroAchievementsUnreachable
+import com.raofflineproxy.probeRetroAchievements
 import com.raofflineproxy.proxyPort
 import com.raofflineproxy.data.AppDatabase
 import com.raofflineproxy.data.CacheKeys
@@ -56,7 +61,7 @@ class ProxyService : Service() {
     private lateinit var awardFlusher: AwardFlusher
     private lateinit var connectivityManager: ConnectivityManager
 
-    private var isOnline = false
+    private var hasInternet = false
     private var networkCallbackRegistered = false
     private var refreshJob: Job? = null
     private var flushJob: Job? = null
@@ -72,21 +77,15 @@ class ProxyService : Service() {
 
     private val networkCallback = object : ConnectivityManager.NetworkCallback() {
         override fun onAvailable(network: Network) {
-            Log.i(TAG, "Network available")
-            isOnline = true
-            lastOfflinePingAt = 0L
-            offlineIdleTimeoutJob?.cancel()
-            requestFlush()
-            updateNotification()
+            refreshReachability(forceProbe = false)
+        }
+
+        override fun onCapabilitiesChanged(network: Network, networkCapabilities: NetworkCapabilities) {
+            refreshReachability(forceProbe = false, capabilities = networkCapabilities)
         }
 
         override fun onLost(network: Network) {
-            Log.i(TAG, "Network lost")
-            isOnline = false
-            if (recentGameId != null) {
-                scheduleOfflineIdleTimeout(currentOfflineActivityAt())
-            }
-            updateNotification()
+            refreshReachability(forceProbe = true)
         }
     }
 
@@ -100,7 +99,7 @@ class ProxyService : Service() {
             db = db,
             scope = serviceScope,
             port = proxyPort(this),
-            isOnline = { isOnline },
+            isOnline = ::isServerReachable,
             onGameActivity = ::onGameActivity
         )
         connectivityManager = getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager
@@ -115,9 +114,7 @@ class ProxyService : Service() {
             startForeground(NOTIFICATION_ID, buildNotification())
         }
 
-        isOnline = connectivityManager.activeNetwork
-            ?.let { connectivityManager.getNetworkCapabilities(it) }
-            ?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true
+        refreshReachability(forceProbe = true)
 
         if (!networkCallbackRegistered) {
             connectivityManager.registerNetworkCallback(
@@ -131,7 +128,7 @@ class ProxyService : Service() {
 
         proxyServer.start()
 
-        if (isOnline) {
+        if (isServerReachable()) {
             requestFlush()
         }
 
@@ -168,12 +165,12 @@ class ProxyService : Service() {
     private suspend fun periodicRefreshLoop() {
         while (true) {
             delay(REFRESH_INTERVAL_MS)
-            if (!isOnline) continue
+            if (!isServerReachable()) continue
             val idleDelayMs = onlineRefreshIdleDelayMs()
             if (idleDelayMs > 0) {
                 Log.i(TAG, "Periodic refresh deferred; proxy active recently")
                 delay(idleDelayMs)
-                if (!isOnline || onlineRefreshIdleDelayMs() > 0) continue
+                if (!isServerReachable() || onlineRefreshIdleDelayMs() > 0) continue
             }
             Log.i(TAG, "Periodic refresh started")
             val credentials = loadLoginCredentials(db)
@@ -235,7 +232,7 @@ class ProxyService : Service() {
             Intent(this, MainActivity::class.java),
             PendingIntent.FLAG_IMMUTABLE
         )
-        val (title, text) = if (isOnline)
+        val (title, text) = if (isServerReachable())
             getString(R.string.notification_online_title) to getString(R.string.notification_online_text)
         else {
             val offlineText = buildString {
@@ -272,18 +269,18 @@ class ProxyService : Service() {
                 val title = loadCachedGameTitle(gameId)
                 if (recentGameId == gameId) {
                     recentGameTitle = title
-                    if (!isOnline) {
+                    if (!isServerReachable()) {
                         updateNotification()
                     }
                 }
             }
         }
 
-        if (!isOnline && activity.action == "ping") {
+        if (!isServerReachable() && activity.action == "ping") {
             lastOfflinePingAt = lastGameActivityAt
         }
 
-        if (!isOnline) {
+        if (!isServerReachable()) {
             scheduleOfflineIdleTimeout(currentOfflineActivityAt())
             updateNotification()
         }
@@ -324,13 +321,53 @@ class ProxyService : Service() {
         offlineIdleTimeoutJob?.cancel()
         offlineIdleTimeoutJob = serviceScope.launch {
             delay(OFFLINE_PING_IDLE_TIMEOUT_MS)
-            if (!isOnline && currentOfflineActivityAt() == expectedActivityAt) {
+            if (!isServerReachable() && currentOfflineActivityAt() == expectedActivityAt) {
                 updateNotification()
             }
         }
     }
 
     private fun currentOfflineActivityAt(): Long = maxOf(lastGameActivityAt, lastOfflinePingAt)
+
+    private fun isServerReachable(): Boolean = hasInternet && isRetroAchievementsReachable()
+
+    private fun refreshReachability(
+        forceProbe: Boolean,
+        capabilities: NetworkCapabilities? = null
+    ) {
+        val validated = capabilities?.let(::isValidatedNetwork)
+            ?: hasValidatedInternet(connectivityManager)
+        val wasReachable = isServerReachable()
+        hasInternet = validated
+
+        if (!validated) {
+            markRetroAchievementsUnreachable()
+        } else {
+            serviceScope.launch {
+                val userAgent = loadUserAgent(db)
+                val reachable = probeRetroAchievements(userAgent = userAgent, force = forceProbe)
+                val isReachableNow = hasInternet && reachable
+                if (isReachableNow && !wasReachable) {
+                    Log.i(TAG, "RetroAchievements reachable")
+                    lastOfflinePingAt = 0L
+                    offlineIdleTimeoutJob?.cancel()
+                    requestFlush()
+                } else if (!isReachableNow && wasReachable) {
+                    Log.i(TAG, "RetroAchievements unreachable")
+                    if (recentGameId != null) {
+                        scheduleOfflineIdleTimeout(currentOfflineActivityAt())
+                    }
+                }
+                updateNotification()
+            }
+            return
+        }
+
+        if (!isServerReachable() && recentGameId != null) {
+            scheduleOfflineIdleTimeout(currentOfflineActivityAt())
+        }
+        updateNotification()
+    }
 
     private fun onlineRefreshIdleDelayMs(): Long {
         val lastActivityAt = maxOf(lastGameActivityAt, lastProxyActivityAt)

@@ -20,7 +20,9 @@ from .network import (
     build_forward_headers,
     decode_response_body,
     http_post,
-    online_check,
+    is_retroachievements_reachable,
+    mark_retroachievements_unreachable,
+    probe_retroachievements,
     read_response_bytes,
     response_content_type,
 )
@@ -214,15 +216,26 @@ class ProxyRuntimeServer(ThreadingTCPServer):
         self.config_data = dict(config_data)
         self.storage = storage
         self.running = True
-        self.last_online = False
+        self.has_internet = False
         self.flush_lock = threading.Lock()
         host = proxy_host(self.config_data)
         port = proxy_port(self.config_data)
         super().__init__((host, port), ProxyRequestHandler)
 
     def is_online(self) -> bool:
-        self.last_online = online_check(self.config_data)
-        return self.last_online
+        self.refresh_reachability(force_probe=False)
+        return self.has_internet and is_retroachievements_reachable()
+
+    def refresh_reachability(self, force_probe: bool) -> bool:
+        self.has_internet = probe_retroachievements(
+            self.config_data,
+            user_agent=self.storage.load_user_agent(FALLBACK_USER_AGENT),
+            force=force_probe,
+        )
+        if not self.has_internet:
+            mark_retroachievements_unreachable()
+            return False
+        return is_retroachievements_reachable()
 
     def process_proxy_request(
         self, method: str, path: str, raw_body: str, headers: dict[str, str]
@@ -463,6 +476,7 @@ class ProxyRuntimeServer(ThreadingTCPServer):
                 response_body,
             )
         except Exception as error:
+            mark_retroachievements_unreachable()
             LOGGER.error("Upstream request failed: %s", error)
             return (
                 "network_error",
@@ -561,9 +575,9 @@ class ConnectivityMonitor(threading.Thread):
         self.stop_event.set()
 
     def run(self) -> None:
-        was_online = self.server.is_online()
+        was_online = self.server.refresh_reachability(force_probe=True)
         while not self.stop_event.wait(self.interval_seconds):
-            is_online = self.server.is_online()
+            is_online = self.server.refresh_reachability(force_probe=True)
             if is_online and not was_online:
                 LOGGER.info("Connectivity restored; attempting flush")
                 self.server.flush_pending_awards()
@@ -660,7 +674,7 @@ def run_proxy_service(
     config_enforcer = ConfigEnforcer(config_data)
 
     try:
-        if server.is_online():
+        if server.refresh_reachability(force_probe=True):
             server.flush_pending_awards()
         connectivity_monitor.start()
         periodic_refresh.start()
