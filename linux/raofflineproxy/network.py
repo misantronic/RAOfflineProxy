@@ -1,4 +1,6 @@
 import logging
+import threading
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -9,6 +11,34 @@ from .utils import proxy_user_agent
 
 LOGGER = logging.getLogger("raofflineproxy")
 REDACTED_QUERY_KEYS = {"p", "t", "token", "password"}
+REACHABILITY_INTERVAL_SECONDS = 30.0
+
+
+class ReachabilityTracker:
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._reachable = False
+        self._checked_at = 0.0
+
+    def current(self) -> tuple[bool, float]:
+        with self._lock:
+            return self._reachable, self._checked_at
+
+    def mark(self, reachable: bool, checked_at: float | None = None) -> bool:
+        timestamp = checked_at if checked_at is not None else time.monotonic()
+        with self._lock:
+            changed = self._reachable != reachable
+            self._reachable = reachable
+            self._checked_at = timestamp
+            return changed
+
+    def reset(self) -> None:
+        with self._lock:
+            self._reachable = False
+            self._checked_at = 0.0
+
+
+_reachability_tracker = ReachabilityTracker()
 
 
 def redacted_url(url: str) -> str:
@@ -55,6 +85,76 @@ def build_api_url(base: str, action: str, params: dict[str, str]) -> str:
     return f"{base.rstrip('/')}/dorequest.php?{query}"
 
 
+def reachability_state() -> tuple[bool, float]:
+    return _reachability_tracker.current()
+
+
+def is_retroachievements_reachable() -> bool:
+    reachable, _checked_at = _reachability_tracker.current()
+    return reachable
+
+
+def mark_retroachievements_reachable(checked_at: float | None = None) -> bool:
+    return _reachability_tracker.mark(True, checked_at)
+
+
+def mark_retroachievements_unreachable(checked_at: float | None = None) -> bool:
+    return _reachability_tracker.mark(False, checked_at)
+
+
+def reset_retroachievements_reachability_for_tests() -> None:
+    _reachability_tracker.reset()
+
+
+def should_probe_retroachievements(
+    force: bool = False, now: float | None = None
+) -> bool:
+    if force:
+        return True
+
+    current_time = now if now is not None else time.monotonic()
+    reachable, checked_at = _reachability_tracker.current()
+    if checked_at == 0.0:
+        return True
+    if not reachable:
+        return True
+    return (current_time - checked_at) >= REACHABILITY_INTERVAL_SECONDS
+
+
+def probe_retroachievements(
+    config_data: dict,
+    user_agent: str | None = None,
+    force: bool = False,
+    now: float | None = None,
+) -> bool:
+    current_time = now if now is not None else time.monotonic()
+    if not should_probe_retroachievements(force=force, now=current_time):
+        return is_retroachievements_reachable()
+
+    upstream = upstream_host(config_data)
+    parsed = urlsplit(upstream)
+    url = f"{parsed.scheme}://{parsed.netloc}/"
+    request = urllib.request.Request(
+        url,
+        headers={
+            "User-Agent": proxy_user_agent(user_agent or FALLBACK_USER_AGENT),
+            "Accept-Encoding": "identity",
+        },
+        method="HEAD",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=5) as response:
+            reachable = 200 <= response.status < 500
+            if reachable:
+                mark_retroachievements_reachable(current_time)
+            else:
+                mark_retroachievements_unreachable(current_time)
+            return reachable
+    except Exception:
+        mark_retroachievements_unreachable(current_time)
+        return False
+
+
 def http_get(url: str, user_agent: str) -> str:
     request = urllib.request.Request(
         url,
@@ -68,8 +168,13 @@ def http_get(url: str, user_agent: str) -> str:
     try:
         with urllib.request.urlopen(request, timeout=10) as response:
             body = read_response_bytes(response)
+            mark_retroachievements_reachable()
             return decode_response_body(body, response_content_type(response))
     except urllib.error.HTTPError as error:
+        if error.code >= 500:
+            mark_retroachievements_unreachable()
+        else:
+            mark_retroachievements_reachable()
         LOGGER.warning(
             "GET failed status=%s reason=%s url=%s",
             error.code,
@@ -78,6 +183,7 @@ def http_get(url: str, user_agent: str) -> str:
         )
         raise
     except urllib.error.URLError as error:
+        mark_retroachievements_unreachable()
         LOGGER.warning(
             "GET connection failed reason=%s url=%s",
             error.reason,
@@ -85,6 +191,7 @@ def http_get(url: str, user_agent: str) -> str:
         )
         raise
     except Exception:
+        mark_retroachievements_unreachable()
         LOGGER.exception("GET failed url=%s", redacted_url(url))
         raise
 
@@ -109,6 +216,7 @@ def http_post(
     try:
         with urllib.request.urlopen(request, timeout=15) as response:
             response_body = read_response_bytes(response)
+            mark_retroachievements_reachable()
             return (
                 response.status,
                 response.reason,
@@ -116,6 +224,10 @@ def http_post(
             )
     except urllib.error.HTTPError as error:
         response_body = error.read()
+        if error.code >= 500:
+            mark_retroachievements_unreachable()
+        else:
+            mark_retroachievements_reachable()
         LOGGER.warning(
             "POST failed status=%s reason=%s url=%s",
             error.code,
@@ -128,6 +240,7 @@ def http_post(
             decode_response_body(response_body, error.headers.get("Content-Type")),
         )
     except urllib.error.URLError as error:
+        mark_retroachievements_unreachable()
         LOGGER.warning(
             "POST connection failed reason=%s url=%s",
             error.reason,
@@ -135,27 +248,13 @@ def http_post(
         )
         raise
     except Exception:
+        mark_retroachievements_unreachable()
         LOGGER.exception("POST failed url=%s", redacted_url(url))
         raise
 
 
 def online_check(config_data: dict) -> bool:
-    upstream = upstream_host(config_data)
-    parsed = urlsplit(upstream)
-    url = f"{parsed.scheme}://{parsed.netloc}/"
-    request = urllib.request.Request(
-        url,
-        headers={
-            "User-Agent": proxy_user_agent(FALLBACK_USER_AGENT),
-            "Accept-Encoding": "identity",
-        },
-        method="HEAD",
-    )
-    try:
-        with urllib.request.urlopen(request, timeout=5) as response:
-            return 200 <= response.status < 500
-    except Exception:
-        return False
+    return probe_retroachievements(config_data, user_agent=FALLBACK_USER_AGENT)
 
 
 def build_forward_headers(headers: dict[str, str]) -> dict[str, str]:

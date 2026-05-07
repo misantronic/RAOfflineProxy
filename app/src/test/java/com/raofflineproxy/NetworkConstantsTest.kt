@@ -1,6 +1,7 @@
 package com.raofflineproxy
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -242,5 +243,44 @@ class NetworkConstantsTest {
     @Test
     fun proxyValue_usesProvidedPort() {
         assertEquals("127.0.0.1:4321", proxyValue(4321))
+    }
+
+    @Test
+    fun isRetroAchievementsReachable_falseByDefault() {
+        resetRetroAchievementsReachabilityForTests()
+
+        assertFalse(isRetroAchievementsReachable())
+    }
+
+    @Test
+    fun markRetroAchievementsReachable_updatesState() {
+        resetRetroAchievementsReachabilityForTests()
+        markRetroAchievementsReachable(checkedAt = 1_000L)
+
+        assertTrue(isRetroAchievementsReachable())
+    }
+
+    @Test
+    fun shouldProbeRetroAchievements_falseForRecentSuccessfulProbe() {
+        resetRetroAchievementsReachabilityForTests()
+        markRetroAchievementsReachable(checkedAt = 1_000L)
+
+        assertFalse(shouldProbeRetroAchievements(now = 5_000L))
+    }
+
+    @Test
+    fun shouldProbeRetroAchievements_trueAfterProbeIntervalExpires() {
+        resetRetroAchievementsReachabilityForTests()
+        markRetroAchievementsReachable(checkedAt = 1_000L)
+
+        assertTrue(shouldProbeRetroAchievements(now = 40_000L))
+    }
+
+    @Test
+    fun shouldProbeRetroAchievements_trueWhenLastProbeFailed() {
+        resetRetroAchievementsReachabilityForTests()
+        markRetroAchievementsUnreachable(checkedAt = 1_000L)
+
+        assertTrue(shouldProbeRetroAchievements(now = 2_000L))
     }
 }
