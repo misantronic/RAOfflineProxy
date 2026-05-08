@@ -7,8 +7,8 @@
 **Cause:** RetroArch's config is not patched, or RetroArch loaded a config from a different location.
 
 **Fix:**
-1. Stop and restart the proxy — starting the proxy automatically patches RetroArch's config.
-2. Restart RetroArch after starting the proxy — it only reads the custom server setting at startup.
+1. Stop and restart the proxy: starting the proxy automatically patches RetroArch's config.
+2. Restart RetroArch after starting the proxy: it only reads the custom server setting at startup.
 3. If the app can't patch automatically, see [manual patching](./cfg-patching#manual-patching-adb-fallback).
 
 ---
@@ -31,7 +31,7 @@
 
 ## Pending awards are not being sent when I reconnect
 
-**Cause 1:** Authentication error — your RA token may need to be refreshed.
+**Cause 1:** Authentication error: your RA token may need to be refreshed.
 
 **Fix:** Open RetroArch → Settings → Achievements, log in again, save the settings, then return to RAOfflineProxy and restart the proxy so the refreshed token is imported from `retroarch.cfg`.
 
@@ -94,7 +94,7 @@ If you have no cached games, the token is assumed valid.
 
 ## Does RAOfflineProxy work with all RetroArch cores?
 
-RAOfflineProxy works at the network level — it is transparent to all RetroArch cores. Any core that uses RetroArch's built-in achievement system will work through the proxy automatically.
+RAOfflineProxy works at the network level: it is transparent to all RetroArch cores. Any core that uses RetroArch's built-in achievement system will work through the proxy automatically.
 
 ---
 
@@ -108,7 +108,7 @@ RetroArch will keep trying to connect to the proxy, which will fail since nothin
 
 ## Is hardcore mode supported?
 
-**No.** Hardcore mode is permanently unsupported. Any hardcore achievement unlock is immediately rejected. Starting the proxy also disables hardcore mode in RetroArch's config (and restores it when you stop the proxy). This is an intentional design decision — the integrity guarantees required for hardcore mode cannot be provided by a local proxy.
+**No.** Hardcore mode is permanently unsupported. Any hardcore achievement unlock is immediately rejected. Starting the proxy also disables hardcore mode in RetroArch's config (and restores it when you stop the proxy). This is an intentional design decision: the integrity guarantees required for hardcore mode cannot be provided by a local proxy.
 
 ---
 
