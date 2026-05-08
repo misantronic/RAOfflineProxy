@@ -28,7 +28,7 @@ features:
     details: Unlocks earned while offline are saved and sent to RetroAchievements the next time you go online.
   - icon: ⚙️
     title: Easy Setup
-    details: Starting the proxy automatically configures RetroArch — stopping it restores your original settings.
+    details: Starting the proxy automatically configures RetroArch - stopping it restores your original settings.
   - icon: 🚀
     title: Always Ready
     details: Optionally starts in the background when your device boots, so you never have to think about it.

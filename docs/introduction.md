@@ -22,13 +22,13 @@ RAOfflineProxy (local proxy)
 
 ## What it does
 
-| Situation | Behaviour |
-|---|---|
-| **Online — normal request** (game data, unlocks, etc.) | Forwards to RA, saves the response locally |
-| **Offline — saved data available** | Serves the saved response as if you were online |
-| **Offline — achievement earned (softcore)** | Queues the award locally, tells RetroArch it succeeded |
-| **Back online** | Automatically sends all queued awards to RA |
-| **Hardcore mode** | Always rejected — hardcore is not supported |
+| Situation | Behaviour                                              |
+|---|--------------------------------------------------------|
+| **Online: normal request** (game data, unlocks, etc.) | Forwards to RA, saves the response locally             |
+| **Offline: saved data available** | Serves the saved response as if you were online        |
+| **Offline: achievement earned (softcore)** | Queues the award locally, tells RetroArch it succeeded |
+| **Back online** | Automatically sends all queued awards to RA            |
+| **Hardcore mode** | Always rejected - hardcore is not supported            |
 
 ## What it does NOT do
 
@@ -53,4 +53,4 @@ These requirements are for the Android app:
 
 ## How the proxy is transparent to RetroArch
 
-RetroArch has a built-in setting for a custom achievement server. RAOfflineProxy points that setting at itself on your device when you start the proxy. RetroArch then sends all achievement traffic to the local proxy instead of directly to RetroAchievements. No modification to RetroArch is needed — it is a standard setting.
+RetroArch has a built-in setting for a custom achievement server. RAOfflineProxy points that setting at itself on your device when you start the proxy. RetroArch then sends all achievement traffic to the local proxy instead of directly to RetroAchievements. No modification to RetroArch is needed - it is a standard setting.

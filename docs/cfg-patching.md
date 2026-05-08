@@ -9,7 +9,7 @@ On Android, RetroArch stores its configuration in a file called `retroarch.cfg`.
 - The saved `cheevos_username` and `cheevos_token` are imported into RAOfflineProxy's local credential cache when present
 - If no token is present, `cheevos_username` and `cheevos_password` are used once to retrieve a token through RA's login endpoint
 
-Patching and reverting happen **automatically** when you start and stop the proxy — there is no separate setup step.
+Patching and reverting happen **automatically** when you start and stop the proxy: there is no separate setup step.
 
 ## Automatic Patching (Start Proxy)
 
@@ -23,15 +23,15 @@ Before patching, the app also checks for a one-time sibling backup named `retroa
 
 The app tries four strategies in order:
 
-### Strategy 1 — Folder Access (preferred)
+### Strategy 1: Folder Access (preferred)
 
 If you have previously granted folder access, the app uses the saved permission to read and write the file directly. No extra prompts.
 
-### Strategy 2 — Direct File Write
+### Strategy 2: Direct File Write
 
 The app checks common RetroArch installation paths for a writable `retroarch.cfg`. If the file is found and writable, it is patched in place.
 
-### Strategy 3 — Folder Access Prompt (Android 12 and below)
+### Strategy 3: Folder Access Prompt (Android 12 and below)
 
 On Android 12 and below, if the file is found but not directly writable, the app shows a dialog asking you to grant folder access. Tapping **Grant** opens the system folder picker directly at the RetroArch folder that contains `retroarch.cfg` when possible.
 
@@ -39,7 +39,7 @@ Grant access to the suggested folder.
 
 After granting, the app retries automatically. If the selected folder does not contain `retroarch.cfg`, the app shows an error and asks again the next time you start the proxy.
 
-### Strategy 4 — Staging Copy
+### Strategy 4: Staging Copy
 
 If all else fails, the app copies `retroarch.cfg` to a temporary folder, patches it there, and attempts to copy it back. If the copy-back fails, you are shown the file path and must manually copy it.
 
@@ -72,4 +72,4 @@ To revert manually, clear the custom achievement server value (set it to empty).
 
 The patcher disables hardcore mode because **hardcore mode is not supported** by RAOfflineProxy. Any hardcore award request is rejected by the proxy. Keeping hardcore enabled in RetroArch while using the proxy would result in silent unlock failures.
 
-When you stop the proxy, hardcore mode is restored to its original state — so if you had it enabled before, it will be re-enabled automatically.
+When you stop the proxy, hardcore mode is restored to its original state: if you had it enabled before, it will be re-enabled automatically.

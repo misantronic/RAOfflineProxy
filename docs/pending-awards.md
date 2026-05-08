@@ -22,9 +22,9 @@ Navigate to **Pending Awards** in the drawer to see all queued awards. For each 
 The proxy sends queued awards automatically whenever connectivity is restored. You can see sync progress in a snackbar at the bottom of the **Pending Awards** screen.
 
 Sync events:
-- **Started** — sync has begun
-- **Progress (N / Total)** — awards sent so far
-- **Completed (N sent of Total)** — sync finished
+- **Started**: sync has begun
+- **Progress (N / Total)**: awards sent so far
+- **Completed (N sent of Total)**: sync finished
 
 ## Sync Logic
 
@@ -32,12 +32,12 @@ Awards are sent in the order they were queued (oldest first).
 
 When a queued award is flushed, the proxy computes the elapsed time since it was queued and sends that as the `o` offset parameter. RetroAchievements currently caps that backdate window at 14 days, so RAOfflineProxy clamps `o` to a maximum of `1209600` seconds and recomputes the validation hash `v` using the same clamped value.
 
-| Outcome | Behaviour |
-|---|---|
-| **Success** | Award is removed from the queue |
-| **Authentication error** (invalid token) | Error is shown on the award, no further retries — you need to re-authenticate |
+| Outcome | Behaviour                                                                                 |
+|---|-------------------------------------------------------------------------------------------|
+| **Success** | Award is removed from the queue                                                           |
+| **Authentication error** (invalid token) | Error is shown on the award, no further retries: you need to re-authenticate              |
 | **Network error** | Retried up to **5 times**. After that, the award stays in the queue with an error message |
-| **Chain broken** | Entire sync is blocked — see [Anti-Tamper Hash Chain](./hash-chain) |
+| **Chain broken** | Entire sync is blocked - see [Anti-Tamper Hash Chain](./hash-chain)                       |
 
 ::: warning Hardcore awards
 If a hardcore award somehow ends up in the queue (from an older version), it is silently removed during sync rather than sent to RA.
@@ -45,7 +45,7 @@ If a hardcore award somehow ends up in the queue (from an older version), it is 
 
 ## Stale Award Filtering
 
-Before syncing, the proxy checks each queued achievement against your cached game data. If an achievement has been retired or removed from RetroAchievements since you earned it, the award is flagged as stale and skipped during sync. Stale awards remain in the queue with an error message so you can see which ones were affected — they are not silently deleted.
+Before syncing, the proxy checks each queued achievement against your cached game data. If an achievement has been retired or removed from RetroAchievements since you earned it, the award is flagged as stale and skipped during sync. Stale awards remain in the queue with an error message so you can see which ones were affected - they are not silently deleted.
 
 ## Authentication Errors
 

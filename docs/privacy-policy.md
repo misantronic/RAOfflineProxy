@@ -8,7 +8,7 @@ RAOfflineProxy ("the app") is a local proxy tool for Android that enables offlin
 
 - The app does **not** collect, store, or transmit any data to its developer.
 - The app does **not** contain ads, analytics, or crash reporting SDKs.
-- All data handled by the app stays on your device or is sent directly to [RetroAchievements.org](https://retroachievements.org) on your behalf — the same requests RetroArch would have made itself.
+- All data handled by the app stays on your device or is sent directly to [RetroAchievements.org](https://retroachievements.org) on your behalf: the same requests RetroArch would have made itself.
 
 ---
 
@@ -30,7 +30,7 @@ When you unlock an achievement while offline, the app queues the award in the lo
 
 ### ROM file hashes
 
-When you scan a ROM file or folder, the app computes an MD5 hash of each file and sends that hash to RetroAchievements to look up the corresponding game. ROM file contents are never stored or transmitted — only the MD5 hash.
+When you scan a ROM file or folder, the app computes an MD5 hash of each file and sends that hash to RetroAchievements to look up the corresponding game. ROM file contents are never stored or transmitted: only the MD5 hash.
 
 ### RetroArch user-agent string
 
@@ -73,8 +73,8 @@ No data is sent to any other server. The developer does not receive any data.
 
 You can delete all locally stored data at any time:
 
-- **Clear Cache** (Settings screen) — removes cached game and achievement data. Does not remove credentials or pending awards.
-- **Clear Database** (Settings screen) — removes all locally stored data including credentials, cached game data, and pending awards.
+- **Clear Cache** (Settings screen): removes cached game and achievement data. Does not remove credentials or pending awards.
+- **Clear Database** (Settings screen): removes all locally stored data including credentials, cached game data, and pending awards.
 
 Deleting the app also removes all app data.
 

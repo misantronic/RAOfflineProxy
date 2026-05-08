@@ -6,7 +6,7 @@ Navigate to **Settings** in the drawer to access the following options.
 
 ### Auto-start on Boot
 
-**Autostart RAOfflineProxy at startup** — when enabled, the proxy service starts automatically when the device boots.
+**Autostart RAOfflineProxy at startup**: when enabled, the proxy service starts automatically when the device boots.
 
 ::: warning Both conditions must be met
 Auto-start only works when **both** of the following are true:
@@ -18,9 +18,9 @@ If the config cannot be patched (e.g. folder access was never granted and the fi
 
 ### Clear Cache
 
-Removes all cached game data from the local database — game data, ROM identifiers, unlock lists, and session data.
+Removes all cached game data from the local database - game data, ROM identifiers, unlock lists, and session data.
 
-Your login credentials are **preserved** — clearing the cache does not log you out.
+Your login credentials are **preserved** - clearing the cache does not log you out.
 
 ::: tip When to clear cache
 Use **Clear Cache** if your cached game data is stale or if you want to free up storage. You will need to re-cache your games before playing offline.
@@ -28,7 +28,7 @@ Use **Clear Cache** if your cached game data is stale or if you want to free up 
 
 ### Clear Database
 
-Removes **all** data from the database — including cached game data **and all pending awards**.
+Removes **all** data from the database: including cached game data **and all pending awards**.
 
 ::: danger This deletes pending awards
 If you have unsynced offline unlocks in the Pending Awards queue, **Clear Database will permanently delete them**. Make sure you are online and all awards have been sent before using this option.
@@ -59,4 +59,4 @@ Tapping the notification opens the app. The notification cannot be dismissed whi
 
 While the proxy is running and the device is online, all cached games are automatically refreshed **every 60 minutes**. This keeps achievement lists and unlock counts up to date without any manual action.
 
-During each refresh cycle, cached data older than **7 days** is automatically removed to free up storage. Login credentials are exempt — you will not be logged out by this process.
+During each refresh cycle, cached data older than **7 days** is automatically removed to free up storage. Login credentials are exempt - you will not be logged out by this process.

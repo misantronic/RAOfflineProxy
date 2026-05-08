@@ -21,11 +21,11 @@ When the proxy is running, the **Cached Games** header shows a counter such as `
 
 For each game, the proxy saves three types of data locally:
 
-| Data | Contents |
-|---|---|
-| **Game data** | Achievement list, game title, icon, descriptions, and point values |
-| **Unlocks** | Which achievements you have already unlocked (softcore only) |
-| **Session data** | Built from your cached unlocks — used to start a game session offline |
+| Data | Contents                                                              |
+|---|-----------------------------------------------------------------------|
+| **Game data** | Achievement list, game title, icon, descriptions, and point values    |
+| **Unlocks** | Which achievements you have already unlocked (softcore only)          |
+| **Session data** | Built from your cached unlocks - used to start a game session offline |
 
 ::: info Session data is built locally
 The proxy never contacts RA's session endpoint. Instead, it builds the session response from your saved unlock data to avoid unnecessary server calls.
@@ -62,11 +62,11 @@ If adding ROMs would push the cache above **50 games**, the app stops once the l
 
 For each ROM file the following steps happen:
 
-1. **Identify the ROM** — the file is read and a unique fingerprint (hash) is computed
-2. **Look up the game** — the hash is sent to RetroAchievements to find the matching game
-3. **Save game data** — the full achievement list and game metadata are downloaded and saved
-4. **Save unlocks** — your current unlock progress for that game is downloaded and saved
-5. **Build session data** — a local session response is built from your saved unlocks (no server call)
+1. **Identify the ROM**: the file is read and a unique fingerprint (hash) is computed
+2. **Look up the game**: the hash is sent to RetroAchievements to find the matching game
+3. **Save game data**: the full achievement list and game metadata are downloaded and saved
+4. **Save unlocks**: your current unlock progress for that game is downloaded and saved
+5. **Build session data**: a local session response is built from your saved unlocks (no server call)
 
 There is a short delay between files to avoid overloading the RA servers.
 
@@ -129,4 +129,4 @@ Deleting a game removes its main game data but leaves behind some related entrie
 
 ## Clearing All Cache
 
-In **Settings** → **Clear Cache** removes all saved game data from the database. Your login credentials are preserved — clearing the cache does not log you out.
+In **Settings** → **Clear Cache** removes all saved game data from the database. Your login credentials are preserved - clearing the cache does not log you out.

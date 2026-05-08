@@ -34,15 +34,15 @@ Once the proxy has been started and your credentials have been imported, you can
 
 1. Navigate to **Cached Games** in the drawer
 2. Choose one of:
-   - **Scan ROM folder** — picks a folder and scans all ROMs in it
-   - **Add ROM** — picks individual ROM file(s)
+   - **Scan ROM folder**: picks a folder and scans all ROMs in it
+   - **Add ROM**: picks individual ROM file(s)
 
 The app will identify each ROM, look it up on RetroAchievements, and save all the achievement data for that game.
 
 Manual caching is capped at **50 games** to limit bulk server requests to RetroAchievements. The **Cached Games** screen shows the current total as `X/50 cached` while the proxy is running.
 
 ::: tip Automatic caching when launching games
-Caching also happens automatically when you open a game in RetroArch while the proxy is running and you are online — the proxy saves the game data in the background. Manual scanning is only needed if you want to pre-cache games before going offline without launching them first.
+Caching also happens automatically when you open a game in RetroArch while the proxy is running and you are online - the proxy saves the game data in the background. Manual scanning is only needed if you want to pre-cache games before going offline without launching them first.
 :::
 
 See [Caching Games](./caching-games) for full details.
@@ -51,7 +51,7 @@ See [Caching Games](./caching-games) for full details.
 
 1. Start the proxy service (press **Start proxy** in the action bar, or enable auto-start)
 2. Launch RetroArch and load a cached game
-3. Earn achievements — they will queue locally when offline
+3. Earn achievements - they will queue locally when offline
 4. When you reconnect, the proxy automatically sends queued awards to RA
 
 ::: tip Test with the SNES Burn-in Test Cartridge
