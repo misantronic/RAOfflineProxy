@@ -23,12 +23,12 @@ features:
   - icon: 💾
     title: Play Offline
     details: Your game and achievement data is saved to your device so everything works without Wi-Fi or mobile data.
-  - icon: 🏆
-    title: Automatic Sync
-    details: Unlocks earned while offline are saved and sent to RetroAchievements the next time you go online.
   - icon: ⚙️
     title: Easy Setup
     details: Starting the proxy automatically configures RetroArch - stopping it restores your original settings.
+  - icon: 🏆
+    title: Automatic Sync
+    details: Unlocks earned while offline are saved and sent to RetroAchievements the next time you go online.
   - icon: 🚀
     title: Always Ready
     details: Optionally starts in the background when your device boots, so you never have to think about it.
