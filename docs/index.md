@@ -24,7 +24,7 @@ features:
     title: Play Offline
     details: Your game and achievement data is saved to your device so everything works without Wi-Fi or mobile data.
   - icon: 🏆
-    title: Achievements Sync Automatically
+    title: Automatic Sync
     details: Unlocks earned while offline are saved and sent to RetroAchievements the next time you go online.
   - icon: ⚙️
     title: Easy Setup
