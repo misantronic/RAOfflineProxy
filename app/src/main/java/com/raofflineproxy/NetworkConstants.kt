@@ -19,7 +19,7 @@ private const val PROXY_HOST = "127.0.0.1"
 const val PROXY_UA_TAG = "RAOfflineProxy"
 private const val REQUEST_THROTTLE_TAG = "RAProxy/RateLimit"
 private const val REACHABILITY_TAG = "RAProxy/Reachability"
-private const val RETROACHIEVEMENTS_API_MIN_INTERVAL_MS = 750L
+private const val RETROACHIEVEMENTS_API_MIN_INTERVAL_MS = 500L
 private const val RETROACHIEVEMENTS_PROBE_INTERVAL_MS = 30_000L
 
 val sharedHttpClient: OkHttpClient = OkHttpClient.Builder().build()

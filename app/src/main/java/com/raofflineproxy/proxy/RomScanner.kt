@@ -17,15 +17,20 @@ import com.raofflineproxy.data.AppDatabase
 import com.raofflineproxy.data.CacheEntry
 import com.raofflineproxy.data.CacheKeys
 import com.raofflineproxy.proxyUserAgent
-import kotlinx.coroutines.delay
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
+import kotlin.math.min
 
 private const val TAG = "RAProxy"
 private const val HTTP_ERROR_BODY_LOG_LIMIT = 512
+private const val HTTP_TOO_MANY_REQUESTS = 429
+private const val HTTP_RETRY_AFTER_HEADER = "Retry-After"
+private const val HTTP_GET_MAX_429_RETRIES = 4
+private const val HTTP_GET_INITIAL_429_BACKOFF_MS = 2_000L
+private const val HTTP_GET_MAX_429_BACKOFF_MS = 15_000L
 
 private val FALLBACK_USER_AGENT = "RetroArch/1.21.0 (Android ${Build.VERSION.RELEASE ?: "Unknown"})"
 
@@ -222,7 +227,6 @@ suspend fun scanRomFolder(
         cacheGame(context, gameId, credentials, userAgent, db)
         cachedGameIds.add(gameId.toString())
         matched++
-        if (index < files.lastIndex) delay(500)
     }
 
     return ScanResult(matched, total, skipped, limitReached)
@@ -390,44 +394,70 @@ private suspend fun buildUnlocksArray(db: AppDatabase, gameId: Int, user: String
 
 internal fun httpGet(url: String, userAgent: String): HttpGetResult {
     val action = apiActionFromUrl(url)
-    if (action != null) {
-        throttleRetroAchievementsApiRequest("GET $action")
-    }
 
-    val connection = (URL(url).openConnection() as HttpURLConnection).apply {
-        connectTimeout = 10_000
-        readTimeout = 10_000
-        setRequestProperty("User-Agent", userAgent)
-        setRequestProperty("Accept-Encoding", "identity")
-    }
-
-    return try {
-        val statusCode = connection.responseCode
-        val reason = connection.responseMessage
-        val body = (if (statusCode in 200..299) connection.inputStream else connection.errorStream)
-            ?.bufferedReader()
-            ?.use { it.readText() }
-            .orEmpty()
-
-        if (statusCode in 200..299) {
-            HttpGetResult.Success(body)
-        } else {
-            HttpGetResult.Failure(
-                kind = "http",
-                statusCode = statusCode,
-                reason = reason,
-                bodySnippet = body.take(HTTP_ERROR_BODY_LOG_LIMIT).ifBlank { null }
-            )
+    repeat(HTTP_GET_MAX_429_RETRIES + 1) { attempt ->
+        if (action != null) {
+            throttleRetroAchievementsApiRequest("GET $action")
         }
-    } catch (e: IOException) {
-        HttpGetResult.Failure(
-            kind = "network",
-            exceptionMessage = e.message ?: e::class.java.simpleName
-        )
-    } finally {
-        connection.disconnect()
+
+        val connection = (URL(url).openConnection() as HttpURLConnection).apply {
+            connectTimeout = 10_000
+            readTimeout = 10_000
+            setRequestProperty("User-Agent", userAgent)
+            setRequestProperty("Accept-Encoding", "identity")
+        }
+
+        try {
+            val statusCode = connection.responseCode
+            val reason = connection.responseMessage
+            val body = (if (statusCode in 200..299) connection.inputStream else connection.errorStream)
+                ?.bufferedReader()
+                ?.use { it.readText() }
+                .orEmpty()
+
+            if (statusCode in 200..299) {
+                return HttpGetResult.Success(body)
+            }
+
+            if (statusCode == HTTP_TOO_MANY_REQUESTS && attempt < HTTP_GET_MAX_429_RETRIES) {
+                val retryAfterMillis = retryAfterMillis(connection, attempt)
+                Log.w(TAG, "httpGet hit 429 for ${action ?: redactTokens(url)}; retrying in ${retryAfterMillis}ms (attempt ${attempt + 1}/$HTTP_GET_MAX_429_RETRIES)")
+                Thread.sleep(retryAfterMillis)
+            } else {
+                return HttpGetResult.Failure(
+                    kind = "http",
+                    statusCode = statusCode,
+                    reason = reason,
+                    bodySnippet = body.take(HTTP_ERROR_BODY_LOG_LIMIT).ifBlank { null }
+                )
+            }
+        } catch (e: IOException) {
+            return HttpGetResult.Failure(
+                kind = "network",
+                exceptionMessage = e.message ?: e::class.java.simpleName
+            )
+        } finally {
+            connection.disconnect()
+        }
     }
+
+    return HttpGetResult.Failure(
+        kind = "http",
+        statusCode = HTTP_TOO_MANY_REQUESTS,
+        reason = "Too Many Requests"
+    )
 }
 
 private fun apiActionFromUrl(url: String): String? =
     url.substringAfter("r=", "").substringBefore('&').takeIf { it.isNotEmpty() }
+
+private fun retryAfterMillis(connection: HttpURLConnection, attempt: Int): Long {
+    val headerValue = connection.getHeaderField(HTTP_RETRY_AFTER_HEADER)?.trim()
+    val headerMillis = headerValue?.toLongOrNull()?.times(1000)
+    if (headerMillis != null && headerMillis > 0) {
+        return min(headerMillis, HTTP_GET_MAX_429_BACKOFF_MS)
+    }
+
+    val exponentialMillis = HTTP_GET_INITIAL_429_BACKOFF_MS shl attempt
+    return min(exponentialMillis, HTTP_GET_MAX_429_BACKOFF_MS)
+}
