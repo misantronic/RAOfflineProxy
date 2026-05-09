@@ -28,7 +28,8 @@ RAOfflineProxy (local proxy)
 | **Offline: saved data available** | Serves the saved response as if you were online        |
 | **Offline: achievement earned (softcore)** | Queues the award locally, tells RetroArch it succeeded |
 | **Back online** | Automatically sends all queued awards to RA            |
-| **Hardcore mode** | Always rejected - hardcore is not supported            |
+| **Start proxy** | Updates `retroarch.cfg` automatically so RetroArch uses the local proxy |
+| **Stop proxy** | Reverts the config change so RetroArch connects normally again |
 
 ## What it does NOT do
 
