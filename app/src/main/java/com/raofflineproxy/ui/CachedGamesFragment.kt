@@ -158,24 +158,44 @@ class CachedGamesFragment : Fragment() {
         }
 
     private fun guessRomFolderInitialUri() =
-        if (romPickerUsed) null else
-        (existingRomFolderCandidates().firstOrNull() ?: romFolderCandidates(requireContext()).firstOrNull())
-            ?.let(::initialTreeUriForPath)
+        if (romPickerUsed) null else {
+            val context = requireContext()
+            (existingRomFolderCandidates(context).firstOrNull() ?: preferredRomPickerRoots(context).firstOrNull())
+                ?.let(::initialTreeUriForPath)
+        }
 
-    private fun existingRomFolderCandidates(): List<String> =
-        romFolderCandidates(requireContext()).filter { File(it).isDirectory }
+    private fun existingRomFolderCandidates(context: Context): List<String> =
+        romFolderCandidates(context).filter { File(it).isDirectory }
+
+    private fun preferredRomPickerRoots(context: Context): List<String> {
+        val removableRoots = linkedSetOf<String>()
+        val otherRoots = linkedSetOf<String>()
+
+        context.getExternalFilesDirs(null)
+            .filterNotNull()
+            .forEach { file ->
+                val root = file.absolutePath.substringBefore("/Android/data", missingDelimiterValue = "")
+                    .trim()
+                    .trimEnd('/')
+                if (root.isBlank()) return@forEach
+                if (Environment.isExternalStorageRemovable(file)) {
+                    removableRoots.add(root)
+                } else {
+                    otherRoots.add(root)
+                }
+            }
+
+        listOf(
+            Environment.getExternalStorageDirectory().path,
+            "/storage/emulated/0",
+            "/storage/self/primary"
+        ).forEach(otherRoots::add)
+
+        return (removableRoots + otherRoots).toList()
+    }
 
     private fun romFolderCandidates(context: Context): List<String> {
-        val roots = buildSet {
-            add(Environment.getExternalStorageDirectory().path)
-            add("/storage/emulated/0")
-            add("/storage/self/primary")
-            context.getExternalFilesDirs(null)
-                .filterNotNull()
-                .map { file -> file.absolutePath.substringBefore("/Android/data", missingDelimiterValue = "") }
-                .filter { it.isNotBlank() }
-                .forEach(::add)
-        }
+        val roots = preferredRomPickerRoots(context)
         val names = setOf("ROMs", "Roms", "roms", "ROMS")
 
         return roots.flatMap { root -> names.map { name -> "$root/$name" } }
