@@ -13,7 +13,6 @@ import androidx.recyclerview.widget.DividerItemDecoration
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.raofflineproxy.R
-import com.raofflineproxy.data.PendingAwardUi
 import kotlinx.coroutines.launch
 
 class AwardsHistoryFragment : Fragment() {
@@ -23,7 +22,7 @@ class AwardsHistoryFragment : Fragment() {
         inflater.inflate(R.layout.fragment_awards_history, container, false)
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
-        val awardsAdapter = PendingAwardsAdapter(::confirmDelete)
+        val awardsAdapter = PendingAwardsAdapter(onDelete = null)
         val headerAdapter = AwardsHistoryHeaderAdapter(::confirmClear)
 
         view.findViewById<RecyclerView>(R.id.rv_awards_history).apply {
@@ -39,7 +38,7 @@ class AwardsHistoryFragment : Fragment() {
                 headerAdapter.update(
                     AwardsHistoryHeaderAdapter.HeaderState(
                         awardCount = state.awardHistory.size,
-                        clearEnabled = state.awardHistory.isNotEmpty(),
+                        clearEnabled = state.awardHistory.isNotEmpty() && state.pendingAwards.isEmpty(),
                         showEmpty = state.awardHistory.isEmpty()
                     )
                 )
@@ -47,24 +46,16 @@ class AwardsHistoryFragment : Fragment() {
         }
     }
 
-    private fun confirmDelete(award: PendingAwardUi) {
-        AlertDialog.Builder(requireContext())
-            .setTitle(R.string.awards_history_delete_title)
-            .setMessage(
-                getString(
-                    R.string.awards_history_delete_message,
-                    award.achievementTitle,
-                    award.gameTitle
-                )
-            )
-            .setPositiveButton(R.string.pending_award_delete_action) { _, _ ->
-                viewModel.deleteAwardHistoryEntry(award)
-            }
-            .setNegativeButton(android.R.string.cancel, null)
-            .show()
-    }
-
     private fun confirmClear() {
+        if (viewModel.state.value.pendingAwards.isNotEmpty()) {
+            AlertDialog.Builder(requireContext())
+                .setTitle(R.string.awards_history_clear_blocked_title)
+                .setMessage(R.string.awards_history_clear_blocked_message)
+                .setPositiveButton(R.string.action_ok, null)
+                .show()
+            return
+        }
+
         AlertDialog.Builder(requireContext())
             .setTitle(R.string.awards_history_clear_title)
             .setMessage(R.string.awards_history_clear_message)

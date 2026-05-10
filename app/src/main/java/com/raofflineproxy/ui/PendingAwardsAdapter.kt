@@ -17,14 +17,14 @@ import java.util.Date
 import java.util.Locale
 
 class PendingAwardsAdapter(
-    private val onDelete: (PendingAwardUi) -> Unit
+    private val onDelete: ((PendingAwardUi) -> Unit)?
 ) : ListAdapter<PendingAwardUi, PendingAwardsAdapter.ViewHolder>(DIFF) {
 
     private val dateFormat = SimpleDateFormat("MMM d, HH:mm", Locale.getDefault())
 
     class ViewHolder(
         private val binding: ItemPendingAwardBinding,
-        private val onDelete: (PendingAwardUi) -> Unit
+        private val onDelete: ((PendingAwardUi) -> Unit)?
     ) :
         RecyclerView.ViewHolder(binding.root) {
 
@@ -49,7 +49,10 @@ class PendingAwardsAdapter(
             } else {
                 binding.tvLastError.visibility = View.GONE
             }
-            binding.btnDeleteAward.setOnClickListener { onDelete(award) }
+            binding.btnDeleteAward.visibility = if (onDelete == null) View.GONE else View.VISIBLE
+            binding.btnDeleteAward.setOnClickListener {
+                onDelete?.invoke(award)
+            }
         }
     }
 
