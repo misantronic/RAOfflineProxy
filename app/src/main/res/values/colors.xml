@@ -11,6 +11,7 @@
     <color name="warning_border">#FFE0B84A</color>
     <color name="warning_text">#FF5F4700</color>
     <color name="emulator_toggle_border_default">#FF3A3A3A</color>
-    <color name="emulator_toggle_border_active">#FFFFD27A</color>
-    <color name="emulator_toggle_background_active">#14FFD27A</color>
+    <color name="emulator_toggle_border_active">#FF000000</color>
+    <color name="emulator_toggle_background_active">#FFFFD27A</color>
+    <color name="emulator_toggle_text_active">#FF1A1400</color>
 </resources>

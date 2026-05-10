@@ -30,6 +30,13 @@ import kotlinx.coroutines.launch
 class HomeFragment : Fragment() {
     private val viewModel: MainViewModel by activityViewModels()
 
+    private data class EmulatorToggleViews(
+        val row: LinearLayout,
+        val icon: ImageView,
+        val checkIcon: ImageView,
+        val label: TextView
+    )
+
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View =
         inflater.inflate(R.layout.fragment_home, container, false)
 
@@ -40,15 +47,15 @@ class HomeFragment : Fragment() {
         val homeDescription = view.findViewById<TextView>(R.id.tv_home_description)
         val emulatorLabel = view.findViewById<TextView>(R.id.tv_emulator_label)
         val emulatorToggles = view.findViewById<LinearLayout>(R.id.layout_emulator_toggles)
-        val retroArchToggleRow = view.findViewById<LinearLayout>(R.id.layout_retroarch_toggle)
-        val dolphinToggleRow = view.findViewById<LinearLayout>(R.id.layout_dolphin_toggle)
-        val retroArchIcon = view.findViewById<ImageView>(R.id.iv_retroarch_icon)
-        val dolphinIcon = view.findViewById<ImageView>(R.id.iv_dolphin_icon)
+        val retroArchToggle = bindToggle(view.findViewById(R.id.layout_retroarch_toggle), R.string.emulator_retroarch)
+        val dolphinToggle = bindToggle(view.findViewById(R.id.layout_dolphin_toggle), R.string.emulator_dolphin)
         val retroArchAppIcon = loadInstalledAppIcon(RETROARCH_PACKAGE_CANDIDATES)
         val dolphinAppIcon = loadInstalledAppIcon(DOLPHIN_PACKAGE_CANDIDATES)
         val activeBorderColor = requireContext().getColor(R.color.emulator_toggle_border_active)
         val activeBackgroundColor = requireContext().getColor(R.color.emulator_toggle_background_active)
         val defaultBorderColor = requireContext().getColor(R.color.emulator_toggle_border_default)
+        val activeTextColor = requireContext().getColor(R.color.emulator_toggle_text_active)
+        val defaultTextColor = retroArchToggle.label.currentTextColor
 
         val fullText = getString(R.string.home_description)
         val linkWord = "documentation"
@@ -75,13 +82,13 @@ class HomeFragment : Fragment() {
             (activity as? MainActivity)?.navigateTo(R.id.nav_cached_games)
         }
 
-        retroArchToggleRow.setOnClickListener {
-            if (retroArchToggleRow.isEnabled) {
+        retroArchToggle.row.setOnClickListener {
+            if (retroArchToggle.row.isEnabled) {
                 viewModel.setRetroArchEnabled(!viewModel.state.value.retroArchEnabled)
             }
         }
-        dolphinToggleRow.setOnClickListener {
-            if (dolphinToggleRow.isEnabled) {
+        dolphinToggle.row.setOnClickListener {
+            if (dolphinToggle.row.isEnabled) {
                 viewModel.setDolphinEnabled(!viewModel.state.value.dolphinEnabled)
             }
         }
@@ -99,32 +106,34 @@ class HomeFragment : Fragment() {
 
                 emulatorLabel.visibility = if (installedCount > 0) View.VISIBLE else View.GONE
                 emulatorToggles.visibility = if (installedCount > 0) View.VISIBLE else View.GONE
-                retroArchToggleRow.visibility = if (state.retroArchInstalled) View.VISIBLE else View.GONE
-                dolphinToggleRow.visibility = if (state.dolphinInstalled) View.VISIBLE else View.GONE
+                retroArchToggle.row.visibility = if (state.retroArchInstalled) View.VISIBLE else View.GONE
+                dolphinToggle.row.visibility = if (state.dolphinInstalled) View.VISIBLE else View.GONE
 
-                retroArchToggleRow.isEnabled = state.retroArchInstalled && !state.proxyRunning && !onlyOneInstalled
-                dolphinToggleRow.isEnabled = state.dolphinInstalled && !state.proxyRunning && !onlyOneInstalled
+                retroArchToggle.row.isEnabled = state.retroArchInstalled && !state.proxyRunning && !onlyOneInstalled
+                dolphinToggle.row.isEnabled = state.dolphinInstalled && !state.proxyRunning && !onlyOneInstalled
 
-                retroArchIcon.setImageDrawable(retroArchAppIcon)
-                dolphinIcon.setImageDrawable(dolphinAppIcon)
+                retroArchToggle.icon.setImageDrawable(retroArchAppIcon)
+                dolphinToggle.icon.setImageDrawable(dolphinAppIcon)
 
                 applyToggleRowStyle(
-                    row = retroArchToggleRow,
-                    icon = retroArchIcon,
+                    toggle = retroArchToggle,
                     isSelected = state.retroArchEnabled,
-                    isDisabled = !retroArchToggleRow.isEnabled,
+                    isDisabled = !retroArchToggle.row.isEnabled,
                     activeBorderColor = activeBorderColor,
                     activeBackgroundColor = activeBackgroundColor,
-                    defaultBorderColor = defaultBorderColor
+                    defaultBorderColor = defaultBorderColor,
+                    activeTextColor = activeTextColor,
+                    defaultTextColor = defaultTextColor
                 )
                 applyToggleRowStyle(
-                    row = dolphinToggleRow,
-                    icon = dolphinIcon,
+                    toggle = dolphinToggle,
                     isSelected = state.dolphinEnabled,
-                    isDisabled = !dolphinToggleRow.isEnabled,
+                    isDisabled = !dolphinToggle.row.isEnabled,
                     activeBorderColor = activeBorderColor,
                     activeBackgroundColor = activeBackgroundColor,
-                    defaultBorderColor = defaultBorderColor
+                    defaultBorderColor = defaultBorderColor,
+                    activeTextColor = activeTextColor,
+                    defaultTextColor = defaultTextColor
                 )
             }
         }
@@ -137,15 +146,28 @@ class HomeFragment : Fragment() {
         return runCatching { packageManager.getApplicationIcon(packageName) }.getOrNull()
     }
 
+    private fun bindToggle(root: LinearLayout, labelRes: Int): EmulatorToggleViews {
+        val label = root.findViewById<TextView>(R.id.tv_label)
+        label.setText(labelRes)
+        return EmulatorToggleViews(
+            row = root,
+            icon = root.findViewById(R.id.iv_icon),
+            checkIcon = root.findViewById(R.id.iv_check),
+            label = label
+        )
+    }
+
     private fun applyToggleRowStyle(
-        row: LinearLayout,
-        icon: ImageView,
+        toggle: EmulatorToggleViews,
         isSelected: Boolean,
         isDisabled: Boolean,
         activeBorderColor: Int,
         activeBackgroundColor: Int,
-        defaultBorderColor: Int
+        defaultBorderColor: Int,
+        activeTextColor: Int,
+        defaultTextColor: Int
     ) {
+        val row = toggle.row
         val borderColor = if (isSelected) activeBorderColor else defaultBorderColor
         val background = row.background?.mutate()
         if (background is GradientDrawable) {
@@ -156,14 +178,16 @@ class HomeFragment : Fragment() {
             row.backgroundTintList = ColorStateList.valueOf(borderColor)
         }
         row.alpha = if (isDisabled) 0.55f else 1f
+        toggle.label.setTextColor(if (isSelected) activeTextColor else defaultTextColor)
+        toggle.checkIcon.visibility = if (isSelected) View.VISIBLE else View.GONE
 
         if (isDisabled) {
             val matrix = ColorMatrix().apply { setSaturation(0f) }
-            icon.colorFilter = ColorMatrixColorFilter(matrix)
-            icon.imageAlpha = 160
+            toggle.icon.colorFilter = ColorMatrixColorFilter(matrix)
+            toggle.icon.imageAlpha = 160
         } else {
-            icon.colorFilter = null
-            icon.imageAlpha = 255
+            toggle.icon.colorFilter = null
+            toggle.icon.imageAlpha = 255
         }
     }
 }
