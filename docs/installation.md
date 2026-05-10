@@ -6,10 +6,10 @@
 
 These setup steps are for the Android app.
 
-Before using RAOfflineProxy on Android, enter your RetroAchievements account details in RetroArch.
+Before using RAOfflineProxy on Android, enter your RetroAchievements account details in all supported emulators you plan to use.
 
-::: warning RetroArch config is patched automatically
-RAOfflineProxy will edit your `retroarch.cfg` to work. For details, see [RetroArch CFG Patching](./cfg-patching).
+::: warning Emulator config is patched automatically
+RAOfflineProxy patches the supported emulator config it needs in order to redirect RetroAchievements traffic through the local proxy. For emulator-specific details, see [Emulator CFG Patching](./cfg-patching).
 :::
 
 ## Step 1: Install RAOfflineProxy
@@ -32,9 +32,9 @@ You can cache games in either of these ways:
      - **Scan ROM folder**: picks a folder and scans all ROMs in it
      - **Add ROM**: picks individual ROM file(s)
 
-2. **Cache them automatically by launching them in RetroArch**
+2. **Cache them automatically by launching them in a supported emulator**
    - Keep the proxy running while you are online
-   - Open the game once in RetroArch
+   - Open the game once in RetroArch or Dolphin
    - RAOfflineProxy will save the game data in the background
 
 The app will identify each ROM, look it up on RetroAchievements, and save all the achievement data for that game.
@@ -46,7 +46,7 @@ See [Caching Games](./caching-games) for full details.
 ## Step 4: Play Offline
 
 1. Start the proxy service (press **Start proxy** in the action bar, or enable auto-start)
-2. Launch RetroArch and load a cached game
+2. Launch RetroArch or Dolphin and load a cached game
 3. Earn achievements - they will queue locally when offline
 4. When you reconnect, the proxy automatically sends queued awards to RA
 
@@ -58,7 +58,7 @@ The [SNES Burn-in Test Cartridge Test Kit](https://retroachievements.org/game/10
 
 ```
 1. Install APK
-2. Enter RA credentials in RetroArch
+2. Enter RA credentials in RetroArch or Dolphin
 3. Open RAOfflineProxy → Start proxy while online
 4. Cache your games from **Cached Games** or just start them while online to cache them automatically
 5. Play!

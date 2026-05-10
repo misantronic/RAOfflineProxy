@@ -11,9 +11,9 @@ Navigate to **Settings** in the drawer to access the following options.
 ::: warning Both conditions must be met
 Auto-start only works when **both** of the following are true:
 1. The "Autostart" checkbox is checked
-2. RetroArch's config can be patched successfully on boot
+2. At least one enabled emulator config can be patched successfully on boot
 
-If the config cannot be patched (e.g. folder access was never granted and the file is not directly writable), the service will not start on boot.
+If the needed emulator config cannot be patched (e.g. folder access was never granted and the file is not directly writable), the service will not start on boot.
 :::
 
 ### Clear Cache
@@ -44,7 +44,7 @@ The action bar at the top of every screen has a **Start proxy / Stop proxy** but
 | Proxy running, online | Stop proxy | Proxy running — online |
 | Proxy running, offline | Stop proxy | Proxy running — offline |
 
-Starting the proxy automatically patches RetroArch's config. Stopping it reverts the config and restores any previous hardcore mode setting. See [RetroArch CFG Patching](./cfg-patching) for details.
+Starting the proxy automatically patches the enabled supported emulator configs. Stopping it reverts those config changes and restores any previous hardcore mode setting. See [Emulator CFG Patching](./cfg-patching) for emulator-specific details.
 
 ## Persistent Notification
 

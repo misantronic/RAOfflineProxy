@@ -2,13 +2,13 @@
 
 **Last updated: May 10, 2026**
 
-RAOfflineProxy ("the app") is a local proxy tool for Android that enables offline RetroAchievements support with RetroArch. This privacy policy explains what data is handled by the app, how it is stored, and when it is transmitted.
+RAOfflineProxy ("the app") is a local proxy tool for Android that enables offline RetroAchievements support with supported emulators such as RetroArch and Dolphin. This privacy policy explains what data is handled by the app, how it is stored, and when it is transmitted.
 
 ## Summary
 
 - The app does **not** collect, store, or transmit any data to its developer.
 - The app does **not** contain ads, analytics, or crash reporting SDKs.
-- All data handled by the app stays on your device or is sent directly to [RetroAchievements.org](https://retroachievements.org) on your behalf: the same requests RetroArch would have made itself.
+- All data handled by the app stays on your device or is sent directly to [RetroAchievements.org](https://retroachievements.org) on your behalf: the same requests your emulator would have made itself.
 - The website (`raofflineproxy.com`) uses Google Analytics to measure page traffic.
 
 ---
@@ -17,9 +17,9 @@ RAOfflineProxy ("the app") is a local proxy tool for Android that enables offlin
 
 ### RetroAchievements credentials
 
-When the proxy starts, the app reads your saved RetroAchievements login from RetroArch's `retroarch.cfg`. It first uses `cheevos_token` when present. If no token is available, it uses `cheevos_username` and `cheevos_password` once to retrieve a token from RetroAchievements, then stores that token in its local cache. This cache is used to authenticate requests when your device is offline.
+When the proxy starts, the app reads your saved RetroAchievements login from a supported emulator config. It prefers an existing API token when available. If no token is available, it can use the saved username and password once to retrieve a token from RetroAchievements, then stores that token in its local cache. This cache is used to authenticate requests when your device is offline.
 
-Your credentials are **never sent to the app developer**. They are only ever forwarded to `retroachievements.org`, exactly as RetroArch would do directly.
+Your credentials are **never sent to the app developer**. They are only ever forwarded to `retroachievements.org`, exactly as the emulator would do directly.
 
 ### Game and achievement data
 
@@ -33,9 +33,9 @@ When you unlock an achievement while offline, the app queues the award in the lo
 
 When you scan a ROM file or folder, the app computes an MD5 hash of each file and sends that hash to RetroAchievements to look up the corresponding game. ROM file contents are never stored or transmitted: only the MD5 hash.
 
-### RetroArch user-agent string
+### Emulator user-agent string
 
-The app caches the `User-Agent` header sent by RetroArch (e.g. `rcheevos/11.4.0`) and appends its own identifier (`RAOfflineProxy/<version>`) when forwarding requests to RetroAchievements so the server can distinguish proxied traffic.
+The app caches the `User-Agent` header sent by the emulator (for example an `rcheevos/...` user-agent) and appends its own identifier (`RAOfflineProxy/<version>`) when forwarding requests to RetroAchievements so the server can distinguish proxied traffic.
 
 ### Game icon images
 

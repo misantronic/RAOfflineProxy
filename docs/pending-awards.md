@@ -2,10 +2,10 @@
 
 ## Overview
 
-When you earn a softcore achievement while offline, RAOfflineProxy intercepts the award request from RetroArch and:
+When you earn a softcore achievement while offline, RAOfflineProxy intercepts the award request from the emulator and:
 
 1. Stores it in a local queue
-2. Returns a success response to RetroArch so the unlock registers in-game immediately
+2. Returns a success response to the emulator so the unlock registers in-game immediately
 
 When you come back online, the proxy automatically sends all queued awards to RetroAchievements.
 
@@ -51,14 +51,14 @@ Before syncing, the proxy checks each queued achievement against your cached gam
 
 If you see a red error message on a pending award saying something like "Invalid token" or "Invalid credentials", your RetroAchievements session may need to be refreshed. To fix this:
 
-1. Open RetroArch
-2. Go to **Settings → Achievements**, log in again, and save the settings
-3. Return to RAOfflineProxy and restart the proxy so the refreshed token is imported from `retroarch.cfg`
+1. Open the emulator that holds your current RetroAchievements login
+2. Go to its RetroAchievements settings, log in again, and save the settings
+3. Return to RAOfflineProxy and restart the proxy so the refreshed token is imported from that emulator config
 4. The next sync attempt should use the new token
 
-## What RetroArch Sees When You're Offline
+## What the Emulator Sees When You're Offline
 
-When an award is queued offline, RetroArch receives a response that looks like a normal successful unlock. RetroArch marks the achievement as earned in-game immediately. The actual submission to RA happens when you reconnect.
+When an award is queued offline, the emulator receives a response that looks like a normal successful unlock. The achievement is marked as earned in-game immediately. The actual submission to RA happens when you reconnect.
 
 ## Duplicate Awards
 

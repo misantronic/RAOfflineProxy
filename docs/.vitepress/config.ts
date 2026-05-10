@@ -40,7 +40,7 @@ export default defineConfig({
       {
         text: 'Features',
         items: [
-          { text: 'RetroArch CFG Patching', link: '/cfg-patching' },
+          { text: 'Emulator CFG Patching', link: '/cfg-patching' },
           { text: 'Caching Games', link: '/caching-games' },
           { text: 'Pending Awards', link: '/pending-awards' },
           { text: 'Anti-Tamper Hash Chain', link: '/hash-chain' },
