@@ -16,7 +16,10 @@ import com.raofflineproxy.throttleRetroAchievementsApiRequest
 import com.raofflineproxy.data.AppDatabase
 import com.raofflineproxy.data.CacheEntry
 import com.raofflineproxy.data.CacheKeys
+import com.raofflineproxy.data.PENDING_AWARD_STATUS_PENDING
+import com.raofflineproxy.data.PendingAward
 import com.raofflineproxy.proxyUserAgent
+import com.raofflineproxy.parseFormParams
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.IOException
@@ -377,11 +380,28 @@ internal suspend fun cacheSession(gameId: Int, creds: LoginCredentials, db: AppD
 }
 
 private suspend fun buildUnlocksArray(db: AppDatabase, gameId: Int, user: String, serverNow: Long): JSONArray {
-    val unlockIds = runCatching {
+    val cachedUnlockIds = runCatching {
         val body = db.cacheDao().get(CacheKeys.unlocks(gameId, user))?.responseBody ?: return@runCatching emptyList<Int>()
         val arr = JSONObject(body).optJSONArray("UserUnlocks") ?: return@runCatching emptyList<Int>()
         (0 until arr.length()).map { arr.getInt(it) }
     }.getOrDefault(emptyList())
+
+    val pendingAwards = runCatching {
+        db.pendingAwardDao().getAllByStatus(PENDING_AWARD_STATUS_PENDING)
+    }.getOrDefault(emptyList())
+
+    val achievementGameIds = buildAchievementGameIds(
+        runCatching { db.cacheDao().getAllByPrefix(CacheKeys.PREFIX_PATCH) }.getOrDefault(emptyList())
+    )
+
+    val unlockIds = mergeStartSessionUnlockIds(
+        cachedUnlockIds = cachedUnlockIds,
+        pendingAwards = pendingAwards,
+        achievementGameIds = achievementGameIds,
+        gameId = gameId,
+        user = user
+    )
+
     return JSONArray().also { result ->
         unlockIds.forEach { id ->
             result.put(JSONObject().apply {
@@ -390,6 +410,49 @@ private suspend fun buildUnlocksArray(db: AppDatabase, gameId: Int, user: String
             })
         }
     }
+}
+
+internal fun mergeStartSessionUnlockIds(
+    cachedUnlockIds: List<Int>,
+    pendingAwards: List<PendingAward>,
+    achievementGameIds: Map<Int, Int>,
+    gameId: Int,
+    user: String
+): List<Int> {
+    val mergedIds = linkedSetOf<Int>()
+    cachedUnlockIds.filter { it > 0 }.forEach(mergedIds::add)
+
+    pendingAwards.asSequence()
+        .filter { it.status == PENDING_AWARD_STATUS_PENDING }
+        .filterNot(::isHardcoreAward)
+        .filter { pendingAwardUser(it) == user }
+        .filter { achievementGameIds[it.achievementId] == gameId }
+        .map(PendingAward::achievementId)
+        .forEach(mergedIds::add)
+
+    return mergedIds.toList()
+}
+
+private fun buildAchievementGameIds(patchEntries: List<CacheEntry>): Map<Int, Int> = buildMap {
+    patchEntries.forEach { entry ->
+        val patchGameId = CacheKeys.parseGameIdFromPatchKey(entry.cacheKey) ?: return@forEach
+        val patchData = runCatching {
+            JSONObject(entry.responseBody).getJSONObject("PatchData")
+        }.getOrNull() ?: return@forEach
+        val achievements = patchData.optJSONArray("Achievements") ?: return@forEach
+        for (i in 0 until achievements.length()) {
+            val achievement = achievements.optJSONObject(i) ?: continue
+            val achievementId = achievement.optInt("ID")
+            if (achievementId != 0) {
+                putIfAbsent(achievementId, patchGameId)
+            }
+        }
+    }
+}
+
+private fun pendingAwardUser(award: PendingAward): String? {
+    val queryParams = parseFormParams(award.queryString.substringAfter('?', ""))
+    return queryParams["u"] ?: parseFormParams(award.requestBody)["u"]
 }
 
 internal fun httpGet(url: String, userAgent: String): HttpGetResult {
