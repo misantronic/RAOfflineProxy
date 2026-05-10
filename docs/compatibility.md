@@ -7,6 +7,8 @@ Devices confirmed working by either the developer or user reports.
 | AYN Odin 2 Portal | Android 13 | ✅ Working, dev tested |
 | Ayaneo Pocket Air Mini | Android 11 | ✅ Working, dev tested |
 | MagicX One 35 | Android 12 | ✅ Working, user tested |
+| Mangmi Air X | Android 14 | ❌ Not working, user tested |
+| Poco F6 | Android 16 | ❌ Not working, user tested |
 
 ## Submit your device
 
