@@ -66,7 +66,7 @@ The reconnect award flush now mirrors the Android client more closely:
 - backdated awards include the `o` parameter clamped to 14 days
 - the award validation hash `v` is recalculated during replay
 - replay requests use the original RetroArch User-Agent with a Linux-specific proxy suffix:
-  - `RAOfflineProxy/Linux/1.0.0-alpha1`
+  - `RAOfflineProxy/Linux/1.0.0-alpha2`
 - tamper-chain metadata is attached to queued award replays
 
 On KNULLI/Batocera-style installs, the launcher also forces a stable config/cache location under:
