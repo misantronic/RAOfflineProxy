@@ -44,6 +44,7 @@ class MainActivity : AppCompatActivity() {
     private var progressMessage: String? = null
     private var activeSnackbarKind: ActiveSnackbarKind? = null
     private var suppressNextDismissCallback = false
+    private var activeSafGrantTarget: SafGrantTarget? = null
 
     private val safLauncher = registerForActivityResult(OpenAndroidDataTree()) { uri ->
         if (uri == null) {
@@ -137,6 +138,7 @@ class MainActivity : AppCompatActivity() {
                     proxyRunning = state.proxyRunning,
                     isOnline = state.isOnline,
                     proxyToggleInProgress = state.proxyToggleInProgress,
+                    needsSafGrant = state.needsSafGrant,
                     hasEnabledEmulator = state.retroArchEnabled || state.dolphinEnabled
                 )
                 updateNavBadge(navView, R.id.nav_cached_games, state.cachedGames.size)
@@ -145,7 +147,12 @@ class MainActivity : AppCompatActivity() {
                 maybeShowStartTokenWarning(state)
 
                 if (state.needsSafGrant) {
-                    showSafGrantDialog(state.safGrantTarget ?: SafGrantTarget.RetroArch)
+                    val target = state.safGrantTarget ?: SafGrantTarget.RetroArch
+                    if (activeSafGrantTarget != target) {
+                        showSafGrantDialog(target)
+                    }
+                } else {
+                    activeSafGrantTarget = null
                 }
             }
         }
@@ -178,6 +185,7 @@ class MainActivity : AppCompatActivity() {
             proxyRunning = state.proxyRunning,
             isOnline = state.isOnline,
             proxyToggleInProgress = state.proxyToggleInProgress,
+            needsSafGrant = state.needsSafGrant,
             hasEnabledEmulator = state.retroArchEnabled || state.dolphinEnabled
         )
         return true
@@ -274,6 +282,7 @@ class MainActivity : AppCompatActivity() {
         proxyRunning: Boolean,
         isOnline: Boolean,
         proxyToggleInProgress: Boolean,
+        needsSafGrant: Boolean,
         hasEnabledEmulator: Boolean
     ) {
         val item = proxyMenuItem ?: return
@@ -286,13 +295,13 @@ class MainActivity : AppCompatActivity() {
         }
         label.text = if (proxyRunning) getString(R.string.proxy_stop) else getString(R.string.proxy_start)
         actionView.tooltipText = tooltipText
-        val canToggle = !proxyToggleInProgress && (proxyRunning || hasEnabledEmulator)
+        val canToggle = !proxyToggleInProgress && !needsSafGrant && (proxyRunning || hasEnabledEmulator)
         actionView.isEnabled = canToggle
         actionView.alpha = if (canToggle) 1f else 0.45f
     }
 
     private fun toggleProxy() {
-        if (viewModel.state.value.proxyToggleInProgress) return
+        if (viewModel.state.value.proxyToggleInProgress || viewModel.state.value.needsSafGrant) return
 
         if (viewModel.state.value.proxyRunning) {
             pendingStartTokenWarning = false
@@ -325,7 +334,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showSafGrantDialog(target: SafGrantTarget) {
-        viewModel.clearTransientMessages()
+        activeSafGrantTarget = target
         val messageRes = when (target) {
             SafGrantTarget.RetroArch -> R.string.saf_dialog_message
             SafGrantTarget.Dolphin -> R.string.dolphin_saf_dialog_message
@@ -334,12 +343,19 @@ class MainActivity : AppCompatActivity() {
             .setTitle(R.string.saf_dialog_title)
             .setMessage(messageRes)
             .setPositiveButton(R.string.saf_dialog_grant) { _, _ ->
+                activeSafGrantTarget = null
                 when (target) {
                     SafGrantTarget.RetroArch -> safLauncher.launch(Unit)
                     SafGrantTarget.Dolphin -> dolphinSafLauncher.launch(Unit)
                 }
             }
-            .setNegativeButton(android.R.string.cancel, null)
+            .setNegativeButton(android.R.string.cancel) { _, _ ->
+                activeSafGrantTarget = null
+                when (target) {
+                    SafGrantTarget.RetroArch -> viewModel.onSafRejected(SafGrantTarget.RetroArch)
+                    SafGrantTarget.Dolphin -> viewModel.onSafRejected(SafGrantTarget.Dolphin)
+                }
+            }
             .show()
     }
 
