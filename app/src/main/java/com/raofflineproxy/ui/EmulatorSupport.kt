@@ -48,7 +48,7 @@ internal fun loadEmulatorSupport(context: Context): EmulatorSupport {
     val dolphinEnabled = when {
         !dolphinInstalled -> false
         dolphinInstalled && !retroArchInstalled -> true
-        else -> prefs.getBoolean(PrefsConstants.KEY_ENABLE_DOLPHIN, false)
+        else -> prefs.getBoolean(PrefsConstants.KEY_ENABLE_DOLPHIN, true)
     }
 
     return EmulatorSupport(

@@ -82,6 +82,7 @@ data class MainUiState(
     val cachedGames: List<CachedGame> = emptyList(),
     val needsSafGrant: Boolean = false,
     val safGrantTarget: SafGrantTarget? = null,
+    val pendingSafGrantTargets: List<SafGrantTarget> = emptyList(),
     val cfgCopyBackPath: String? = null,
     val cfgIsPatched: Boolean? = null,
     val scanInProgress: Boolean = false,
@@ -98,6 +99,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     val cachedGames: StateFlow<List<CachedGame>> = _cachedGames.asStateFlow()
     private val connectivityManager =
         app.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+    private var pendingProxyStart = false
 
     private fun str(resId: Int): String = getApplication<Application>().getString(resId)
     private fun str(resId: Int, vararg args: Any): String = getApplication<Application>().getString(resId, *args)
@@ -338,8 +340,58 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             scanProgress = null,
             cfgCopyBackPath = null,
             needsSafGrant = false,
-            safGrantTarget = null
+            safGrantTarget = null,
+            pendingSafGrantTargets = emptyList()
         )
+    }
+
+    fun onSafGranted(target: SafGrantTarget) {
+        val remaining = _state.value.pendingSafGrantTargets.filterNot { it == target }
+        _state.value = _state.value.copy(
+            pendingSafGrantTargets = remaining,
+            needsSafGrant = remaining.isNotEmpty(),
+            safGrantTarget = remaining.firstOrNull()
+        )
+        if (pendingProxyStart && remaining.isEmpty()) {
+            startProxyInternal(loadSafUri())
+        }
+    }
+
+    fun onSafRejected(target: SafGrantTarget) {
+        val app = getApplication<Application>()
+        val prefs = app.getSharedPreferences(PrefsConstants.PREFS_NAME, Context.MODE_PRIVATE)
+        when (target) {
+            SafGrantTarget.RetroArch -> {
+                prefs.edit { putBoolean(PrefsConstants.KEY_ENABLE_RETROARCH, false) }
+                PrefsConstants.clearSafUri(app)
+                SnackbarManager.showMessage(str(R.string.proxy_disabled_retroarch_saf_rejected))
+            }
+            SafGrantTarget.Dolphin -> {
+                prefs.edit { putBoolean(PrefsConstants.KEY_ENABLE_DOLPHIN, false) }
+                PrefsConstants.clearDolphinSafUri(app)
+                SnackbarManager.showMessage(str(R.string.proxy_disabled_dolphin_saf_rejected))
+            }
+        }
+
+        val updatedSupport = loadEmulatorSupport(app)
+        val remaining = _state.value.pendingSafGrantTargets.filterNot { it == target }
+        _state.value = _state.value.copy(
+            retroArchEnabled = updatedSupport.retroArchEnabled,
+            dolphinEnabled = updatedSupport.dolphinEnabled,
+            pendingSafGrantTargets = remaining,
+            needsSafGrant = remaining.isNotEmpty(),
+            safGrantTarget = remaining.firstOrNull()
+        )
+
+        if (!updatedSupport.hasAnyEnabled) {
+            pendingProxyStart = false
+            SnackbarManager.showError(str(R.string.proxy_start_aborted_all_emulators_rejected))
+            return
+        }
+
+        if (remaining.isEmpty() && pendingProxyStart) {
+            startProxyInternal(loadSafUri())
+        }
     }
 
     fun deletePendingAward(award: PendingAwardUi) {
@@ -421,6 +473,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
     fun startProxy(treeUri: Uri? = null) {
+        pendingProxyStart = true
+        startProxyInternal(treeUri)
+    }
+
+    private fun startProxyInternal(treeUri: Uri? = null) {
         val app = getApplication<Application>()
         viewModelScope.launch {
             if (_state.value.proxyToggleInProgress) return@launch
@@ -434,6 +491,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 prefs.edit { remove(PrefsConstants.KEY_SKIP_NEXT_CFG_REVERT) }
 
                 if (!emulatorSupport.hasAnyEnabled) {
+                    pendingProxyStart = false
                     SnackbarManager.showError(str(R.string.proxy_start_requires_emulator))
                     return@launch
                 }
@@ -451,7 +509,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         PrefsConstants.clearSafUri(app)
                         _state.value = _state.value.copy(
                             needsSafGrant = true,
-                            safGrantTarget = SafGrantTarget.RetroArch
+                            safGrantTarget = SafGrantTarget.RetroArch,
+                            pendingSafGrantTargets = listOf(SafGrantTarget.RetroArch)
                         )
                         return@launch
                     }
@@ -486,16 +545,21 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 if (emulatorSupport.dolphinEnabled) {
                     if (dolphinResult.needsSafGrant) {
                         PrefsConstants.clearDolphinSafUri(app)
-                        SnackbarManager.showMessage(dolphinResult.message)
                         _state.value = _state.value.copy(
                             needsSafGrant = true,
-                            safGrantTarget = SafGrantTarget.Dolphin
+                            safGrantTarget = SafGrantTarget.Dolphin,
+                            pendingSafGrantTargets = listOf(SafGrantTarget.Dolphin)
                         )
+                        return@launch
                     } else if (dolphinResult.invalidSafGrant) {
                         PrefsConstants.clearDolphinSafUri(app)
                         SnackbarManager.showError(dolphinResult.message)
+                        pendingProxyStart = false
+                        return@launch
                     } else if (!dolphinResult.success && !dolphinResult.skippedNotInstalled) {
                         SnackbarManager.showError(dolphinResult.message)
+                        pendingProxyStart = false
+                        return@launch
                     } else if (dolphinResult.success && !dolphinResult.skippedNotInstalled) {
                         prefs.edit {
                             putBoolean(PrefsConstants.KEY_DOLPHIN_HARDCORE_WAS_ENABLED, dolphinResult.hardcoreWasEnabled)
@@ -515,10 +579,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 }
 
                 ProxyService.start(app)
+                pendingProxyStart = false
                 _state.value = _state.value.copy(
                     proxyRunning = true,
                     cfgIsPatched = true,
-                    needsSafGrant = _state.value.needsSafGrant,
+                    needsSafGrant = false,
+                    safGrantTarget = null,
+                    pendingSafGrantTargets = emptyList(),
                     authState = AuthState.Unknown
                 )
                 if (!alreadyRunning) {
@@ -973,7 +1040,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             ) ?: return
         }
         val body = cacheLoginCredentialsResponse(tokenCredentials.user, tokenCredentials.token)
-                db.cacheDao().upsert(
+        db.cacheDao().upsert(
             CacheEntry(
                 cacheKey = CacheKeys.login(tokenCredentials.user),
                 responseBody = body
