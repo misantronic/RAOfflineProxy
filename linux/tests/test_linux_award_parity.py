@@ -1,15 +1,33 @@
 import base64
+import json
 import tempfile
 import unittest
 from pathlib import Path
 
 from linux.raofflineproxy import config
 from linux.raofflineproxy import flusher
+from linux.raofflineproxy import rom_cache
 from linux.raofflineproxy import storage
 from linux.raofflineproxy import utils
 
 
 class LinuxAwardParityTests(unittest.TestCase):
+    def award(
+        self,
+        achievement_id: int,
+        user: str = "testuser",
+        hardcore: int = 0,
+        status: str = storage.PENDING_AWARD_STATUS_PENDING,
+    ) -> dict:
+        return {
+            "achievementId": achievement_id,
+            "queryString": f"/dorequest.php?r=awardachievement&a={achievement_id}&u={user}&h={hardcore}",
+            "requestBody": f"a={achievement_id}&u={user}&h={hardcore}",
+            "userAgent": "RetroArch/1.21.0 (Linux)",
+            "queuedAt": 1_700_000_000_000,
+            "status": status,
+        }
+
     def test_proxy_user_agent_uses_linux_suffix(self) -> None:
         user_agent = utils.proxy_user_agent("RetroArch/1.21.0 (Linux)")
 
@@ -127,6 +145,103 @@ class LinuxAwardParityTests(unittest.TestCase):
         self.assertTrue(valid)
         self.assertIsNone(reason)
         self.assertIsNone(index)
+
+    def test_merge_start_session_unlock_ids_adds_pending_awards_for_same_game_and_user(
+        self,
+    ) -> None:
+        result = rom_cache.merge_start_session_unlock_ids(
+            cached_unlock_ids=[11],
+            pending_awards=[self.award(22), self.award(33)],
+            achievement_game_ids={22: 42, 33: 42},
+            game_id=42,
+            user="testuser",
+        )
+
+        self.assertEqual(result, [11, 22, 33])
+
+    def test_merge_start_session_unlock_ids_deduplicates_cached_and_pending_ids(
+        self,
+    ) -> None:
+        result = rom_cache.merge_start_session_unlock_ids(
+            cached_unlock_ids=[11, 22],
+            pending_awards=[self.award(22), self.award(33)],
+            achievement_game_ids={22: 42, 33: 42},
+            game_id=42,
+            user="testuser",
+        )
+
+        self.assertEqual(result, [11, 22, 33])
+
+    def test_merge_start_session_unlock_ids_excludes_other_users_games_statuses_and_hardcore(
+        self,
+    ) -> None:
+        result = rom_cache.merge_start_session_unlock_ids(
+            cached_unlock_ids=[],
+            pending_awards=[
+                self.award(22),
+                self.award(33, user="other"),
+                self.award(
+                    44,
+                    status=storage.PENDING_AWARD_STATUS_DELETED,
+                ),
+                self.award(55, hardcore=1),
+                self.award(66),
+            ],
+            achievement_game_ids={22: 42, 33: 42, 44: 42, 55: 42, 66: 99},
+            game_id=42,
+            user="testuser",
+        )
+
+        self.assertEqual(result, [22])
+
+    def test_cache_session_merges_pending_awards_into_cached_startsession(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            store = storage.Storage(database_path=Path(temp_dir) / "test.sqlite3")
+            try:
+                store.upsert_cache(
+                    "patch:42:testuser",
+                    json.dumps(
+                        {
+                            "PatchData": {
+                                "Title": "Test Game",
+                                "Achievements": [
+                                    {"ID": 11, "Title": "First"},
+                                    {"ID": 22, "Title": "Second"},
+                                ],
+                            }
+                        },
+                        separators=(",", ":"),
+                    ),
+                )
+                store.upsert_cache(
+                    "unlocks:42:testuser:0",
+                    '{"Success":true,"UserUnlocks":[11]}',
+                )
+                store.upsert_pending_award(self.award(22))
+
+                response_body = rom_cache.cache_session(
+                    42,
+                    {"user": "testuser", "token": ""},
+                    store,
+                )
+                payload = json.loads(response_body)
+
+                self.assertEqual(
+                    [entry["ID"] for entry in payload["Unlocks"]],
+                    [11, 22],
+                )
+
+                cached = store.get_cache("startsession:42:testuser:0")
+                self.assertIsNotNone(cached)
+                self.assertEqual(
+                    [
+                        entry["ID"]
+                        for entry in json.loads(cached["responseBody"])["Unlocks"]
+                    ],
+                    [11, 22],
+                )
+            finally:
+                store.close()
 
     def test_flush_pending_awards_loads_user_agent_before_resolving_credentials(
         self,

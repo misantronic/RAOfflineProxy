@@ -5,7 +5,8 @@ from . import cache_keys
 from .config import FALLBACK_USER_AGENT, upstream_host
 from .image_cache import cache_patch_images
 from .network import build_api_url, http_get
-from .storage import Storage
+from .storage import PENDING_AWARD_STATUS_PENDING, Storage
+from .utils import is_hardcore_request, parse_form_params
 
 
 class CacheGameError(RuntimeError):
@@ -89,17 +90,106 @@ def build_unlocks_array(
     storage: Storage, game_id: int, user: str, server_now: int
 ) -> list[dict]:
     entry = storage.get_cache(cache_keys.unlocks(game_id, user))
-    if entry is None:
-        return []
+    cached_unlock_ids: list[int] = []
+    if entry is not None:
+        try:
+            payload = json.loads(entry["responseBody"])
+            unlock_ids = payload.get("UserUnlocks") or []
+            cached_unlock_ids = [
+                achievement_id
+                for achievement_id in unlock_ids
+                if isinstance(achievement_id, int) and achievement_id > 0
+            ]
+        except Exception:
+            cached_unlock_ids = []
 
-    try:
-        payload = json.loads(entry["responseBody"])
-        unlock_ids = payload.get("UserUnlocks") or []
-        return [
-            {"ID": achievement_id, "When": server_now} for achievement_id in unlock_ids
-        ]
-    except Exception:
-        return []
+    achievement_game_ids = build_achievement_game_ids(
+        storage.get_all_cache_by_prefix(cache_keys.PREFIX_PATCH)
+    )
+    unlock_ids = merge_start_session_unlock_ids(
+        cached_unlock_ids=cached_unlock_ids,
+        pending_awards=storage.get_pending_awards(),
+        achievement_game_ids=achievement_game_ids,
+        game_id=game_id,
+        user=user,
+    )
+    return [{"ID": achievement_id, "When": server_now} for achievement_id in unlock_ids]
+
+
+def merge_start_session_unlock_ids(
+    *,
+    cached_unlock_ids: list[int],
+    pending_awards: list[dict],
+    achievement_game_ids: dict[int, int],
+    game_id: int,
+    user: str,
+) -> list[int]:
+    merged_ids: list[int] = []
+    seen_ids: set[int] = set()
+
+    for achievement_id in cached_unlock_ids:
+        if achievement_id <= 0 or achievement_id in seen_ids:
+            continue
+        merged_ids.append(achievement_id)
+        seen_ids.add(achievement_id)
+
+    for award in pending_awards:
+        if (
+            award.get("status", PENDING_AWARD_STATUS_PENDING)
+            != PENDING_AWARD_STATUS_PENDING
+        ):
+            continue
+
+        achievement_id = int(award.get("achievementId", 0) or 0)
+        if achievement_id <= 0 or achievement_id in seen_ids:
+            continue
+
+        if is_hardcore_request(
+            award.get("queryString", ""), award.get("requestBody", "")
+        ):
+            continue
+
+        if pending_award_user(award) != user:
+            continue
+
+        if achievement_game_ids.get(achievement_id) != game_id:
+            continue
+
+        merged_ids.append(achievement_id)
+        seen_ids.add(achievement_id)
+
+    return merged_ids
+
+
+def build_achievement_game_ids(patch_entries: list[dict]) -> dict[int, int]:
+    achievement_game_ids: dict[int, int] = {}
+    for entry in patch_entries:
+        game_id = cache_keys.parse_game_id_from_patch_key(entry.get("cacheKey", ""))
+        if game_id is None:
+            continue
+
+        try:
+            payload = json.loads(entry["responseBody"])
+        except Exception:
+            continue
+
+        patch_data = payload.get("PatchData") or {}
+        for achievement in patch_data.get("Achievements", []):
+            achievement_id = achievement.get("ID")
+            if isinstance(achievement_id, int) and achievement_id > 0:
+                achievement_game_ids.setdefault(achievement_id, game_id)
+    return achievement_game_ids
+
+
+def pending_award_user(award: dict) -> str | None:
+    query_params = parse_form_params(
+        award.get("queryString", "").split("?", 1)[1]
+        if "?" in award.get("queryString", "")
+        else ""
+    )
+    return query_params.get("u") or parse_form_params(award.get("requestBody", "")).get(
+        "u"
+    )
 
 
 def cache_session(game_id: int, credentials: dict, storage: Storage) -> str:
