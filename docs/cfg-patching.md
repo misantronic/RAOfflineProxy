@@ -31,31 +31,13 @@ When you press **Start proxy** in the action bar, the app imports credentials fr
 
 ### RetroArch
 
-For RetroArch, the app patches `retroarch.cfg`. If the app needs folder access to write the file, it shows a dialog prompting you to grant access to the RetroArch folder that contains `retroarch.cfg`.
+For RetroArch, the app patches `retroarch.cfg`.
 
-Before patching, the app also checks for a one-time sibling backup named `retroarch.raofflineproxy.cfg`. If that file does not already exist, RAOfflineProxy creates it from the current `retroarch.cfg`.
-
-- The backup is created only once
-- The app does not overwrite it later
-- The app does not restore from it automatically
-
-The app tries these strategies in order:
-
-#### Strategy 1: Folder Access (preferred)
-
-If you have previously granted folder access, the app uses the saved permission to read and write the file directly. No extra prompts.
-
-#### Strategy 2: Direct File Write
-
-The app checks common RetroArch installation paths for a writable `retroarch.cfg`. If the file is found and writable, it is patched in place.
-
-#### Strategy 3: Folder Access Prompt (Android 12 and below)
-
-On Android 12 and below, if the file is found but not directly writable, the app shows a dialog asking you to grant folder access. Tapping **Grant** opens the system folder picker directly at the RetroArch folder that contains `retroarch.cfg` when possible.
-
-Grant access to the suggested folder.
-
-After granting, the app retries automatically. If the selected folder does not contain `retroarch.cfg`, the app shows an error and asks again the next time you start the proxy.
+- It looks for the RetroArch config in common Android RetroArch paths
+- If you have previously granted folder access, it uses the saved permission to patch the file directly
+- If the file is directly writable, it patches it in place
+- On Android 12 and below, if folder access is needed, the app can prompt you to grant access to the RetroArch folder that contains `retroarch.cfg`
+- Before patching, it creates a one-time sibling backup named `retroarch.raofflineproxy.cfg` if that backup does not already exist
 
 ### Dolphin
 
