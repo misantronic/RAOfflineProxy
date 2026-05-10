@@ -7,7 +7,7 @@ An Android-first app that lets you earn **softcore RetroAchievements** through *
 
 Experimental Linux support now also exists in the repository, with an early KNULLI flow documented in the docs.
 
-> **Current release stage: alpha (`v1.0.0-alpha1`).** This is the first public prerelease and has not gone through formal QA.
+> **Current release stage: alpha (`v1.0.0-alpha2`).** This is a public prerelease and has not gone through formal QA.
 
 RAOfflineProxy runs a tiny local proxy on your device. It sits between RetroArch and the RetroAchievements server, saving game and achievement data for offline use and queuing any achievements you unlock while offline. When you reconnect, queued awards are automatically sent to RetroAchievements.
 

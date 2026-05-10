@@ -1,6 +1,6 @@
 # Installation & Setup
 
-> You are installing the current alpha build: `v1.0.0-alpha1`.
+> You are installing the current alpha build: `v1.0.0-alpha2`.
 
 ## Prerequisites
 
