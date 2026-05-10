@@ -535,7 +535,10 @@ class RomScannerHashTest {
     @Test
     fun hashRom_gameCubeIsoDoesNotFallBackToGenericMd5WhenDiscHashFails() {
         val bytes = ByteArray(0x20)
-        writeBigEndianInt(bytes, 0x1C, 0xC2339F3D.toInt())
+        bytes[0x1C] = 0xC2.toByte()
+        bytes[0x1D] = 0x33.toByte()
+        bytes[0x1E] = 0x9F.toByte()
+        bytes[0x1F] = 0x3D.toByte()
 
         assertNull(
             hashRom(
@@ -734,10 +737,4 @@ class RomScannerHashTest {
         target[offset + 7] = (value and 0xFF).toByte()
     }
 
-    private fun writeBigEndianInt(target: ByteArray, offset: Int, value: Int) {
-        target[offset] = ((value shr 24) and 0xFF).toByte()
-        target[offset + 1] = ((value shr 16) and 0xFF).toByte()
-        target[offset + 2] = ((value shr 8) and 0xFF).toByte()
-        target[offset + 3] = (value and 0xFF).toByte()
-    }
 }

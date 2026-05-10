@@ -115,7 +115,7 @@ private fun updateWiiDisc(digest: MessageDigest, dataSource: RomDataSource): Boo
         return false
     }
 
-    val encrypted = readByte(dataSource, 0x61L)?.let { it == 0.toByte() } ?: return false
+    val encrypted = readBytes(dataSource, 0x61L, 1)?.firstOrNull()?.let { it == 0.toByte() } ?: return false
 
     val header = readBytes(dataSource, 0L, WII_HEADER_HASH_SIZE) ?: return false
     digest.update(header)
@@ -308,9 +308,6 @@ internal fun readBigEndianInt(bytes: ByteArray, offset: Int = 0): Int? {
         ((bytes[offset + 2].toInt() and 0xFF) shl 8) or
         (bytes[offset + 3].toInt() and 0xFF)
 }
-
-private fun readByte(dataSource: RomDataSource, offset: Long): Byte? =
-    readBytes(dataSource, offset, 1)?.firstOrNull()
 
 private fun readBigEndianShort(dataSource: RomDataSource, offset: Long): Int? {
     val bytes = readBytes(dataSource, offset, 2) ?: return null
