@@ -90,10 +90,11 @@ class HomeFragment : Fragment() {
             viewModel.state.collect { state ->
                 val installedCount = listOf(state.retroArchInstalled, state.dolphinInstalled).count { it }
                 val onlyOneInstalled = installedCount == 1
+                val proxyStartPending = state.proxyToggleInProgress || state.needsSafGrant
                 tokenWarning.visibility = if (state.proxyRunning && state.authState == AuthState.Invalid) View.VISIBLE else View.GONE
                 btnStartProxy.visibility = if (state.proxyRunning) View.GONE else View.VISIBLE
-                btnStartProxy.isEnabled = !state.proxyToggleInProgress && (state.retroArchEnabled || state.dolphinEnabled)
-                btnStartProxy.alpha = if (state.proxyToggleInProgress) 0.45f else 1f
+                btnStartProxy.isEnabled = !proxyStartPending && (state.retroArchEnabled || state.dolphinEnabled)
+                btnStartProxy.alpha = if (proxyStartPending) 0.45f else 1f
                 btnGoToCachedGames.visibility = if (state.proxyRunning) View.VISIBLE else View.GONE
 
                 emulatorLabel.visibility = if (installedCount > 0) View.VISIBLE else View.GONE
