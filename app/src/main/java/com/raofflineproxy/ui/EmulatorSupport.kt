@@ -30,12 +30,6 @@ internal data class EmulatorSupport(
     val hasAnyEnabled: Boolean = retroArchEnabled || dolphinEnabled
 }
 
-internal fun isRetroArchInstalled(context: Context): Boolean =
-    resolveInstalledPackage(context, UI_RETROARCH_PACKAGE_CANDIDATES) != null
-
-internal fun isDolphinAppInstalled(context: Context): Boolean =
-    resolveInstalledPackage(context, UI_DOLPHIN_PACKAGE_CANDIDATES) != null
-
 internal fun loadEmulatorSupport(context: Context): EmulatorSupport {
     val prefs = context.getSharedPreferences(PrefsConstants.PREFS_NAME, Context.MODE_PRIVATE)
     val retroArchPackage = resolveInstalledPackage(context, UI_RETROARCH_PACKAGE_CANDIDATES)

@@ -908,7 +908,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun setRetroArchEnabled(enabled: Boolean) {
         val app = getApplication<Application>()
         val support = loadEmulatorSupport(app)
-        if (!support.retroArchInstalled || (support.installedCount == 1 && support.retroArchInstalled) || _state.value.proxyRunning) {
+        if (!support.retroArchInstalled || (support.installedCount == 1) || _state.value.proxyRunning) {
             return
         }
 
@@ -924,7 +924,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun setDolphinEnabled(enabled: Boolean) {
         val app = getApplication<Application>()
         val support = loadEmulatorSupport(app)
-        if (!support.dolphinInstalled || (support.installedCount == 1 && support.dolphinInstalled) || _state.value.proxyRunning) {
+        if (!support.dolphinInstalled || (support.installedCount == 1) || _state.value.proxyRunning) {
             return
         }
 
