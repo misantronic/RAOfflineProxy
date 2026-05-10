@@ -9,6 +9,8 @@ export default defineConfig({
 
   head: [
     ['link', { rel: 'icon', type: 'image/png', href: '/logo.png' }],
+    ['script', { async: '', src: 'https://www.googletagmanager.com/gtag/js?id=G-T3ZE6DF6Q5' }],
+    ['script', {}, "window.dataLayer = window.dataLayer || []; function gtag(){dataLayer.push(arguments);} gtag('js', new Date()); gtag('config', 'G-T3ZE6DF6Q5');"],
   ],
 
   themeConfig: {
