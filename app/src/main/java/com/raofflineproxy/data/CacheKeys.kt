@@ -5,18 +5,20 @@ object CacheKeys {
 
     const val PREFIX_LOGIN = "login2::"
     const val PREFIX_PATCH = "patch:"
+    const val PREFIX_ACHIEVEMENTSETS = "achievementsets:"
     const val PREFIX_UNLOCKS = "unlocks:"
     const val PREFIX_STARTSESSION = "startsession:"
     const val PREFIX_GAMEID = "gameid:"
 
-    fun login(user: String) = "login2::$user"
-    fun gameId(hash: String) = "gameid:$hash"
-    fun patch(gameId: Int, user: String) = "patch:$gameId:$user"
-    fun patchPrefix(gameId: String) = "patch:$gameId:"
-    fun unlocks(gameId: Int, user: String) = "unlocks:$gameId:$user:0"
-    fun unlocks(gameId: String, user: String) = "unlocks:$gameId:$user:0"
-    fun startSession(gameId: Int, user: String) = "startsession:$gameId:$user:0"
-    fun startSession(gameId: String, user: String) = "startsession:$gameId:$user:0"
+    fun login(user: String) = "$PREFIX_LOGIN$user"
+    fun gameId(hash: String) = "$PREFIX_GAMEID$hash"
+    fun patch(gameId: Int, user: String) = "$PREFIX_PATCH$gameId:$user"
+    fun patchPrefix(gameId: String) = "$PREFIX_PATCH$gameId:"
+    fun achievementSets(hash: String, user: String) = "$PREFIX_ACHIEVEMENTSETS$hash:$user"
+    fun unlocks(gameId: Int, user: String) = "$PREFIX_UNLOCKS$gameId:$user:0"
+    fun unlocks(gameId: String, user: String) = "$PREFIX_UNLOCKS$gameId:$user:0"
+    fun startSession(gameId: Int, user: String) = "$PREFIX_STARTSESSION$gameId:$user:0"
+    fun startSession(gameId: String, user: String) = "$PREFIX_STARTSESSION$gameId:$user:0"
 
     fun parseGameIdFromPatchKey(cacheKey: String): Int? =
         cacheKey.removePrefix(PREFIX_PATCH).split(":").firstOrNull()?.toIntOrNull()

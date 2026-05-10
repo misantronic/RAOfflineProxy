@@ -228,7 +228,7 @@ suspend fun scanRomFolder(
         if (hash == null) { skipped++; continue }
         val gameId = fetchGameId(context, hash, credentials, userAgent, db)
         if (gameId == null) { skipped++; continue }
-        cacheGame(context, gameId, credentials, userAgent, db)
+        cacheGame(context, gameId, credentials, userAgent, db, hash)
         cachedGameIds.add(gameId.toString())
         matched++
     }
@@ -294,34 +294,52 @@ internal suspend fun cacheGame(
     creds: LoginCredentials,
     userAgent: String,
     db: AppDatabase,
+    romHash: String? = null,
     cacheImages: Boolean = true
 ) {
+    val action = if (romHash != null) "achievementsets" else "patch"
+    val requestParams = buildMap {
+        put("u", creds.user)
+        put("t", creds.token)
+        if (romHash != null) {
+            put("m", romHash)
+        } else {
+            put("g", gameId.toString())
+        }
+    }
     val patchUrl = buildApiUrl(
         RA_HOST,
-        "patch",
-        mapOf(
-            "g" to gameId.toString(),
-            "u" to creds.user,
-            "t" to creds.token
-        )
+        action,
+        requestParams
     )
     when (val result = httpGet(patchUrl, userAgent)) {
         is HttpGetResult.Success -> {
-            val normalizedBody = normalizeCachedResponse("patch", "", "", result.body)
+            val normalizedBody = normalizeCachedResponse(action, "", requestParams.entries.joinToString("&") { "${it.key}=${it.value}" }, result.body)
+            if (romHash != null) {
+                val achievementSetsKey = CacheKeys.achievementSets(romHash, creds.user)
+                db.cacheDao().upsert(
+                    CacheEntry(
+                        cacheKey = achievementSetsKey,
+                        responseBody = result.body
+                    )
+                )
+                Log.i(TAG, "cacheGame: cached raw achievementsets key=$achievementSetsKey for gameId=$gameId")
+            }
             db.cacheDao().upsert(
                 CacheEntry(
                     cacheKey = CacheKeys.patch(gameId, creds.user),
                     responseBody = normalizedBody
                 )
             )
+            Log.i(TAG, "cacheGame: cached normalized patch key=${CacheKeys.patch(gameId, creds.user)}")
             if (cacheImages) {
                 cachePatchImages(context, gameId, userAgent, normalizedBody)
             }
         }
         is HttpGetResult.Failure -> {
-            val logDetails = result.logMessage("patch", patchUrl)
-            Log.e(TAG, "cacheGame patch refresh failed for gameId=$gameId: $logDetails")
-            RequestFailureNotifier.report(result.userMessage(context, "patch"), logDetails)
+            val logDetails = result.logMessage(action, patchUrl)
+            Log.e(TAG, "cacheGame $action refresh failed for gameId=$gameId: $logDetails")
+            RequestFailureNotifier.report(result.userMessage(context, action), logDetails)
         }
     }
     cacheUnlocks(context, gameId, creds, userAgent, db)
