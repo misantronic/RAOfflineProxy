@@ -3,13 +3,13 @@
   RAOfflineProxy
 </h1>
 
-An Android-first app that lets you earn **softcore RetroAchievements** through **RetroArch** without an internet connection.
+An Android-first app that lets you earn **softcore RetroAchievements** through **RetroArch or Dolphin** without an internet connection.
 
 Experimental Linux support now also exists in the repository, with an early KNULLI flow documented in the docs.
 
 > **Current release stage: alpha (`v1.0.0-alpha2`).** This is a public prerelease and has not gone through formal QA.
 
-RAOfflineProxy runs a tiny local proxy on your device. It sits between RetroArch and the RetroAchievements server, saving game and achievement data for offline use and queuing any achievements you unlock while offline. When you reconnect, queued awards are automatically sent to RetroAchievements.
+RAOfflineProxy runs a tiny local proxy on your device. It sits between supported emulators and the RetroAchievements server, saving game and achievement data for offline use and queuing any achievements you unlock while offline. When you reconnect, queued awards are automatically sent to RetroAchievements.
 
 > **Hardcore mode is not supported.** The app only works with softcore achievements.
 
@@ -18,9 +18,12 @@ RAOfflineProxy runs a tiny local proxy on your device. It sits between RetroArch
 - **Play offline**: game data, achievement lists, and unlock history are cached locally so everything works without Wi-Fi or mobile data
 - **Automatic award sync**: achievements earned offline are queued and submitted to RetroAchievements as soon as you go online
 - **Offline timestamps**: each queued award records the actual time you earned it, so your RA profile shows the real unlock time
-- **Easy setup**: starting the proxy automatically patches RetroArch's config; stopping it restores your original settings
+- **Easy setup**: starting the proxy automatically patches supported emulator configs; stopping it restores your original settings
 - **Scoped storage friendly**: uses SAF/folder access when direct config writes are not available; no all-files storage permission required
 - **ROM scanning**: scan a folder or add individual ROMs to pre-cache everything you need before going offline
+- **Dolphin support**: patches Dolphin's `RetroAchievements.ini`, caches Dolphin `achievementsets`, and supports offline GameCube/Wii flows
+- **GameCube / Wii manual caching**: manual hashing now works for GameCube `.iso` / `.gcm`, Wii `.iso`, and Wii `.wad` files
+- **Safe RVZ handling**: `.rvz` files are detected but intentionally not hashed yet, so the app will not fall back to an incorrect whole-file MD5
 - **Auto-start on boot**: optionally starts in the background when your device boots
 - **Background refresh**: cached data is refreshed hourly while you are online; stale entries older than 7 days are cleaned up automatically
 - **Anti-tamper protection**: queued awards are cryptographically signed and chained on your device, and signatures are verified before awards are sent
@@ -28,21 +31,21 @@ RAOfflineProxy runs a tiny local proxy on your device. It sits between RetroArch
 ## Requirements
 
 - Android **8.0** or newer
-- RetroArch installed (any variant)
-- A RetroAchievements account with your credentials configured in RetroArch
+- RetroArch and/or Dolphin installed
+- A RetroAchievements account with your credentials configured in every emulator you plan to use
 
 ## Quick Start
 
 1. Install [RAOfflineProxy](https://github.com/misantronic/RAOfflineProxy/releases) and open it.
-2. Start the proxy so RAOfflineProxy can import your saved RA token from `retroarch.cfg`
-3. Cache your games from **Cached Games**, or start them in RetroArch while online to cache them automatically.
+2. Start the proxy so RAOfflineProxy can import your saved RetroAchievements token from your emulator config.
+3. Cache your games from **Cached Games**, or start them in RetroArch or Dolphin while online to cache them automatically.
 4. Play offline
 
 ## Important Shutdown Behavior
 
 - Always stop sync before killing the app.
-- On some devices, swiping the app away or crashing while the proxy is active does not reliably revert `retroarch.cfg` immediately.
-- If that happens, reopen RAOfflineProxy once so it can clean up `retroarch.cfg`.
+- On some devices, swiping the app away or crashing while the proxy is active does not reliably revert the patched emulator config immediately.
+- If that happens, reopen RAOfflineProxy once so it can clean up the patched emulator config.
 
 For detailed setup instructions, see the [documentation](https://raofflineproxy.com/installation.html).
 
