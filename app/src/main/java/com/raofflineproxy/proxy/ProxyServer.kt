@@ -444,7 +444,7 @@ class ProxyServer(
             val latch = CountDownLatch(1)
             var alreadyQueued = false
             scope.launch(Dispatchers.IO) {
-                alreadyQueued = db.pendingAwardDao().existsByAchievementId(achievementId)
+                alreadyQueued = db.pendingAwardDao().existsByAchievementIdAndStatus(achievementId)
                 latch.countDown()
             }
             latch.await(DB_OPERATION_TIMEOUT_SECONDS, TimeUnit.SECONDS)

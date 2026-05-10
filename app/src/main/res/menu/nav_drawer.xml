@@ -13,6 +13,10 @@
             android:id="@+id/nav_pending_awards"
             android:title="@string/title_pending_awards"
             app:actionLayout="@layout/nav_item_count" />
+        <item
+            android:id="@+id/nav_awards_history"
+            android:title="@string/title_awards_history"
+            app:actionLayout="@layout/nav_item_count" />
     </group>
     <group
         android:id="@+id/group_bottom"

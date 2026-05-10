@@ -9,6 +9,7 @@
     <string name="title_home">Home</string>
     <string name="title_cached_games">Cached Games</string>
     <string name="title_pending_awards">Pending Awards</string>
+    <string name="title_awards_history">Awards History</string>
     <string name="title_settings">Settings</string>
 
     <!-- Proxy button -->
@@ -114,6 +115,12 @@
     <string name="pending_award_delete_title">Delete pending award?</string>
     <string name="pending_award_delete_message">Delete "%1$s" from "%2$s"?</string>
     <string name="pending_award_delete_action">Delete</string>
+    <string name="awards_history_counter">%d awards</string>
+    <string name="awards_history_clear_all">Clear award history</string>
+    <string name="awards_history_delete_title">Delete history entry?</string>
+    <string name="awards_history_delete_message">Delete "%1$s" from "%2$s" from history?</string>
+    <string name="awards_history_clear_title">Clear award history?</string>
+    <string name="awards_history_clear_message">This will remove all flushed offline awards from history.</string>
 
     <!-- Settings fragment -->
     <string name="setting_proxy_port_label">Proxy port</string>
@@ -138,6 +145,7 @@
 
     <!-- Pending awards header -->
     <string name="pending_awards_empty">No pending awards.</string>
+    <string name="awards_history_empty">No offline awards have been flushed yet.</string>
 
     <!-- Content descriptions -->
     <string name="cd_game_icon">Game icon</string>

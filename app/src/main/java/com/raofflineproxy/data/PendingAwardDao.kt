@@ -5,7 +5,7 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface PendingAwardDao {
-    @Query("SELECT * FROM pending_awards WHERE status = :status ORDER BY queuedAt ASC")
+    @Query("SELECT * FROM pending_awards WHERE status = :status ORDER BY queuedAt DESC")
     fun observeByStatus(status: String = PENDING_AWARD_STATUS_PENDING): Flow<List<PendingAward>>
 
     @Query("SELECT * FROM pending_awards ORDER BY queuedAt ASC")
@@ -17,8 +17,11 @@ interface PendingAwardDao {
     @Query("SELECT * FROM pending_awards ORDER BY queuedAt DESC LIMIT 1")
     suspend fun getLatest(): PendingAward?
 
-    @Query("SELECT EXISTS(SELECT 1 FROM pending_awards WHERE achievementId = :id)")
-    suspend fun existsByAchievementId(id: Int): Boolean
+    @Query("SELECT EXISTS(SELECT 1 FROM pending_awards WHERE achievementId = :id AND status = :status)")
+    suspend fun existsByAchievementIdAndStatus(
+        id: Int,
+        status: String = PENDING_AWARD_STATUS_PENDING
+    ): Boolean
 
     @Query("SELECT EXISTS(SELECT 1 FROM pending_awards WHERE status = :status)")
     suspend fun existsByStatus(status: String): Boolean

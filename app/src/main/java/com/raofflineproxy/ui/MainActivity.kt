@@ -121,6 +121,7 @@ class MainActivity : AppCompatActivity() {
                 updateProxyMenuItem(state.proxyRunning, state.isOnline, state.proxyToggleInProgress)
                 updateNavBadge(navView, R.id.nav_cached_games, state.cachedGames.size)
                 updateNavBadge(navView, R.id.nav_pending_awards, state.pendingAwards.size)
+                updateNavBadge(navView, R.id.nav_awards_history, state.awardHistory.size)
                 maybeShowStartTokenWarning(state)
 
                 if (state.needsSafGrant) {
@@ -185,6 +186,7 @@ class MainActivity : AppCompatActivity() {
             R.id.nav_home -> HomeFragment()
             R.id.nav_cached_games -> CachedGamesFragment()
             R.id.nav_pending_awards -> PendingAwardsFragment()
+            R.id.nav_awards_history -> AwardsHistoryFragment()
             R.id.nav_settings -> SettingsFragment()
             else -> return
         }
@@ -213,6 +215,7 @@ class MainActivity : AppCompatActivity() {
             R.id.nav_home -> getString(R.string.app_name)
             R.id.nav_cached_games -> getString(R.string.title_cached_games)
             R.id.nav_pending_awards -> getString(R.string.title_pending_awards)
+            R.id.nav_awards_history -> getString(R.string.title_awards_history)
             R.id.nav_settings -> getString(R.string.title_settings)
             else -> getString(R.string.app_name)
         }
@@ -224,6 +227,7 @@ class MainActivity : AppCompatActivity() {
         is HomeFragment -> R.id.nav_home
         is CachedGamesFragment -> R.id.nav_cached_games
         is PendingAwardsFragment -> R.id.nav_pending_awards
+        is AwardsHistoryFragment -> R.id.nav_awards_history
         is SettingsFragment -> R.id.nav_settings
         else -> null
     }
