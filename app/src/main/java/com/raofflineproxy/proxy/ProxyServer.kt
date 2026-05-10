@@ -23,6 +23,7 @@ import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import org.json.JSONArray
 import org.json.JSONException
 import org.json.JSONObject
 import java.io.BufferedReader
@@ -44,6 +45,8 @@ private const val SOCKET_TIMEOUT_MS = 30_000
 private const val MAX_REQUEST_BODY_BYTES = 1_048_576 // 1 MiB — rcheevos requests are small
 private const val DB_OPERATION_TIMEOUT_SECONDS = 3L
 private val SUCCESS_TRUE_REGEX = Regex("\"Success\"\\s*:\\s*true(?=\\s*[,}])")
+private val NORMALIZED_PATCH_ID_REGEX = Regex(""""ID"\s*:\s*(\d+)""")
+private val NORMALIZED_PATCH_MARKER_REGEX = Regex("""^patch:(\d+)$""")
 
 // These requests mutate state on the RA server — do not serve from cache offline
 private val AWARD_ACTIONS = setOf("awardachievement", "submitlbentry")
@@ -52,7 +55,7 @@ private val AWARD_ACTIONS = setOf("awardachievement", "submitlbentry")
 private val FAKE_OFFLINE_SUCCESS_ACTIONS = setOf("ping")
 
 // These requests are safe to cache and serve offline
-private val CACHEABLE_ACTIONS = setOf("patch", "gameid", "achievements", "hashlibrary", "login2", "unlocks")
+private val CACHEABLE_ACTIONS = setOf("patch", "achievementsets", "gameid", "achievements", "hashlibrary", "login2", "unlocks")
 
 // Headers OkHttp manages itself — never forward these
 private val SKIP_HEADERS = setOf("host", "content-length", "connection", "transfer-encoding", "accept-encoding")
@@ -321,15 +324,25 @@ class ProxyServer(
         val upstream = forwardToRA(method, path, rawBody, headers)
         val shouldCache = upstream != null && shouldCacheResponse(upstream)
         if (shouldCache && action in CACHEABLE_ACTIONS) {
-            val key = cacheKey(path, rawBody)
+            val normalizedBody = normalizeCachedResponse(action, path, rawBody, upstream)
+            val rawKey = cacheKey(path, rawBody)
+            val key = normalizedCacheKey(action, path, rawBody, normalizedBody)
             val userAgent = headers["user-agent"] ?: ""
             scope.launch(Dispatchers.IO) {
-                db.cacheDao().upsert(CacheEntry(cacheKey = key, responseBody = upstream))
-                Log.i(TAG, "Cached: $key")
-                if (action == "patch") {
+                db.cacheDao().upsert(CacheEntry(cacheKey = rawKey, responseBody = upstream))
+                Log.i(TAG, "Cached: $rawKey")
+                if (key != rawKey) {
+                    db.cacheDao().upsert(CacheEntry(cacheKey = key, responseBody = normalizedBody))
+                    Log.i(TAG, "Cached: $key")
+                }
+                if (action == "patch" || action == "achievementsets") {
                     val gameId = extractParam("g", path, rawBody)?.toIntOrNull()
+                        ?: extractNormalizedGameId(normalizedBody)
                     val user = extractParam("u", path, rawBody)
                     val token = extractParam("t", path, rawBody)
+                    if (gameId != null) {
+                        cachePatchImages(context, gameId, userAgent, normalizedBody)
+                    }
                     if (gameId != null && user != null && token != null) {
                         cacheUnlocks(context, gameId, LoginCredentials(user, token), userAgent, db)
                     }
@@ -741,6 +754,94 @@ internal fun proxyHttpFile(file: File): ByteArray {
 }
 
 private fun String.toHttpBytes(): ByteArray = toByteArray(Charsets.UTF_8)
+
+internal fun normalizeCachedResponse(action: String?, path: String, body: String, responseBody: String): String =
+    if (action == "achievementsets") {
+        normalizeAchievementSetsResponse(path, body, responseBody)
+    } else {
+        responseBody
+    }
+
+internal fun normalizeAchievementSetsResponse(path: String, body: String, responseBody: String): String {
+    val source = try {
+        JSONObject(responseBody)
+    } catch (_: Exception) {
+        return responseBody
+    }
+
+    if (!source.optBoolean("Success", false)) {
+        return responseBody
+    }
+
+    val gameId = source.optInt("GameId").takeIf { it > 0 }
+        ?: proxyExtractParam("g", path, body)?.toIntOrNull()
+        ?: return responseBody
+
+    val sets = source.optJSONArray("Sets") ?: return responseBody
+    val coreSet = findCoreAchievementSet(sets, gameId) ?: return responseBody
+
+    val normalized = JSONObject().apply {
+        put("Success", true)
+        put("PatchData", JSONObject().apply {
+            put("ID", source.optInt("GameId", gameId))
+            put("Title", source.optString("Title"))
+            put("ConsoleID", source.optInt("ConsoleId"))
+            putPatchImageFields(this, source.optString("ImageIconUrl").takeIf { it.isNotEmpty() })
+            put("RichPresencePatch", source.optString("RichPresencePatch"))
+            put("Achievements", coreSet.optJSONArray("Achievements") ?: JSONArray())
+            put("Leaderboards", coreSet.optJSONArray("Leaderboards") ?: JSONArray())
+        })
+    }.toString()
+
+    return normalized
+}
+
+internal fun normalizedCacheKey(action: String?, path: String, body: String, normalizedBody: String): String =
+    if (action == "achievementsets") {
+        val user = proxyExtractParam("u", path, body).orEmpty()
+        val gameId = extractNormalizedGameId(normalizedBody)
+        if (gameId != null && user.isNotEmpty()) {
+            CacheKeys.patch(gameId, user)
+        } else {
+            proxyCacheKey(path, body)
+        }
+    } else {
+        proxyCacheKey(path, body)
+    }
+
+internal fun extractNormalizedGameId(responseBody: String): Int? {
+    NORMALIZED_PATCH_MARKER_REGEX.find(responseBody)
+        ?.groupValues
+        ?.getOrNull(1)
+        ?.toIntOrNull()
+        ?.takeIf { it > 0 }
+        ?.let { return it }
+
+    return NORMALIZED_PATCH_ID_REGEX.find(responseBody)
+        ?.groupValues
+        ?.getOrNull(1)
+        ?.toIntOrNull()
+        ?.takeIf { it > 0 }
+}
+
+private fun findCoreAchievementSet(sets: JSONArray, gameId: Int): JSONObject? {
+    var fallback: JSONObject? = null
+
+    for (index in 0 until sets.length()) {
+        val set = sets.optJSONObject(index) ?: continue
+        if (fallback == null) {
+            fallback = set
+        }
+
+        val setGameId = set.optInt("GameId")
+        val setType = set.optString("Type")
+        if (setGameId == gameId && setType.equals("core", ignoreCase = true)) {
+            return set
+        }
+    }
+
+    return fallback
+}
 
 internal fun contentTypeForFile(file: File): String = when (file.extension.lowercase()) {
     "jpg", "jpeg" -> "image/jpeg"

@@ -180,15 +180,16 @@ suspend fun refreshGamePatch(
         )
         return null
     }
+    val normalizedBody = normalizeCachedResponse("patch", "", "", responseBody)
     db.cacheDao().upsert(CacheEntry(
         cacheKey = CacheKeys.patch(gameId, creds.user),
-        responseBody = responseBody
+        responseBody = normalizedBody
     ))
     if (cacheImages) {
-        cachePatchImages(context, gameId, userAgent, responseBody)
+        cachePatchImages(context, gameId, userAgent, normalizedBody)
     }
     Log.i(TAG, "refreshGamePatch: updated cache for gameId=$gameId")
-    return responseBody
+    return normalizedBody
 }
 
 suspend fun scanRomFolder(
@@ -306,14 +307,15 @@ internal suspend fun cacheGame(
     )
     when (val result = httpGet(patchUrl, userAgent)) {
         is HttpGetResult.Success -> {
+            val normalizedBody = normalizeCachedResponse("patch", "", "", result.body)
             db.cacheDao().upsert(
                 CacheEntry(
                     cacheKey = CacheKeys.patch(gameId, creds.user),
-                    responseBody = result.body
+                    responseBody = normalizedBody
                 )
             )
             if (cacheImages) {
-                cachePatchImages(context, gameId, userAgent, result.body)
+                cachePatchImages(context, gameId, userAgent, normalizedBody)
             }
         }
         is HttpGetResult.Failure -> {
