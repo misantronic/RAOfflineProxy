@@ -15,6 +15,7 @@ from .platform import (
     resolve_rom_root,
 )
 from .pending_awards import delete_pending_award, list_pending_awards
+from .network import online_check
 from .retroarch_cfg import (
     load_retroarch_credentials,
     patch_retroarch_cfg,
@@ -193,6 +194,7 @@ class MenuSdlSession:
         self.logo_surface = None
         self.main_state_refreshed_at = 0.0
         self.main_running = False
+        self.main_online = False
         self.main_logged_in = False
         self.main_autostart_supported = False
         self.main_autostart_enabled = False
@@ -429,8 +431,13 @@ class MenuSdlSession:
         self.refresh_main_menu_state()
         logged_in = bool(getattr(self, "main_logged_in", False))
         proxy_status = "RUNNING" if running else "STOPPED"
-        login_status = "LOGGED IN" if logged_in else "NOT LOGGED IN"
-        return f"PROXY: {proxy_status}, STATUS: {login_status}"
+        connectivity_status = (
+            "ONLINE" if bool(getattr(self, "main_online", False)) else "OFFLINE"
+        )
+        status = f"PROXY: {proxy_status} {connectivity_status}"
+        if not logged_in:
+            status += ", LOGIN REQUIRED"
+        return status
 
     def bottom_hint_text(self) -> str | None:
         if self.view != "main":
@@ -947,6 +954,8 @@ class MenuSdlSession:
             self.config_data = {}
         if not hasattr(self, "main_running"):
             self.main_running = False
+        if not hasattr(self, "main_online"):
+            self.main_online = False
         if not hasattr(self, "main_logged_in"):
             self.main_logged_in = False
         if not hasattr(self, "main_autostart_supported"):
@@ -966,6 +975,7 @@ class MenuSdlSession:
 
         self.config_data = load_config()
         self.main_running = self.read_proxy_running()
+        self.main_online = online_check(self.config_data)
         self.main_logged_in = self.is_logged_in(self.config_data)
         self.main_autostart_supported = autostart_supported(self.config_data)
         self.main_autostart_enabled = (

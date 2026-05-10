@@ -55,23 +55,28 @@ class MenuLayoutTests(unittest.TestCase):
             "Login to RetroAchievements in system settings.",
         )
 
-    def test_status_reports_logged_in_when_retroarch_credentials_exist(self) -> None:
+    def test_status_reports_proxy_and_connectivity_when_credentials_exist(self) -> None:
         session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
         session.view = "main"
-        session.storage = type(
-            "Storage",
-            (),
-            {
-                "load_login_credentials": lambda self, _config=None: {
-                    "user": "misantronic",
-                    "token": "token",
-                }
-            },
-        )()
+        session.main_logged_in = True
+        session.main_online = True
+        session.refresh_main_menu_state = lambda force=False: None
 
         self.assertEqual(
             menu_sdl.MenuSdlSession.status_text(session, running=True),
-            "PROXY: RUNNING, STATUS: LOGGED IN",
+            "PROXY: RUNNING ONLINE",
+        )
+
+    def test_status_reports_login_required_when_credentials_missing(self) -> None:
+        session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
+        session.view = "main"
+        session.main_logged_in = False
+        session.main_online = False
+        session.refresh_main_menu_state = lambda force=False: None
+
+        self.assertEqual(
+            menu_sdl.MenuSdlSession.status_text(session, running=False),
+            "PROXY: STOPPED OFFLINE, LOGIN REQUIRED",
         )
 
     def test_cached_games_status_shows_count_out_of_fifty(self) -> None:
@@ -125,10 +130,12 @@ class MenuLayoutTests(unittest.TestCase):
 
         original_load_config = menu_sdl.load_config
         original_autostart_supported = menu_sdl.autostart_supported
+        original_online_check = menu_sdl.online_check
         original_is_logged_in = menu_sdl.MenuSdlSession.is_logged_in
         try:
             menu_sdl.load_config = lambda: {}
             menu_sdl.autostart_supported = lambda _config: False
+            menu_sdl.online_check = lambda _config: True
             menu_sdl.MenuSdlSession.is_logged_in = lambda self, _config=None: True
 
             labels = menu_sdl.MenuSdlSession.labels(session, running=False)
@@ -139,6 +146,7 @@ class MenuLayoutTests(unittest.TestCase):
         finally:
             menu_sdl.load_config = original_load_config
             menu_sdl.autostart_supported = original_autostart_supported
+            menu_sdl.online_check = original_online_check
             menu_sdl.MenuSdlSession.is_logged_in = original_is_logged_in
 
     def test_activate_selected_opens_cached_games_without_counter_label(self) -> None:
