@@ -1,6 +1,7 @@
 import json
 import tempfile
 import unittest
+import zipfile
 from pathlib import Path
 
 from linux.raofflineproxy import platform
@@ -40,6 +41,28 @@ class LinuxRomBrowserTests(unittest.TestCase):
                 [entry.name for entry in entries],
                 ["pokemon.gba", "zelda.gbc"],
             )
+
+    def test_list_browser_entries_includes_zip_with_supported_rom(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            zip_path = root / "pokemon.zip"
+            with zipfile.ZipFile(zip_path, "w") as archive:
+                archive.writestr("pokemon.gba", b"gba")
+
+            entries = rom_browser.list_browser_entries(root)
+
+            self.assertEqual([entry.name for entry in entries], ["pokemon.zip"])
+
+    def test_list_browser_entries_ignores_zip_without_supported_rom(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            zip_path = root / "notes.zip"
+            with zipfile.ZipFile(zip_path, "w") as archive:
+                archive.writestr("notes.txt", b"skip")
+
+            entries = rom_browser.list_browser_entries(root)
+
+            self.assertEqual(entries, [])
 
     def test_list_browser_entries_hides_empty_directory_trees(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -240,6 +263,84 @@ class LinuxRomBrowserTests(unittest.TestCase):
                 rom_browser.resolve_credentials = original_resolve_credentials
                 rom_browser.fetch_game_id = original_fetch_game_id
                 rom_browser.cache_game = original_cache_game
+                store.close()
+
+    def test_add_zip_rom_to_cache_uses_single_supported_entry(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            db_path = root / "test.sqlite3"
+            rom_path = root / "tetris.zip"
+            with zipfile.ZipFile(rom_path, "w") as archive:
+                archive.writestr("tetris.gb", b"rom")
+            store = storage.Storage(database_path=db_path)
+            original_resolve_credentials = rom_browser.resolve_credentials
+            original_fetch_game_id = rom_browser.fetch_game_id
+            original_cache_game = rom_browser.cache_game
+            try:
+                rom_browser.resolve_credentials = lambda _store, _config, _ua: {
+                    "user": "misantronic",
+                    "token": "token",
+                }
+
+                def fake_fetch_game_id(
+                    hash_value, credentials, _user_agent, _config_data, cache_store
+                ):
+                    self.assertEqual(hash_value, "5f397a1e588cfe96b4aa4bab7a5b1d44")
+                    self.assertEqual(
+                        credentials, {"user": "misantronic", "token": "token"}
+                    )
+                    cache_store.upsert_cache(
+                        cache_keys.game_id(hash_value),
+                        '{"GameID":10701}',
+                    )
+                    return 10701
+
+                def fake_cache_game(
+                    game_id, credentials, _user_agent, cache_store, _config_data
+                ):
+                    cache_store.upsert_cache(
+                        cache_keys.patch(game_id, credentials["user"]),
+                        '{"Success":true,"PatchData":{"Title":"Tetris"}}',
+                    )
+
+                rom_browser.fetch_game_id = fake_fetch_game_id
+                rom_browser.cache_game = fake_cache_game
+
+                result = rom_browser.add_rom_to_cache(rom_path, store, {})
+
+                self.assertTrue(result.success)
+                self.assertEqual(result.message, "Cached Tetris")
+            finally:
+                rom_browser.resolve_credentials = original_resolve_credentials
+                rom_browser.fetch_game_id = original_fetch_game_id
+                rom_browser.cache_game = original_cache_game
+                store.close()
+
+    def test_add_zip_rom_to_cache_fails_for_multiple_supported_entries(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            db_path = root / "test.sqlite3"
+            rom_path = root / "bundle.zip"
+            with zipfile.ZipFile(rom_path, "w") as archive:
+                archive.writestr("one.gb", b"one")
+                archive.writestr("two.gbc", b"two")
+            store = storage.Storage(database_path=db_path)
+            original_resolve_credentials = rom_browser.resolve_credentials
+            try:
+                rom_browser.resolve_credentials = lambda _store, _config, _ua: {
+                    "user": "misantronic",
+                    "token": "token",
+                }
+
+                result = rom_browser.add_rom_to_cache(rom_path, store, {})
+
+                self.assertFalse(result.success)
+                self.assertEqual(
+                    result.message,
+                    "Hash failed: archive contains multiple supported ROMs",
+                )
+            finally:
+                rom_browser.resolve_credentials = original_resolve_credentials
                 store.close()
 
     def test_add_rom_to_cache_persists_hash_aliases_for_offline_gameid(self) -> None:

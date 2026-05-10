@@ -1,7 +1,9 @@
 import hashlib
 import json
 import logging
+import tempfile
 import urllib.request
+import zipfile
 from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urljoin
@@ -22,6 +24,7 @@ from .utils import proxy_user_agent
 
 LOGGER = logging.getLogger("raofflineproxy")
 SUPPORTED_ROM_EXTENSIONS = supported_rom_extensions()
+SUPPORTED_ARCHIVE_EXTENSIONS = {".zip"}
 MAX_CACHED_GAMES = 50
 
 
@@ -74,7 +77,7 @@ def list_browser_entries(current_dir: Path) -> list[Path]:
             if directory_has_supported_roms(entry):
                 directories.append(entry)
             continue
-        if entry.suffix.lower() in SUPPORTED_ROM_EXTENSIONS:
+        if is_supported_browser_file(entry):
             files.append(entry)
     return directories + files
 
@@ -84,7 +87,7 @@ def directory_has_supported_roms(path: Path) -> bool:
         for entry in path.iterdir():
             if entry.name.startswith("."):
                 continue
-            if entry.is_file() and entry.suffix.lower() in SUPPORTED_ROM_EXTENSIONS:
+            if entry.is_file() and is_supported_browser_file(entry):
                 return True
             if entry.is_dir() and directory_has_supported_roms(entry):
                 return True
@@ -92,6 +95,60 @@ def directory_has_supported_roms(path: Path) -> bool:
         return False
 
     return False
+
+
+def is_supported_browser_file(path: Path) -> bool:
+    suffix = path.suffix.lower()
+    if suffix in SUPPORTED_ROM_EXTENSIONS:
+        return True
+    if suffix in SUPPORTED_ARCHIVE_EXTENSIONS:
+        return archive_has_supported_roms(path)
+    return False
+
+
+def archive_has_supported_roms(path: Path) -> bool:
+    return bool(list_archive_rom_entries(path))
+
+
+def list_archive_rom_entries(path: Path) -> list[zipfile.ZipInfo]:
+    if path.suffix.lower() not in SUPPORTED_ARCHIVE_EXTENSIONS:
+        return []
+
+    try:
+        with zipfile.ZipFile(path) as archive:
+            return [
+                info
+                for info in archive.infolist()
+                if not info.is_dir()
+                and not Path(info.filename).name.startswith(".")
+                and Path(info.filename).suffix.lower() in SUPPORTED_ROM_EXTENSIONS
+            ]
+    except Exception:
+        return []
+
+
+def hash_candidates_for_manual_cache(path: Path) -> list[str]:
+    if path.suffix.lower() not in SUPPORTED_ARCHIVE_EXTENSIONS:
+        return hash_rom_candidates(path)
+
+    rom_entries = list_archive_rom_entries(path)
+    if not rom_entries:
+        raise ValueError("archive has no supported ROMs")
+    if len(rom_entries) > 1:
+        raise ValueError("archive contains multiple supported ROMs")
+
+    rom_entry = rom_entries[0]
+    with zipfile.ZipFile(path) as archive:
+        with archive.open(rom_entry) as source:
+            rom_bytes = source.read()
+
+    suffix = Path(rom_entry.filename).suffix
+    entry_name = Path(rom_entry.filename).stem
+    with tempfile.TemporaryDirectory() as temp_dir:
+        temp_name = entry_name if suffix else Path(rom_entry.filename).name
+        temp_path = Path(temp_dir) / f"{temp_name}{suffix}"
+        temp_path.write_bytes(rom_bytes)
+        return hash_rom_candidates(temp_path)
 
 
 def fetch_game_id(
@@ -127,7 +184,7 @@ def add_rom_to_cache(path: Path, storage: Storage, config_data: dict) -> AddRomR
         return AddRomResult(False, "RetroAchievements login required")
 
     try:
-        hash_candidates = hash_rom_candidates(path)
+        hash_candidates = hash_candidates_for_manual_cache(path)
         if not hash_candidates:
             return AddRomResult(False, "Hash failed: unsupported or unreadable ROM")
         LOGGER.info(
