@@ -46,25 +46,29 @@ class MainActivity : AppCompatActivity() {
     private var suppressNextDismissCallback = false
 
     private val safLauncher = registerForActivityResult(OpenAndroidDataTree()) { uri ->
-        if (uri == null) return@registerForActivityResult
+        if (uri == null) {
+            viewModel.onSafRejected(SafGrantTarget.RetroArch)
+            return@registerForActivityResult
+        }
         contentResolver.takePersistableUriPermission(
             uri,
             Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
         )
         PrefsConstants.saveSafUri(this, uri)
-        viewModel.clearTransientMessages()
-        viewModel.startProxy(treeUri = uri)
+        viewModel.onSafGranted(SafGrantTarget.RetroArch)
     }
 
     private val dolphinSafLauncher = registerForActivityResult(OpenDolphinConfigTree()) { uri ->
-        if (uri == null) return@registerForActivityResult
+        if (uri == null) {
+            viewModel.onSafRejected(SafGrantTarget.Dolphin)
+            return@registerForActivityResult
+        }
         contentResolver.takePersistableUriPermission(
             uri,
             Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
         )
         PrefsConstants.saveDolphinSafUri(this, uri)
-        viewModel.clearTransientMessages()
-        viewModel.startProxy(treeUri = PrefsConstants.loadSafUri(this))
+        viewModel.onSafGranted(SafGrantTarget.Dolphin)
     }
 
     private val notificationPermissionLauncher =
