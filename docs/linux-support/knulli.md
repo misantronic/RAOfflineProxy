@@ -1,14 +1,14 @@
 # KNULLI
 
-KNULLI is the first Linux target with an end-to-end experimental install and on-device menu flow in `RAOfflineProxy`.
+KNULLI is the first Linux target with an end-to-end alpha install and on-device menu flow in `RAOfflineProxy`.
 
-This is still **experimental** and should be treated as a development preview, not a stable public release path.
+KNULLI support is currently **alpha**. It is usable as a public prerelease target, but it should not be treated as stable yet.
 
 It is currently intended for [KNULLI Gladiator II](https://github.com/knulli-cfw/distribution/releases/tag/20250813).
 
 ## Current State
 
-KNULLI already has a usable experimental flow:
+KNULLI already has a usable alpha flow:
 
 - Install through a single `RAOfflineProxy Install.sh`
 - Launch `RAOfflineProxy` from the Tools menu
@@ -19,9 +19,9 @@ KNULLI already has a usable experimental flow:
 
 ## Install Flow
 
-The current experimental KNULLI flow is:
+The current KNULLI install flow is:
 
-1. Build `linux/knulli/dist/RAOfflineProxy Install.sh`
+1. Download `RAOfflineProxy-Knulli-v1.0.0-alpha2-Install.sh` from [GitHub Releases](https://github.com/misantronic/RAOfflineProxy/releases)
 2. Copy it into `/userdata/roms/tools`
 3. Launch `RAOfflineProxy Install` from EmulationStation Tools
 4. Update gamelists if needed so the new Tools entry appears immediately
@@ -56,7 +56,7 @@ Current authentication behavior:
 
 - Tested on an ANBERNIC RG40XX H
 - Cached data works both from normal online RetroArch launches and from manual ROM adding in the menu
-- Install and update flow are still experimental
+- Install and update flow are still alpha-quality
 - KNULLI integration is still being refined across devices and firmware versions
 - The SDL menu depends on `pygame` being available on-device
 

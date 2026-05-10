@@ -1,6 +1,6 @@
 # Linux Support
 
-Linux support now exists in `RAOfflineProxy`, but it is still **experimental**.
+Linux support now exists in `RAOfflineProxy` and is currently in **alpha**.
 
 ## Overview
 
@@ -35,12 +35,12 @@ Starting a game through RetroArch while the proxy is active still caches that ga
 
 The first Linux target with a more complete installation and menu flow is:
 
-- [KNULLI](/linux-support/knulli) (experimental)
+- [KNULLI](/linux-support/knulli) (alpha)
 - [Onion](/linux-support/onion) (planned)
 
 Additional Linux targets may be documented later, but they are not considered public install targets yet.
 
 ## Important Notes
 
-- Linux support is still a development preview rather than an officially supported feature.
+- Linux support is currently in alpha and should still be treated as a prerelease feature.
 - Linux-specific install, startup, and UI behavior can vary by firmware and frontend.
