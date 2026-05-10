@@ -4,10 +4,38 @@ import android.content.Context
 import android.os.ParcelFileDescriptor
 import androidx.documentfile.provider.DocumentFile
 import java.io.Closeable
+import java.io.File
 import java.io.FileInputStream
 import java.io.InputStream
+import java.util.zip.ZipInputStream
 
 private const val TAG = "RAProxy/Hash"
+
+private val supportedArchiveRomExtensions = setOf(
+    "a78",
+    "bin",
+    "cart",
+    "fds",
+    "fig",
+    "gba",
+    "gb",
+    "gbc",
+    "gcm",
+    "iso",
+    "lnx",
+    "n64",
+    "nds",
+    "nes",
+    "pbp",
+    "pce",
+    "sfc",
+    "sgx",
+    "smc",
+    "swc",
+    "v64",
+    "wad",
+    "z64"
+)
 
 internal data class RomHashInput(
     val fileName: String,
@@ -54,6 +82,13 @@ internal fun hashRom(
     file: DocumentFile
 ): String? {
     val fileName = file.name ?: return null
+    if (hasExtension(fileName, "zip")) {
+        return hashZipRom(
+            tempDir = context.cacheDir,
+            openArchiveStream = { context.contentResolver.openInputStream(file.uri) }
+        )
+    }
+
     return hashRom(
         RomHashInput(
             fileName = fileName,
@@ -94,8 +129,121 @@ internal fun hashRom(input: RomHashInput): String? {
     return fallback
 }
 
+internal fun hashZipRom(
+    tempDir: File,
+    openArchiveStream: () -> InputStream?
+): String? {
+    val romEntryName = findSingleSupportedZipEntryName(openArchiveStream) ?: return null
+    val tempFile = extractZipEntryToTempFile(openArchiveStream, romEntryName, tempDir) ?: return null
+
+    return try {
+        hashRom(
+            RomHashInput(
+                fileName = romEntryName.substringAfterLast('/').substringAfterLast('\\'),
+                fileSize = tempFile.length(),
+                openStream = { tempFile.inputStream() },
+                openDataSource = { FileRomDataSource(tempFile) }
+            )
+        )
+    } finally {
+        tempFile.delete()
+    }
+}
+
+private fun findSingleSupportedZipEntryName(
+    openArchiveStream: () -> InputStream?
+): String? {
+    var matchedEntryName: String? = null
+
+    ZipInputStream(openArchiveStream() ?: return null).use { archive ->
+        while (true) {
+            val entry = archive.nextEntry ?: break
+            val entryName = entry.name
+            if (entry.isDirectory || !isSupportedArchiveRomEntry(entryName)) {
+                archive.closeEntry()
+                continue
+            }
+            if (matchedEntryName != null) {
+                archive.closeEntry()
+                return null
+            }
+            matchedEntryName = entryName
+            archive.closeEntry()
+        }
+    }
+
+    return matchedEntryName
+}
+
+private fun extractZipEntryToTempFile(
+    openArchiveStream: () -> InputStream?,
+    entryName: String,
+    tempDir: File
+): File? {
+    ZipInputStream(openArchiveStream() ?: return null).use { archive ->
+        while (true) {
+            val entry = archive.nextEntry ?: break
+            if (entry.isDirectory || entry.name != entryName) {
+                archive.closeEntry()
+                continue
+            }
+
+            val entryFileName = entryName.substringAfterLast('/').substringAfterLast('\\')
+            val suffix = entryFileName.substringAfterLast('.', missingDelimiterValue = "")
+                .takeIf { it.isNotEmpty() }
+                ?.let { ".${it.lowercase()}" }
+                ?: ".rom"
+            val tempFile = File.createTempFile("romhash_", suffix, tempDir)
+            tempFile.outputStream().use { output ->
+                archive.copyTo(output)
+            }
+            archive.closeEntry()
+            return tempFile
+        }
+    }
+
+    return null
+}
+
+private fun isSupportedArchiveRomEntry(entryName: String): Boolean {
+    val fileName = entryName.substringAfterLast('/').substringAfterLast('\\')
+    if (fileName.isBlank() || fileName.startsWith('.')) {
+        return false
+    }
+
+    val extension = fileName.substringAfterLast('.', missingDelimiterValue = "").lowercase()
+    return extension in supportedArchiveRomExtensions
+}
+
 internal fun hasExtension(fileName: String, vararg extensions: String): Boolean =
     extensions.any { extension -> fileName.endsWith(".$extension", ignoreCase = true) }
+
+private class FileRomDataSource(
+    file: File
+) : RomDataSource {
+    private val inputStream = FileInputStream(file)
+    private val channel = inputStream.channel
+
+    override val length: Long
+        get() = channel.size()
+
+    override fun read(offset: Long, buffer: ByteArray, length: Int): Int {
+        channel.position(offset)
+        val targetLength = length.coerceAtMost(buffer.size)
+        var totalRead = 0
+        while (totalRead < targetLength) {
+            val read = inputStream.read(buffer, totalRead, targetLength - totalRead)
+            if (read <= 0) break
+            totalRead += read
+        }
+        return if (totalRead == 0) -1 else totalRead
+    }
+
+    override fun close() {
+        channel.close()
+        inputStream.close()
+    }
+}
 
 private class ParcelFileDescriptorRomDataSource(
     private val fileDescriptor: ParcelFileDescriptor
