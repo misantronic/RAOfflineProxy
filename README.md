@@ -5,7 +5,7 @@
 
 An Android-first app that lets you earn **softcore RetroAchievements** through **RetroArch or Dolphin** without an internet connection.
 
-Experimental Linux support now also exists in the repository, with an early KNULLI flow documented in the docs.
+Linux support for **KNULLI** is now also in **alpha**, while Android remains the primary supported platform.
 
 > **Current release stage: alpha (`v1.0.0-alpha2`).** This is a public prerelease and has not gone through formal QA.
 
