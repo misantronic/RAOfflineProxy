@@ -17,6 +17,7 @@ import com.raofflineproxy.proxy.proxyHttpOk
 import com.raofflineproxy.proxy.proxyHttpFile
 import com.raofflineproxy.proxy.proxyHttpResponse
 import com.raofflineproxy.proxy.proxyIsHardcoreRequest
+import com.raofflineproxy.proxy.normalizedCacheKey
 import com.raofflineproxy.proxy.sanitizeHttpReasonPhrase
 import com.raofflineproxy.proxy.shouldCacheResponse
 import com.raofflineproxy.proxy.shouldQueueAward
@@ -180,6 +181,32 @@ class ProxyServerTest {
     fun cacheKey_paramsFromBody() {
         val key = proxyCacheKey("/dorequest.php", "r=patch&g=42&u=player")
         assertEquals("patch:42:player", key)
+    }
+
+    @Test
+    fun normalizedCacheKey_achievementsetsUsesPatchKey() {
+        val normalizedBody = "patch:25493"
+
+        val key = normalizedCacheKey(
+            action = "achievementsets",
+            path = "/dorequest.php",
+            body = "r=achievementsets&u=player&m=hash",
+            normalizedBody = normalizedBody
+        )
+
+        assertEquals("patch:25493:player", key)
+    }
+
+    @Test
+    fun normalizedCacheKey_fallsBackWhenNormalizedBodyMissingGameId() {
+        val key = normalizedCacheKey(
+            action = "achievementsets",
+            path = "/dorequest.php",
+            body = "r=achievementsets&u=player&m=hash",
+            normalizedBody = "unexpected"
+        )
+
+        assertEquals("achievementsets::player", key)
     }
 
     // ── proxyIsHardcoreRequest() ──

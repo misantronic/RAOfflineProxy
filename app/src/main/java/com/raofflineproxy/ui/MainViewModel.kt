@@ -38,6 +38,7 @@ import com.raofflineproxy.proxy.AwardFlusher
 import com.raofflineproxy.proxy.FlushEvent
 import com.raofflineproxy.proxy.LoginCredentials
 import com.raofflineproxy.proxy.PasswordCredentials
+import com.raofflineproxy.proxy.patchImageUrl
 import com.raofflineproxy.proxy.cacheLoginCredentialsResponse
 import com.raofflineproxy.proxy.cacheGame
 import com.raofflineproxy.proxy.clearAllCachedImages
@@ -176,9 +177,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         val title = patchData?.optString("Title") ?: gameId
                         val imageIconUrl = gameId.toIntOrNull()?.let {
                             resolveCachedGameIconPath(application, it)
-                        } ?: patchData?.optString("ImageIcon")
-                            ?.takeIf { it.isNotEmpty() }
-                            ?.let { "$RA_HOST$it" }
+                        } ?: patchData?.let(::patchImageUrl)
                         val unlocksBody = db.cacheDao().get(CacheKeys.unlocks(gameId, user))?.responseBody
                         val unlockedIds = runCatching {
                             val json = JSONObject(unlocksBody ?: return@runCatching emptySet())
@@ -662,9 +661,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         gameTitle = patchData.optString("Title", gameTitle)
                         gameIconUrl = gameId?.let {
                             resolveCachedGameIconPath(application, it)
-                        } ?: patchData.optString("ImageIcon")
-                            .takeIf { it.isNotEmpty() }
-                            ?.let { "$RA_HOST$it" }
+                        } ?: patchData.let(::patchImageUrl)
                         achievementTitle = a.optString("Title", achievementTitle)
                         points = a.optInt("Points", 0)
                         val badgeName = a.optString("BadgeName").takeIf { it.isNotEmpty() }

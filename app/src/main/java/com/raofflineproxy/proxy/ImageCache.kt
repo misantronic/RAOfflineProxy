@@ -87,15 +87,21 @@ fun cachePatchImages(context: Context, gameId: Int, userAgent: String, patchResp
         val patchData = JSONObject(patchResponseBody).optJSONObject("PatchData") ?: return
         val keepNames = mutableSetOf<String>()
 
-        val imagePath = patchData.optString("ImageIcon").takeIf { it.isNotEmpty() }
+        val imagePath = patchImagePath(patchData)
+        val imageUrl = patchImageUrl(patchData)
         if (imagePath != null) {
             val target = originalImageFile(context, gameId, imagePath)
             val legacyTarget = legacyGameIconFile(context, gameId, imagePath)
             val staticTarget = staticAssetFile(context, imagePath)
+            val fetchUrl = imageUrl ?: absolutePatchImageUrl(imagePath)
             keepNames += target.name
             keepNames += legacyTarget.name
+            Log.d(TAG, "Caching game icon for gameId=$gameId path=$imagePath url=$fetchUrl target=${target.absolutePath}")
             if (!target.exists()) {
-                fetchFile("$RA_HOST$imagePath", userAgent, target)
+                fetchFile(fetchUrl, userAgent, target)
+                Log.d(TAG, "Cached game icon for gameId=$gameId file=${target.absolutePath}")
+            } else {
+                Log.d(TAG, "Game icon already cached for gameId=$gameId file=${target.absolutePath}")
             }
             mirrorFile(target, staticTarget)
         }
