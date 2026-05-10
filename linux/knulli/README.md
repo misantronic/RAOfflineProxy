@@ -4,7 +4,7 @@ This directory contains a portable KNULLI bundle for the early Linux `RAOfflineP
 
 ## Current State
 
-The experimental KNULLI flow is now working end to end in testing for the proxy path:
+The alpha KNULLI flow is now working end to end in testing for the proxy path:
 
 - Start patches the required RetroArch and Batocera settings
 - RetroAchievements requests are intercepted locally
@@ -12,7 +12,7 @@ The experimental KNULLI flow is now working end to end in testing for the proxy 
 - offline softcore achievements can be queued
 - queued achievements can be flushed on reconnect
 
-This is still considered experimental and may need additional hardening across devices and KNULLI versions.
+This is still considered alpha and may need additional hardening across devices and KNULLI versions.
 
 ## What It Does
 
@@ -21,7 +21,7 @@ This is still considered experimental and may need additional hardening across d
 - adds EmulationStation Tools entries for:
   - `RAOfflineProxy`
 
-`RAOfflineProxy` is the primary experimental interactive fullscreen UI. It provides one place to launch Start, Stop, Uninstall, and Exit actions.
+`RAOfflineProxy` is the primary interactive fullscreen UI. It provides one place to launch Start, Stop, Cached Games, Pending Awards, Uninstall, and Exit actions.
 
 The current `RAOfflineProxy` implementation uses SDL/`pygame` for responsive controller-driven navigation. The launcher adds `/userdata/roms/pygame` to `PYTHONPATH` automatically when that directory exists.
 
@@ -30,6 +30,7 @@ Current SDL menu features:
 - Start / Stop proxy
 - Enable / Disable autostart
 - Cached Games view
+- Pending Awards view
 - Add ROM from a controller-driven file browser
 - per-game cache actions
 - Clear cache
@@ -39,9 +40,11 @@ Current SDL menu features:
 Cached Games currently supports:
 
 - previewing cached game images in the top-right corner when available
+- previewing the selected unlocked achievement badge beside the game image when available
 - removing a selected cached game's cache entries
 - clearing game-related cache entries while preserving cached login and User-Agent data
 - manual ROM adding for multiple RetroAchievements-supported hash formats including Game Boy, NES, SNES, N64, NDS, PSP, and PSX families
+- showing unlocked achievement titles in the per-game action view
 
 Manual ROM adding and online game launch caching are intended to produce the same local game cache:
 
@@ -52,12 +55,11 @@ Manual ROM adding and online game launch caching are intended to produce the sam
 
 Live upstream `startsession` responses are not cached. They are a special case so offline launches use the local synthetic response instead.
 
-KNULLI authentication is bootstrapped from RetroArch's saved achievement settings:
+KNULLI authentication is token-first:
 
-- `cheevos_username`
-- `cheevos_password`
-
-RAOfflineProxy performs a normal `login2` request with those values and caches the returned RA token locally. The saved password is not used as the token for later `patch`, `unlocks`, or award flush requests.
+- if `cheevos_token` exists in `retroarch.cfg`, RAOfflineProxy uses it directly
+- if no token exists, `cheevos_username` and `cheevos_password` are used once with `login2` to retrieve and cache a token
+- `cheevos_password` is not used as the token for later `patch`, `unlocks`, or award flush requests
 
 This bundle now patches RetroArch config and launches the background Linux proxy service.
 
@@ -95,6 +97,8 @@ cp "path/to/RAOfflineProxy/linux/knulli/dist/RAOfflineProxy Install.sh" /path/to
 Then run `RAOfflineProxy Install` from EmulationStation Tools.
 
 The installer removes itself after a successful install.
+
+After install, the on-screen message asks you to update gamelists if needed so the new Tools entry appears immediately.
 
 When updating an existing install, the installer now preserves prior proxy running state:
 

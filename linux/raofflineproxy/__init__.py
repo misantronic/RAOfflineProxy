@@ -4,5 +4,4 @@ __all__ = [
     "retroarch_cfg",
     "service",
     "state",
-    "ui",
 ]
