@@ -56,6 +56,17 @@ class MainActivity : AppCompatActivity() {
         viewModel.startProxy(treeUri = uri)
     }
 
+    private val dolphinSafLauncher = registerForActivityResult(OpenDolphinConfigTree()) { uri ->
+        if (uri == null) return@registerForActivityResult
+        contentResolver.takePersistableUriPermission(
+            uri,
+            Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+        )
+        PrefsConstants.saveDolphinSafUri(this, uri)
+        viewModel.clearTransientMessages()
+        viewModel.startProxy(treeUri = PrefsConstants.loadSafUri(this))
+    }
+
     private val notificationPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { /* no-op: notification is non-critical */ }
 
@@ -118,14 +129,19 @@ class MainActivity : AppCompatActivity() {
 
         lifecycleScope.launch {
             viewModel.state.collect { state ->
-                updateProxyMenuItem(state.proxyRunning, state.isOnline, state.proxyToggleInProgress)
+                updateProxyMenuItem(
+                    proxyRunning = state.proxyRunning,
+                    isOnline = state.isOnline,
+                    proxyToggleInProgress = state.proxyToggleInProgress,
+                    hasEnabledEmulator = state.retroArchEnabled || state.dolphinEnabled
+                )
                 updateNavBadge(navView, R.id.nav_cached_games, state.cachedGames.size)
                 updateNavBadge(navView, R.id.nav_pending_awards, state.pendingAwards.size)
                 updateNavBadge(navView, R.id.nav_awards_history, state.awardHistory.size)
                 maybeShowStartTokenWarning(state)
 
                 if (state.needsSafGrant) {
-                    showSafGrantDialog()
+                    showSafGrantDialog(state.safGrantTarget ?: SafGrantTarget.RetroArch)
                 }
             }
         }
@@ -154,7 +170,12 @@ class MainActivity : AppCompatActivity() {
         proxyMenuItem?.actionView?.findViewById<android.view.View>(R.id.action_proxy_root)
             ?.setOnClickListener { toggleProxy() }
         val state = viewModel.state.value
-        updateProxyMenuItem(state.proxyRunning, state.isOnline, state.proxyToggleInProgress)
+        updateProxyMenuItem(
+            proxyRunning = state.proxyRunning,
+            isOnline = state.isOnline,
+            proxyToggleInProgress = state.proxyToggleInProgress,
+            hasEnabledEmulator = state.retroArchEnabled || state.dolphinEnabled
+        )
         return true
     }
 
@@ -245,7 +266,12 @@ class MainActivity : AppCompatActivity() {
         tv.text = if (count > 0) getString(R.string.nav_badge_count, count) else ""
     }
 
-    private fun updateProxyMenuItem(proxyRunning: Boolean, isOnline: Boolean, proxyToggleInProgress: Boolean) {
+    private fun updateProxyMenuItem(
+        proxyRunning: Boolean,
+        isOnline: Boolean,
+        proxyToggleInProgress: Boolean,
+        hasEnabledEmulator: Boolean
+    ) {
         val item = proxyMenuItem ?: return
         val actionView = item.actionView ?: return
         val label = actionView.findViewById<android.widget.TextView>(R.id.tv_proxy_label)
@@ -256,8 +282,9 @@ class MainActivity : AppCompatActivity() {
         }
         label.text = if (proxyRunning) getString(R.string.proxy_stop) else getString(R.string.proxy_start)
         actionView.tooltipText = tooltipText
-        actionView.isEnabled = !proxyToggleInProgress
-        actionView.alpha = if (proxyToggleInProgress) 0.45f else 1f
+        val canToggle = !proxyToggleInProgress && (proxyRunning || hasEnabledEmulator)
+        actionView.isEnabled = canToggle
+        actionView.alpha = if (canToggle) 1f else 0.45f
     }
 
     private fun toggleProxy() {
@@ -293,13 +320,20 @@ class MainActivity : AppCompatActivity() {
             .show()
     }
 
-    private fun showSafGrantDialog() {
+    private fun showSafGrantDialog(target: SafGrantTarget) {
         viewModel.clearTransientMessages()
+        val messageRes = when (target) {
+            SafGrantTarget.RetroArch -> R.string.saf_dialog_message
+            SafGrantTarget.Dolphin -> R.string.dolphin_saf_dialog_message
+        }
         AlertDialog.Builder(this)
             .setTitle(R.string.saf_dialog_title)
-            .setMessage(R.string.saf_dialog_message)
+            .setMessage(messageRes)
             .setPositiveButton(R.string.saf_dialog_grant) { _, _ ->
-                safLauncher.launch(Unit)
+                when (target) {
+                    SafGrantTarget.RetroArch -> safLauncher.launch(Unit)
+                    SafGrantTarget.Dolphin -> dolphinSafLauncher.launch(Unit)
+                }
             }
             .setNegativeButton(android.R.string.cancel, null)
             .show()
@@ -459,4 +493,27 @@ private class OpenAndroidDataTree : ActivityResultContract<Unit, Uri?>() {
             runCatching { context.packageManager.getPackageInfo(packageName, 0) }
                 .isSuccess
         } ?: RETROARCH_PACKAGE_CANDIDATES.first()
+}
+
+private class OpenDolphinConfigTree : ActivityResultContract<Unit, Uri?>() {
+    override fun createIntent(context: Context, input: Unit): Intent =
+        Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).apply {
+            initialTreeUriForPath("/storage/emulated/0/Android/data/${resolveDolphinPackage(context)}/files/Config")
+                ?.let { putExtra(DocumentsContract.EXTRA_INITIAL_URI, it) }
+            addFlags(
+                Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                    Intent.FLAG_GRANT_WRITE_URI_PERMISSION or
+                    Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION or
+                    Intent.FLAG_GRANT_PREFIX_URI_PERMISSION
+            )
+        }
+
+    override fun parseResult(resultCode: Int, intent: Intent?): Uri? =
+        if (resultCode == android.app.Activity.RESULT_OK) intent?.data else null
+
+    private fun resolveDolphinPackage(context: Context): String =
+        DOLPHIN_PACKAGE_CANDIDATES.firstOrNull { packageName ->
+            runCatching { context.packageManager.getPackageInfo(packageName, 0) }
+                .isSuccess
+        } ?: DOLPHIN_PACKAGE_CANDIDATES.first()
 }

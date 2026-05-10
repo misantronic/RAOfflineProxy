@@ -613,6 +613,7 @@ internal fun proxyCacheKey(path: String, body: String): String {
     val hardcore = proxyExtractParam("h", path, body) ?: ""
     return when (action) {
         "gameid" -> "$action:$hash"
+        "achievementsets" -> "$action:$hash:$user"
         "startsession" -> CacheKeys.startSession(gameId, user)
         else -> if (hardcore.isNotEmpty()) "$action:$gameId:$user:$hardcore" else "$action:$gameId:$user"
     }
