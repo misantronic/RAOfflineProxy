@@ -3,8 +3,8 @@ layout: home
 
 hero:
   name: RAOfflineProxy
-  text: RetroAchievements for RetroArch - Offline
-  tagline: A local proxy that lets you earn softcore RetroAchievements through RetroArch without an internet connection.
+  text: RetroAchievements - Offline
+  tagline: A local proxy that lets you earn softcore RetroAchievements through RetroArch or Dolphin without an internet connection.
   image:
     src: /logo.png
     alt: RAOfflineProxy
@@ -25,7 +25,7 @@ features:
     details: Your game and achievement data is saved to your device so everything works without Wi-Fi or mobile data.
   - icon: ⚙️
     title: Easy Setup
-    details: Starting the proxy automatically configures RetroArch - stopping it restores your original settings.
+    details: Starting the proxy automatically configures supported emulators - stopping it restores your original settings.
   - icon: 🏆
     title: Automatic Sync
     details: Unlocks earned while offline are saved and sent to RetroAchievements the next time you go online.

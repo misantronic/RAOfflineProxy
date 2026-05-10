@@ -4,7 +4,7 @@ Before going offline you must save game and achievement data for each game you i
 
 You can do that in two ways:
 
-1. **Automatically** by starting the game in RetroArch while the proxy is running and you are online
+1. **Automatically** by starting the game in a supported emulator while the proxy is running and you are online
 2. **Manually** from the **Cached Games** screen by adding ROMs or scanning a ROM folder
 
 The rest of this page explains the manual caching flow in the **Cached Games** screen and what data gets saved locally.
@@ -95,7 +95,7 @@ The table below reflects the current app behavior.
 | **Dreamcast**<br>**Sega CD**<br>**Saturn**<br>**3DO**<br>**Neo Geo CD**<br>**PC Engine CD**<br>**PC-FX**<br>**Jaguar CD**<br>**Nintendo 3DS**<br>**MS-DOS**<br>**Arcade** | No supported manual hashing path at the moment | **Not manually working** |
 
 ::: warning Manual caching support is still format-dependent
-If a file format needs custom RetroAchievements hashing and that format is not explicitly listed above, manual caching may skip it even though launching the same game through RetroArch works.
+If a file format needs custom RetroAchievements hashing and that format is not explicitly listed above, manual caching may skip it even though launching the same game through a supported emulator works.
 :::
 
 ::: warning RVZ is not supported yet

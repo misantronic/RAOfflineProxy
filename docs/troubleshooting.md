@@ -2,14 +2,14 @@
 
 > Current release stage: alpha (`v1.0.0-alpha1`). Some rough edges are expected while the first public prerelease is being validated.
 
-## The proxy starts but RetroArch still contacts RetroAchievements directly
+## The proxy starts but the emulator still contacts RetroAchievements directly
 
-**Cause:** RetroArch's config is not patched, or RetroArch loaded a config from a different location.
+**Cause:** The emulator config is not patched, or the emulator loaded a different config than the one RAOfflineProxy updated.
 
 **Fix:**
-1. Stop and restart the proxy: starting the proxy automatically patches RetroArch's config.
-2. Restart RetroArch after starting the proxy: it only reads the custom server setting at startup.
-3. If the app can't patch automatically, see [manual patching](./cfg-patching#manual-patching-adb-fallback).
+1. Stop and restart the proxy: starting the proxy automatically patches the enabled emulator config.
+2. Restart the emulator after starting the proxy: it may only read the custom server setting at startup.
+3. If the app still cannot patch the emulator config automatically, re-grant folder access and try starting the proxy again.
 
 ---
 
@@ -23,9 +23,9 @@
 
 **Fix:** Open RAOfflineProxy and tap **Start proxy** in the action bar.
 
-**Cause 3:** Hardcore mode is enabled in RetroArch.
+**Cause 3:** Hardcore mode is enabled in the emulator.
 
-**Fix:** RAOfflineProxy does not support hardcore mode. Starting the proxy disables it automatically, but if it was re-enabled manually, achievements will be rejected. Disable hardcore mode in RetroArch → Settings → Achievements.
+**Fix:** RAOfflineProxy does not support hardcore mode. Starting the proxy disables it automatically, but if it was re-enabled manually, achievements will be rejected. Disable hardcore mode in the emulator's RetroAchievements settings.
 
 ---
 
@@ -33,7 +33,7 @@
 
 **Cause 1:** Authentication error: your RA token may need to be refreshed.
 
-**Fix:** Open RetroArch → Settings → Achievements, log in again, save the settings, then return to RAOfflineProxy and restart the proxy so the refreshed token is imported from `retroarch.cfg`.
+**Fix:** Open the emulator that holds your RetroAchievements login, log in again in its RetroAchievements settings, save the settings, then return to RAOfflineProxy and restart the proxy so the refreshed token is imported from that emulator config.
 
 **Cause 2:** The hash chain is broken.
 
@@ -49,9 +49,9 @@
 
 ## A dialog asks me to grant folder access when starting the proxy
 
-**Cause:** On Android 12 and below, the app found `retroarch.cfg` but cannot write to it directly due to storage restrictions.
+**Cause:** On Android 12 and below, the app found the emulator config but cannot write to it directly due to storage restrictions.
 
-**Fix:** Tap **Grant** in the dialog. The picker should open directly at the RetroArch folder that contains `retroarch.cfg`. Grant read + write access to that folder. The app will patch the config and start the proxy automatically.
+**Fix:** Tap **Grant** in the dialog. The picker should open directly at the relevant emulator folder when possible. Grant read + write access to that folder. The app will patch the config and start the proxy automatically.
 
 ---
 
@@ -100,15 +100,15 @@ RAOfflineProxy works at the network level: it is transparent to all RetroArch co
 
 ## What happens if I uninstall RAOfflineProxy without reverting the config?
 
-RetroArch will keep trying to connect to the proxy, which will fail since nothing is listening. Achievement features in RetroArch will not work until you either:
+The patched emulator will keep trying to connect to the proxy, which will fail since nothing is listening. Achievement features in that emulator will not work until you either:
 - Reinstall RAOfflineProxy, start the proxy, then stop it (which reverts the config), or
-- Manually [clear the custom server setting](./cfg-patching#manual-patching) in `retroarch.cfg`
+- Clear the custom server setting in the emulator config yourself.
 
 ---
 
 ## Is hardcore mode supported?
 
-**No.** Hardcore mode is permanently unsupported. Any hardcore achievement unlock is immediately rejected. Starting the proxy also disables hardcore mode in RetroArch's config (and restores it when you stop the proxy). This is an intentional design decision: the integrity guarantees required for hardcore mode cannot be provided by a local proxy.
+**No.** Hardcore mode is permanently unsupported. Any hardcore achievement unlock is immediately rejected. Starting the proxy also disables hardcore mode in supported emulator configs where applicable and restores the previous setting when you stop the proxy. This is an intentional design decision: the integrity guarantees required for hardcore mode cannot be provided by a local proxy.
 
 ---
 
@@ -119,7 +119,7 @@ RetroArch will keep trying to connect to the proxy, which will fail since nothin
 **Fix:** Add RAOfflineProxy to the battery optimization whitelist:
 - Android Settings → Apps → RAOfflineProxy → Battery → Unrestricted
 
-If the app was killed or crashed while sync was active, reopen RAOfflineProxy once so it can clean up `retroarch.cfg`. For guaranteed immediate cleanup, always press **Stop proxy** before killing the app.
+If the app was killed or crashed while sync was active, reopen RAOfflineProxy once so it can clean up the patched emulator config. For guaranteed immediate cleanup, always press **Stop proxy** before killing the app.
 
 ---
 
