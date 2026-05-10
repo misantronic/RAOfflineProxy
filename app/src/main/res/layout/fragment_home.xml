@@ -76,7 +76,6 @@
 
             <include
                 android:id="@+id/layout_retroarch_toggle"
-                android:layout_marginEnd="12dp"
                 android:visibility="gone"
                 layout="@layout/view_emulator_toggle" />
 
