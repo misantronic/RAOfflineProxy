@@ -1,16 +1,20 @@
 package com.raofflineproxy
 
 import com.raofflineproxy.proxy.hash.FdsRomHashStrategy
+import com.raofflineproxy.proxy.hash.GameCubeRomHashStrategy
 import com.raofflineproxy.proxy.hash.N64ByteOrder
 import com.raofflineproxy.proxy.hash.NesRomHashStrategy
 import com.raofflineproxy.proxy.hash.NintendoDsRomHashStrategy
 import com.raofflineproxy.proxy.hash.Nintendo64RomHashStrategy
+import com.raofflineproxy.proxy.hash.RvzRomHashStrategy
 import com.raofflineproxy.proxy.hash.Atari7800RomHashStrategy
 import com.raofflineproxy.proxy.hash.AtariLynxRomHashStrategy
 import com.raofflineproxy.proxy.hash.PcEngineRomHashStrategy
 import com.raofflineproxy.proxy.hash.detectPrimaryVolumeDescriptor
 import com.raofflineproxy.proxy.hash.detectIsoSectorLayout
 import com.raofflineproxy.proxy.hash.findFileRecord
+import com.raofflineproxy.proxy.hash.readBigEndianInt
+import com.raofflineproxy.proxy.hash.hashRom
 import com.raofflineproxy.proxy.hash.PsxRomHashStrategy
 import com.raofflineproxy.proxy.hash.PspRomHashStrategy
 import com.raofflineproxy.proxy.hash.RomDataSource
@@ -18,6 +22,8 @@ import com.raofflineproxy.proxy.hash.RomHashInput
 import com.raofflineproxy.proxy.hash.SnesRomHashStrategy
 import com.raofflineproxy.proxy.hash.SuperCassetteVisionRomHashStrategy
 import com.raofflineproxy.proxy.hash.SectorLayout
+import com.raofflineproxy.proxy.hash.WiiDiscRomHashStrategy
+import com.raofflineproxy.proxy.hash.WiiWadRomHashStrategy
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
@@ -467,6 +473,105 @@ class RomScannerHashTest {
         assertEquals(N64ByteOrder.LITTLE_ENDIAN, Nintendo64RomHashStrategy.detectByteOrder(0x40.toByte()))
     }
 
+    @Test
+    fun gameCubeStrategy_matchesIsoAndGcm() {
+        assertTrue(GameCubeRomHashStrategy.matches("game.iso"))
+        assertTrue(GameCubeRomHashStrategy.matches("game.gcm"))
+    }
+
+    @Test
+    fun wiiDiscStrategy_matchesIso() {
+        assertTrue(WiiDiscRomHashStrategy.matches("game.iso"))
+    }
+
+    @Test
+    fun wiiWadStrategy_matchesWad() {
+        assertTrue(WiiWadRomHashStrategy.matches("channel.wad"))
+    }
+
+    @Test
+    fun rvzStrategy_matchesRvzAndReturnsNull() {
+        assertTrue(RvzRomHashStrategy.matches("game.rvz"))
+        assertNull(
+            RvzRomHashStrategy.hash(
+                RomHashInput(
+                    fileName = "game.rvz",
+                    fileSize = 4,
+                    openStream = { byteArrayOf(1, 2, 3, 4).inputStream() }
+                )
+            )
+        )
+    }
+
+    @Test
+    fun hashRom_rvzDoesNotFallBackToGenericMd5() {
+        assertNull(
+            hashRom(
+                RomHashInput(
+                    fileName = "game.rvz",
+                    fileSize = 4,
+                    openStream = { byteArrayOf(1, 2, 3, 4).inputStream() }
+                )
+            )
+        )
+    }
+
+    @Test
+    fun hashRom_wadDoesNotFallBackToGenericMd5WhenWadHashFails() {
+        val bytes = ByteArray(64)
+
+        assertNull(
+            hashRom(
+                RomHashInput(
+                    fileName = "channel.wad",
+                    fileSize = bytes.size.toLong(),
+                    openStream = { bytes.inputStream() },
+                    openDataSource = { ByteArrayRomDataSource(bytes) }
+                )
+            )
+        )
+    }
+
+    @Test
+    fun hashRom_gameCubeIsoDoesNotFallBackToGenericMd5WhenDiscHashFails() {
+        val bytes = ByteArray(0x20)
+        writeBigEndianInt(bytes, 0x1C, 0xC2339F3D.toInt())
+
+        assertNull(
+            hashRom(
+                RomHashInput(
+                    fileName = "game.iso",
+                    fileSize = bytes.size.toLong(),
+                    openStream = { bytes.inputStream() },
+                    openDataSource = { ByteArrayRomDataSource(bytes) }
+                )
+            )
+        )
+    }
+
+    @Test
+    fun hashRom_nonNintendoIsoCanStillFallBackToGenericMd5() {
+        val bytes = "plain-iso".toByteArray(Charsets.US_ASCII)
+
+        assertEquals(
+            "ffcb189f984a79b18014c8f2ecd6a821",
+            hashRom(
+                RomHashInput(
+                    fileName = "game.iso",
+                    fileSize = bytes.size.toLong(),
+                    openStream = { bytes.inputStream() },
+                    openDataSource = { ByteArrayRomDataSource(bytes) }
+                )
+            )
+        )
+    }
+
+    @Test
+    fun readBigEndianInt_readsExpectedValue() {
+        val bytes = byteArrayOf(0x12, 0x34, 0x56, 0x78)
+        assertEquals(0x12345678, readBigEndianInt(bytes))
+    }
+
     private class ByteArrayRomDataSource(
         private val data: ByteArray
     ) : RomDataSource {
@@ -627,5 +732,12 @@ class RomScannerHashTest {
         target[offset + 5] = ((value shr 16) and 0xFF).toByte()
         target[offset + 6] = ((value shr 8) and 0xFF).toByte()
         target[offset + 7] = (value and 0xFF).toByte()
+    }
+
+    private fun writeBigEndianInt(target: ByteArray, offset: Int, value: Int) {
+        target[offset] = ((value shr 24) and 0xFF).toByte()
+        target[offset + 1] = ((value shr 16) and 0xFF).toByte()
+        target[offset + 2] = ((value shr 8) and 0xFF).toByte()
+        target[offset + 3] = (value and 0xFF).toByte()
     }
 }

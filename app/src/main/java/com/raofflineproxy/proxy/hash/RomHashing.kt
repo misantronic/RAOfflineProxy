@@ -29,6 +29,10 @@ internal interface RomHashStrategy {
 }
 
 private val romHashStrategies: List<RomHashStrategy> = listOf(
+    RvzRomHashStrategy,
+    WiiWadRomHashStrategy,
+    GameCubeRomHashStrategy,
+    WiiDiscRomHashStrategy,
     PspRomHashStrategy,
     PsxRomHashStrategy,
     NintendoDsRomHashStrategy,
@@ -50,14 +54,20 @@ internal fun hashRom(
     file: DocumentFile
 ): String? {
     val fileName = file.name ?: return null
-    val input = RomHashInput(
-        fileName = fileName,
-        fileSize = file.length(),
-        openStream = { context.contentResolver.openInputStream(file.uri) },
-        openDataSource = {
-            context.contentResolver.openFileDescriptor(file.uri, "r")?.let(::ParcelFileDescriptorRomDataSource)
-        }
+    return hashRom(
+        RomHashInput(
+            fileName = fileName,
+            fileSize = file.length(),
+            openStream = { context.contentResolver.openInputStream(file.uri) },
+            openDataSource = {
+                context.contentResolver.openFileDescriptor(file.uri, "r")?.let(::ParcelFileDescriptorRomDataSource)
+            }
+        )
     )
+}
+
+internal fun hashRom(input: RomHashInput): String? {
+    val fileName = input.fileName
     romHashStrategies.forEach { strategy ->
         if (!strategy.matches(fileName)) return@forEach
         logInfo(TAG, "Trying ${strategy.javaClass.simpleName} for $fileName size=${input.fileSize}")
@@ -68,6 +78,13 @@ internal fun hashRom(
         }
         logInfo(TAG, "${strategy.javaClass.simpleName} could not hash $fileName")
     }
+
+    val detectedNintendoFormat = detectNintendoDiscFormat(input)
+    if (detectedNintendoFormat != null) {
+        logWarn(TAG, "Refusing generic MD5 fallback for $fileName detectedFormat=$detectedNintendoFormat")
+        return null
+    }
+
     val fallback = GenericMd5RomHashStrategy.hash(input)
     if (fallback != null) {
         logInfo(TAG, "GenericMd5RomHashStrategy produced hash=$fallback for $fileName")
