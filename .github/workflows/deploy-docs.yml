@@ -64,6 +64,7 @@ jobs:
 
       - name: Invalidate CloudFront
         if: ${{ env.CLOUDFRONT_DISTRIBUTION_ID != '' }}
+        continue-on-error: true
         run: |
           aws cloudfront create-invalidation \
             --distribution-id "$CLOUDFRONT_DISTRIBUTION_ID" \
