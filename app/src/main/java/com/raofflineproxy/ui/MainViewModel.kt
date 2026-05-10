@@ -63,6 +63,8 @@ import org.json.JSONObject
 
 enum class AuthState { Unknown, Valid, Invalid }
 
+enum class SafGrantTarget { RetroArch, Dolphin }
+
 data class MainUiState(
     val proxyRunning: Boolean = false,
     val proxyToggleInProgress: Boolean = false,
@@ -71,10 +73,15 @@ data class MainUiState(
     val authState: AuthState = AuthState.Unknown,
     val autostartProxy: Boolean = false,
     val proxyPort: Int = PrefsConstants.DEFAULT_PROXY_PORT,
+    val retroArchInstalled: Boolean = false,
+    val dolphinInstalled: Boolean = false,
+    val retroArchEnabled: Boolean = false,
+    val dolphinEnabled: Boolean = false,
     val pendingAwards: List<PendingAwardUi> = emptyList(),
     val awardHistory: List<PendingAwardUi> = emptyList(),
     val cachedGames: List<CachedGame> = emptyList(),
     val needsSafGrant: Boolean = false,
+    val safGrantTarget: SafGrantTarget? = null,
     val cfgCopyBackPath: String? = null,
     val cfgIsPatched: Boolean? = null,
     val scanInProgress: Boolean = false,
@@ -125,9 +132,18 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         )
 
         checkCfgPatched(treeUri = loadSafUri())
+        val emulatorSupport = loadEmulatorSupport(app)
+        Log.i(
+            "RAProxy/Emulators",
+            "init support retroArchInstalled=${emulatorSupport.retroArchInstalled} dolphinInstalled=${emulatorSupport.dolphinInstalled} retroArchEnabled=${emulatorSupport.retroArchEnabled} dolphinEnabled=${emulatorSupport.dolphinEnabled}"
+        )
         _state.value = _state.value.copy(
             autostartProxy = loadAutostartPref(),
-            proxyPort = PrefsConstants.loadProxyPort(app)
+            proxyPort = PrefsConstants.loadProxyPort(app),
+            retroArchInstalled = emulatorSupport.retroArchInstalled,
+            dolphinInstalled = emulatorSupport.dolphinInstalled,
+            retroArchEnabled = emulatorSupport.retroArchEnabled,
+            dolphinEnabled = emulatorSupport.dolphinEnabled
         )
         validateToken()
         viewModelScope.launch {
@@ -225,11 +241,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private fun recoverPatchedCfgIfProxyStopped() {
         val app = getApplication<Application>()
         viewModelScope.launch {
-            val treeUri = loadSafUri()
-            val patched = withContext(Dispatchers.IO) { checkIsPatched(app, treeUri) }
+            val retroArchTreeUri = loadSafUri()
+            val dolphinTreeUri = loadDolphinSafUri()
+            val patched = withContext(Dispatchers.IO) { checkIsPatched(app, retroArchTreeUri) }
             val proxyRunning = ProxyService.isRunning(app)
+            val prefs = app.getSharedPreferences(PrefsConstants.PREFS_NAME, Context.MODE_PRIVATE)
+            val retroArchPatchedThisRun = prefs.getBoolean(PrefsConstants.KEY_RETROARCH_PATCHED_THIS_RUN, false)
+            val dolphinPatchedThisRun = prefs.getBoolean(PrefsConstants.KEY_DOLPHIN_PATCHED_THIS_RUN, false)
 
-            if (!patched || proxyRunning) {
+            if ((!patched && !retroArchPatchedThisRun && !dolphinPatchedThisRun) || proxyRunning) {
                 _state.value = _state.value.copy(
                     proxyRunning = proxyRunning,
                     cfgIsPatched = patched
@@ -237,21 +257,43 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 return@launch
             }
 
-            val prefs = app.getSharedPreferences(PrefsConstants.PREFS_NAME, Context.MODE_PRIVATE)
-            val restoreHardcore = prefs.getBoolean(PrefsConstants.KEY_HARDCORE_WAS_ENABLED, false)
-            val result = withContext(Dispatchers.IO) {
-                revertRetroArchCfg(app, treeUri, restoreHardcore)
+            val result = if (retroArchPatchedThisRun) {
+                val restoreHardcore = prefs.getBoolean(PrefsConstants.KEY_RETROARCH_HARDCORE_WAS_ENABLED, false)
+                withContext(Dispatchers.IO) {
+                    revertRetroArchCfg(app, retroArchTreeUri, restoreHardcore)
+                }
+            } else {
+                PatchResult(success = true, message = "RetroArch not patched this run.")
             }
             val revertedTarget = result.success && result.copyBackPath == null
 
+            val dolphinResult = if (dolphinPatchedThisRun) {
+                val restoreDolphinHardcore = prefs.getBoolean(PrefsConstants.KEY_DOLPHIN_HARDCORE_WAS_ENABLED, false)
+                withContext(Dispatchers.IO) {
+                    revertDolphinCfg(app, dolphinTreeUri, restoreDolphinHardcore)
+                }
+            } else {
+                DolphinPatchResult(success = true, message = "Dolphin not patched this run.", skippedNotInstalled = true)
+            }
+
             if (revertedTarget) {
-                prefs.edit { remove(PrefsConstants.KEY_HARDCORE_WAS_ENABLED) }
+                prefs.edit {
+                    remove(PrefsConstants.KEY_RETROARCH_HARDCORE_WAS_ENABLED)
+                    remove(PrefsConstants.KEY_RETROARCH_PATCHED_THIS_RUN)
+                }
+            }
+            if (dolphinResult.success && dolphinResult.copyBackPath == null) {
+                prefs.edit {
+                    remove(PrefsConstants.KEY_DOLPHIN_HARDCORE_WAS_ENABLED)
+                    remove(PrefsConstants.KEY_DOLPHIN_PATCHED_THIS_RUN)
+                }
             }
 
             _state.value = _state.value.copy(
                 proxyRunning = false,
                 cfgIsPatched = !revertedTarget,
                 needsSafGrant = result.needsSafGrant,
+                safGrantTarget = if (result.needsSafGrant) SafGrantTarget.RetroArch else null,
                 cfgCopyBackPath = result.copyBackPath
             )
 
@@ -295,7 +337,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         _state.value = _state.value.copy(
             scanProgress = null,
             cfgCopyBackPath = null,
-            needsSafGrant = false
+            needsSafGrant = false,
+            safGrantTarget = null
         )
     }
 
@@ -387,44 +430,95 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             try {
                 val alreadyRunning = ProxyService.isRunning(app)
                 val prefs = app.getSharedPreferences(PrefsConstants.PREFS_NAME, Context.MODE_PRIVATE)
+                val emulatorSupport = loadEmulatorSupport(app)
                 prefs.edit { remove(PrefsConstants.KEY_SKIP_NEXT_CFG_REVERT) }
 
-                val result = withContext(Dispatchers.IO) { patchRetroArchCfg(app, treeUri) }
-                if (result.needsSafGrant) {
-                    PrefsConstants.clearSafUri(app)
-                    _state.value = _state.value.copy(
-                        needsSafGrant = true
-                    )
+                if (!emulatorSupport.hasAnyEnabled) {
+                    SnackbarManager.showError(str(R.string.proxy_start_requires_emulator))
                     return@launch
                 }
-                if (result.invalidSafGrant) {
-                    PrefsConstants.clearSafUri(app)
-                    SnackbarManager.showError(result.message)
-                    return@launch
+
+                val retroArchTreeUri = treeUri ?: loadSafUri()
+                val dolphinTreeUri = loadDolphinSafUri()
+
+                val result = if (emulatorSupport.retroArchEnabled) {
+                    withContext(Dispatchers.IO) { patchRetroArchCfg(app, retroArchTreeUri) }
+                } else {
+                    PatchResult(success = true, message = "RetroArch disabled.")
                 }
-                if (result.copyBackPath != null) {
-                    _state.value = _state.value.copy(cfgCopyBackPath = result.copyBackPath)
-                    if (result.success) SnackbarManager.showMessage(result.message)
-                    else SnackbarManager.showError(result.message)
-                    return@launch
+                if (emulatorSupport.retroArchEnabled) {
+                    if (result.needsSafGrant) {
+                        PrefsConstants.clearSafUri(app)
+                        _state.value = _state.value.copy(
+                            needsSafGrant = true,
+                            safGrantTarget = SafGrantTarget.RetroArch
+                        )
+                        return@launch
+                    }
+                    if (result.invalidSafGrant) {
+                        PrefsConstants.clearSafUri(app)
+                        SnackbarManager.showError(result.message)
+                        return@launch
+                    }
+                    if (result.copyBackPath != null) {
+                        _state.value = _state.value.copy(cfgCopyBackPath = result.copyBackPath)
+                        if (result.success) SnackbarManager.showMessage(result.message)
+                        else SnackbarManager.showError(result.message)
+                        return@launch
+                    }
+                    if (!result.success) {
+                        SnackbarManager.showError(result.message)
+                        return@launch
+                    }
+                    prefs.edit {
+                        putBoolean(PrefsConstants.KEY_RETROARCH_HARDCORE_WAS_ENABLED, result.hardcoreWasEnabled)
+                        putBoolean(PrefsConstants.KEY_RETROARCH_PATCHED_THIS_RUN, true)
+                    }
+                } else {
+                    prefs.edit { remove(PrefsConstants.KEY_RETROARCH_PATCHED_THIS_RUN) }
                 }
-                if (!result.success) {
-                    SnackbarManager.showError(result.message)
-                    return@launch
+
+                val dolphinResult = if (emulatorSupport.dolphinEnabled) {
+                    withContext(Dispatchers.IO) { patchDolphinCfg(app, dolphinTreeUri) }
+                } else {
+                    DolphinPatchResult(success = true, message = "Dolphin disabled.", skippedNotInstalled = true)
                 }
-                prefs.edit {
-                    putBoolean(
-                        PrefsConstants.KEY_HARDCORE_WAS_ENABLED,
-                        result.hardcoreWasEnabled
-                    )
+                if (emulatorSupport.dolphinEnabled) {
+                    if (dolphinResult.needsSafGrant) {
+                        PrefsConstants.clearDolphinSafUri(app)
+                        SnackbarManager.showMessage(dolphinResult.message)
+                        _state.value = _state.value.copy(
+                            needsSafGrant = true,
+                            safGrantTarget = SafGrantTarget.Dolphin
+                        )
+                    } else if (dolphinResult.invalidSafGrant) {
+                        PrefsConstants.clearDolphinSafUri(app)
+                        SnackbarManager.showError(dolphinResult.message)
+                    } else if (!dolphinResult.success && !dolphinResult.skippedNotInstalled) {
+                        SnackbarManager.showError(dolphinResult.message)
+                    } else if (dolphinResult.success && !dolphinResult.skippedNotInstalled) {
+                        prefs.edit {
+                            putBoolean(PrefsConstants.KEY_DOLPHIN_HARDCORE_WAS_ENABLED, dolphinResult.hardcoreWasEnabled)
+                            putBoolean(PrefsConstants.KEY_DOLPHIN_PATCHED_THIS_RUN, true)
+                        }
+                    }
+                } else {
+                    prefs.edit { remove(PrefsConstants.KEY_DOLPHIN_PATCHED_THIS_RUN) }
                 }
-                result.credentials?.let { credentials ->
-                    withContext(Dispatchers.IO) { cacheRetroArchCredentials(credentials) }
+
+                val credentialsToCache = selectImportedCredentials(
+                    retroArch = result.credentials,
+                    dolphin = dolphinResult.credentials
+                )
+                credentialsToCache?.let { credentials ->
+                    withContext(Dispatchers.IO) { cacheImportedCredentials(credentials) }
                 }
+
                 ProxyService.start(app)
                 _state.value = _state.value.copy(
                     proxyRunning = true,
                     cfgIsPatched = true,
+                    needsSafGrant = _state.value.needsSafGrant,
                     authState = AuthState.Unknown
                 )
                 if (!alreadyRunning) {
@@ -447,14 +541,38 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
             try {
                 val prefs = app.getSharedPreferences(PrefsConstants.PREFS_NAME, Context.MODE_PRIVATE)
-                val restoreHardcore = prefs.getBoolean(PrefsConstants.KEY_HARDCORE_WAS_ENABLED, false)
-                val result = withContext(Dispatchers.IO) { revertRetroArchCfg(app, treeUri, restoreHardcore) }
+                val retroArchTreeUri = treeUri ?: loadSafUri()
+                val dolphinTreeUri = loadDolphinSafUri()
+                val retroArchPatchedThisRun = prefs.getBoolean(PrefsConstants.KEY_RETROARCH_PATCHED_THIS_RUN, false)
+                val result = if (retroArchPatchedThisRun) {
+                    val restoreHardcore = prefs.getBoolean(PrefsConstants.KEY_RETROARCH_HARDCORE_WAS_ENABLED, false)
+                    withContext(Dispatchers.IO) { revertRetroArchCfg(app, retroArchTreeUri, restoreHardcore) }
+                } else {
+                    PatchResult(success = true, message = "RetroArch not patched this run.")
+                }
                 val revertedTarget = result.success && result.copyBackPath == null
+
+                val dolphinPatchedThisRun = prefs.getBoolean(PrefsConstants.KEY_DOLPHIN_PATCHED_THIS_RUN, false)
+                val dolphinResult = if (dolphinPatchedThisRun) {
+                    val restoreDolphinHardcore = prefs.getBoolean(PrefsConstants.KEY_DOLPHIN_HARDCORE_WAS_ENABLED, false)
+                    withContext(Dispatchers.IO) {
+                        revertDolphinCfg(app, dolphinTreeUri, restoreDolphinHardcore)
+                    }
+                } else {
+                    DolphinPatchResult(success = true, message = "Dolphin not patched this run.", skippedNotInstalled = true)
+                }
 
                 if (revertedTarget) {
                     prefs.edit {
-                        remove(PrefsConstants.KEY_HARDCORE_WAS_ENABLED)
+                        remove(PrefsConstants.KEY_RETROARCH_HARDCORE_WAS_ENABLED)
+                        remove(PrefsConstants.KEY_RETROARCH_PATCHED_THIS_RUN)
                         putBoolean(PrefsConstants.KEY_SKIP_NEXT_CFG_REVERT, true)
+                    }
+                }
+                if (dolphinResult.success && dolphinResult.copyBackPath == null) {
+                    prefs.edit {
+                        remove(PrefsConstants.KEY_DOLPHIN_HARDCORE_WAS_ENABLED)
+                        remove(PrefsConstants.KEY_DOLPHIN_PATCHED_THIS_RUN)
                     }
                 }
 
@@ -464,6 +582,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     proxyRunning = false,
                     cfgIsPatched = if (revertedTarget) false else _state.value.cfgIsPatched,
                     needsSafGrant = result.needsSafGrant,
+                    safGrantTarget = if (result.needsSafGrant) SafGrantTarget.RetroArch else null,
                     cfgCopyBackPath = result.copyBackPath
                 )
 
@@ -477,6 +596,19 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     SnackbarManager.showMessage(str(R.string.proxy_stopped_success))
                 } else if (!result.needsSafGrant) {
                     SnackbarManager.showError(result.message)
+                }
+
+                if (dolphinResult.needsSafGrant) {
+                    PrefsConstants.clearDolphinSafUri(app)
+                    _state.value = _state.value.copy(
+                        needsSafGrant = true,
+                        safGrantTarget = SafGrantTarget.Dolphin
+                    )
+                } else if (dolphinResult.invalidSafGrant) {
+                    PrefsConstants.clearDolphinSafUri(app)
+                    SnackbarManager.showError(dolphinResult.message)
+                } else if (!dolphinResult.success && !dolphinResult.skippedNotInstalled) {
+                    SnackbarManager.showError(dolphinResult.message)
                 }
             } finally {
                 delay(250)
@@ -773,6 +905,38 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         _state.value = _state.value.copy(autostartProxy = enabled)
     }
 
+    fun setRetroArchEnabled(enabled: Boolean) {
+        val app = getApplication<Application>()
+        val support = loadEmulatorSupport(app)
+        if (!support.retroArchInstalled || (support.installedCount == 1 && support.retroArchInstalled) || _state.value.proxyRunning) {
+            return
+        }
+
+        app.getSharedPreferences(PrefsConstants.PREFS_NAME, Context.MODE_PRIVATE)
+            .edit { putBoolean(PrefsConstants.KEY_ENABLE_RETROARCH, enabled) }
+        val updated = loadEmulatorSupport(app)
+        _state.value = _state.value.copy(
+            retroArchEnabled = updated.retroArchEnabled,
+            dolphinEnabled = updated.dolphinEnabled
+        )
+    }
+
+    fun setDolphinEnabled(enabled: Boolean) {
+        val app = getApplication<Application>()
+        val support = loadEmulatorSupport(app)
+        if (!support.dolphinInstalled || (support.installedCount == 1 && support.dolphinInstalled) || _state.value.proxyRunning) {
+            return
+        }
+
+        app.getSharedPreferences(PrefsConstants.PREFS_NAME, Context.MODE_PRIVATE)
+            .edit { putBoolean(PrefsConstants.KEY_ENABLE_DOLPHIN, enabled) }
+        val updated = loadEmulatorSupport(app)
+        _state.value = _state.value.copy(
+            retroArchEnabled = updated.retroArchEnabled,
+            dolphinEnabled = updated.dolphinEnabled
+        )
+    }
+
     fun setProxyPort(portText: String): Boolean {
         val port = portText.toIntOrNull()
             ?.takeIf(PrefsConstants::isValidProxyPort)
@@ -792,27 +956,40 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private fun loadSafUri(): Uri? =
         PrefsConstants.loadSafUri(getApplication())
 
-    private suspend fun cacheRetroArchCredentials(credentials: RetroArchCfgCredentials) {
+    private fun loadDolphinSafUri(): Uri? =
+        PrefsConstants.loadDolphinSafUri(getApplication())
+
+    private suspend fun cacheImportedCredentials(credentials: ImportedCredentials) {
         val tokenCredentials = when (credentials) {
-            is RetroArchCfgCredentials.Token -> LoginCredentials(
+            is ImportedCredentials.Token -> LoginCredentials(
                 credentials.username,
                 credentials.token
             )
 
-            is RetroArchCfgCredentials.Password -> loginAndCacheToken(
+            is ImportedCredentials.Password -> loginAndCacheToken(
                 db,
                 PasswordCredentials(credentials.username, credentials.password),
                 loadUserAgent(db)
             ) ?: return
         }
         val body = cacheLoginCredentialsResponse(tokenCredentials.user, tokenCredentials.token)
-        db.cacheDao().upsert(
+                db.cacheDao().upsert(
             CacheEntry(
                 cacheKey = CacheKeys.login(tokenCredentials.user),
                 responseBody = body
             )
         )
     }
+}
+
+internal fun selectImportedCredentials(
+    retroArch: ImportedCredentials?,
+    dolphin: ImportedCredentials?
+): ImportedCredentials? = when {
+    retroArch is ImportedCredentials.Token -> retroArch
+    dolphin is ImportedCredentials.Token -> dolphin
+    retroArch is ImportedCredentials.Password -> retroArch
+    else -> null
 }
 
 private data class Quadruple<A, B, C, D>(

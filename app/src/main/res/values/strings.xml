@@ -27,15 +27,20 @@
     <string name="nav_version_format">Version %s</string>
 
     <!-- Home fragment -->
-    <string name="home_description">RAOfflineProxy acts as a local proxy between RetroArch and RetroAchievements. It caches game data so you can play offline and earn achievements, then syncs them when you go back online.</string>
-    <string name="home_docs_link">For setup instructions and tips, visit our documentation.</string>
+    <string name="home_description">RAOfflineProxy acts as a local proxy between the emulator and RetroAchievements. It caches game data so you can play offline and earn achievements, then syncs them when you go back online. For setup instructions and tips, visit our documentation.</string>
     <string name="home_docs_url">https://raofflineproxy.com/introduction.html</string>
-    <string name="home_token_warning">No RetroAchievements credentials were found in retroarch.cfg, or the saved token is no longer valid. Open RetroArch and log in while online, then start the proxy again.</string>
+    <string name="home_emulators_label">Enabled Emulators</string>
+    <string name="home_token_warning">No RetroAchievements credentials were found in a supported emulator config, or the saved token is no longer valid. Open your emulator and log in while online, then start the proxy again.</string>
     <string name="home_go_to_cached_games">Go to Cached Games</string>
+    <string name="emulator_retroarch">RetroArch</string>
+    <string name="emulator_dolphin">Dolphin</string>
+    <string name="emulator_toggle_icon_cd">Installed emulator icon</string>
+    <string name="proxy_start_requires_emulator">Enable at least one installed emulator to start the proxy.</string>
 
     <!-- SAF grant dialog -->
     <string name="saf_dialog_title">Folder Access Required</string>
     <string name="saf_dialog_message">This app needs access to RetroArch\'s files folder to patch retroarch.cfg. Grant access to the suggested Android/data/RetroArch package/files folder.</string>
+    <string name="dolphin_saf_dialog_message">This app needs access to Dolphin\'s Config folder to patch RetroAchievements.ini. Grant access to Android/data/org.dolphinemu.dolphinemu/files/Config.</string>
     <string name="saf_dialog_grant">Grant Access</string>
     <string name="action_ok">OK</string>
     <!-- CFG patcher messages -->
@@ -47,6 +52,12 @@
     <string name="patch_cfg_not_in_folder">retroarch.cfg not found in the granted folder. Please grant access to RetroArch\'s Android/data package files folder, such as Android/data/com.retroarch.aarch64/files or Android/data/com.retroarch/files.</string>
     <string name="patch_success">Patched successfully.</string>
     <string name="patch_error_file">Error patching %1$s: %2$s</string>
+    <string name="dolphin_patch_already_configured">Dolphin already configured — no changes needed.</string>
+    <string name="dolphin_patch_success_saf">Dolphin patched successfully via folder access.</string>
+    <string name="dolphin_patch_error_saf">Error patching Dolphin via folder access: %s</string>
+    <string name="dolphin_patch_cfg_not_in_folder">RetroAchievements.ini not found in the granted folder. Please grant access to Dolphin\'s Android/data/org.dolphinemu.dolphinemu/files/Config folder.</string>
+    <string name="dolphin_patch_success">Dolphin patched successfully.</string>
+    <string name="dolphin_patch_error_file">Error patching Dolphin config %1$s: %2$s</string>
 
     <!-- CFG revert messages -->
     <string name="revert_already_reverted">Already reverted — no changes needed.</string>
@@ -54,6 +65,11 @@
     <string name="revert_error_saf">Error reverting via folder access: %s</string>
     <string name="revert_success">Reverted successfully.</string>
     <string name="revert_error_file">Error reverting %1$s: %2$s</string>
+    <string name="dolphin_revert_already_reverted">Dolphin already reverted — no changes needed.</string>
+    <string name="dolphin_revert_success_saf">Dolphin reverted successfully via folder access.</string>
+    <string name="dolphin_revert_error_saf">Error reverting Dolphin via folder access: %s</string>
+    <string name="dolphin_revert_success">Dolphin reverted successfully.</string>
+    <string name="dolphin_revert_error_file">Error reverting Dolphin config %1$s: %2$s</string>
 
     <!-- Flush messages -->
     <string name="flush_started">Flushing awards…</string>
@@ -74,7 +90,7 @@
     <string name="request_failed_award_sync">Queued award sync failed for achievement #%1$d: %2$s</string>
 
     <!-- Scan / add ROM messages -->
-    <string name="scan_no_login">No RetroAchievements credentials found. Start the proxy to import them from retroarch.cfg, or open RetroArch and log in while online first.</string>
+    <string name="scan_no_login">No RetroAchievements credentials found. Start the proxy to import them from a supported emulator config, or open your emulator and log in while online first.</string>
     <string name="scan_hashing">Hashing file %1$d/%2$d…</string>
     <string name="scan_looking_up">Looking up %1$d/%2$d: %3$s</string>
     <string name="scan_add_complete">Added: %1$d of %2$d game(s) cached, %3$d skipped.</string>
@@ -124,7 +140,7 @@
 
     <!-- Settings fragment -->
     <string name="setting_proxy_port_label">Proxy port</string>
-    <string name="setting_proxy_port_hint">Used for the local RetroArch proxy. Range: 1024 to 65535. Stop the proxy to change it.</string>
+    <string name="setting_proxy_port_hint">Used for the local emulator proxy. Range: 1024 to 65535. Stop the proxy to change it.</string>
     <string name="setting_proxy_port_invalid">Enter a port between 1024 and 65535.</string>
     <string name="btn_clear_cache">Clear Cache</string>
     <string name="btn_clear_database">Clear Database</string>
@@ -132,8 +148,8 @@
     <string name="contact_feedback_url">https://forms.gle/XPRfWe2hAqzYy3JX9</string>
 
     <!-- Cached games header -->
-    <string name="cached_games_scan_hint">Go online and make sure RAOfflineProxy has imported your RetroAchievements credentials from retroarch.cfg to manage cached games.</string>
-    <string name="cached_games_credentials_hint">Start the proxy to import credentials from retroarch.cfg.</string>
+    <string name="cached_games_scan_hint">Go online and make sure RAOfflineProxy has imported your RetroAchievements credentials to manage cached games.</string>
+    <string name="cached_games_credentials_hint">Start the proxy to import RetroAchievements credentials.</string>
     <string name="cached_games_offline_hint">Go online to add, scan, or refresh cached games.</string>
     <string name="cached_games_counter">%1$d/%2$d cached</string>
     <string name="cached_games_limit_reached">You already have %d cached games. Clear some games to add more.</string>

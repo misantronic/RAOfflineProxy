@@ -160,6 +160,12 @@ class ProxyServerTest {
     }
 
     @Test
+    fun cacheKey_achievementsetsIncludesHash() {
+        val key = proxyCacheKey("/dorequest.php?r=achievementsets&m=abc123hash&u=player", "")
+        assertEquals("achievementsets:abc123hash:player", key)
+    }
+
+    @Test
     fun cacheKey_unknownAction() {
         val key = proxyCacheKey("/dorequest.php", "")
         assertEquals("unknown::", key)
@@ -206,7 +212,7 @@ class ProxyServerTest {
             normalizedBody = "unexpected"
         )
 
-        assertEquals("achievementsets::player", key)
+        assertEquals("achievementsets:hash:player", key)
     }
 
     // ── proxyIsHardcoreRequest() ──

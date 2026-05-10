@@ -6,9 +6,9 @@ import com.raofflineproxy.ui.buildRevertedContent
 import com.raofflineproxy.ui.detectHardcoreEnabled
 import com.raofflineproxy.ui.ensureBackupFileExists
 import com.raofflineproxy.ui.extractRetroArchCredentials
+import com.raofflineproxy.ui.ImportedCredentials
 import com.raofflineproxy.ui.isPatchedContent
 import com.raofflineproxy.ui.patchManualEditInstructions
-import com.raofflineproxy.ui.RetroArchCfgCredentials
 import com.raofflineproxy.ui.revertManualEditInstructions
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -74,8 +74,8 @@ class RetroArchCfgPatcherTest {
         val credentials = extractRetroArchCredentials(cfg)
 
         assertEquals("player1", credentials?.username)
-        assertTrue(credentials is RetroArchCfgCredentials.Token)
-        assertEquals("secret-token", (credentials as RetroArchCfgCredentials.Token).token)
+        assertTrue(credentials is ImportedCredentials.Token)
+        assertEquals("secret-token", (credentials as ImportedCredentials.Token).token)
     }
 
     @Test
@@ -85,8 +85,8 @@ class RetroArchCfgPatcherTest {
         val credentials = extractRetroArchCredentials(cfg)
 
         assertEquals("player1", credentials?.username)
-        assertTrue(credentials is RetroArchCfgCredentials.Token)
-        assertEquals("secret-token", (credentials as RetroArchCfgCredentials.Token).token)
+        assertTrue(credentials is ImportedCredentials.Token)
+        assertEquals("secret-token", (credentials as ImportedCredentials.Token).token)
     }
 
     @Test
@@ -100,8 +100,8 @@ class RetroArchCfgPatcherTest {
         val credentials = extractRetroArchCredentials(cfg)
 
         assertEquals("player1", credentials?.username)
-        assertTrue(credentials is RetroArchCfgCredentials.Password)
-        assertEquals("password", (credentials as RetroArchCfgCredentials.Password).password)
+        assertTrue(credentials is ImportedCredentials.Password)
+        assertEquals("password", (credentials as ImportedCredentials.Password).password)
     }
 
     @Test
@@ -115,8 +115,8 @@ class RetroArchCfgPatcherTest {
         val credentials = extractRetroArchCredentials(cfg)
 
         assertEquals("player1", credentials?.username)
-        assertTrue(credentials is RetroArchCfgCredentials.Token)
-        assertEquals("secret-token", (credentials as RetroArchCfgCredentials.Token).token)
+        assertTrue(credentials is ImportedCredentials.Token)
+        assertEquals("secret-token", (credentials as ImportedCredentials.Token).token)
     }
 
     @Test

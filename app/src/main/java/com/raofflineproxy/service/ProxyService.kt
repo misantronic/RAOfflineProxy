@@ -36,6 +36,7 @@ import com.raofflineproxy.proxy.cacheGame
 import com.raofflineproxy.proxy.loadLoginCredentials
 import com.raofflineproxy.proxy.loadUserAgent
 import com.raofflineproxy.ui.MainActivity
+import com.raofflineproxy.ui.revertDolphinCfg
 import com.raofflineproxy.ui.revertRetroArchCfg
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -386,13 +387,39 @@ class ProxyService : Service() {
             return
         }
 
-        val restoreHardcore = prefs.getBoolean(PrefsConstants.KEY_HARDCORE_WAS_ENABLED, false)
-        val result = revertRetroArchCfg(this, PrefsConstants.loadSafUri(this), restoreHardcore)
+        val retroArchPatchedThisRun = prefs.getBoolean(PrefsConstants.KEY_RETROARCH_PATCHED_THIS_RUN, false)
+        val result = if (retroArchPatchedThisRun) {
+            val restoreHardcore = prefs.getBoolean(PrefsConstants.KEY_RETROARCH_HARDCORE_WAS_ENABLED, false)
+            revertRetroArchCfg(this, PrefsConstants.loadSafUri(this), restoreHardcore)
+        } else {
+            com.raofflineproxy.ui.PatchResult(success = true, message = "RetroArch not patched this run.")
+        }
         val revertedTarget = result.success && result.copyBackPath == null
 
+        val dolphinPatchedThisRun = prefs.getBoolean(PrefsConstants.KEY_DOLPHIN_PATCHED_THIS_RUN, false)
+        val dolphinResult = if (dolphinPatchedThisRun) {
+            val restoreDolphinHardcore = prefs.getBoolean(PrefsConstants.KEY_DOLPHIN_HARDCORE_WAS_ENABLED, false)
+            revertDolphinCfg(this, PrefsConstants.loadDolphinSafUri(this), restoreDolphinHardcore)
+        } else {
+            com.raofflineproxy.ui.DolphinPatchResult(success = true, message = "Dolphin not patched this run.", skippedNotInstalled = true)
+        }
+        val revertedDolphinTarget = dolphinResult.success && dolphinResult.copyBackPath == null
+
         if (revertedTarget) {
-            prefs.edit { remove(PrefsConstants.KEY_HARDCORE_WAS_ENABLED) }
+            prefs.edit {
+                remove(PrefsConstants.KEY_RETROARCH_HARDCORE_WAS_ENABLED)
+                remove(PrefsConstants.KEY_RETROARCH_PATCHED_THIS_RUN)
+            }
             Log.i(TAG, "RetroArch cfg reverted during service shutdown")
+        }
+        if (revertedDolphinTarget) {
+            prefs.edit {
+                remove(PrefsConstants.KEY_DOLPHIN_HARDCORE_WAS_ENABLED)
+                remove(PrefsConstants.KEY_DOLPHIN_PATCHED_THIS_RUN)
+            }
+            Log.i(TAG, "Dolphin RetroAchievements.ini reverted during service shutdown")
+        }
+        if (revertedTarget) {
             return
         }
 
