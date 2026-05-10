@@ -6,7 +6,7 @@
 
 These setup steps are for the Android app.
 
-Before using RAOfflineProxy on Android, enter your RetroAchievements account details in RetroArch. RAOfflineProxy first uses RetroArch's saved `cheevos_token` when present. If no token is available, it uses `cheevos_username` and `cheevos_password` once to retrieve and cache a token.
+Before using RAOfflineProxy on Android, enter your RetroAchievements account details in RetroArch.
 
 ## Step 1: Install RAOfflineProxy
 
