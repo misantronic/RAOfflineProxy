@@ -85,15 +85,21 @@ The table below reflects the current app behavior.
 | **Nintendo DS** | Hashes the DS header, ARM9 code, ARM7 code, and icon/title block, while ignoring a 512-byte SuperCard header when present | **✅ Working** |
 | **PlayStation** | Parses the disc image, reads `SYSTEM.CNF`, finds the boot executable, and hashes the executable path plus executable contents | **✅ Working for `.bin` images**. `.iso` is implemented but not manually tested |
 | **PSP** | Parses the ISO and hashes `PSP_GAME\PARAM.SFO` followed by `PSP_GAME\SYSDIR\EBOOT.BIN` | **✅ Working** |
+| **GameCube** | Parses the disc image, hashes the disc header plus the `main.dol` sections the same way RetroAchievements expects for GameCube disc images | **✅ Working for `.iso` and `.gcm` images** |
+| **Wii** | Supports two Wii manual-cache paths: disc-image hashing for Wii `.iso` images and WiiWare hashing for `.wad` packages | **✅ Working for `.iso` and `.wad`** |
 | **Atari 7800** | Ignores the 128-byte A78 header when present, then MD5s the remaining ROM data | **Best effort only** |
 | **Atari Lynx** | Ignores the 64-byte LNX header when present, then MD5s the remaining ROM data | **Best effort only** |
 | **PC Engine**<br>**TurboGrafx-16**<br>**SuperGrafx** | Ignores a 512-byte header when the file size indicates one, then MD5s the ROM | **Best effort only** |
 | **Super Cassette Vision** | Ignores the 32-byte EmuSCV header when present, then MD5s the remaining ROM data | **Best effort only** |
 | **Other formats** | Falls back to plain whole-file MD5 | **Best effort only**. This may or may not match RetroAchievements depending on the system |
-| **Dreamcast**<br>**Sega CD**<br>**Saturn**<br>**3DO**<br>**Neo Geo CD**<br>**PC Engine CD**<br>**PC-FX**<br>**Jaguar CD**<br>**GameCube**<br>**Wii**<br>**Nintendo 3DS**<br>**MS-DOS**<br>**Arcade** | No supported manual hashing path at the moment | **Not manually working** |
+| **Dreamcast**<br>**Sega CD**<br>**Saturn**<br>**3DO**<br>**Neo Geo CD**<br>**PC Engine CD**<br>**PC-FX**<br>**Jaguar CD**<br>**Nintendo 3DS**<br>**MS-DOS**<br>**Arcade** | No supported manual hashing path at the moment | **Not manually working** |
 
 ::: warning Manual caching support is still format-dependent
 If a file format needs custom RetroAchievements hashing and that format is not explicitly listed above, manual caching may skip it even though launching the same game through RetroArch works.
+:::
+
+::: warning RVZ is not supported yet
+Compressed Dolphin `.rvz` files are not currently supported for manual caching. The app will refuse to hash them rather than falling back to an incorrect whole-file MD5.
 :::
 
 ::: tip A skipped ROM is not always a bug
