@@ -13,7 +13,6 @@ object PrefsConstants {
     const val KEY_AUTOSTART_PROXY = "autostart_proxy"
     const val KEY_ENABLE_RETROARCH = "enable_retroarch"
     const val KEY_ENABLE_DOLPHIN = "enable_dolphin"
-    const val KEY_HARDCORE_WAS_ENABLED = "hardcore_was_enabled"
     const val KEY_RETROARCH_HARDCORE_WAS_ENABLED = "retroarch_hardcore_was_enabled"
     const val KEY_DOLPHIN_HARDCORE_WAS_ENABLED = "dolphin_hardcore_was_enabled"
     const val KEY_SKIP_NEXT_CFG_REVERT = "skip_next_cfg_revert"

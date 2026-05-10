@@ -336,41 +336,6 @@ internal fun buildRevertedDolphinContent(content: String, restoreHardcore: Boole
 internal fun isDolphinPatchedContent(content: String, proxyAddress: String): Boolean =
     extractDolphinAchievementValue(content, "HostUrl") == proxyAddress
 
-fun checkDolphinIsPatched(context: Context, treeUri: Uri?): Boolean {
-    val proxyAddress = proxyValue(context)
-    Log.d(TAG, "checkIsPatched: treeUri=$treeUri proxy=$proxyAddress")
-
-    if (treeUri != null) {
-        val tree = DocumentFile.fromTreeUri(context, treeUri)
-        if (tree != null) {
-            for (segments in DOLPHIN_SAF_CFG_PATHS) {
-                val cfgFile = segments.fold(tree as DocumentFile?) { dir, seg -> dir?.findFile(seg) }
-                if (cfgFile == null || !cfgFile.exists()) continue
-                return try {
-                    val content = context.contentResolver.openInputStream(cfgFile.uri)
-                        ?.bufferedReader()
-                        ?.use { it.readText() }
-                        ?: return false
-                    isDolphinPatchedContent(content, proxyAddress)
-                } catch (_: Exception) {
-                    false
-                }
-            }
-        }
-    }
-
-    val directCandidate = DOLPHIN_SOURCE_CANDIDATES.map(::File).firstOrNull { it.exists() && it.canRead() }
-    if (directCandidate != null) {
-        return try {
-            isDolphinPatchedContent(directCandidate.readText(), proxyAddress)
-        } catch (_: Exception) {
-            false
-        }
-    }
-
-    return false
-}
-
 private fun updateDolphinAchievementsSection(content: String, update: MutableMap<String, String>.() -> Unit): String {
     val replacements = linkedMapOf<String, String>().apply(update)
     val lines = content.split('\n').toMutableList()
