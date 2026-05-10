@@ -55,12 +55,14 @@
     <string name="patch_cfg_not_in_folder">retroarch.cfg not found in the granted folder. Please grant access to RetroArch\'s Android/data package files folder, such as Android/data/com.retroarch.aarch64/files or Android/data/com.retroarch/files.</string>
     <string name="patch_success">Patched successfully.</string>
     <string name="patch_error_file">Error patching %1$s: %2$s</string>
+    <string name="patch_error_unavailable">Could not patch retroarch.cfg automatically. Grant folder access if prompted and try again.</string>
     <string name="dolphin_patch_already_configured">Dolphin already configured — no changes needed.</string>
     <string name="dolphin_patch_success_saf">Dolphin patched successfully via folder access.</string>
     <string name="dolphin_patch_error_saf">Error patching Dolphin via folder access: %s</string>
     <string name="dolphin_patch_cfg_not_in_folder">RetroAchievements.ini not found in the granted folder. Please grant access to Dolphin\'s Android/data/org.dolphinemu.dolphinemu/files/Config folder.</string>
     <string name="dolphin_patch_success">Dolphin patched successfully.</string>
     <string name="dolphin_patch_error_file">Error patching Dolphin config %1$s: %2$s</string>
+    <string name="dolphin_patch_error_unavailable">Could not patch Dolphin automatically. Grant folder access if prompted and try again.</string>
 
     <!-- CFG revert messages -->
     <string name="revert_already_reverted">Already reverted — no changes needed.</string>
@@ -68,11 +70,13 @@
     <string name="revert_error_saf">Error reverting via folder access: %s</string>
     <string name="revert_success">Reverted successfully.</string>
     <string name="revert_error_file">Error reverting %1$s: %2$s</string>
+    <string name="revert_error_unavailable">Could not revert retroarch.cfg automatically. Reopen the app, grant folder access if prompted, and try again.</string>
     <string name="dolphin_revert_already_reverted">Dolphin already reverted — no changes needed.</string>
     <string name="dolphin_revert_success_saf">Dolphin reverted successfully via folder access.</string>
     <string name="dolphin_revert_error_saf">Error reverting Dolphin via folder access: %s</string>
     <string name="dolphin_revert_success">Dolphin reverted successfully.</string>
     <string name="dolphin_revert_error_file">Error reverting Dolphin config %1$s: %2$s</string>
+    <string name="dolphin_revert_error_unavailable">Could not revert Dolphin automatically. Reopen the app, grant folder access if prompted, and try again.</string>
 
     <!-- Flush messages -->
     <string name="flush_started">Flushing awards…</string>

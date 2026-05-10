@@ -52,8 +52,6 @@ data class DolphinPatchResult(
     val skippedNotInstalled: Boolean = false
 )
 
-private enum class DolphinManualEditMode { Patch, Revert }
-
 private data class DolphinStrings(
     val noOpMessage: Int,
     val successSaf: Int,
@@ -61,7 +59,7 @@ private data class DolphinStrings(
     val successFile: Int,
     val errorFile: Int,
     val configMissingInFolder: Int,
-    val manualEditMode: DolphinManualEditMode
+    val unavailableError: Int
 )
 
 private val DOLPHIN_PATCH_STRINGS = DolphinStrings(
@@ -71,7 +69,7 @@ private val DOLPHIN_PATCH_STRINGS = DolphinStrings(
     successFile = R.string.dolphin_patch_success,
     errorFile = R.string.dolphin_patch_error_file,
     configMissingInFolder = R.string.dolphin_patch_cfg_not_in_folder,
-    manualEditMode = DolphinManualEditMode.Patch
+    unavailableError = R.string.dolphin_patch_error_unavailable
 )
 
 private val DOLPHIN_REVERT_STRINGS = DolphinStrings(
@@ -81,25 +79,13 @@ private val DOLPHIN_REVERT_STRINGS = DolphinStrings(
     successFile = R.string.dolphin_revert_success,
     errorFile = R.string.dolphin_revert_error_file,
     configMissingInFolder = R.string.dolphin_patch_cfg_not_in_folder,
-    manualEditMode = DolphinManualEditMode.Revert
+    unavailableError = R.string.dolphin_revert_error_unavailable
 )
 
 internal fun isDolphinInstalled(context: Context): Boolean =
     DOLPHIN_PACKAGE_CANDIDATES.any { packageName ->
         runCatching { context.packageManager.getPackageInfo(packageName, 0) }.isSuccess
     } || DOLPHIN_SOURCE_CANDIDATES.any { File(it).exists() }
-
-internal fun patchDolphinManualEditInstructions(proxyAddress: String): String =
-    "Could not patch RetroAchievements.ini automatically.\n\n" +
-        "Grant Folder Access, or edit RetroAchievements.ini manually and set these exact lines in [Achievements]:\n\n" +
-        "HostUrl = $proxyAddress\n" +
-        "HardcoreEnabled = False"
-
-internal fun revertDolphinManualEditInstructions(restoreHardcore: Boolean): String =
-    "Could not revert RetroAchievements.ini automatically.\n\n" +
-        "Grant Folder Access, or edit RetroAchievements.ini manually and set these exact lines in [Achievements]:\n\n" +
-        "HostUrl = \n" +
-        "HardcoreEnabled = ${if (restoreHardcore) "True" else "False"}"
 
 fun patchDolphinCfg(context: Context, treeUri: Uri?): DolphinPatchResult {
     if (!isDolphinInstalled(context)) {
@@ -116,8 +102,7 @@ fun patchDolphinCfg(context: Context, treeUri: Uri?): DolphinPatchResult {
         transform = transform,
         strings = DOLPHIN_PATCH_STRINGS,
         detectHardcore = true,
-        ensureBackup = true,
-        restoreHardcore = false
+        ensureBackup = true
     )
 }
 
@@ -136,8 +121,7 @@ fun revertDolphinCfg(context: Context, treeUri: Uri?, restoreHardcore: Boolean =
         transform = transform,
         strings = DOLPHIN_REVERT_STRINGS,
         detectHardcore = false,
-        ensureBackup = false,
-        restoreHardcore = restoreHardcore
+        ensureBackup = false
     )
 }
 
@@ -147,8 +131,7 @@ private fun applyDolphinTransform(
     transform: (String) -> String,
     strings: DolphinStrings,
     detectHardcore: Boolean,
-    ensureBackup: Boolean,
-    restoreHardcore: Boolean
+    ensureBackup: Boolean
 ): DolphinPatchResult {
     Log.d(TAG, "apply: treeUri=$treeUri detectHardcore=$detectHardcore ensureBackup=$ensureBackup candidates=${DOLPHIN_SOURCE_CANDIDATES.size}")
     if (treeUri != null) {
@@ -177,13 +160,10 @@ private fun applyDolphinTransform(
         }
     }
 
-    Log.w(TAG, "apply: falling back to manual instructions")
+    Log.w(TAG, "apply: automatic patching unavailable")
     return DolphinPatchResult(
         success = false,
-        message = when (strings.manualEditMode) {
-            DolphinManualEditMode.Patch -> patchDolphinManualEditInstructions(proxyValue(context))
-            DolphinManualEditMode.Revert -> revertDolphinManualEditInstructions(restoreHardcore)
-        }
+        message = context.getString(strings.unavailableError)
     )
 }
 

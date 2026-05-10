@@ -65,14 +65,6 @@ RAOfflineProxy creates this file as a one-time snapshot of `retroarch.cfg` the f
 
 ---
 
-## A staging copy message appears asking me to manually copy a file
-
-**Cause:** The app could not write the patched config back to its original location (last-resort fallback).
-
-**Fix:** The patched file has been saved to a temporary location shown in the app. Copy it to the path shown using a file manager app or adb.
-
----
-
 ## The Cached Games list is empty after I scanned ROMs
 
 **Cause:** No ROMs were matched to RetroAchievements games. This can happen if:

@@ -39,7 +39,7 @@ Before patching, the app also checks for a one-time sibling backup named `retroa
 - The app does not overwrite it later
 - The app does not restore from it automatically
 
-The app tries four strategies in order:
+The app tries these strategies in order:
 
 #### Strategy 1: Folder Access (preferred)
 
@@ -56,10 +56,6 @@ On Android 12 and below, if the file is found but not directly writable, the app
 Grant access to the suggested folder.
 
 After granting, the app retries automatically. If the selected folder does not contain `retroarch.cfg`, the app shows an error and asks again the next time you start the proxy.
-
-#### Strategy 4: Staging Copy
-
-If all else fails, the app copies `retroarch.cfg` to a temporary folder, patches it there, and attempts to copy it back. If the copy-back fails, you are shown the file path and must manually copy it.
 
 ### Dolphin
 
