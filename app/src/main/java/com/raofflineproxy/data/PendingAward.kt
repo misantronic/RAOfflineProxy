@@ -1,7 +1,6 @@
 package com.raofflineproxy.data
 
 import androidx.room.Entity
-import androidx.room.Index
 import androidx.room.PrimaryKey
 
 const val PENDING_AWARD_STATUS_PENDING = "pending"
@@ -9,10 +8,7 @@ const val PENDING_AWARD_STATUS_DELETED = "deleted"
 const val PENDING_AWARD_STATUS_STALE = "stale"
 const val PENDING_AWARD_STATUS_FLUSHED = "flushed"
 
-@Entity(
-    tableName = "pending_awards",
-    indices = [Index(value = ["achievementId"], unique = true)]
-)
+@Entity(tableName = "pending_awards")
 data class PendingAward(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val achievementId: Int,

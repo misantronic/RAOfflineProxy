@@ -469,8 +469,7 @@ class AwardFlusher(
             db.pendingAwardDao().deleteByStatuses(
                 listOf(
                     PENDING_AWARD_STATUS_DELETED,
-                    PENDING_AWARD_STATUS_STALE,
-                    PENDING_AWARD_STATUS_FLUSHED
+                    PENDING_AWARD_STATUS_STALE
                 )
             )
         }

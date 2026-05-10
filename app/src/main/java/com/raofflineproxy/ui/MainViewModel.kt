@@ -31,6 +31,7 @@ import com.raofflineproxy.data.CachedGame
 import com.raofflineproxy.data.PendingAward
 import com.raofflineproxy.data.PendingAwardUi
 import com.raofflineproxy.data.PENDING_AWARD_STATUS_DELETED
+import com.raofflineproxy.data.PENDING_AWARD_STATUS_FLUSHED
 import com.raofflineproxy.data.UnlockedAchievement
 import com.raofflineproxy.proxy.AwardFlusher
 import com.raofflineproxy.proxy.FlushEvent
@@ -69,6 +70,7 @@ data class MainUiState(
     val autostartProxy: Boolean = false,
     val proxyPort: Int = PrefsConstants.DEFAULT_PROXY_PORT,
     val pendingAwards: List<PendingAwardUi> = emptyList(),
+    val awardHistory: List<PendingAwardUi> = emptyList(),
     val cachedGames: List<CachedGame> = emptyList(),
     val needsSafGrant: Boolean = false,
     val cfgCopyBackPath: String? = null,
@@ -151,10 +153,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             combine(
                 db.pendingAwardDao().observeByStatus(),
+                db.pendingAwardDao().observeByStatus(PENDING_AWARD_STATUS_FLUSHED),
                 db.cacheDao().observePatchEntries(),
                 db.cacheDao().observeByPrefix(CacheKeys.PREFIX_LOGIN)
-            ) { awards, entries, loginEntries ->
+            ) { awards, historyAwards, entries, loginEntries ->
                 val resolvedAwards = awards.map { award -> resolvePendingAward(award) }
+                val resolvedHistoryAwards = historyAwards.map { award -> resolvePendingAward(award) }
                 val hasLoginCredentials = loginEntries.isNotEmpty()
                 val pendingAwardsByGameId = buildPendingAwardsByGameId(entries, awards)
                 val games = run {
@@ -200,9 +204,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         )
                     }.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.title })
                 }
-                Triple(resolvedAwards, games, hasLoginCredentials)
-            }.collect { (resolvedAwards, games, hasLoginCredentials) ->
-                    _state.value = _state.value.copy(pendingAwards = resolvedAwards)
+                Quadruple(resolvedAwards, resolvedHistoryAwards, games, hasLoginCredentials)
+            }.collect { (resolvedAwards, resolvedHistoryAwards, games, hasLoginCredentials) ->
+                    _state.value = _state.value.copy(
+                        pendingAwards = resolvedAwards,
+                        awardHistory = resolvedHistoryAwards
+                    )
                     _cachedGames.value = games
                     _state.value = _state.value.copy(
                         cachedGames = games,
@@ -254,7 +261,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    private suspend fun requireCredentials(): com.raofflineproxy.proxy.LoginCredentials? {
+    private suspend fun requireCredentials(): LoginCredentials? {
         val credentials = withContext(Dispatchers.IO) { loadLoginCredentials(db) }
         if (credentials == null) {
             SnackbarManager.showError(str(R.string.scan_no_login))
@@ -280,7 +287,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             val reachable = withContext(Dispatchers.IO) {
                 probeRetroAchievements(userAgent = userAgent, force = forceProbe)
             }
-            _state.value = _state.value.copy(isOnline = validated && reachable)
+            _state.value = _state.value.copy(isOnline = reachable)
         }
     }
 
@@ -311,6 +318,38 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     signedAt = award.signedAt
                 )
             )
+        }
+    }
+
+    fun deleteAwardHistoryEntry(award: PendingAwardUi) {
+        viewModelScope.launch(Dispatchers.IO) {
+            db.pendingAwardDao().update(
+                PendingAward(
+                    id = award.id,
+                    achievementId = award.achievementId,
+                    queryString = award.queryString,
+                    requestBody = award.requestBody,
+                    userAgent = award.userAgent,
+                    queuedAt = award.queuedAt,
+                    retryCount = award.retryCount,
+                    lastError = award.lastError,
+                    status = PENDING_AWARD_STATUS_DELETED,
+                    payloadHash = award.payloadHash,
+                    prevHash = award.prevHash,
+                    signature = award.signature,
+                    signedAt = award.signedAt
+                )
+            )
+        }
+    }
+
+    fun clearAwardHistory() {
+        viewModelScope.launch(Dispatchers.IO) {
+            db.pendingAwardDao().getAllByStatus(PENDING_AWARD_STATUS_FLUSHED).forEach { award ->
+                db.pendingAwardDao().update(
+                    award.copy(status = PENDING_AWARD_STATUS_DELETED)
+                )
+            }
         }
     }
 
@@ -800,3 +839,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         )
     }
 }
+
+private data class Quadruple<A, B, C, D>(
+    val first: A,
+    val second: B,
+    val third: C,
+    val fourth: D
+)
