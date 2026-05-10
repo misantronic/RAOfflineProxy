@@ -24,7 +24,7 @@ from .service import (
 )
 from .menu_sdl import run_menu_sdl
 from .state import load_patch_state, save_patch_state
-from .ui import launch_ui, write_status_image, write_text_image
+from .ui import write_status_image, write_text_image
 
 STALE_HOOK_PATH = Path("/userdata/system/scripts/RAOfflineProxy_game_hook.sh")
 
@@ -86,7 +86,6 @@ def main() -> None:
             "autostart-status",
             "status",
             "run-service",
-            "ui",
             "ui-image",
             "text-image",
             "menu",
@@ -139,10 +138,6 @@ def main() -> None:
 
         if args.command == "run-service":
             run_service_foreground(config_data)
-            return
-
-        if args.command == "ui":
-            launch_ui()
             return
 
         if args.command == "menu":
