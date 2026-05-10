@@ -13,6 +13,7 @@ import com.raofflineproxy.proxy.hash.PcEngineRomHashStrategy
 import com.raofflineproxy.proxy.hash.detectPrimaryVolumeDescriptor
 import com.raofflineproxy.proxy.hash.detectIsoSectorLayout
 import com.raofflineproxy.proxy.hash.findFileRecord
+import com.raofflineproxy.proxy.hash.hashZipRom
 import com.raofflineproxy.proxy.hash.readBigEndianInt
 import com.raofflineproxy.proxy.hash.hashRom
 import com.raofflineproxy.proxy.hash.PsxRomHashStrategy
@@ -29,6 +30,10 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.ByteArrayOutputStream
+import java.io.File
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
 
 class RomScannerHashTest {
 
@@ -570,6 +575,50 @@ class RomScannerHashTest {
     }
 
     @Test
+    fun hashZipRom_singleSupportedEntryHashesExtractedRom() {
+        val zipBytes = createZip(
+            ".DS_Store" to "ignored".toByteArray(Charsets.US_ASCII),
+            "games/tetris.gb" to "rom".toByteArray(Charsets.US_ASCII)
+        )
+
+        val hash = hashZipRom(
+            tempDir = tempDir(),
+            openArchiveStream = { zipBytes.inputStream() }
+        )
+
+        assertEquals("5f397a1e588cfe96b4aa4bab7a5b1d44", hash)
+    }
+
+    @Test
+    fun hashZipRom_returnsNullWhenArchiveHasNoSupportedRom() {
+        val zipBytes = createZip(
+            "notes.txt" to "hello".toByteArray(Charsets.US_ASCII)
+        )
+
+        val hash = hashZipRom(
+            tempDir = tempDir(),
+            openArchiveStream = { zipBytes.inputStream() }
+        )
+
+        assertNull(hash)
+    }
+
+    @Test
+    fun hashZipRom_returnsNullWhenArchiveHasMultipleSupportedRoms() {
+        val zipBytes = createZip(
+            "one.gb" to "one".toByteArray(Charsets.US_ASCII),
+            "two.gbc" to "two".toByteArray(Charsets.US_ASCII)
+        )
+
+        val hash = hashZipRom(
+            tempDir = tempDir(),
+            openArchiveStream = { zipBytes.inputStream() }
+        )
+
+        assertNull(hash)
+    }
+
+    @Test
     fun readBigEndianInt_readsExpectedValue() {
         val bytes = byteArrayOf(0x12, 0x34, 0x56, 0x78)
         assertEquals(0x12345678, readBigEndianInt(bytes))
@@ -736,5 +785,19 @@ class RomScannerHashTest {
         target[offset + 6] = ((value shr 8) and 0xFF).toByte()
         target[offset + 7] = (value and 0xFF).toByte()
     }
+
+    private fun createZip(vararg entries: Pair<String, ByteArray>): ByteArray {
+        val output = ByteArrayOutputStream()
+        ZipOutputStream(output).use { archive ->
+            entries.forEach { (name, bytes) ->
+                archive.putNextEntry(ZipEntry(name))
+                archive.write(bytes)
+                archive.closeEntry()
+            }
+        }
+        return output.toByteArray()
+    }
+
+    private fun tempDir(): File = File(requireNotNull(System.getProperty("java.io.tmpdir")))
 
 }
