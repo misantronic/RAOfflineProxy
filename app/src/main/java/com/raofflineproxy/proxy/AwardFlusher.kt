@@ -295,7 +295,15 @@ class AwardFlusher(
     suspend fun flush() = withContext(Dispatchers.IO) {
         val awards = db.pendingAwardDao().getAll()
         if (awards.isEmpty()) return@withContext
-        Log.i(TAG, "Flushing ${awards.size} queued awards")
+
+        val pendingAwards = awards.filter { it.status == PENDING_AWARD_STATUS_PENDING }
+        if (pendingAwards.isEmpty()) {
+            Log.i(TAG, "No pending awards to flush")
+            purgeProcessedAwardsIfSafe()
+            return@withContext
+        }
+
+        Log.i(TAG, "Flushing ${pendingAwards.size} pending awards")
 
         when (val chain = verifyChain(awards)) {
             is ChainVerificationResult.Broken -> {
@@ -308,22 +316,6 @@ class AwardFlusher(
             }
         }
 
-        if (awards.none { it.status == PENDING_AWARD_STATUS_PENDING }) {
-            val skippedDeleted = awards.count { it.status == PENDING_AWARD_STATUS_DELETED }
-            val skippedStale = awards.count { it.status == PENDING_AWARD_STATUS_STALE }
-            purgeProcessedAwardsIfSafe()
-            _events.emit(
-                FlushEvent.Completed(
-                    flushed = 0,
-                    total = awards.size,
-                    skippedDeleted = skippedDeleted,
-                    skippedStale = skippedStale,
-                    pendingRemaining = 0
-                )
-            )
-            return@withContext
-        }
-
         val creds = loadLoginCredentials(db)
         if (creds == null) {
             Log.e(TAG, "Flush blocked — no login credentials available")
@@ -331,7 +323,6 @@ class AwardFlusher(
             return@withContext
         }
         val userAgent = loadUserAgent(db)
-        val pendingAwards = awards.filter { it.status == PENDING_AWARD_STATUS_PENDING }
         val pendingAwardGameTargets = resolvePendingAwardGameTargets(pendingAwards)
 
         val knownAchievementIds = refreshAndLoadAchievementIds(
@@ -352,25 +343,10 @@ class AwardFlusher(
         _events.emit(FlushEvent.Started)
 
         var flushed = 0
-        var skippedDeleted = 0
         var skippedStale = 0
         val successfulGameIds = linkedSetOf<Int>()
-        awards.forEachIndexed { index, award ->
-            _events.emit(FlushEvent.Progress(index + 1, awards.size))
-
-            if (award.status == PENDING_AWARD_STATUS_DELETED) {
-                skippedDeleted++
-                return@forEachIndexed
-            }
-
-            if (award.status == PENDING_AWARD_STATUS_STALE) {
-                skippedStale++
-                return@forEachIndexed
-            }
-
-            if (award.status == PENDING_AWARD_STATUS_FLUSHED) {
-                return@forEachIndexed
-            }
+        pendingAwards.forEachIndexed { index, award ->
+            _events.emit(FlushEvent.Progress(index + 1, pendingAwards.size))
 
             val awardGameId = pendingAwardGameTargets.awardGameIds[award.id]
 
@@ -453,8 +429,7 @@ class AwardFlusher(
         _events.emit(
             FlushEvent.Completed(
                 flushed = flushed,
-                total = awards.size,
-                skippedDeleted = skippedDeleted,
+                total = pendingAwards.size,
                 skippedStale = skippedStale,
                 pendingRemaining = pendingRemaining
             )

@@ -32,6 +32,7 @@ import com.raofflineproxy.data.PendingAward
 import com.raofflineproxy.data.PendingAwardUi
 import com.raofflineproxy.data.PENDING_AWARD_STATUS_DELETED
 import com.raofflineproxy.data.PENDING_AWARD_STATUS_FLUSHED
+import com.raofflineproxy.data.PENDING_AWARD_STATUS_PENDING
 import com.raofflineproxy.data.UnlockedAchievement
 import com.raofflineproxy.proxy.AwardFlusher
 import com.raofflineproxy.proxy.FlushEvent
@@ -321,35 +322,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun deleteAwardHistoryEntry(award: PendingAwardUi) {
-        viewModelScope.launch(Dispatchers.IO) {
-            db.pendingAwardDao().update(
-                PendingAward(
-                    id = award.id,
-                    achievementId = award.achievementId,
-                    queryString = award.queryString,
-                    requestBody = award.requestBody,
-                    userAgent = award.userAgent,
-                    queuedAt = award.queuedAt,
-                    retryCount = award.retryCount,
-                    lastError = award.lastError,
-                    status = PENDING_AWARD_STATUS_DELETED,
-                    payloadHash = award.payloadHash,
-                    prevHash = award.prevHash,
-                    signature = award.signature,
-                    signedAt = award.signedAt
-                )
-            )
-        }
-    }
-
     fun clearAwardHistory() {
         viewModelScope.launch(Dispatchers.IO) {
-            db.pendingAwardDao().getAllByStatus(PENDING_AWARD_STATUS_FLUSHED).forEach { award ->
-                db.pendingAwardDao().update(
-                    award.copy(status = PENDING_AWARD_STATUS_DELETED)
-                )
+            if (db.pendingAwardDao().existsByStatus(PENDING_AWARD_STATUS_PENDING)) {
+                return@launch
             }
+            db.pendingAwardDao().deleteByStatuses(listOf(PENDING_AWARD_STATUS_FLUSHED))
         }
     }
 
