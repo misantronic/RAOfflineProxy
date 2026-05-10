@@ -4,7 +4,7 @@
 
 ## What is RAOfflineProxy?
 
-RAOfflineProxy is a local proxy that acts between supported emulator clients and the [RetroAchievements](https://retroachievements.org/) (RA) website. On Android, that currently means [RetroArch](https://www.retroarch.com/) and Dolphin.
+RAOfflineProxy is a local proxy that acts between supported emulators and [RetroAchievements](https://retroachievements.org/) (RA). On Android, that currently means RetroArch and Dolphin.
 
 Their achievement systems talk directly to RetroAchievements over the internet. This works great online, but the moment your connection drops, achievements stop unlocking and games may fail to load their achievement lists at all.
 
@@ -19,6 +19,8 @@ RAOfflineProxy (local proxy)
     ├─ online  ──► retroachievements.org  (saves response locally)
     └─ offline ──► local database         (serves saved response)
 ```
+
+**This technique has been approved by RetroAchievements.org staff.**
 
 ## What it does
 
@@ -36,7 +38,6 @@ RAOfflineProxy (local proxy)
 - **Hardcore mode is not supported.** Any hardcore achievement unlock is immediately rejected. Starting the proxy also disables hardcore mode in supported emulator configs where applicable and restores the previous setting when you stop the proxy.
 - It does not modify RetroArch, Dolphin, or any emulator core.
 - It does not store ROM files or any game content.
-- Approved by RetroAchievements.org.
 
 ## Important Shutdown Behavior
 
