@@ -1,11 +1,12 @@
 # Compatibility
 
-Devices confirmed working by users or the developer.
+Devices confirmed working by either the developer or user reports.
 
 | Device | Android version | Status |
 |---|---|---|
-| AYN Odin 2 Portal | Android 13 | ✅ Working |
-| Ayaneo Pocket Air Mini | Android 11 | ✅ Working |
+| AYN Odin 2 Portal | Android 13 | ✅ Working, dev tested |
+| Ayaneo Pocket Air Mini | Android 11 | ✅ Working, dev tested |
+| MagicX One 35 | Android 12 | ✅ Working, user tested |
 
 ## Submit your device
 
