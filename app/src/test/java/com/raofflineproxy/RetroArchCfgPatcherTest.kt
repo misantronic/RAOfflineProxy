@@ -8,8 +8,6 @@ import com.raofflineproxy.ui.ensureBackupFileExists
 import com.raofflineproxy.ui.extractRetroArchCredentials
 import com.raofflineproxy.ui.ImportedCredentials
 import com.raofflineproxy.ui.isPatchedContent
-import com.raofflineproxy.ui.patchManualEditInstructions
-import com.raofflineproxy.ui.revertManualEditInstructions
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -419,21 +417,4 @@ class RetroArchCfgPatcherTest {
         assertFalse(isPatchedContent(reverted, proxyAddress))
     }
 
-    @Test
-    fun patchManualEditInstructions_includeExactLines() {
-        val instructions = patchManualEditInstructions(proxyAddress)
-
-        assertTrue(instructions.contains("Grant Folder Access"))
-        assertTrue(instructions.contains("cheevos_custom_host = \"$proxyAddress\""))
-        assertTrue(instructions.contains("cheevos_hardcore_mode_enable = \"false\""))
-    }
-
-    @Test
-    fun revertManualEditInstructions_includeExactLines() {
-        val instructions = revertManualEditInstructions()
-
-        assertTrue(instructions.contains("Grant Folder Access"))
-        assertTrue(instructions.contains("cheevos_custom_host = \"\""))
-        assertTrue(instructions.contains("cheevos_hardcore_mode_enable = \"true\""))
-    }
 }

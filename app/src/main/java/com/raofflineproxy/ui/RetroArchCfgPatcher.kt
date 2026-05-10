@@ -57,10 +57,8 @@ private class CfgStrings(
     val errorSaf: Int,
     val successFile: Int,
     val errorFile: Int,
-    val manualEditMode: ManualEditMode
+    val unavailableError: Int
 )
-
-private enum class ManualEditMode { Patch, Revert }
 
 private val PATCH_STRINGS = CfgStrings(
     noOpMessage = R.string.patch_already_configured,
@@ -68,7 +66,7 @@ private val PATCH_STRINGS = CfgStrings(
     errorSaf = R.string.patch_error_saf,
     successFile = R.string.patch_success,
     errorFile = R.string.patch_error_file,
-    manualEditMode = ManualEditMode.Patch
+    unavailableError = R.string.patch_error_unavailable
 )
 
 private val REVERT_STRINGS = CfgStrings(
@@ -77,20 +75,8 @@ private val REVERT_STRINGS = CfgStrings(
     errorSaf = R.string.revert_error_saf,
     successFile = R.string.revert_success,
     errorFile = R.string.revert_error_file,
-    manualEditMode = ManualEditMode.Revert
+    unavailableError = R.string.revert_error_unavailable
 )
-
-internal fun patchManualEditInstructions(proxyAddress: String): String =
-    "Could not patch retroarch.cfg automatically.\n\n" +
-    "Grant Folder Access, or edit retroarch.cfg manually and set these exact lines:\n\n" +
-    "cheevos_custom_host = \"$proxyAddress\"\n" +
-    "cheevos_hardcore_mode_enable = \"false\""
-
-internal fun revertManualEditInstructions(): String =
-    "Could not revert retroarch.cfg automatically.\n\n" +
-    "Grant Folder Access, or edit retroarch.cfg manually and set these exact lines:\n\n" +
-    "cheevos_custom_host = \"\"\n" +
-    "cheevos_hardcore_mode_enable = \"true\" if you want to restore hardcore mode."
 
 fun patchRetroArchCfg(context: Context, treeUri: Uri?): PatchResult {
     Log.i(TAG, "patch: starting treeUri=$treeUri proxy=${proxyValue(context)}")
@@ -157,13 +143,10 @@ private fun applyCfgTransform(
         }
     }
 
-    Log.w(TAG, "apply: falling back to manual instructions")
+    Log.w(TAG, "apply: automatic patching unavailable")
     return PatchResult(
         success = false,
-        message = when (strings.manualEditMode) {
-            ManualEditMode.Patch -> patchManualEditInstructions(proxyValue(context))
-            ManualEditMode.Revert -> revertManualEditInstructions()
-        }
+        message = context.getString(strings.unavailableError)
     )
 }
 
