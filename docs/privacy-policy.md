@@ -1,6 +1,6 @@
 # Privacy Policy
 
-**Last updated: May 02, 2026**
+**Last updated: May 10, 2026**
 
 RAOfflineProxy ("the app") is a local proxy tool for Android that enables offline RetroAchievements support with RetroArch. This privacy policy explains what data is handled by the app, how it is stored, and when it is transmitted.
 
@@ -9,6 +9,7 @@ RAOfflineProxy ("the app") is a local proxy tool for Android that enables offlin
 - The app does **not** collect, store, or transmit any data to its developer.
 - The app does **not** contain ads, analytics, or crash reporting SDKs.
 - All data handled by the app stays on your device or is sent directly to [RetroAchievements.org](https://retroachievements.org) on your behalf: the same requests RetroArch would have made itself.
+- The website (`raofflineproxy.com`) uses Google Analytics to measure page traffic.
 
 ---
 
@@ -83,6 +84,10 @@ Deleting the app also removes all app data.
 ## Third-party services
 
 The app communicates exclusively with [RetroAchievements.org](https://retroachievements.org). Their privacy policy governs how they handle data you send to their servers: [https://retroachievements.org/terms](https://retroachievements.org/terms).
+
+The website (`raofflineproxy.com`) also uses [Google Analytics](https://policies.google.com/privacy) to measure page traffic and general site usage.
+
+When you visit the website, Google Analytics may process data such as page views, browser information, device information, and general location derived from your IP address. This analytics setup is for the website only and is not part of the Android app itself.
 
 ---
 
