@@ -8,6 +8,10 @@ These setup steps are for the Android app.
 
 Before using RAOfflineProxy on Android, enter your RetroAchievements account details in RetroArch.
 
+::: warning RetroArch config is patched automatically
+RAOfflineProxy will edit your `retroarch.cfg` to work. For details, see [RetroArch CFG Patching](./cfg-patching).
+:::
+
 ## Step 1: Install RAOfflineProxy
 
 Install the APK on your Android device. You can download the latest alpha prerelease from [GitHub Releases](https://github.com/misantronic/RAOfflineProxy/releases) or build from source.
@@ -15,10 +19,6 @@ Install the APK on your Android device. You can download the latest alpha prerel
 ## Step 2: Start the Proxy
 
 Start the proxy. RAOfflineProxy will import your saved RetroAchievements login automatically. On some devices, you may also need to grant folder access.
-
-::: warning Shutdown caveat
-On some devices, swiping the app away or crashing while the proxy is active does not reliably revert `retroarch.cfg` immediately. Stop sync before killing the app. If that happens, reopen RAOfflineProxy once so it can clean up `retroarch.cfg`.
-:::
 
 ## Step 3: Cache Your Games
 
