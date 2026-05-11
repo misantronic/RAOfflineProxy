@@ -132,15 +132,13 @@ private fun applyCfgTransform(
         return transformViaFile(context, directCandidate, transform, strings, detectHardcore, ensureBackup, extractCredentials)
     }
 
-    if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.S_V2) {
-        if (directCandidate != null || treeUri == null) {
-            Log.w(TAG, "apply: requesting SAF grant directCandidate=${directCandidate?.path} treeUri=$treeUri")
-            return PatchResult(
-                success = false,
-                message = context.getString(R.string.saf_dialog_message),
-                needsSafGrant = true
-            )
-        }
+    if (directCandidate != null || treeUri == null) {
+        Log.w(TAG, "apply: requesting SAF grant directCandidate=${directCandidate?.path} treeUri=$treeUri sdk=${Build.VERSION.SDK_INT}")
+        return PatchResult(
+            success = false,
+            message = context.getString(R.string.saf_dialog_message),
+            needsSafGrant = true
+        )
     }
 
     Log.w(TAG, "apply: automatic patching unavailable")
