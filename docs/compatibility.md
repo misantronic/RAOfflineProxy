@@ -2,14 +2,14 @@
 
 Devices confirmed working by either the developer or user reports.
 
-| Device | Android version | Status | Notes |
-|---|---|---|---|
-| AYN Thor | Android 13 | ✅ Working | User tested |
-| AYN Odin 2 Portal | Android 13 | ✅ Working | Dev tested |
-| Ayaneo Pocket Air Mini | Android 11 | ✅ Working | Dev tested |
-| MagicX One 35 | Android 12 | ✅ Working | User tested |
-| Retro Pocket Classic | Android 14 | ✅ Working | User tested |
-| Mangmi Air X | Android 14 | ❌ Not working | User tested; Stock, GammaOS_Next_v1.2, might work since 1.0.0-alpha3 |
+| Device | Version    | Status | Notes |
+|---|------------|---|---|
+| <span style="white-space: nowrap;">AYN Thor</span> | Android 13 | ✅ Working | User tested |
+| <span style="white-space: nowrap;">AYN Odin 2 Portal</span> | Android 13 | ✅ Working | Dev tested |
+| <span style="white-space: nowrap;">Ayaneo Pocket Air Mini</span> | Android 11 | ✅ Working | Dev tested |
+| <span style="white-space: nowrap;">MagicX One 35</span> | Android 12 | ✅ Working | User tested |
+| <span style="white-space: nowrap;">Retro Pocket Classic</span> | Android 14 | ✅ Working | User tested |
+| <span style="white-space: nowrap;">Mangmi Air X</span> | Android 14 | ❌ Not working | User tested; Stock, GammaOS_Next_v1.2, might work since 1.0.0-alpha3 |
 
 ## Submit your device
 
