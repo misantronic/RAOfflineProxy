@@ -384,6 +384,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun showOrQueueMessage(event: SnackbarEvent.Message) {
         pendingMessage = event
+        progressMessage = null
         if (activeSnackbarKind == ActiveSnackbarKind.Error) return
         showNextSnackbar()
     }
@@ -391,6 +392,10 @@ class MainActivity : AppCompatActivity() {
     private fun showOrClearProgress(message: String?) {
         progressMessage = message
         if (activeSnackbarKind == ActiveSnackbarKind.Error) return
+        if (message != null && activeSnackbarKind == ActiveSnackbarKind.Progress && snackbar != null) {
+            snackbar?.setText(message)
+            return
+        }
         showNextSnackbar()
     }
 
@@ -478,7 +483,22 @@ class MainActivity : AppCompatActivity() {
     private fun showCurrentProgress(message: String) {
         activeSnackbarKind = ActiveSnackbarKind.Progress
         snackbar = Snackbar.make(binding.fragmentContainer, message, Snackbar.LENGTH_INDEFINITE)
-            .also { it.show() }
+            .also {
+                it.addCallback(object : Snackbar.Callback() {
+                    override fun onDismissed(transientBottomBar: Snackbar?, event: Int) {
+                        if (suppressNextDismissCallback) {
+                            suppressNextDismissCallback = false
+                            return
+                        }
+                        if (snackbar === transientBottomBar) {
+                            snackbar = null
+                            activeSnackbarKind = null
+                            showNextSnackbar()
+                        }
+                    }
+                })
+                it.show()
+            }
     }
 
 }
