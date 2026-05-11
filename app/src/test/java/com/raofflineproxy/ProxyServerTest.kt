@@ -3,6 +3,7 @@ package com.raofflineproxy
 import com.raofflineproxy.proxy.awaitPendingAwardWrite
 import com.raofflineproxy.proxy.buildPendingAward
 import com.raofflineproxy.proxy.contentTypeForFile
+import com.raofflineproxy.proxy.isChunkedTransferEncoding
 import com.raofflineproxy.proxy.isStaticAssetRequest
 import com.raofflineproxy.proxy.parseContentLength
 import com.raofflineproxy.proxy.parseRequestLine
@@ -17,6 +18,7 @@ import com.raofflineproxy.proxy.proxyHttpOk
 import com.raofflineproxy.proxy.proxyHttpFile
 import com.raofflineproxy.proxy.proxyHttpResponse
 import com.raofflineproxy.proxy.proxyIsHardcoreRequest
+import com.raofflineproxy.proxy.readChunkedBody
 import com.raofflineproxy.proxy.normalizedCacheKey
 import com.raofflineproxy.proxy.sanitizeHttpReasonPhrase
 import com.raofflineproxy.proxy.shouldCacheResponse
@@ -33,7 +35,9 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import java.io.BufferedReader
 import java.io.File
+import java.io.StringReader
 
 class ProxyServerTest {
 
@@ -330,8 +334,30 @@ class ProxyServerTest {
     }
 
     @Test
-    fun validateTransferEncoding_rejectsChunked() {
-        assertEquals(501 to "transfer encoding not supported", validateTransferEncoding("chunked"))
+    fun validateTransferEncoding_allowsChunked() {
+        assertNull(validateTransferEncoding("chunked"))
+        assertNull(validateTransferEncoding("gzip, chunked"))
+    }
+
+    @Test
+    fun isChunkedTransferEncoding_detectsChunkedValue() {
+        assertTrue(isChunkedTransferEncoding("chunked"))
+        assertTrue(isChunkedTransferEncoding("gzip, chunked"))
+        assertFalse(isChunkedTransferEncoding("identity"))
+    }
+
+    @Test
+    fun readChunkedBody_readsAllChunks() {
+        val reader = BufferedReader(StringReader("4\r\ntest\r\n6\r\n-body!\r\n0\r\n\r\n"))
+
+        assertEquals("test-body!", readChunkedBody(reader))
+    }
+
+    @Test
+    fun readChunkedBody_returnsNullForInvalidChunkSize() {
+        val reader = BufferedReader(StringReader("ZZ\r\ntest\r\n0\r\n\r\n"))
+
+        assertNull(readChunkedBody(reader))
     }
 
     @Test
