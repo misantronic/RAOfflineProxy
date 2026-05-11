@@ -96,9 +96,18 @@ class HomeFragment : Fragment() {
         viewLifecycleOwner.lifecycleScope.launch {
             viewModel.state.collect { state ->
                 val installedCount = listOf(state.retroArchInstalled, state.dolphinInstalled).count { it }
+                val noEmulatorInstalled = installedCount == 0
                 val onlyOneInstalled = installedCount == 1
                 val proxyStartPending = state.proxyToggleInProgress || state.needsSafGrant
-                tokenWarning.visibility = if (state.proxyRunning && state.authState == AuthState.Invalid) View.VISIBLE else View.GONE
+                tokenWarning.text = when {
+                    noEmulatorInstalled -> getString(R.string.home_no_emulator_warning)
+                    else -> getString(R.string.home_token_warning)
+                }
+                tokenWarning.visibility = when {
+                    noEmulatorInstalled -> View.VISIBLE
+                    state.proxyRunning && state.authState == AuthState.Invalid -> View.VISIBLE
+                    else -> View.GONE
+                }
                 btnStartProxy.visibility = if (state.proxyRunning) View.GONE else View.VISIBLE
                 btnStartProxy.isEnabled = !proxyStartPending && (state.retroArchEnabled || state.dolphinEnabled)
                 btnStartProxy.alpha = if (proxyStartPending) 0.45f else 1f
