@@ -1,4 +1,4 @@
-# Installation & Setup
+# Installation & Setup (Android)
 
 > You are installing the current alpha build: `v1.0.0-alpha2`.
 

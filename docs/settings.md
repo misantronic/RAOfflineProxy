@@ -1,4 +1,4 @@
-# Settings & Auto-start
+# Settings & Auto-start (Android)
 
 ## Settings Screen
 

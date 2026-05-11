@@ -31,16 +31,15 @@ export default defineConfig({
 
     sidebar: [
       {
-        text: 'Getting Started',
-        items: [
-          { text: 'Introduction', link: '/introduction' },
-          { text: 'Installation & Setup', link: '/installation' },
-        ],
+        text: 'Introduction',
+        link: '/introduction'
       },
       {
-        text: 'Features',
+        text: 'Android',
+        collapsed: false,
         items: [
-          { text: 'Emulator CFG Patching', link: '/cfg-patching' },
+          { text: 'Installation', link: '/installation' },
+          { text: 'Emulator Patching', link: '/cfg-patching' },
           { text: 'Caching Games', link: '/caching-games' },
           { text: 'Pending Awards', link: '/pending-awards' },
           { text: 'Anti-Tamper Hash Chain', link: '/hash-chain' },
@@ -48,12 +47,15 @@ export default defineConfig({
         ],
       },
       {
-        text: 'Linux Support',
+        text: 'Linux',
         collapsed: true,
         items: [
-          { text: 'Overview', link: '/linux-support/' },
-          { text: 'KNULLI', link: '/linux-support/knulli' },
-          { text: 'Onion', link: '/linux-support/onion' },
+          { text: 'Installation', link: '/installation-linux-knulli' },
+          { text: 'Emulator Patching', link: '/linux-cfg-patching' },
+          { text: 'Caching Games', link: '/linux-caching-games' },
+          { text: 'Pending Awards', link: '/linux-pending-awards' },
+          { text: 'Anti-Tamper Hash Chain', link: '/linux-hash-chain' },
+          { text: 'Settings & Auto-start', link: '/linux-settings' },
         ],
       },
       {
