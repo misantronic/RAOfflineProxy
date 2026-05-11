@@ -52,7 +52,7 @@ private val NORMALIZED_PATCH_MARKER_REGEX = Regex("""^patch:(\d+)$""")
 private val AWARD_ACTIONS = setOf("awardachievement", "submitlbentry")
 
 // Offline: return a canned success response instead of hitting the server
-private val FAKE_OFFLINE_SUCCESS_ACTIONS = setOf("ping")
+private val FAKE_OFFLINE_SUCCESS_ACTIONS = setOf("ping", "postactivity")
 
 // These requests are safe to cache and serve offline
 private val CACHEABLE_ACTIONS = setOf("patch", "achievementsets", "gameid", "achievements", "hashlibrary", "login2", "unlocks")
@@ -169,30 +169,43 @@ class ProxyServer(
                     return
                 }
 
-                val contentLengthHeader = headers["content-length"]
-                val parsedContentLength = parseContentLength(contentLengthHeader)
-                if (parsedContentLength == null) {
-                    writeTextResponse(output, httpError(400, "bad content length"))
-                    return
+                val rawBody = if (isChunkedTransferEncoding(transferEncoding)) {
+                    val chunkedBody = readChunkedBody(reader)
+                    if (chunkedBody == null) {
+                        Log.w(TAG, "Failed to read chunked request body")
+                        writeTextResponse(output, httpError(400, "bad chunked body"))
+                        return
+                    }
+                    chunkedBody
+                } else {
+                    val contentLengthHeader = headers["content-length"]
+                    val parsedContentLength = parseContentLength(contentLengthHeader)
+                    if (parsedContentLength == null) {
+                        Log.w(TAG, "Invalid content-length header: $contentLengthHeader")
+                        writeTextResponse(output, httpError(400, "bad content length"))
+                        return
+                    }
+                    val contentLength = parsedContentLength
+                    if (contentLength !in 0..MAX_REQUEST_BODY_BYTES) {
+                        Log.w(TAG, "Rejected request body length: $contentLength")
+                        writeTextResponse(output, httpError(413, "request body too large"))
+                        return
+                    }
+                    val bodyChars = CharArray(contentLength)
+                    var totalRead = 0
+                    while (totalRead < contentLength) {
+                        val read = reader.read(bodyChars, totalRead, contentLength - totalRead)
+                        if (read == -1) break
+                        totalRead += read
+                    }
+                    val bodyReadError = validateBodyRead(contentLength, totalRead)
+                    if (bodyReadError != null) {
+                        Log.w(TAG, "Body read mismatch: expected=$contentLength actual=$totalRead")
+                        writeTextResponse(output, httpError(bodyReadError.first, bodyReadError.second))
+                        return
+                    }
+                    String(bodyChars, 0, totalRead)
                 }
-                val contentLength = parsedContentLength
-                if (contentLength < 0 || contentLength > MAX_REQUEST_BODY_BYTES) {
-                    writeTextResponse(output, httpError(413, "request body too large"))
-                    return
-                }
-                val bodyChars = CharArray(contentLength)
-                var totalRead = 0
-                while (totalRead < contentLength) {
-                    val read = reader.read(bodyChars, totalRead, contentLength - totalRead)
-                    if (read == -1) break
-                    totalRead += read
-                }
-                val bodyReadError = validateBodyRead(contentLength, totalRead)
-                if (bodyReadError != null) {
-                    writeTextResponse(output, httpError(bodyReadError.first, bodyReadError.second))
-                    return
-                }
-                val rawBody = String(bodyChars, 0, totalRead)
 
                 val response = processRequest(method, path, rawBody, headers)
                 output.write(response)
@@ -345,6 +358,7 @@ class ProxyServer(
                     }
                     if (gameId != null && user != null && token != null) {
                         cacheUnlocks(context, gameId, LoginCredentials(user, token), userAgent, db)
+                        cacheSession(gameId, LoginCredentials(user, token), db)
                     }
                 }
             }
@@ -371,6 +385,9 @@ class ProxyServer(
         }
         latch.await(3, TimeUnit.SECONDS)
         return if (cached != null) {
+            if (action == "unlocks") {
+                ensureOfflineStartSessionCache(path, rawBody)
+            }
             Log.i(TAG, "Cache HIT: $key (${cached!!.responseBody.length} bytes)")
             httpOk(cached!!.responseBody)
         } else {
@@ -381,6 +398,21 @@ class ProxyServer(
                 httpError(503, "no cached response")
             }
         }
+    }
+
+    private fun ensureOfflineStartSessionCache(path: String, rawBody: String) {
+        val gameId = extractParam("g", path, rawBody)?.toIntOrNull() ?: return
+        val user = extractParam("u", path, rawBody) ?: return
+        val latch = CountDownLatch(1)
+
+        scope.launch(Dispatchers.IO) {
+            runCatching {
+                cacheSession(gameId, LoginCredentials(user, ""), db)
+            }
+            latch.countDown()
+        }
+
+        latch.await(3, TimeUnit.SECONDS)
     }
 
     private fun forwardToRA(method: String, path: String, rawBody: String, headers: Map<String, String>): String? =
@@ -583,11 +615,19 @@ internal fun parseRequestLine(requestLine: String): ParsedRequestLineResult {
 }
 
 internal fun validateTransferEncoding(transferEncoding: String?): Pair<Int, String>? =
-    if (!transferEncoding.isNullOrBlank() && !transferEncoding.equals("identity", ignoreCase = true)) {
+    if (!transferEncoding.isNullOrBlank() &&
+        !transferEncoding.equals("identity", ignoreCase = true) &&
+        !isChunkedTransferEncoding(transferEncoding)
+    ) {
         501 to "transfer encoding not supported"
     } else {
         null
     }
+
+internal fun isChunkedTransferEncoding(transferEncoding: String?): Boolean =
+    transferEncoding
+        ?.split(',')
+        ?.any { it.trim().equals("chunked", ignoreCase = true) } == true
 
 internal fun parseContentLength(contentLengthHeader: String?): Int? =
     if (contentLengthHeader == null) 0 else contentLengthHeader.toIntOrNull()
@@ -598,6 +638,37 @@ internal fun validateBodyRead(expectedLength: Int, actualLength: Int): Pair<Int,
     } else {
         null
     }
+
+internal fun readChunkedBody(reader: BufferedReader): String? {
+    val body = StringBuilder()
+
+    while (true) {
+        val sizeLine = reader.readLine() ?: return null
+        val chunkSize = sizeLine.substringBefore(';').trim().toIntOrNull(16) ?: return null
+        if (chunkSize < 0) return null
+        if (body.length + chunkSize > MAX_REQUEST_BODY_BYTES) return null
+        if (chunkSize == 0) {
+            while (true) {
+                val trailer = reader.readLine() ?: return null
+                if (trailer.isEmpty()) {
+                    return body.toString()
+                }
+            }
+        }
+
+        val chunkChars = CharArray(chunkSize)
+        var totalRead = 0
+        while (totalRead < chunkSize) {
+            val read = reader.read(chunkChars, totalRead, chunkSize - totalRead)
+            if (read == -1) return null
+            totalRead += read
+        }
+        body.appendRange(chunkChars, 0, totalRead)
+
+        val chunkTerminator = reader.readLine() ?: return null
+        if (chunkTerminator.isNotEmpty()) return null
+    }
+}
 
 internal fun proxyExtractAction(path: String, body: String): String? {
     val fromPath = "http://x$path".toHttpUrlOrNull()?.queryParameter("r")
