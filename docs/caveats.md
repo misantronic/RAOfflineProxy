@@ -1,5 +1,13 @@
 # Caveats
 
+## Android 14+
+
+RAOfflineProxy currently does not seem to work reliably on Android 14 and newer.
+
+I still need to test this in more detail on those devices, but I do not currently own any devices running those Android versions.
+
+If you are in a position to donate an Android 14+ device for testing, please reach out via [Contact / Feedback](./contact).
+
 ## Important Shutdown Behavior
 
 - Always stop sync before killing the app.
