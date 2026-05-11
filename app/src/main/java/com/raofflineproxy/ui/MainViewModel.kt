@@ -783,26 +783,34 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             val startingMessage = str(R.string.scan_starting)
             _state.value = _state.value.copy(scanInProgress = true, scanProgress = startingMessage)
             SnackbarManager.showProgress(startingMessage)
-            val userAgent = withContext(Dispatchers.IO) { proxyUserAgent(loadUserAgent(db)) }
-            val result = withContext(Dispatchers.IO) {
-                scanRomFolder(app, treeUri, credentials, userAgent, db) { current, total, fileName ->
-                    val progressMessage = str(R.string.scan_progress, current, total, fileName)
-                    _state.value = _state.value.copy(scanProgress = progressMessage)
-                    SnackbarManager.showProgress(progressMessage)
+            var completionMessage: String? = null
+            try {
+                val userAgent = withContext(Dispatchers.IO) { proxyUserAgent(loadUserAgent(db)) }
+                val result = withContext(Dispatchers.IO) {
+                    scanRomFolder(app, treeUri, credentials, userAgent, db) { current, total, fileName ->
+                        val progressMessage = str(R.string.scan_progress, current, total, fileName)
+                        _state.value = _state.value.copy(scanProgress = progressMessage)
+                        SnackbarManager.showProgress(progressMessage)
+                    }
                 }
-            }
-            _state.value = _state.value.copy(
-                scanInProgress = false,
-                scanProgress = null
-            )
-            SnackbarManager.showProgress(null)
-            SnackbarManager.showMessage(
-                if (result.limitReached) {
+                Log.i("RAProxy/Scan", "scanRoms complete matched=${result.matched} total=${result.total} skipped=${result.skipped} limitReached=${result.limitReached}")
+                completionMessage = if (result.limitReached) {
                     str(R.string.scan_complete_limit, result.matched, result.total, result.skipped, MAX_CACHED_GAMES)
                 } else {
                     str(R.string.scan_complete, result.matched, result.total, result.skipped)
                 }
-            )
+            } catch (t: Throwable) {
+                Log.e("RAProxy/Scan", "scanRoms failed for treeUri=$treeUri", t)
+                SnackbarManager.showError(t.message ?: "ROM scan failed.")
+            } finally {
+                Log.i("RAProxy/Scan", "scanRoms clearing progress UI")
+                _state.value = _state.value.copy(
+                    scanInProgress = false,
+                    scanProgress = null
+                )
+                SnackbarManager.showProgress(null)
+            }
+            completionMessage?.let(SnackbarManager::showMessage)
         }
     }
 
