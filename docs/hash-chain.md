@@ -1,4 +1,4 @@
-# Anti-Tamper Hash Chain
+# Anti-Tamper Hash Chain (Android)
 
 ## Overview
 

@@ -1,4 +1,4 @@
-# Emulator Config Patching
+# Emulator Config Patching (Android)
 
 ## Overview
 
