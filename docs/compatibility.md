@@ -2,13 +2,14 @@
 
 Devices confirmed working by either the developer or user reports.
 
-| Device | Android version | Status | Notes               |
-|---|---|---|---------------------|
-| AYN Odin 2 Portal | Android 13 | ✅ Working, dev tested |                     |
-| Ayaneo Pocket Air Mini | Android 11 | ✅ Working, dev tested |                     |
-| MagicX One 35 | Android 12 | ✅ Working, user tested |                     |
-| Mangmi Air X | Android 14 | ❌ Not working, user tested | Stock, GammaOS_Next_v1.2 |
-| Poco F6 | Android 16 | ❌ Not working, user tested | Derpfest Custom Rom |
+| Device | Android version | Status | Notes                                                   |
+|---|---|---|---------------------------------------------------------|
+| AYN Thor | Android 13 | ✅ Working, user tested |                                                         |
+| AYN Odin 2 Portal | Android 13 | ✅ Working, dev tested |                                                         |
+| Ayaneo Pocket Air Mini | Android 11 | ✅ Working, dev tested |                                                         |
+| MagicX One 35 | Android 12 | ✅ Working, user tested |                                                         |
+| Retro Pocket Classic | Android 14 | ✅ Working, user tested |                                                         |
+| Mangmi Air X | Android 14 | ❌ Not working, user tested | Stock, GammaOS_Next_v1.2, might work since 1.0.0-alpha3 |
 
 ## Submit your device
 
