@@ -62,12 +62,6 @@ The app reverts `Config/RetroAchievements.ini` so Dolphin connects directly to R
 
 If hardcore mode was enabled before you started the proxy, it is automatically restored when you stop the proxy. The app records the original hardcore setting when patching and saves it so it survives process restarts.
 
-## Important Shutdown Caveat
-
-- Always stop sync before killing the app.
-- On some devices, swiping the app away or crashing while the proxy is active does not reliably revert the patched emulator config immediately.
-- If the app was killed or crashed during sync, reopen RAOfflineProxy once so it can restore the config on launch.
-
 ## Checking Patch Status
 
 The app checks the patch status on startup. The action bar proxy button reflects whether the proxy is running.
