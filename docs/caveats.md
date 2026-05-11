@@ -1,10 +1,12 @@
 # Caveats
 
-## Android 14+
+## Android 15+
 
-RAOfflineProxy currently does not seem to work reliably on Android 14 and newer.
+RAOfflineProxy currently does not seem to work reliably on Android 15 and newer.
 
-I still need to test this in more detail on those devices, but I do not currently own any devices running those Android versions.
+Virtual-device testing showed Android 14 can still work through SAF folder access.
+
+On Android 15 and 16, the current blocker is the system folder picker: it does not allow selecting a folder under `Android/data`, so RAOfflineProxy cannot obtain access to `retroarch.cfg` or `RetroAchievements.ini` in supported emulator app storage.
 
 ## Important Shutdown Behavior
 
