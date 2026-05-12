@@ -2,14 +2,14 @@
 
 Devices confirmed working by either the developer or user reports.
 
-| Device | Version    | Status | Notes |
-|---|------------|---|---|
-| <span style="white-space: nowrap;">AYN Thor</span> | <span style="white-space: nowrap;">Android 13</span> | <span style="white-space: nowrap;">✅ Working</span> | User tested |
-| <span style="white-space: nowrap;">AYN Odin 2 Portal</span> | <span style="white-space: nowrap;">Android 13</span> | <span style="white-space: nowrap;">✅ Working</span> | Dev tested |
+| Device                                                           | Version    | Status | Notes |
+|------------------------------------------------------------------|------------|---|---|
+| <span style="white-space: nowrap;">AYN Thor</span>               | <span style="white-space: nowrap;">Android 13</span> | <span style="white-space: nowrap;">✅ Working</span> | User tested |
+| <span style="white-space: nowrap;">AYN Odin 2 Portal</span>      | <span style="white-space: nowrap;">Android 13</span> | <span style="white-space: nowrap;">✅ Working</span> | Dev tested |
 | <span style="white-space: nowrap;">Ayaneo Pocket Air Mini</span> | <span style="white-space: nowrap;">Android 11</span> | <span style="white-space: nowrap;">✅ Working</span> | Dev tested |
-| <span style="white-space: nowrap;">MagicX One 35</span> | <span style="white-space: nowrap;">Android 12</span> | <span style="white-space: nowrap;">✅ Working</span> | User tested |
-| <span style="white-space: nowrap;">Retro Pocket Classic</span> | <span style="white-space: nowrap;">Android 14</span> | <span style="white-space: nowrap;">✅ Working</span> | User tested |
-| <span style="white-space: nowrap;">Mangmi Air X</span> | <span style="white-space: nowrap;">Android 14</span> | <span style="white-space: nowrap;">❌ Not working</span> | User tested; Stock, GammaOS_Next_v1.2, might work since 1.0.0-alpha3 |
+| <span style="white-space: nowrap;">MagicX One 35</span>          | <span style="white-space: nowrap;">Android 12</span> | <span style="white-space: nowrap;">✅ Working</span> | User tested |
+| <span style="white-space: nowrap;">Retroid Pocket Classic</span> | <span style="white-space: nowrap;">Android 14</span> | <span style="white-space: nowrap;">✅ Working</span> | User tested |
+| <span style="white-space: nowrap;">Mangmi Air X</span>           | <span style="white-space: nowrap;">Android 14</span> | <span style="white-space: nowrap;">❌ Not working</span> | User tested; Stock, GammaOS_Next_v1.2, might work since 1.0.0-alpha3 |
 
 ## Submit your device
 
