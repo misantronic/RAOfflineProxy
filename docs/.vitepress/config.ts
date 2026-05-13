@@ -35,6 +35,10 @@ export default defineConfig({
         link: '/introduction'
       },
       {
+        text: 'Platforms',
+        link: '/platforms'
+      },
+      {
         text: 'Android',
         collapsed: false,
         items: [
