@@ -40,6 +40,17 @@
             app:iconTint="?attr/colorOnSurface" />
 
         <com.google.android.material.button.MaterialButton
+            android:id="@+id/btn_smart_cache"
+            style="@style/Widget.RAOfflineProxy.Button.Icon"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:contentDescription="@string/cached_games_smart_cache"
+            android:tooltipText="@string/cached_games_smart_cache"
+            app:icon="@drawable/ic_smart_cache"
+            app:iconTint="?attr/colorOnSurface" />
+
+        <com.google.android.material.button.MaterialButton
             android:id="@+id/btn_add_rom"
             style="@style/Widget.RAOfflineProxy.Button.Icon"
             android:layout_width="wrap_content"

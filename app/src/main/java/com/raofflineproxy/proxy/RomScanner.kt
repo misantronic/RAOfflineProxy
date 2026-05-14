@@ -25,6 +25,7 @@ import org.json.JSONObject
 import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
+import java.io.File
 import kotlin.math.min
 
 private const val TAG = "RAProxy"
@@ -43,6 +44,18 @@ data class ScanResult(
     val skipped: Int,
     val limitReached: Boolean = false
 )
+
+internal data class CacheQueueEntry(
+    val label: String,
+    val gameId: Int,
+    val romHash: String? = null,
+    val sourceRomPath: String? = null
+)
+
+internal suspend fun loadCachedRomPaths(db: AppDatabase): MutableSet<String> =
+    db.cacheDao().getAllByPrefix(CacheKeys.PREFIX_PATCH)
+        .mapNotNull { entry -> entry.sourceRomPath?.normalizeCachedRomPath() }
+        .toMutableSet()
 
 data class LoginCredentials(val user: String, val token: String)
 
@@ -201,9 +214,8 @@ suspend fun scanRomFolder(
     singleFile: Boolean = false,
     onProgress: (current: Int, total: Int, fileName: String) -> Unit
 ): ScanResult {
-    val cachedGameIds = db.cacheDao().getAllByPrefix(CacheKeys.PREFIX_PATCH)
-        .mapNotNull { entry -> CacheKeys.parseGameIdStringFromPatchKey(entry.cacheKey) }
-        .toMutableSet()
+    val cachedGameIds = loadCachedGameIds(db)
+    val cachedRomPaths = loadCachedRomPaths(db)
     val files: List<DocumentFile> = if (singleFile) {
         val f = DocumentFile.fromSingleUri(context, treeUri)
         if (f != null && shouldScanFile(f)) listOf(f) else emptyList()
@@ -213,28 +225,117 @@ suspend fun scanRomFolder(
             ?: emptyList()
     }
     val total = files.size
-    var matched = 0
     var skipped = 0
     var limitReached = false
+    val queueEntries = mutableListOf<CacheQueueEntry>()
+    val queuedNewGameIds = mutableSetOf<String>()
+    val queuedRomPaths = mutableSetOf<String>()
 
     for ((index, file) in files.withIndex()) {
-        if (cachedGameIds.size >= MAX_CACHED_GAMES) {
+        if (cachedGameIds.size + queuedNewGameIds.size >= MAX_CACHED_GAMES) {
             skipped += total - index
             limitReached = true
             break
         }
         onProgress(index + 1, total, file.name ?: "")
+        val sourceRomPath = resolveDocumentAbsolutePath(file)
+        val normalizedPath = sourceRomPath?.normalizeCachedRomPath()
+        if (normalizedPath != null && (normalizedPath in cachedRomPaths || normalizedPath in queuedRomPaths)) {
+            skipped++
+            continue
+        }
         val hash = hashRom(context, file)
         if (hash == null) { skipped++; continue }
         val gameId = fetchGameId(context, hash, credentials, userAgent, db)
         if (gameId == null) { skipped++; continue }
-        cacheGame(context, gameId, credentials, userAgent, db, hash)
-        cachedGameIds.add(gameId.toString())
+        val gameIdString = gameId.toString()
+        if (!cachedGameIds.contains(gameIdString)) {
+            queuedNewGameIds.add(gameIdString)
+        }
+        queueEntries += CacheQueueEntry(
+            label = file.name ?: "",
+            gameId = gameId,
+            romHash = hash,
+            sourceRomPath = sourceRomPath
+        )
+        if (normalizedPath != null) {
+            queuedRomPaths.add(normalizedPath)
+        }
+    }
+
+    val queueResult = executeCacheQueue(
+        context = context,
+        credentials = credentials,
+        userAgent = userAgent,
+        db = db,
+        entries = queueEntries
+    )
+    return ScanResult(
+        matched = queueResult.matched,
+        total = total,
+        skipped = skipped + queueResult.skipped,
+        limitReached = limitReached || queueResult.limitReached
+    )
+}
+
+internal suspend fun loadCachedGameIds(db: AppDatabase): MutableSet<String> =
+    db.cacheDao().getAllByPrefix(CacheKeys.PREFIX_PATCH)
+        .mapNotNull { entry -> CacheKeys.parseGameIdStringFromPatchKey(entry.cacheKey) }
+        .toMutableSet()
+
+internal suspend fun executeCacheQueue(
+    context: Context,
+    credentials: LoginCredentials,
+    userAgent: String,
+    db: AppDatabase,
+    entries: List<CacheQueueEntry>,
+    skipAlreadyCached: Boolean = false,
+    onProgress: (current: Int, total: Int, label: String) -> Unit = { _, _, _ -> }
+): ScanResult {
+    val cachedGameIds = loadCachedGameIds(db)
+    val total = entries.size
+    var matched = 0
+    var skipped = 0
+    var limitReached = false
+
+    for ((index, entry) in entries.withIndex()) {
+        if (cachedGameIds.size >= MAX_CACHED_GAMES) {
+            skipped += total - index
+            limitReached = true
+            break
+        }
+
+        onProgress(index + 1, total, entry.label)
+        val gameIdString = entry.gameId.toString()
+        if (skipAlreadyCached && gameIdString in cachedGameIds) {
+            skipped++
+            continue
+        }
+
+        cacheGame(
+            context = context,
+            gameId = entry.gameId,
+            creds = credentials,
+            userAgent = userAgent,
+            db = db,
+            romHash = entry.romHash,
+            sourceRomPath = entry.sourceRomPath
+        )
+        cachedGameIds.add(gameIdString)
         matched++
     }
 
-    return ScanResult(matched, total, skipped, limitReached)
+    return ScanResult(
+        matched = matched,
+        total = total,
+        skipped = skipped,
+        limitReached = limitReached
+    )
 }
+
+internal fun String.normalizeCachedRomPath(): String =
+    replace('\\', '/')
+        .trim()
 
 private fun shouldScanFile(file: DocumentFile): Boolean {
     val name = file.name ?: return false
@@ -244,7 +345,7 @@ private fun shouldScanFile(file: DocumentFile): Boolean {
         && !name.endsWith(".xml", ignoreCase = true)
 }
 
-private suspend fun fetchGameId(
+internal suspend fun fetchGameId(
     context: Context,
     hash: String,
     creds: LoginCredentials,
@@ -295,6 +396,7 @@ internal suspend fun cacheGame(
     userAgent: String,
     db: AppDatabase,
     romHash: String? = null,
+    sourceRomPath: String? = null,
     cacheImages: Boolean = true
 ) {
     val action = if (romHash != null) "achievementsets" else "patch"
@@ -328,7 +430,8 @@ internal suspend fun cacheGame(
             db.cacheDao().upsert(
                 CacheEntry(
                     cacheKey = CacheKeys.patch(gameId, creds.user),
-                    responseBody = normalizedBody
+                    responseBody = normalizedBody,
+                    sourceRomPath = sourceRomPath
                 )
             )
             Log.i(TAG, "cacheGame: cached normalized patch key=${CacheKeys.patch(gameId, creds.user)}")
@@ -345,6 +448,18 @@ internal suspend fun cacheGame(
     cacheUnlocks(context, gameId, creds, userAgent, db)
     cacheSession(gameId, creds, db)
     Log.i(TAG, "cacheGame complete for gameId=$gameId")
+}
+
+private fun resolveDocumentAbsolutePath(file: DocumentFile): String? {
+    val uriPath = file.uri.path ?: return null
+    val encodedPath = uriPath.substringAfterLast("/document/", missingDelimiterValue = "")
+        .takeIf { it.isNotBlank() }
+        ?: return null
+    val documentPath = Uri.decode(encodedPath).substringAfter(':', missingDelimiterValue = "")
+        .trim('/')
+        .takeIf { it.isNotBlank() }
+        ?: return null
+    return "/storage/emulated/0/$documentPath"
 }
 
 internal suspend fun cacheUnlocks(

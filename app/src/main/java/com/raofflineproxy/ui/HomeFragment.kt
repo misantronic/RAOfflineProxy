@@ -44,6 +44,7 @@ class HomeFragment : Fragment() {
         val tokenWarning = view.findViewById<TextView>(R.id.tv_token_warning)
         val btnStartProxy = view.findViewById<MaterialButton>(R.id.btn_start_proxy)
         val btnGoToCachedGames = view.findViewById<MaterialButton>(R.id.btn_go_to_cached_games)
+        val btnStartSmartCache = view.findViewById<MaterialButton>(R.id.btn_start_smart_cache)
         val homeDescription = view.findViewById<TextView>(R.id.tv_home_description)
         val emulatorLabel = view.findViewById<TextView>(R.id.tv_emulator_label)
         val emulatorToggles = view.findViewById<LinearLayout>(R.id.layout_emulator_toggles)
@@ -82,6 +83,10 @@ class HomeFragment : Fragment() {
             (activity as? MainActivity)?.navigateTo(R.id.nav_cached_games)
         }
 
+        btnStartSmartCache.setOnClickListener {
+            viewModel.startSmartCache()
+        }
+
         retroArchToggle.row.setOnClickListener {
             if (retroArchToggle.row.isEnabled) {
                 viewModel.setRetroArchEnabled(!viewModel.state.value.retroArchEnabled)
@@ -112,6 +117,15 @@ class HomeFragment : Fragment() {
                 btnStartProxy.isEnabled = !proxyStartPending && (state.retroArchEnabled || state.dolphinEnabled)
                 btnStartProxy.alpha = if (proxyStartPending) 0.45f else 1f
                 btnGoToCachedGames.visibility = if (state.proxyRunning) View.VISIBLE else View.GONE
+                val smartCacheVisible = state.isOnline &&
+                    state.hasLoginCredentials
+                val smartCacheEnabled = !state.scanInProgress &&
+                    state.isOnline &&
+                    state.hasLoginCredentials &&
+                    state.cachedGames.size < com.raofflineproxy.MAX_CACHED_GAMES
+                btnStartSmartCache.visibility = if (smartCacheVisible) View.VISIBLE else View.GONE
+                btnStartSmartCache.isEnabled = smartCacheEnabled
+                btnStartSmartCache.alpha = if (smartCacheEnabled) 1f else 0.45f
 
                 emulatorLabel.visibility = if (installedCount > 0) View.VISIBLE else View.GONE
                 emulatorToggles.visibility = if (installedCount > 0) View.VISIBLE else View.GONE

@@ -72,6 +72,19 @@ class MainActivity : AppCompatActivity() {
         viewModel.onSafGranted(SafGrantTarget.Dolphin)
     }
 
+    private val smartCacheRomSafLauncher = registerForActivityResult(OpenSmartCacheRomTree()) { uri ->
+        if (uri == null) {
+            viewModel.onSafRejected(SafGrantTarget.SmartCacheRom)
+            return@registerForActivityResult
+        }
+        contentResolver.takePersistableUriPermission(
+            uri,
+            Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+        )
+        PrefsConstants.saveSmartCacheRomSafUri(this, uri)
+        viewModel.onSafGranted(SafGrantTarget.SmartCacheRom)
+    }
+
     private val notificationPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { /* no-op: notification is non-critical */ }
 
@@ -335,9 +348,11 @@ class MainActivity : AppCompatActivity() {
 
     private fun showSafGrantDialog(target: SafGrantTarget) {
         activeSafGrantTarget = target
+        android.util.Log.i("RAProxy/SmartCache", "showSafGrantDialog target=$target")
         val messageRes = when (target) {
             SafGrantTarget.RetroArch -> R.string.saf_dialog_message
             SafGrantTarget.Dolphin -> R.string.dolphin_saf_dialog_message
+            SafGrantTarget.SmartCacheRom -> R.string.smart_cache_rom_saf_dialog_message
         }
         AlertDialog.Builder(this)
             .setTitle(R.string.saf_dialog_title)
@@ -347,6 +362,7 @@ class MainActivity : AppCompatActivity() {
                 when (target) {
                     SafGrantTarget.RetroArch -> safLauncher.launch(Unit)
                     SafGrantTarget.Dolphin -> dolphinSafLauncher.launch(Unit)
+                    SafGrantTarget.SmartCacheRom -> smartCacheRomSafLauncher.launch(Unit)
                 }
             }
             .setNegativeButton(android.R.string.cancel) { _, _ ->
@@ -354,6 +370,7 @@ class MainActivity : AppCompatActivity() {
                 when (target) {
                     SafGrantTarget.RetroArch -> viewModel.onSafRejected(SafGrantTarget.RetroArch)
                     SafGrantTarget.Dolphin -> viewModel.onSafRejected(SafGrantTarget.Dolphin)
+                    SafGrantTarget.SmartCacheRom -> viewModel.onSafRejected(SafGrantTarget.SmartCacheRom)
                 }
             }
             .show()
@@ -556,4 +573,21 @@ private class OpenDolphinConfigTree : ActivityResultContract<Unit, Uri?>() {
             runCatching { context.packageManager.getPackageInfo(packageName, 0) }
                 .isSuccess
         } ?: DOLPHIN_PACKAGE_CANDIDATES.first()
+}
+
+private class OpenSmartCacheRomTree : ActivityResultContract<Unit, Uri?>() {
+    override fun createIntent(context: Context, input: Unit): Intent =
+        Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).apply {
+            initialTreeUriForPath("/storage/emulated/0/ROMs")
+                ?.let { putExtra(DocumentsContract.EXTRA_INITIAL_URI, it) }
+            addFlags(
+                Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                    Intent.FLAG_GRANT_WRITE_URI_PERMISSION or
+                    Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION or
+                    Intent.FLAG_GRANT_PREFIX_URI_PERMISSION
+            )
+        }
+
+    override fun parseResult(resultCode: Int, intent: Intent?): Uri? =
+        if (resultCode == android.app.Activity.RESULT_OK) intent?.data else null
 }

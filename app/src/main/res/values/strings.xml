@@ -33,6 +33,7 @@
     <string name="home_no_emulator_warning">No supported emulator was found. Install RetroArch or Dolphin to use RAOfflineProxy.</string>
     <string name="home_token_warning">No RetroAchievements credentials were found in a supported emulator config, or the saved token is no longer valid. Open your emulator and log in while online, then start the proxy again.</string>
     <string name="home_go_to_cached_games">Go to Cached Games</string>
+    <string name="home_start_smart_cache">Start Smart Caching</string>
     <string name="emulator_retroarch">RetroArch</string>
     <string name="emulator_dolphin">Dolphin</string>
     <string name="emulator_toggle_icon_cd">Installed emulator icon</string>
@@ -44,6 +45,7 @@
     <string name="saf_dialog_title">Folder Access Required</string>
     <string name="saf_dialog_message">This app needs access to RetroArch\'s files folder to patch retroarch.cfg. Grant access to the suggested Android/data/RetroArch package/files folder.</string>
     <string name="dolphin_saf_dialog_message">This app needs access to Dolphin\'s Config folder to patch RetroAchievements.ini. Grant access to Android/data/org.dolphinemu.dolphinemu/files/Config.</string>
+    <string name="smart_cache_rom_saf_dialog_message">Smart Cache needs access to your ROM folder so it can read the recent game paths from RetroArch history and hash those ROM files.</string>
     <string name="saf_dialog_grant">Grant Access</string>
     <string name="action_ok">OK</string>
     <!-- CFG patcher messages -->
@@ -106,6 +108,17 @@
     <string name="scan_progress">Scanning %1$d/%2$d: %3$s</string>
     <string name="scan_complete">Scan complete: %1$d game(s) matched out of %2$d file(s), %3$d skipped.</string>
     <string name="scan_complete_limit">Scan complete: %1$d game(s) matched out of %2$d file(s), %3$d skipped. Reached the %4$d-game cache limit.</string>
+    <string name="smart_cache_starting">Starting Smart Cache…</string>
+    <string name="smart_cache_progress">Smart Cache %1$d/%2$d: %3$s</string>
+    <string name="smart_cache_complete">Smart Cache complete: %1$d game(s) cached from %2$d candidate(s), %3$d skipped.</string>
+    <string name="smart_cache_complete_limit">Smart Cache complete: %1$d game(s) cached from %2$d candidate(s), %3$d skipped. Reached the %4$d-game cache limit.</string>
+    <string name="smart_cache_no_strategies">No enabled Smart Cache strategy is available.</string>
+    <string name="smart_cache_requires_retroarch_access">Smart Cache needs access to RetroArch files to read recent history.</string>
+    <string name="smart_cache_requires_rom_access">Smart Cache needs access to your ROM folder to read the recent ROM files.</string>
+    <string name="smart_cache_history_missing">RetroArch recent history was not found.</string>
+    <string name="smart_cache_history_empty">RetroArch recent history is empty.</string>
+    <string name="smart_cache_no_readable_candidates">Smart Cache found recent games, but none were readable from the granted ROM folders.</string>
+    <string name="smart_cache_no_ra_matches">Smart Cache found readable recent games, but none matched RetroAchievements.</string>
 
     <!-- Refresh messages -->
     <string name="refresh_progress">Refreshing %1$d/%2$d…</string>
@@ -161,6 +174,7 @@
     <string name="cached_games_counter">%1$d/%2$d cached</string>
     <string name="cached_games_limit_reached">You already have %d cached games. Clear some games to add more.</string>
     <string name="cached_games_refresh">Refresh games</string>
+    <string name="cached_games_smart_cache">Start Smart Cache</string>
     <string name="cached_games_add_rom">Add ROM</string>
     <string name="cached_games_scan_folder">Scan ROM folder</string>
     <string name="cached_games_clear_all">Clear all cache</string>
