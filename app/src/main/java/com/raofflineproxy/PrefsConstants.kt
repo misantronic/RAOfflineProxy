@@ -10,6 +10,7 @@ object PrefsConstants {
     const val KEY_SAF_TREE_URI = "saf_tree_uri"
     const val KEY_RETROARCH_SAF_TREE_URI = "retroarch_saf_tree_uri"
     const val KEY_DOLPHIN_SAF_TREE_URI = "dolphin_saf_tree_uri"
+    const val KEY_SMART_CACHE_ROM_SAF_TREE_URI = "smart_cache_rom_saf_tree_uri"
     const val KEY_AUTOSTART_PROXY = "autostart_proxy"
     const val KEY_ENABLE_RETROARCH = "enable_retroarch"
     const val KEY_ENABLE_DOLPHIN = "enable_dolphin"
@@ -61,6 +62,21 @@ object PrefsConstants {
     fun clearDolphinSafUri(context: Context) {
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .edit { remove(KEY_DOLPHIN_SAF_TREE_URI) }
+    }
+
+    fun loadSmartCacheRomSafUri(context: Context): Uri? =
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getString(KEY_SMART_CACHE_ROM_SAF_TREE_URI, null)
+            ?.toUri()
+
+    fun saveSmartCacheRomSafUri(context: Context, uri: Uri) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit { putString(KEY_SMART_CACHE_ROM_SAF_TREE_URI, uri.toString()) }
+    }
+
+    fun clearSmartCacheRomSafUri(context: Context) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit { remove(KEY_SMART_CACHE_ROM_SAF_TREE_URI) }
     }
 
     fun loadProxyPort(context: Context): Int =

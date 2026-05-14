@@ -47,6 +47,7 @@ import com.raofflineproxy.proxy.HttpGetResult
 import com.raofflineproxy.proxy.httpGet
 import com.raofflineproxy.proxy.loginAndCacheToken
 import com.raofflineproxy.proxy.loadLoginCredentials
+import com.raofflineproxy.proxy.runSmartCache
 import com.raofflineproxy.proxy.loadUserAgent
 import com.raofflineproxy.proxy.resolveCachedGameIconPath
 import com.raofflineproxy.proxy.scanRomFolder
@@ -63,7 +64,7 @@ import org.json.JSONObject
 
 enum class AuthState { Unknown, Valid, Invalid }
 
-enum class SafGrantTarget { RetroArch, Dolphin }
+enum class SafGrantTarget { RetroArch, Dolphin, SmartCacheRom }
 
 data class MainUiState(
     val proxyRunning: Boolean = false,
@@ -100,6 +101,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val connectivityManager =
         app.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
     private var pendingProxyStart = false
+    private var pendingSmartCacheStart = false
 
     private fun str(resId: Int): String = getApplication<Application>().getString(resId)
     private fun str(resId: Int, vararg args: Any): String = getApplication<Application>().getString(resId, *args)
@@ -154,17 +156,17 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     is FlushEvent.Started -> _state.value = _state.value.copy(flushInProgress = true)
                     is FlushEvent.Progress -> Unit
                     is FlushEvent.Completed -> {
-                        SnackbarManager.showMessage(str(R.string.flush_completed_sent_only, event.flushed))
+                        SnackbarManager.showMessage(str(R.string.flush_completed_sent_only, event.flushed), SnackbarDuration.Indefinite)
                         _state.value = _state.value.copy(
                             flushInProgress = false
                         )
                     }
                     is FlushEvent.ChainBroken -> {
-                        SnackbarManager.showMessage(str(R.string.flush_chain_broken, event.index + 1, event.reason))
+                        SnackbarManager.showMessage(str(R.string.flush_chain_broken, event.index + 1, event.reason), SnackbarDuration.Indefinite)
                         _state.value = _state.value.copy(flushInProgress = false)
                     }
                     is FlushEvent.RefreshFailed -> {
-                        SnackbarManager.showMessage(str(R.string.flush_refresh_failed, event.reason))
+                        SnackbarManager.showMessage(str(R.string.flush_refresh_failed, event.reason), SnackbarDuration.Indefinite)
                         _state.value = _state.value.copy(flushInProgress = false)
                     }
                 }
@@ -213,6 +215,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                             gameId = gameId,
                             title = title,
                             user = user,
+                            sourceRomPath = entry.sourceRomPath,
                             cachedAt = entry.cachedAt,
                             imageIconUrl = imageIconUrl,
                             unlockedCount = unlockedCount,
@@ -352,6 +355,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             needsSafGrant = remaining.isNotEmpty(),
             safGrantTarget = remaining.firstOrNull()
         )
+        if (pendingSmartCacheStart && target == SafGrantTarget.SmartCacheRom && remaining.isEmpty()) {
+            pendingSmartCacheStart = false
+            startSmartCache()
+            return
+        }
         if (pendingProxyStart && remaining.isEmpty()) {
             startProxyInternal(loadSafUri())
         }
@@ -360,16 +368,37 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun onSafRejected(target: SafGrantTarget) {
         val app = getApplication<Application>()
         val prefs = app.getSharedPreferences(PrefsConstants.PREFS_NAME, Context.MODE_PRIVATE)
+        if (!pendingProxyStart) {
+            val remaining = _state.value.pendingSafGrantTargets.filterNot { it == target }
+            _state.value = _state.value.copy(
+                pendingSafGrantTargets = remaining,
+                needsSafGrant = remaining.isNotEmpty(),
+                safGrantTarget = remaining.firstOrNull()
+            )
+            if (target == SafGrantTarget.SmartCacheRom) {
+                pendingSmartCacheStart = false
+                SnackbarManager.showMessage(str(R.string.smart_cache_requires_rom_access), SnackbarDuration.Indefinite)
+                return
+            }
+            if (target == SafGrantTarget.RetroArch) {
+                SnackbarManager.showMessage(str(R.string.smart_cache_requires_retroarch_access), SnackbarDuration.Indefinite)
+            }
+            return
+        }
         when (target) {
             SafGrantTarget.RetroArch -> {
                 prefs.edit { putBoolean(PrefsConstants.KEY_ENABLE_RETROARCH, false) }
                 PrefsConstants.clearSafUri(app)
-                SnackbarManager.showMessage(str(R.string.proxy_disabled_retroarch_saf_rejected))
+                SnackbarManager.showMessage(str(R.string.proxy_disabled_retroarch_saf_rejected), SnackbarDuration.Indefinite)
             }
             SafGrantTarget.Dolphin -> {
                 prefs.edit { putBoolean(PrefsConstants.KEY_ENABLE_DOLPHIN, false) }
                 PrefsConstants.clearDolphinSafUri(app)
-                SnackbarManager.showMessage(str(R.string.proxy_disabled_dolphin_saf_rejected))
+                SnackbarManager.showMessage(str(R.string.proxy_disabled_dolphin_saf_rejected), SnackbarDuration.Indefinite)
+            }
+            SafGrantTarget.SmartCacheRom -> {
+                PrefsConstants.clearSmartCacheRomSafUri(app)
+                SnackbarManager.showMessage(str(R.string.smart_cache_requires_rom_access), SnackbarDuration.Indefinite)
             }
         }
 
@@ -521,7 +550,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     }
                     if (result.copyBackPath != null) {
                         _state.value = _state.value.copy(cfgCopyBackPath = result.copyBackPath)
-                        if (result.success) SnackbarManager.showMessage(result.message)
+                        if (result.success) SnackbarManager.showMessage(result.message, SnackbarDuration.Indefinite)
                         else SnackbarManager.showError(result.message)
                         return@launch
                     }
@@ -701,7 +730,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val app = getApplication<Application>()
         viewModelScope.launch {
             if (_state.value.cachedGames.size >= MAX_CACHED_GAMES) {
-                SnackbarManager.showMessage(str(R.string.cached_games_limit_reached, MAX_CACHED_GAMES))
+                SnackbarManager.showMessage(str(R.string.cached_games_limit_reached, MAX_CACHED_GAMES), SnackbarDuration.Indefinite)
                 return@launch
             }
             val credentials = requireCredentials() ?: return@launch
@@ -738,10 +767,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             SnackbarManager.showProgress(null)
             SnackbarManager.showMessage(
                 if (limitReached) {
-                    str(R.string.scan_add_complete_limit, matched, total, skipped, MAX_CACHED_GAMES)
+                    str(R.string.scan_add_complete_limit, matched, total, skipped, MAX_CACHED_GAMES, SnackbarDuration.Indefinite)
                 } else {
                     str(R.string.scan_add_complete, matched, total, skipped)
-                }
+                },
+                SnackbarDuration.Indefinite
             )
         }
     }
@@ -776,7 +806,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val app = getApplication<Application>()
         viewModelScope.launch {
             if (_state.value.cachedGames.size >= MAX_CACHED_GAMES) {
-                SnackbarManager.showMessage(str(R.string.cached_games_limit_reached, MAX_CACHED_GAMES))
+                SnackbarManager.showMessage(str(R.string.cached_games_limit_reached, MAX_CACHED_GAMES), SnackbarDuration.Indefinite)
                 return@launch
             }
             val credentials = requireCredentials() ?: return@launch
@@ -810,7 +840,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 )
                 SnackbarManager.showProgress(null)
             }
-            completionMessage?.let(SnackbarManager::showMessage)
+            completionMessage?.let {
+                SnackbarManager.showMessage(it, SnackbarDuration.Indefinite)
+            }
         }
     }
 
@@ -844,7 +876,81 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 scanProgress = null
             )
             SnackbarManager.showProgress(null)
-            SnackbarManager.showMessage(str(R.string.refresh_complete, games.size))
+            SnackbarManager.showMessage(str(R.string.refresh_complete, games.size), SnackbarDuration.Indefinite)
+        }
+    }
+
+    fun startSmartCache() {
+        val app = getApplication<Application>()
+        viewModelScope.launch {
+            Log.i("RAProxy/SmartCache", "startSmartCache invoked cachedGames=${_state.value.cachedGames.size}")
+            if (_state.value.cachedGames.size >= MAX_CACHED_GAMES) {
+                SnackbarManager.showMessage(str(R.string.cached_games_limit_reached, MAX_CACHED_GAMES), SnackbarDuration.Indefinite)
+                return@launch
+            }
+            val credentials = requireCredentials() ?: return@launch
+            val romTreeUri = loadSmartCacheRomSafUri()
+            val startingMessage = str(R.string.smart_cache_starting)
+            _state.value = _state.value.copy(scanInProgress = true, scanProgress = startingMessage)
+            SnackbarManager.showProgress(startingMessage)
+            var completionMessage: String? = null
+            try {
+                val userAgent = withContext(Dispatchers.IO) { proxyUserAgent(loadUserAgent(db)) }
+                val result = withContext(Dispatchers.IO) {
+                    runSmartCache(
+                        context = app,
+                        credentials = credentials,
+                        userAgent = userAgent,
+                        db = db,
+                        emulatorSupport = loadEmulatorSupport(app),
+                        retroArchTreeUri = loadSafUri(),
+                        romTreeUri = romTreeUri
+                    ) { current, total, label ->
+                        val progressMessage = str(R.string.smart_cache_progress, current, total, label)
+                        _state.value = _state.value.copy(scanProgress = progressMessage)
+                        SnackbarManager.showProgress(progressMessage)
+                    }
+                }
+                Log.i(
+                    "RAProxy/SmartCache",
+                    "startSmartCache result matched=${result.matched} total=${result.total} skipped=${result.skipped} limitReached=${result.limitReached} needsSafGrant=${result.needsSafGrant} message=${result.message}"
+                )
+                if (result.needsSafGrant) {
+                    pendingSmartCacheStart = true
+                    Log.i("RAProxy/SmartCache", "startSmartCache requesting SmartCacheRom SAF grant")
+                    _state.value = _state.value.copy(
+                        needsSafGrant = true,
+                        safGrantTarget = SafGrantTarget.SmartCacheRom,
+                        pendingSafGrantTargets = listOf(SafGrantTarget.SmartCacheRom)
+                    )
+                    return@launch
+                }
+                val message = when (result.message) {
+                    "no_strategies" -> str(R.string.smart_cache_no_strategies)
+                    "needs_saf_grant" -> str(R.string.smart_cache_requires_retroarch_access)
+                    "needs_rom_saf_grant" -> str(R.string.smart_cache_requires_rom_access)
+                    "history_missing" -> str(R.string.smart_cache_history_missing)
+                    "history_empty" -> str(R.string.smart_cache_history_empty)
+                    "no_readable_candidates" -> str(R.string.smart_cache_no_readable_candidates)
+                    "no_ra_matches" -> str(R.string.smart_cache_no_ra_matches)
+                    else -> if (result.limitReached) {
+                        str(R.string.smart_cache_complete_limit, result.matched, result.total, result.skipped, MAX_CACHED_GAMES)
+                    } else {
+                        str(R.string.smart_cache_complete, result.matched, result.total, result.skipped)
+                    }
+                }
+                completionMessage = message
+            } catch (t: Throwable) {
+                Log.e("RAProxy/SmartCache", "startSmartCache failed", t)
+                SnackbarManager.showError(t.message ?: "Smart Cache failed.")
+            } finally {
+                Log.i("RAProxy/SmartCache", "startSmartCache clearing progress UI")
+                _state.value = _state.value.copy(scanInProgress = false, scanProgress = null)
+                SnackbarManager.showProgress(null)
+            }
+            completionMessage?.let {
+                SnackbarManager.showMessage(it, SnackbarDuration.Indefinite)
+            }
         }
     }
 
@@ -1033,6 +1139,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun loadDolphinSafUri(): Uri? =
         PrefsConstants.loadDolphinSafUri(getApplication())
+
+    private fun loadSmartCacheRomSafUri(): Uri? =
+        PrefsConstants.loadSmartCacheRomSafUri(getApplication())
 
     private suspend fun cacheImportedCredentials(credentials: ImportedCredentials) {
         val tokenCredentials = when (credentials) {

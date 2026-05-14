@@ -75,6 +75,7 @@ class CachedGamesFragment : Fragment() {
             onDelete = viewModel::deleteCachedGame
         )
         val headerAdapter = CachedGamesHeaderAdapter(
+            onSmartCache = viewModel::startSmartCache,
             onScan = { romFolderPickerLauncher.launch(createRomFolderPickerIntent()) },
             onAdd = {
                 addRomLauncher.launch(createAddRomIntent())
@@ -111,6 +112,8 @@ class CachedGamesFragment : Fragment() {
                 val actionsEnabled = state.hasLoginCredentials
                     && state.isOnline
                     && !state.scanInProgress
+                val smartCacheEnabled = actionsEnabled
+                    && state.cachedGames.size < MAX_CACHED_GAMES
                 val scanEnabled = state.hasLoginCredentials
                     && state.isOnline
                     && !state.scanInProgress
@@ -122,6 +125,7 @@ class CachedGamesFragment : Fragment() {
                 }
                 headerAdapter.update(
                     CachedGamesHeaderAdapter.HeaderState(
+                        smartCacheEnabled = smartCacheEnabled,
                         scanEnabled = scanEnabled,
                         refreshEnabled = actionsEnabled && state.cachedGames.isNotEmpty(),
                         clearEnabled = state.cachedGames.isNotEmpty() && !state.scanInProgress,

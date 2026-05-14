@@ -9,6 +9,7 @@ import com.google.android.material.button.MaterialButton
 import com.raofflineproxy.R
 
 class CachedGamesHeaderAdapter(
+    private val onSmartCache: () -> Unit,
     private val onScan: () -> Unit,
     private val onAdd: () -> Unit,
     private val onRefresh: () -> Unit,
@@ -18,6 +19,7 @@ class CachedGamesHeaderAdapter(
     private var state: HeaderState = HeaderState()
 
     data class HeaderState(
+        val smartCacheEnabled: Boolean = false,
         val scanEnabled: Boolean = false,
         val refreshEnabled: Boolean = false,
         val clearEnabled: Boolean = true,
@@ -26,6 +28,7 @@ class CachedGamesHeaderAdapter(
     )
 
     inner class ViewHolder(view: View) : RecyclerView.ViewHolder(view) {
+        val btnSmartCache: MaterialButton = view.findViewById(R.id.btn_smart_cache)
         val btnRefresh: MaterialButton = view.findViewById(R.id.btn_refresh_games)
         val btnAdd: MaterialButton = view.findViewById(R.id.btn_add_rom)
         val btnScan: MaterialButton = view.findViewById(R.id.btn_scan_roms)
@@ -34,6 +37,7 @@ class CachedGamesHeaderAdapter(
         val tvNoCachedGames: TextView = view.findViewById(R.id.tv_no_cached_games)
 
         init {
+            btnSmartCache.setOnClickListener { onSmartCache() }
             btnScan.setOnClickListener { onScan() }
             btnAdd.setOnClickListener { onAdd() }
             btnRefresh.setOnClickListener { onRefresh() }
@@ -41,6 +45,9 @@ class CachedGamesHeaderAdapter(
         }
 
         fun bind(s: HeaderState) {
+            btnSmartCache.isEnabled = s.smartCacheEnabled
+            btnSmartCache.alpha = if (s.smartCacheEnabled) 1f else 0.38f
+
             btnScan.isEnabled = s.scanEnabled
             btnAdd.isEnabled = s.scanEnabled
             btnScan.alpha = if (s.scanEnabled) 1f else 0.38f
