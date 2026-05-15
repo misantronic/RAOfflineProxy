@@ -47,10 +47,20 @@ private val DOLPHIN_GC_PATHS = DOLPHIN_PACKAGE_CANDIDATES.map { packageName ->
     listOf("GC")
 )
 
+private val DOLPHIN_WII_DISC_TITLE_PATHS = DOLPHIN_PACKAGE_CANDIDATES.map { packageName ->
+    listOf(packageName, "files", "Wii", "title", "00010000")
+} + listOf(
+    listOf("files", "Wii", "title", "00010000"),
+    listOf("Wii", "title", "00010000"),
+    listOf("title", "00010000"),
+    listOf("00010000")
+)
+
 private const val MAX_SMART_CACHE_FILES = 50
 private const val SMART_CACHE_EMULATOR_BUDGET = 25
 private val DOLPHIN_GAME_CODE_REGEX = Regex("(?<![A-Z0-9])[A-Z0-9]{6}(?![A-Z0-9])")
 private val DOLPHIN_GCI_CODE_REGEX = Regex("^\\d{2}-([A-Z0-9]{4})-.*\\.gci$", RegexOption.IGNORE_CASE)
+private val DOLPHIN_WII_TITLE_ID_REGEX = Regex("^[0-9A-Fa-f]{8}$")
 private val DOLPHIN_ROM_LOCATOR_REGEX = Regex("(?:(?:content|file)://|/storage/)[^\\u0000]+")
 private val DOLPHIN_ROM_SUFFIXES = listOf(
     ".rvz",
@@ -181,10 +191,7 @@ private object DolphinSmartCacheStrategy : SmartCacheStrategy {
                 return SmartCacheStrategyResult(message = "no_recent_games")
             }
         val gcRoot = findDolphinGcDirectory(tree)
-            ?: run {
-                Log.i(TAG, "Dolphin strategy did not find GC save root in granted tree")
-                return SmartCacheStrategyResult(message = "no_recent_games")
-            }
+        val wiiTitleRoot = findDolphinWiiDiscTitleDirectory(tree)
 
         val gamelistBytes = context.contentResolver.openInputStream(gamelistFile.uri)
             ?.use { it.readBytes() }
@@ -199,9 +206,12 @@ private object DolphinSmartCacheStrategy : SmartCacheStrategy {
             return SmartCacheStrategyResult(message = "no_recent_games")
         }
 
-        val recentSaveCodes = loadRecentGameCubeSaveCodes(gcRoot)
+        val recentSaveCodes = linkedMapOf<String, Long>().apply {
+            gcRoot?.let { putAll(loadRecentGameCubeSaveCodes(it)) }
+            wiiTitleRoot?.let { mergeRecentSaveCodes(loadRecentWiiDiscSaveCodes(it)) }
+        }
         if (recentSaveCodes.isEmpty()) {
-            Log.i(TAG, "Dolphin strategy found no recent GameCube savefiles")
+            Log.i(TAG, "Dolphin strategy found no recent GameCube or Wii disc savefiles")
             return SmartCacheStrategyResult(message = "no_recent_games")
         }
 
@@ -220,7 +230,7 @@ private object DolphinSmartCacheStrategy : SmartCacheStrategy {
             }
             .distinctBy { it.path }
 
-        Log.i(TAG, "Dolphin strategy discovered ${candidates.size} GameCube candidates from ${gamelistFile.uri}")
+        Log.i(TAG, "Dolphin strategy discovered ${candidates.size} Dolphin candidates from ${gamelistFile.uri}")
         return if (candidates.isEmpty()) {
             SmartCacheStrategyResult(message = "no_recent_games")
         } else {
@@ -399,6 +409,12 @@ private fun findDolphinGcDirectory(root: DocumentFile): DocumentFile? =
             ?.takeIf { it.exists() && it.isDirectory }
     }
 
+private fun findDolphinWiiDiscTitleDirectory(root: DocumentFile): DocumentFile? =
+    DOLPHIN_WII_DISC_TITLE_PATHS.firstNotNullOfOrNull { segments ->
+        segments.fold(root as DocumentFile?) { current, segment -> current?.findFile(segment) }
+            ?.takeIf { it.exists() && it.isDirectory }
+    }
+
 private fun parseRetroArchHistory(content: String): List<SmartCacheCandidate> {
     val seenPaths = linkedSetOf<String>()
     val items = parsePlaylistItems(content)
@@ -491,6 +507,39 @@ private fun loadRecentGameCubeSaveCodes(root: DocumentFile): Map<String, Long> {
             }
         }
     return recentByCode
+}
+
+private fun loadRecentWiiDiscSaveCodes(root: DocumentFile): Map<String, Long> {
+    val recentByCode = linkedMapOf<String, Long>()
+    root.listFiles()
+        .filter { document -> document.isDirectory }
+        .forEach { document ->
+            val titleIdSuffix = document.name?.takeIf { DOLPHIN_WII_TITLE_ID_REGEX.matches(it) } ?: return@forEach
+            val code = decodeWiiDiscTitleIdToGameCode(titleIdSuffix) ?: return@forEach
+            val modifiedAt = document.lastModified()
+            val previous = recentByCode[code] ?: Long.MIN_VALUE
+            if (modifiedAt > previous) {
+                recentByCode[code] = modifiedAt
+            }
+        }
+    return recentByCode
+}
+
+private fun decodeWiiDiscTitleIdToGameCode(titleIdSuffix: String): String? = runCatching {
+    buildString(4) {
+        titleIdSuffix.chunked(2).forEach { byteHex ->
+            append(byteHex.toInt(16).toChar())
+        }
+    }
+}.getOrNull()?.takeIf { code -> code.length == 4 && code.all { it.code in 0x20..0x7E } }?.uppercase()
+
+private fun MutableMap<String, Long>.mergeRecentSaveCodes(other: Map<String, Long>) {
+    other.forEach { (code, modifiedAt) ->
+        val previous = this[code] ?: Long.MIN_VALUE
+        if (modifiedAt > previous) {
+            this[code] = modifiedAt
+        }
+    }
 }
 
 private fun collectDocumentFiles(root: DocumentFile): List<DocumentFile> = buildList {
