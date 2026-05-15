@@ -110,6 +110,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         app.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
     private var pendingProxyStart = false
     private var pendingSmartCacheStart = false
+    private var pendingDolphinEnable = false
+    private var pendingSmartCachePromptAfterProxyStart = false
+    private var pendingSmartCacheRomGrantPaths = emptyList<String>()
 
     private fun str(resId: Int): String = getApplication<Application>().getString(resId)
     private fun str(resId: Int, vararg args: Any): String = getApplication<Application>().getString(resId, *args)
@@ -244,6 +247,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         cachedGames = games,
                         hasLoginCredentials = hasLoginCredentials
                     )
+                    maybePromptSmartCacheAfterProxyStart()
                     if (_state.value.proxyRunning && games.isNotEmpty() && _state.value.authState != AuthState.Valid) {
                         validateToken()
                     }
@@ -363,7 +367,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             needsSafGrant = remaining.isNotEmpty(),
             safGrantTarget = remaining.firstOrNull()
         )
-        if (pendingSmartCacheStart && target == SafGrantTarget.SmartCacheRom && remaining.isEmpty()) {
+        if (pendingDolphinEnable && target == SafGrantTarget.Dolphin && remaining.isEmpty()) {
+            pendingDolphinEnable = false
+            setDolphinEnabledInternal(enabled = true)
+            return
+        }
+        if (target == SafGrantTarget.SmartCacheRom && pendingSmartCacheRomGrantPaths.isNotEmpty()) {
+            pendingSmartCacheRomGrantPaths = pendingSmartCacheRomGrantPaths.drop(1)
+        }
+        if (pendingSmartCacheStart && remaining.isEmpty()) {
             pendingSmartCacheStart = false
             startSmartCache()
             return
@@ -383,8 +395,30 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 needsSafGrant = remaining.isNotEmpty(),
                 safGrantTarget = remaining.firstOrNull()
             )
+            if (target == SafGrantTarget.Dolphin && pendingDolphinEnable) {
+                pendingDolphinEnable = false
+                PrefsConstants.clearDolphinSafUri(app)
+                SnackbarManager.showMessage(str(R.string.dolphin_enable_access_rejected), SnackbarDuration.Indefinite)
+                return
+            }
+            if (pendingSmartCacheStart) {
+                pendingSmartCacheStart = false
+                when (target) {
+                    SafGrantTarget.RetroArch -> SnackbarManager.showMessage(str(R.string.smart_cache_requires_retroarch_access), SnackbarDuration.Indefinite)
+                    SafGrantTarget.Dolphin -> {
+                        PrefsConstants.clearDolphinSafUri(app)
+                        SnackbarManager.showMessage(str(R.string.smart_cache_requires_dolphin_access), SnackbarDuration.Indefinite)
+                    }
+                    SafGrantTarget.SmartCacheRom -> {
+                        pendingSmartCacheRomGrantPaths = emptyList()
+                        SnackbarManager.showMessage(str(R.string.smart_cache_requires_rom_access), SnackbarDuration.Indefinite)
+                    }
+                }
+                return
+            }
             if (target == SafGrantTarget.SmartCacheRom) {
                 pendingSmartCacheStart = false
+                pendingSmartCacheRomGrantPaths = emptyList()
                 SnackbarManager.showMessage(str(R.string.smart_cache_requires_rom_access), SnackbarDuration.Indefinite)
                 return
             }
@@ -406,6 +440,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             }
             SafGrantTarget.SmartCacheRom -> {
                 PrefsConstants.clearSmartCacheRomSafUri(app)
+                pendingSmartCacheRomGrantPaths = emptyList()
                 SnackbarManager.showMessage(str(R.string.smart_cache_requires_rom_access), SnackbarDuration.Indefinite)
             }
         }
@@ -625,6 +660,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     pendingSafGrantTargets = emptyList(),
                     authState = AuthState.Unknown
                 )
+                pendingSmartCachePromptAfterProxyStart = true
                 if (!alreadyRunning) {
                     SnackbarManager.showMessage(str(R.string.proxy_started_success))
                 }
@@ -638,11 +674,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private fun maybePromptSmartCacheAfterProxyStart() {
+        if (!pendingSmartCachePromptAfterProxyStart) return
         val currentState = _state.value
         if (!currentState.proxyRunning) return
         if (currentState.cachedGames.isNotEmpty()) return
         if (!currentState.isOnline) return
         if (!currentState.hasLoginCredentials) return
+        pendingSmartCachePromptAfterProxyStart = false
         _events.tryEmit(MainUiEvent.PromptSmartCacheAfterProxyStart)
     }
 
@@ -699,6 +737,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     safGrantTarget = if (result.needsSafGrant) SafGrantTarget.RetroArch else null,
                     cfgCopyBackPath = result.copyBackPath
                 )
+                pendingSmartCachePromptAfterProxyStart = false
 
                 if (result.needsSafGrant) {
                     PrefsConstants.clearSafUri(app)
@@ -907,7 +946,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 return@launch
             }
             val credentials = requireCredentials() ?: return@launch
-            val romTreeUri = loadSmartCacheRomSafUri()
+            val romTreeUris = loadSmartCacheRomSafUris()
             val startingMessage = str(R.string.smart_cache_starting)
             _state.value = _state.value.copy(scanInProgress = true, scanProgress = startingMessage)
             SnackbarManager.showProgress(startingMessage)
@@ -922,7 +961,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         db = db,
                         emulatorSupport = loadEmulatorSupport(app),
                         retroArchTreeUri = loadSafUri(),
-                        romTreeUri = romTreeUri
+                        dolphinTreeUri = loadDolphinSafUri(),
+                        romTreeUris = romTreeUris
                     ) { current, total, label ->
                         val progressMessage = str(R.string.smart_cache_progress, current, total, label)
                         _state.value = _state.value.copy(scanProgress = progressMessage)
@@ -935,20 +975,28 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 )
                 if (result.needsSafGrant) {
                     pendingSmartCacheStart = true
-                    Log.i("RAProxy/SmartCache", "startSmartCache requesting SmartCacheRom SAF grant")
+                    val safTarget = when (result.message) {
+                        "needs_saf_grant" -> SafGrantTarget.RetroArch
+                        "needs_dolphin_saf_grant" -> SafGrantTarget.Dolphin
+                        else -> SafGrantTarget.SmartCacheRom
+                    }
+                    pendingSmartCacheRomGrantPaths = result.requiredRomGrantPaths
+                    Log.i("RAProxy/SmartCache", "startSmartCache requesting SAF grant target=$safTarget")
                     _state.value = _state.value.copy(
                         needsSafGrant = true,
-                        safGrantTarget = SafGrantTarget.SmartCacheRom,
-                        pendingSafGrantTargets = listOf(SafGrantTarget.SmartCacheRom)
+                        safGrantTarget = safTarget,
+                        pendingSafGrantTargets = listOf(safTarget)
                     )
                     return@launch
                 }
                 val message = when (result.message) {
                     "no_strategies" -> str(R.string.smart_cache_no_strategies)
                     "needs_saf_grant" -> str(R.string.smart_cache_requires_retroarch_access)
+                    "needs_dolphin_saf_grant" -> str(R.string.smart_cache_requires_dolphin_access)
                     "needs_rom_saf_grant" -> str(R.string.smart_cache_requires_rom_access)
                     "history_missing" -> str(R.string.smart_cache_history_missing)
                     "history_empty" -> str(R.string.smart_cache_history_empty)
+                    "no_recent_games" -> str(R.string.smart_cache_no_recent_games)
                     "no_readable_candidates" -> str(R.string.smart_cache_no_readable_candidates)
                     "no_ra_matches" -> str(R.string.smart_cache_no_ra_matches)
                     else -> if (result.limitReached) {
@@ -1127,6 +1175,22 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             return
         }
 
+        if (enabled && loadDolphinSafUri() == null) {
+            pendingDolphinEnable = true
+            _state.value = _state.value.copy(
+                needsSafGrant = true,
+                safGrantTarget = SafGrantTarget.Dolphin,
+                pendingSafGrantTargets = listOf(SafGrantTarget.Dolphin)
+            )
+            return
+        }
+
+        pendingDolphinEnable = false
+        setDolphinEnabledInternal(enabled)
+    }
+
+    private fun setDolphinEnabledInternal(enabled: Boolean) {
+        val app = getApplication<Application>()
         app.getSharedPreferences(PrefsConstants.PREFS_NAME, Context.MODE_PRIVATE)
             .edit { putBoolean(PrefsConstants.KEY_ENABLE_DOLPHIN, enabled) }
         val updated = loadEmulatorSupport(app)
@@ -1158,8 +1222,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private fun loadDolphinSafUri(): Uri? =
         PrefsConstants.loadDolphinSafUri(getApplication())
 
-    private fun loadSmartCacheRomSafUri(): Uri? =
-        PrefsConstants.loadSmartCacheRomSafUri(getApplication())
+    internal fun consumePendingSmartCacheRomGrantPath(): String? =
+        pendingSmartCacheRomGrantPaths.firstOrNull()
+
+    private fun loadSmartCacheRomSafUris(): List<Uri> =
+        PrefsConstants.loadSmartCacheRomSafUris(getApplication())
 
     private suspend fun cacheImportedCredentials(credentials: ImportedCredentials) {
         val tokenCredentials = when (credentials) {

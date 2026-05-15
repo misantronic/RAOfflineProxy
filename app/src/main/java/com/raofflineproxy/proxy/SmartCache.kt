@@ -9,12 +9,14 @@ import com.raofflineproxy.MAX_CACHED_GAMES
 import com.raofflineproxy.data.AppDatabase
 import com.raofflineproxy.proxy.hash.RomHashInput
 import com.raofflineproxy.proxy.hash.hashRom
+import com.raofflineproxy.ui.DOLPHIN_PACKAGE_CANDIDATES
 import com.raofflineproxy.ui.EmulatorSupport
 import com.raofflineproxy.ui.RETROARCH_PACKAGE_CANDIDATES
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.io.FileInputStream
+import java.nio.charset.StandardCharsets
 
 private const val TAG = "RAProxy/SmartCache"
 
@@ -30,7 +32,31 @@ private val RETROARCH_HISTORY_PATHS = RETROARCH_PACKAGE_CANDIDATES.flatMap { pac
     listOf("playlists", "content_history.lpl")
 )
 
-private const val MAX_SMART_CACHE_FILES = 25
+private val DOLPHIN_GAMELIST_PATHS = DOLPHIN_PACKAGE_CANDIDATES.map { packageName ->
+    listOf(packageName, "cache", "gamelist.cache")
+} + listOf(
+    listOf("cache", "gamelist.cache"),
+    listOf("gamelist.cache")
+)
+
+private val DOLPHIN_GC_PATHS = DOLPHIN_PACKAGE_CANDIDATES.map { packageName ->
+    listOf(packageName, "files", "GC")
+} + listOf(
+    listOf("files", "GC"),
+    listOf("GC")
+)
+
+private const val MAX_SMART_CACHE_FILES = 50
+private const val SMART_CACHE_EMULATOR_BUDGET = 25
+private val DOLPHIN_GAME_CODE_REGEX = Regex("(?<![A-Z0-9])[A-Z0-9]{6}(?![A-Z0-9])")
+private val DOLPHIN_GCI_CODE_REGEX = Regex("^\\d{2}-([A-Z0-9]{4})-.*\\.gci$", RegexOption.IGNORE_CASE)
+private val DOLPHIN_ROM_LOCATOR_REGEX = Regex("(?:(?:content|file)://|/storage/)[^\\u0000]+")
+private val DOLPHIN_ROM_SUFFIXES = listOf(
+    ".rvz",
+    ".gcm",
+    ".iso",
+    ".wad"
+)
 
 internal enum class SmartCacheEmulator {
     RetroArch,
@@ -57,7 +83,8 @@ internal data class SmartCacheRunResult(
     val skipped: Int,
     val limitReached: Boolean,
     val needsSafGrant: Boolean = false,
-    val message: String? = null
+    val message: String? = null,
+    val requiredRomGrantPaths: List<String> = emptyList()
 )
 
 private data class ResolvedSmartCacheCandidate(
@@ -69,7 +96,13 @@ private data class ResolvedSmartCacheCandidate(
 private data class SmartCachePreflightResult(
     val resolved: List<ResolvedSmartCacheCandidate>,
     val unreadableCount: Int,
-    val needsRomGrant: Boolean
+    val requiredRomGrantPaths: List<String>
+)
+
+private data class DolphinGameListEntry(
+    val gameCode: String,
+    val romLocator: String,
+    val title: String?
 )
 
 private interface SmartCacheStrategy {
@@ -124,8 +157,75 @@ private object DolphinSmartCacheStrategy : SmartCacheStrategy {
         emulatorSupport.dolphinInstalled &&
             emulatorSupport.dolphinEnabled
 
-    override fun discoverCandidates(context: Context, treeUri: Uri?): SmartCacheStrategyResult =
-        SmartCacheStrategyResult()
+    override fun discoverCandidates(context: Context, treeUri: Uri?): SmartCacheStrategyResult {
+        if (treeUri == null) {
+            Log.i(TAG, "Dolphin strategy needs SAF grant for package data")
+            return SmartCacheStrategyResult(
+                message = "needs_dolphin_saf_grant",
+                needsSafGrant = true
+            )
+        }
+
+        val tree = DocumentFile.fromTreeUri(context, treeUri)
+            ?: run {
+                Log.w(TAG, "Dolphin strategy could not open treeUri=$treeUri")
+                return SmartCacheStrategyResult(
+                    message = "needs_dolphin_saf_grant",
+                    needsSafGrant = true
+                )
+            }
+        val gamelistFile = findDocument(tree, DOLPHIN_GAMELIST_PATHS)
+            ?: run {
+                Log.i(TAG, "Dolphin strategy did not find gamelist.cache in granted tree")
+                return SmartCacheStrategyResult(message = "no_recent_games")
+            }
+        val gcRoot = findDirectory(tree, DOLPHIN_GC_PATHS)
+            ?: run {
+                Log.i(TAG, "Dolphin strategy did not find GC save root in granted tree")
+                return SmartCacheStrategyResult(message = "no_recent_games")
+            }
+
+        val gamelistBytes = context.contentResolver.openInputStream(gamelistFile.uri)
+            ?.use { it.readBytes() }
+            ?: run {
+                Log.w(TAG, "Dolphin strategy could not read gamelist uri=${gamelistFile.uri}")
+                return SmartCacheStrategyResult(message = "no_recent_games")
+            }
+        val entriesByCode = parseDolphinGameListEntries(gamelistBytes)
+            .groupBy { it.gameCode.take(4) }
+        if (entriesByCode.isEmpty()) {
+            Log.i(TAG, "Dolphin strategy parsed no game entries from gamelist.cache")
+            return SmartCacheStrategyResult(message = "no_recent_games")
+        }
+
+        val recentSaveCodes = loadRecentGameCubeSaveCodes(gcRoot)
+        if (recentSaveCodes.isEmpty()) {
+            Log.i(TAG, "Dolphin strategy found no recent GameCube savefiles")
+            return SmartCacheStrategyResult(message = "no_recent_games")
+        }
+
+        val candidates = recentSaveCodes.entries
+            .sortedByDescending { it.value }
+            .mapNotNull { (code, _) ->
+                entriesByCode[code]?.firstOrNull()?.let { entry ->
+                    SmartCacheCandidate(
+                        emulator = SmartCacheEmulator.Dolphin,
+                        sourceLabel = "Dolphin GC saves",
+                        path = entry.romLocator,
+                        title = entry.title,
+                        priority = 0
+                    )
+                }
+            }
+            .distinctBy { it.path }
+
+        Log.i(TAG, "Dolphin strategy discovered ${candidates.size} GameCube candidates from ${gamelistFile.uri}")
+        return if (candidates.isEmpty()) {
+            SmartCacheStrategyResult(message = "no_recent_games")
+        } else {
+            SmartCacheStrategyResult(candidates = candidates)
+        }
+    }
 }
 
 internal suspend fun runSmartCache(
@@ -135,12 +235,13 @@ internal suspend fun runSmartCache(
     db: AppDatabase,
     emulatorSupport: EmulatorSupport,
     retroArchTreeUri: Uri?,
-    romTreeUri: Uri?,
+    dolphinTreeUri: Uri?,
+    romTreeUris: List<Uri>,
     onProgress: (current: Int, total: Int, label: String) -> Unit
 ): SmartCacheRunResult {
     Log.i(
         TAG,
-        "runSmartCache start retroArchTreeUri=$retroArchTreeUri romTreeUri=$romTreeUri retroArchEnabled=${emulatorSupport.retroArchEnabled} dolphinEnabled=${emulatorSupport.dolphinEnabled}"
+        "runSmartCache start retroArchTreeUri=$retroArchTreeUri dolphinTreeUri=$dolphinTreeUri romTreeUris=${romTreeUris.size} retroArchEnabled=${emulatorSupport.retroArchEnabled} dolphinEnabled=${emulatorSupport.dolphinEnabled}"
     )
     val cachedGameIds = loadCachedGameIds(db)
     val cachedRomPaths = loadCachedRomPaths(db)
@@ -174,7 +275,7 @@ internal suspend fun runSmartCache(
     activeStrategies.forEach { strategy ->
         val treeUri = when (strategy.emulator) {
             SmartCacheEmulator.RetroArch -> retroArchTreeUri
-            SmartCacheEmulator.Dolphin -> null
+            SmartCacheEmulator.Dolphin -> dolphinTreeUri
         }
         val result = strategy.discoverCandidates(context, treeUri)
         Log.i(
@@ -200,7 +301,7 @@ internal suspend fun runSmartCache(
             skipped = 0,
             limitReached = false,
             needsSafGrant = needsSafGrant,
-            message = strategyMessage ?: if (needsSafGrant) "needs_saf_grant" else "history_empty"
+            message = strategyMessage ?: if (needsSafGrant) "needs_saf_grant" else "no_recent_games"
         )
     }
 
@@ -213,20 +314,21 @@ internal suspend fun runSmartCache(
             }
             alreadyCached
         }
-    val preflight = resolveSmartCacheCandidates(context, candidates, romTreeUri)
+    val preflight = resolveSmartCacheCandidates(context, candidates, romTreeUris)
     Log.i(
         TAG,
-        "runSmartCache preflight resolved=${preflight.resolved.size} unreadable=${preflight.unreadableCount} needsRomGrant=${preflight.needsRomGrant}"
+        "runSmartCache preflight resolved=${preflight.resolved.size} unreadable=${preflight.unreadableCount} requiredRomGrantPaths=${preflight.requiredRomGrantPaths}"
     )
-    if (preflight.needsRomGrant) {
-        Log.i(TAG, "runSmartCache requesting ROM tree grant before caching")
+    if (preflight.requiredRomGrantPaths.isNotEmpty()) {
+        Log.i(TAG, "runSmartCache requesting ROM tree grants paths=${preflight.requiredRomGrantPaths}")
         return SmartCacheRunResult(
             matched = 0,
             total = candidates.size,
             skipped = 0,
             limitReached = false,
             needsSafGrant = true,
-            message = "needs_rom_saf_grant"
+            message = "needs_rom_saf_grant",
+            requiredRomGrantPaths = preflight.requiredRomGrantPaths
         )
     }
     if (preflight.resolved.isEmpty()) {
@@ -236,15 +338,16 @@ internal suspend fun runSmartCache(
             total = 0,
             skipped = 0,
             limitReached = false,
-            message = "no_readable_candidates"
+            message = "no_readable_candidates",
+            requiredRomGrantPaths = emptyList()
         )
     }
 
     val candidateCap = minOf(remainingSlots, MAX_SMART_CACHE_FILES)
-    val resolvedCandidates = preflight.resolved.take(candidateCap)
+    val resolvedCandidates = selectSmartCacheCandidates(preflight.resolved, candidateCap)
     Log.i(
         TAG,
-        "runSmartCache readable cap=$candidateCap resolved=${preflight.resolved.size} capped=${resolvedCandidates.size} remainingSlots=$remainingSlots"
+        "runSmartCache readable cap=$candidateCap resolved=${preflight.resolved.size} capped=${resolvedCandidates.size} remainingSlots=$remainingSlots retroArchSelected=${resolvedCandidates.count { it.candidate.emulator == SmartCacheEmulator.RetroArch }} dolphinSelected=${resolvedCandidates.count { it.candidate.emulator == SmartCacheEmulator.Dolphin }}"
     )
 
     val relevantTotal = resolvedCandidates.size
@@ -289,6 +392,12 @@ private fun findDocument(root: DocumentFile, pathVariants: List<List<String>>): 
             ?.takeIf { it.exists() && it.isFile }
     }
 
+private fun findDirectory(root: DocumentFile, pathVariants: List<List<String>>): DocumentFile? =
+    pathVariants.firstNotNullOfOrNull { segments ->
+        segments.fold(root as DocumentFile?) { current, segment -> current?.findFile(segment) }
+            ?.takeIf { it.exists() && it.isDirectory }
+    }
+
 private fun parseRetroArchHistory(content: String): List<SmartCacheCandidate> {
     val seenPaths = linkedSetOf<String>()
     val items = parsePlaylistItems(content)
@@ -324,46 +433,227 @@ private fun jsonArrayItems(array: JSONArray): List<JSONObject> = buildList {
     }
 }
 
+private fun parseDolphinGameListEntries(content: ByteArray): List<DolphinGameListEntry> {
+    val text = content.toString(StandardCharsets.ISO_8859_1)
+    val locatorMatches = DOLPHIN_ROM_LOCATOR_REGEX.findAll(text).toList()
+    if (locatorMatches.isEmpty()) {
+        return emptyList()
+    }
+
+    return buildList {
+        locatorMatches.forEachIndexed { index, locatorMatch ->
+            val nextStart = locatorMatches.getOrNull(index + 1)?.range?.first ?: text.length
+            val segment = text.substring(locatorMatch.range.last + 1, nextStart)
+            val codeMatch = DOLPHIN_GAME_CODE_REGEX.find(segment) ?: return@forEachIndexed
+            val romLocator = sanitizeDolphinRomLocator(locatorMatch.value) ?: return@forEachIndexed
+            add(
+                DolphinGameListEntry(
+                    gameCode = codeMatch.value,
+                    romLocator = romLocator,
+                    title = deriveSmartCacheTitle(romLocator)
+                )
+            )
+        }
+    }.distinctBy { entry -> entry.romLocator }
+}
+
+private fun sanitizeDolphinRomLocator(locator: String): String? {
+    val trimmed = locator.trim()
+    val cutoff = DOLPHIN_ROM_SUFFIXES.firstNotNullOfOrNull { suffix ->
+        trimmed.indexOf(suffix, ignoreCase = true)
+            .takeIf { it >= 0 }
+            ?.let { it + suffix.length }
+    } ?: return trimmed.takeIf { it.isNotBlank() }
+    return trimmed.substring(0, cutoff)
+}
+
+private fun deriveSmartCacheTitle(path: String): String? =
+    Uri.decode(path.substringAfterLast('/')).takeIf { it.isNotBlank() }
+
+private fun loadRecentGameCubeSaveCodes(root: DocumentFile): Map<String, Long> {
+    val recentByCode = linkedMapOf<String, Long>()
+    collectDocumentFiles(root)
+        .filter { document ->
+            document.isFile && (document.name?.endsWith(".gci", ignoreCase = true) == true)
+        }
+        .forEach { document ->
+            val name = document.name ?: return@forEach
+            val code = DOLPHIN_GCI_CODE_REGEX.matchEntire(name)
+                ?.groupValues
+                ?.getOrNull(1)
+                ?.uppercase()
+                ?: return@forEach
+            val modifiedAt = document.lastModified()
+            val previous = recentByCode[code] ?: Long.MIN_VALUE
+            if (modifiedAt > previous) {
+                recentByCode[code] = modifiedAt
+            }
+        }
+    return recentByCode
+}
+
+private fun collectDocumentFiles(root: DocumentFile): List<DocumentFile> = buildList {
+    val stack = ArrayDeque<DocumentFile>()
+    stack.add(root)
+    while (stack.isNotEmpty()) {
+        val current = stack.removeFirst()
+        add(current)
+        current.listFiles().forEach { child ->
+            if (child.isDirectory) {
+                stack.addLast(child)
+            } else {
+                add(child)
+            }
+        }
+    }
+}
+
 private fun resolveSmartCacheCandidates(
     context: Context,
     candidates: List<SmartCacheCandidate>,
-    romTreeUri: Uri?
+    romTreeUris: List<Uri>
 ): SmartCachePreflightResult {
     val resolved = mutableListOf<ResolvedSmartCacheCandidate>()
     var unreadableCount = 0
-    var needsRomGrant = false
-    val romTree = romTreeUri?.let { DocumentFile.fromTreeUri(context, it) }
+    val requiredRomGrantPaths = linkedSetOf<String>()
+    val romTrees = romTreeUris.mapNotNull { uri ->
+        DocumentFile.fromTreeUri(context, uri)?.let { tree -> uri to tree }
+    }
+    val grantedRomRoots = romTreeUris.mapNotNull(::treeUriToAbsolutePath)
 
     candidates.forEach { candidate ->
-        val directFile = File(candidate.path)
+        val directDocument = resolveDocumentByStoredUri(context, candidate.path)
+        if (directDocument != null) {
+            resolved += ResolvedSmartCacheCandidate(candidate = candidate, documentFile = directDocument)
+            return@forEach
+        }
+
+        val absolutePath = candidate.path.toAbsoluteStoragePath() ?: candidate.path
+        val directFile = File(absolutePath)
         if (directFile.isFile && directFile.canRead()) {
             resolved += ResolvedSmartCacheCandidate(candidate = candidate, directFile = directFile)
             return@forEach
         }
 
-        if (romTree == null) {
-            needsRomGrant = true
-            return@forEach
+        val document = romTrees.firstNotNullOfOrNull { (_, tree) ->
+            resolveDocumentByAbsolutePath(context, tree, absolutePath)
         }
-
-        val document = resolveDocumentByAbsolutePath(context, romTree, candidate.path)
         if (document != null) {
             resolved += ResolvedSmartCacheCandidate(candidate = candidate, documentFile = document)
         } else {
+            val requestedGrantPath = computeRequestedRomGrantPath(candidate.path)
+            if (requestedGrantPath != null && grantedRomRoots.none { grantedRoot -> grantedRoot.coversPath(requestedGrantPath) }) {
+                requiredRomGrantPaths += requestedGrantPath
+            }
             unreadableCount++
         }
     }
 
     Log.i(
         TAG,
-        "resolveSmartCacheCandidates finished resolved=${resolved.size} unreadable=$unreadableCount needsRomGrant=$needsRomGrant"
+        "resolveSmartCacheCandidates finished resolved=${resolved.size} unreadable=$unreadableCount requiredRomGrantPaths=$requiredRomGrantPaths"
     )
 
     return SmartCachePreflightResult(
         resolved = resolved,
         unreadableCount = unreadableCount,
-        needsRomGrant = needsRomGrant
+        requiredRomGrantPaths = collapseRequestedRomGrantPaths(requiredRomGrantPaths.toList())
     )
+}
+
+private fun computeRequestedRomGrantPath(path: String): String? {
+    val absolutePath = path.toAbsoluteStoragePath() ?: path
+    val relativePath = absolutePath.substringAfter("/storage/emulated/0/", missingDelimiterValue = "")
+        .trim('/')
+        .takeIf { it.isNotBlank() }
+        ?: return null
+    val segments = relativePath.split('/').filter { it.isNotBlank() }
+    if (segments.isEmpty()) {
+        return null
+    }
+
+    val requestedSegments = when (segments.first()) {
+        "Download" -> segments.take(minOf(2, segments.size))
+        "ROMs" -> segments.take(1)
+        else -> segments.take(1)
+    }
+    return "/storage/emulated/0/${requestedSegments.joinToString("/")}"
+}
+
+private fun collapseRequestedRomGrantPaths(paths: List<String>): List<String> {
+    val normalizedPaths = paths
+        .map { it.replace('\\', '/').trim().trimEnd('/') }
+        .filter { it.isNotBlank() }
+        .distinct()
+        .sorted()
+
+    return normalizedPaths.filterNot { candidate ->
+        normalizedPaths.any { other ->
+            other != candidate && candidate.startsWith("$other/")
+        }
+    }
+}
+
+private fun selectSmartCacheCandidates(
+    candidates: List<ResolvedSmartCacheCandidate>,
+    candidateCap: Int
+): List<ResolvedSmartCacheCandidate> {
+    if (candidateCap <= 0 || candidates.isEmpty()) {
+        return emptyList()
+    }
+
+    val grouped = candidates.groupBy { it.candidate.emulator }
+        .mapValues { (_, entries) -> entries.toMutableList() }
+        .toMutableMap()
+    val selected = mutableListOf<ResolvedSmartCacheCandidate>()
+    val perEmulatorBudget = minOf(SMART_CACHE_EMULATOR_BUDGET, candidateCap)
+
+    SmartCacheEmulator.entries.forEach { emulator ->
+        val bucket = grouped[emulator] ?: return@forEach
+        repeat(minOf(perEmulatorBudget, bucket.size)) {
+            if (selected.size < candidateCap) {
+                selected += bucket.removeAt(0)
+            }
+        }
+    }
+
+    if (selected.size >= candidateCap) {
+        return selected
+    }
+
+    val remainingBuckets = SmartCacheEmulator.entries
+        .mapNotNull { emulator -> grouped[emulator] }
+    while (selected.size < candidateCap) {
+        var addedAny = false
+        remainingBuckets.forEach { bucket ->
+            if (selected.size >= candidateCap || bucket.isEmpty()) {
+                return@forEach
+            }
+            selected += bucket.removeAt(0)
+            addedAny = true
+        }
+        if (!addedAny) {
+            break
+        }
+    }
+
+    return selected
+}
+
+private fun treeUriToAbsolutePath(treeUri: Uri): String? {
+    val documentPath = DocumentsContract.getTreeDocumentId(treeUri)
+        .substringAfter(':', missingDelimiterValue = "")
+        .trim('/')
+        .takeIf { it.isNotBlank() }
+        ?: return "/storage/emulated/0"
+    return "/storage/emulated/0/$documentPath"
+}
+
+private fun String.coversPath(otherPath: String): Boolean {
+    val normalizedRoot = replace('\\', '/').trim().trimEnd('/')
+    val normalizedOther = otherPath.replace('\\', '/').trim().trimEnd('/')
+    return normalizedOther.equals(normalizedRoot, ignoreCase = true) ||
+        normalizedOther.startsWith("$normalizedRoot/", ignoreCase = true)
 }
 
 private suspend fun executeResolvedSmartCacheCandidates(
@@ -486,6 +776,40 @@ private fun resolveDocumentByAbsolutePath(context: Context, root: DocumentFile, 
         Log.d(TAG, "resolveDocumentByAbsolutePath failed absolutePath=$normalizedPath treeUri=${root.uri} candidates=$candidates")
     }
     return resolved
+}
+
+private fun resolveDocumentByStoredUri(context: Context, path: String): DocumentFile? {
+    if (!path.startsWith("content://", ignoreCase = true)) {
+        return null
+    }
+    return runCatching {
+        DocumentFile.fromSingleUri(context, Uri.parse(path))
+            ?.takeIf { it.exists() && it.isFile }
+    }.getOrNull()
+}
+
+private fun String.toAbsoluteStoragePath(): String? {
+    if (!startsWith("content://", ignoreCase = true)) {
+        return null
+    }
+
+    val uri = runCatching { Uri.parse(this) }.getOrNull() ?: return null
+    if (!uri.authority.equals("com.android.externalstorage.documents", ignoreCase = true)) {
+        return null
+    }
+
+    val encodedPath = uri.path
+        ?.substringAfter("/tree/", missingDelimiterValue = "")
+        ?.takeIf { it.isNotBlank() }
+        ?: return null
+    val decodedPath = Uri.decode(encodedPath)
+        .substringBefore('?')
+        .trim('/')
+    val documentPath = decodedPath.substringAfter(':', missingDelimiterValue = "")
+        .trim('/')
+        .takeIf { it.isNotBlank() }
+        ?: return null
+    return "/storage/emulated/0/$documentPath"
 }
 
 private fun buildDocumentIdForTree(treeUri: Uri, relativePath: String): String? {
