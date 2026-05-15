@@ -119,8 +119,8 @@
     <string name="smart_cache_history_missing">RetroArch recent history was not found.</string>
     <string name="smart_cache_history_empty">RetroArch recent history is empty.</string>
     <string name="smart_cache_no_recent_games">Smart Cache did not find any recent games.</string>
-    <string name="smart_cache_no_readable_candidates">Smart Cache found recent games, but none were readable from the granted ROM folders.</string>
-    <string name="smart_cache_no_ra_matches">Smart Cache found readable recent games, but none matched RetroAchievements.</string>
+    <string name="smart_cache_no_readable_candidates">Smart Cache did not find any recent games.</string>
+    <string name="smart_cache_no_ra_matches">Smart Cache did not find any recent games.</string>
     <string name="smart_cache_prompt_title">Start Smart Cache?</string>
     <string name="smart_cache_prompt_message">Smart Cache looks at your recently played games and adds them for offline use.</string>
     <string name="smart_cache_prompt_start">Start Smart Cache</string>
