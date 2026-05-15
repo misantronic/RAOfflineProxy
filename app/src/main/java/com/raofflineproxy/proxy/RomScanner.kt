@@ -48,13 +48,6 @@ data class ScanResult(
     val limitReached: Boolean = false
 )
 
-internal data class CacheQueueEntry(
-    val label: String,
-    val gameId: Int,
-    val romHash: String? = null,
-    val sourceRomPath: String? = null
-)
-
 internal suspend fun loadCachedRomPaths(db: AppDatabase): MutableSet<String> =
     db.cacheDao().getAllByPrefix(CacheKeys.PREFIX_PATCH)
         .mapNotNull { entry -> entry.sourceRomPath?.normalizeCachedRomPath() }
@@ -308,56 +301,6 @@ internal suspend fun loadCachedGameIds(db: AppDatabase): MutableSet<String> =
     db.cacheDao().getAllByPrefix(CacheKeys.PREFIX_PATCH)
         .mapNotNull { entry -> CacheKeys.parseGameIdStringFromPatchKey(entry.cacheKey) }
         .toMutableSet()
-
-internal suspend fun executeCacheQueue(
-    context: Context,
-    credentials: LoginCredentials,
-    userAgent: String,
-    db: AppDatabase,
-    entries: List<CacheQueueEntry>,
-    skipAlreadyCached: Boolean = false,
-    onProgress: (current: Int, total: Int, label: String) -> Unit = { _, _, _ -> }
-): ScanResult {
-    val cachedGameIds = loadCachedGameIds(db)
-    val total = entries.size
-    var matched = 0
-    var skipped = 0
-    var limitReached = false
-
-    for ((index, entry) in entries.withIndex()) {
-        if (cachedGameIds.size >= MAX_CACHED_GAMES) {
-            skipped += total - index
-            limitReached = true
-            break
-        }
-
-        onProgress(index + 1, total, entry.label)
-        val gameIdString = entry.gameId.toString()
-        if (skipAlreadyCached && gameIdString in cachedGameIds) {
-            skipped++
-            continue
-        }
-
-        cacheGame(
-            context = context,
-            gameId = entry.gameId,
-            creds = credentials,
-            userAgent = userAgent,
-            db = db,
-            romHash = entry.romHash,
-            sourceRomPath = entry.sourceRomPath
-        )
-        cachedGameIds.add(gameIdString)
-        matched++
-    }
-
-    return ScanResult(
-        matched = matched,
-        total = total,
-        skipped = skipped,
-        limitReached = limitReached
-    )
-}
 
 internal fun String.normalizeCachedRomPath(): String =
     replace('\\', '/')
