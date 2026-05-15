@@ -81,7 +81,7 @@ class MainActivity : AppCompatActivity() {
             uri,
             Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
         )
-        PrefsConstants.saveSmartCacheRomSafUri(this, uri)
+        PrefsConstants.addSmartCacheRomSafUri(this, uri)
         viewModel.onSafGranted(SafGrantTarget.SmartCacheRom)
     }
 
@@ -370,7 +370,7 @@ class MainActivity : AppCompatActivity() {
                 when (target) {
                     SafGrantTarget.RetroArch -> safLauncher.launch(Unit)
                     SafGrantTarget.Dolphin -> dolphinSafLauncher.launch(Unit)
-                    SafGrantTarget.SmartCacheRom -> smartCacheRomSafLauncher.launch(Unit)
+                    SafGrantTarget.SmartCacheRom -> smartCacheRomSafLauncher.launch(viewModel.consumePendingSmartCacheRomGrantPath())
                 }
             }
             .setNegativeButton(android.R.string.cancel) { _, _ ->
@@ -574,7 +574,7 @@ private class OpenAndroidDataTree : ActivityResultContract<Unit, Uri?>() {
 private class OpenDolphinConfigTree : ActivityResultContract<Unit, Uri?>() {
     override fun createIntent(context: Context, input: Unit): Intent =
         Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).apply {
-            initialTreeUriForPath("/storage/emulated/0/Android/data/${resolveDolphinPackage(context)}/files/Config")
+            initialTreeUriForPath("/storage/emulated/0/Android/data/${resolveDolphinPackage(context)}")
                 ?.let { putExtra(DocumentsContract.EXTRA_INITIAL_URI, it) }
             addFlags(
                 Intent.FLAG_GRANT_READ_URI_PERMISSION or
@@ -594,10 +594,10 @@ private class OpenDolphinConfigTree : ActivityResultContract<Unit, Uri?>() {
         } ?: DOLPHIN_PACKAGE_CANDIDATES.first()
 }
 
-private class OpenSmartCacheRomTree : ActivityResultContract<Unit, Uri?>() {
-    override fun createIntent(context: Context, input: Unit): Intent =
+private class OpenSmartCacheRomTree : ActivityResultContract<String?, Uri?>() {
+    override fun createIntent(context: Context, input: String?): Intent =
         Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).apply {
-            initialTreeUriForPath("/storage/emulated/0/ROMs")
+            initialTreeUriForPath(input ?: "/storage/emulated/0/ROMs")
                 ?.let { putExtra(DocumentsContract.EXTRA_INITIAL_URI, it) }
             addFlags(
                 Intent.FLAG_GRANT_READ_URI_PERMISSION or
