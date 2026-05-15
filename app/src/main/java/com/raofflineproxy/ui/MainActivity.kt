@@ -179,6 +179,14 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }
+
+        lifecycleScope.launch {
+            viewModel.events.collect { event ->
+                when (event) {
+                    MainUiEvent.PromptSmartCacheAfterProxyStart -> showSmartCacheAfterProxyStartDialog()
+                }
+            }
+        }
     }
 
     override fun onResume() {
@@ -373,6 +381,17 @@ class MainActivity : AppCompatActivity() {
                     SafGrantTarget.SmartCacheRom -> viewModel.onSafRejected(SafGrantTarget.SmartCacheRom)
                 }
             }
+            .show()
+    }
+
+    private fun showSmartCacheAfterProxyStartDialog() {
+        AlertDialog.Builder(this)
+            .setTitle(R.string.smart_cache_prompt_title)
+            .setMessage(R.string.smart_cache_prompt_message)
+            .setPositiveButton(R.string.smart_cache_prompt_start) { _, _ ->
+                viewModel.startSmartCache()
+            }
+            .setNegativeButton(R.string.smart_cache_prompt_not_now, null)
             .show()
     }
 

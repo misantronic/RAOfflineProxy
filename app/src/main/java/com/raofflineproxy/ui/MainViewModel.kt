@@ -55,8 +55,10 @@ import com.raofflineproxy.service.ProxyService
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -65,6 +67,10 @@ import org.json.JSONObject
 enum class AuthState { Unknown, Valid, Invalid }
 
 enum class SafGrantTarget { RetroArch, Dolphin, SmartCacheRom }
+
+sealed interface MainUiEvent {
+    data object PromptSmartCacheAfterProxyStart : MainUiEvent
+}
 
 data class MainUiState(
     val proxyRunning: Boolean = false,
@@ -96,6 +102,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val db = AppDatabase.getInstance(app)
     private val _state = MutableStateFlow(MainUiState())
     val state: StateFlow<MainUiState> = _state.asStateFlow()
+    private val _events = MutableSharedFlow<MainUiEvent>(extraBufferCapacity = 1)
+    val events = _events.asSharedFlow()
     private val _cachedGames = MutableStateFlow<List<CachedGame>>(emptyList())
     val cachedGames: StateFlow<List<CachedGame>> = _cachedGames.asStateFlow()
     private val connectivityManager =
@@ -620,12 +628,22 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 if (!alreadyRunning) {
                     SnackbarManager.showMessage(str(R.string.proxy_started_success))
                 }
+                maybePromptSmartCacheAfterProxyStart()
                 validateToken()
             } finally {
                 delay(250)
                 _state.value = _state.value.copy(proxyToggleInProgress = false)
             }
         }
+    }
+
+    private fun maybePromptSmartCacheAfterProxyStart() {
+        val currentState = _state.value
+        if (!currentState.proxyRunning) return
+        if (currentState.cachedGames.isNotEmpty()) return
+        if (!currentState.isOnline) return
+        if (!currentState.hasLoginCredentials) return
+        _events.tryEmit(MainUiEvent.PromptSmartCacheAfterProxyStart)
     }
 
     fun stopProxy(treeUri: Uri? = null) {

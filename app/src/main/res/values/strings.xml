@@ -33,7 +33,6 @@
     <string name="home_no_emulator_warning">No supported emulator was found. Install RetroArch or Dolphin to use RAOfflineProxy.</string>
     <string name="home_token_warning">No RetroAchievements credentials were found in a supported emulator config, or the saved token is no longer valid. Open your emulator and log in while online, then start the proxy again.</string>
     <string name="home_go_to_cached_games">Go to Cached Games</string>
-    <string name="home_start_smart_cache">Start Smart Caching</string>
     <string name="emulator_retroarch">RetroArch</string>
     <string name="emulator_dolphin">Dolphin</string>
     <string name="emulator_toggle_icon_cd">Installed emulator icon</string>
@@ -119,6 +118,10 @@
     <string name="smart_cache_history_empty">RetroArch recent history is empty.</string>
     <string name="smart_cache_no_readable_candidates">Smart Cache found recent games, but none were readable from the granted ROM folders.</string>
     <string name="smart_cache_no_ra_matches">Smart Cache found readable recent games, but none matched RetroAchievements.</string>
+    <string name="smart_cache_prompt_title">Start Smart Cache?</string>
+    <string name="smart_cache_prompt_message">Smart Cache looks at your recently played games and adds them for offline use.</string>
+    <string name="smart_cache_prompt_start">Start Smart Cache</string>
+    <string name="smart_cache_prompt_not_now">Not now</string>
 
     <!-- Refresh messages -->
     <string name="refresh_progress">Refreshing %1$d/%2$d…</string>
