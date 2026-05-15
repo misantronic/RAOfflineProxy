@@ -6,7 +6,16 @@ internal object RvzRomHashStrategy : RomHashStrategy {
     override fun matches(fileName: String): Boolean = hasExtension(fileName, "rvz")
 
     override fun hash(input: RomHashInput): String? {
-        logWarn(TAG, "RVZ hashing is not supported without a logical disc reader: ${input.fileName}")
-        return null
+        val openDataSource = input.openDataSource ?: return null
+        return RvzRomDataSource.open(openDataSource)?.use { rvz ->
+            when (rvz.metadata().discType) {
+                RvzDiscType.GAMECUBE -> hashGameCubeDisc(rvz)
+
+                RvzDiscType.WII -> {
+                    logWarn(TAG, "Wii RVZ hashing is not supported yet: ${input.fileName}")
+                    null
+                }
+            }
+        }
     }
 }

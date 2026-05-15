@@ -50,20 +50,28 @@ internal fun hashGameCubeDisc(input: RomHashInput): String? {
     val openDataSource = input.openDataSource ?: return null
     return openDataSource().use { dataSource ->
         if (dataSource == null) return@use null
-        val digest = MessageDigest.getInstance("MD5")
-        if (!updateGameCubePartition(digest, dataSource)) return@use null
-        digest.digest().toHexString()
+        hashGameCubeDisc(dataSource)
     }
+}
+
+internal fun hashGameCubeDisc(dataSource: RomDataSource): String? {
+    val digest = MessageDigest.getInstance("MD5")
+    if (!updateGameCubePartition(digest, dataSource)) return null
+    return digest.digest().toHexString()
 }
 
 internal fun hashWiiDisc(input: RomHashInput): String? {
     val openDataSource = input.openDataSource ?: return null
     return openDataSource().use { dataSource ->
         if (dataSource == null) return@use null
-        val digest = MessageDigest.getInstance("MD5")
-        if (!updateWiiDisc(digest, dataSource)) return@use null
-        digest.digest().toHexString()
+        hashWiiDisc(dataSource)
     }
+}
+
+internal fun hashWiiDisc(dataSource: RomDataSource): String? {
+    val digest = MessageDigest.getInstance("MD5")
+    if (!updateWiiDisc(digest, dataSource)) return null
+    return digest.digest().toHexString()
 }
 
 internal fun hashWiiWad(input: RomHashInput): String? {
