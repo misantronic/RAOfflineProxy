@@ -29,7 +29,6 @@ private const val WII_CLUSTER_HEADER_SIZE = 0x400
 private const val WII_CLUSTER_DATA_SIZE = 0x7C00
 private const val WII_CLUSTER_TOTAL_SIZE = WII_CLUSTER_HEADER_SIZE + WII_CLUSTER_DATA_SIZE
 private const val WII_GROUP_BLOCK_COUNT = 64
-private const val WII_GROUP_HEADER_SIZE = WII_CLUSTER_HEADER_SIZE * WII_GROUP_BLOCK_COUNT
 private const val WII_GROUP_DATA_SIZE = WII_CLUSTER_DATA_SIZE * WII_GROUP_BLOCK_COUNT
 private const val WII_GROUP_TOTAL_SIZE = WII_CLUSTER_TOTAL_SIZE * WII_GROUP_BLOCK_COUNT
 private const val WII_HASH_HEADER_IV_OFFSET = 0x3D0
@@ -64,6 +63,33 @@ private data class RvzWiiPartition(
     val rawDataOffset: Long = firstSector.toLong() * RVZ_SECTOR_SIZE
     val decryptedSize: Long = totalSectors.toLong() * WII_CLUSTER_DATA_SIZE
     val groupCache = mutableMapOf<Long, ByteArray>()
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (javaClass != other?.javaClass) return false
+
+        other as RvzWiiPartition
+
+        if (firstSector != other.firstSector) return false
+        if (totalSectors != other.totalSectors) return false
+        if (rawDataOffset != other.rawDataOffset) return false
+        if (decryptedSize != other.decryptedSize) return false
+        if (!key.contentEquals(other.key)) return false
+        if (dataEntries != other.dataEntries) return false
+        if (groupCache != other.groupCache) return false
+
+        return true
+    }
+
+    override fun hashCode(): Int {
+        var result = firstSector
+        result = 31 * result + totalSectors
+        result = 31 * result + rawDataOffset.hashCode()
+        result = 31 * result + decryptedSize.hashCode()
+        result = 31 * result + key.contentHashCode()
+        result = 31 * result + dataEntries.hashCode()
+        result = 31 * result + groupCache.hashCode()
+        return result
+    }
 }
 
 private data class RvzWiiPartitionDataEntry(
@@ -72,19 +98,53 @@ private data class RvzWiiPartitionDataEntry(
     val groupIndex: Int,
     val groupCount: Int
 ) {
-    val rawOffset: Long = firstSector.toLong() * RVZ_SECTOR_SIZE
-    val rawSize: Long = numberOfSectors.toLong() * RVZ_SECTOR_SIZE
 }
 
 private data class RvzHashException(
     val offset: Int,
     val hash: ByteArray
-)
+) {
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (javaClass != other?.javaClass) return false
+
+        other as RvzHashException
+
+        if (offset != other.offset) return false
+        if (!hash.contentEquals(other.hash)) return false
+
+        return true
+    }
+
+    override fun hashCode(): Int {
+        var result = offset
+        result = 31 * result + hash.contentHashCode()
+        return result
+    }
+}
 
 private data class RvzPartitionGroup(
     val mainData: ByteArray,
     val exceptionLists: List<List<RvzHashException>>
-)
+) {
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (javaClass != other?.javaClass) return false
+
+        other as RvzPartitionGroup
+
+        if (!mainData.contentEquals(other.mainData)) return false
+        if (exceptionLists != other.exceptionLists) return false
+
+        return true
+    }
+
+    override fun hashCode(): Int {
+        var result = mainData.contentHashCode()
+        result = 31 * result + exceptionLists.hashCode()
+        return result
+    }
+}
 
 internal class RvzRomDataSource private constructor(
     private val delegate: RomDataSource,
@@ -384,15 +444,6 @@ internal class RvzRomDataSource private constructor(
             totalRead += read
         }
         return buffer
-    }
-
-    private fun advanceLaggedFibonacci(buffer: IntArray) {
-        for (index in 0 until 32) {
-            buffer[index] = buffer[index] xor buffer[index + buffer.size - 32]
-        }
-        for (index in 32 until buffer.size) {
-            buffer[index] = buffer[index] xor buffer[index - 32]
-        }
     }
 
     private data class RvzRawDataEntry(
@@ -735,24 +786,23 @@ internal fun generateRvzBytes(seed: IntArray, size: Int, absoluteOffset: Long): 
     var wordIndex = 0
     val bytesToSkip = (absoluteOffset % RVZ_SECTOR_SIZE).toInt()
     if (bytesToSkip > 0) {
-        wordIndex = writeLaggedFibonacciBytes(buffer, ByteArray(bytesToSkip), 0, bytesToSkip, wordIndex)
+        wordIndex = writeLaggedFibonacciBytes(buffer, ByteArray(bytesToSkip), bytesToSkip, wordIndex)
     }
 
     val output = ByteArray(size)
-    writeLaggedFibonacciBytes(buffer, output, 0, output.size, wordIndex)
+    writeLaggedFibonacciBytes(buffer, output, output.size, wordIndex)
     return output
 }
 
 private fun writeLaggedFibonacciBytes(
     buffer: IntArray,
     output: ByteArray,
-    destinationOffset: Int,
     byteCount: Int,
     initialWordIndex: Int
 ): Int {
     var wordIndex = initialWordIndex
-    var outputOffset = destinationOffset
-    val outputEnd = destinationOffset + byteCount
+    var outputOffset = 0
+    val outputEnd = byteCount
     while (outputOffset < outputEnd) {
         if (wordIndex == buffer.size) {
             advanceLaggedFibonacci(buffer)
