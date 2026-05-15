@@ -710,7 +710,8 @@ private suspend fun executeResolvedSmartCacheCandidates(
             userAgent = userAgent,
             db = db,
             romHash = hash,
-            sourceRomPath = candidate.path
+            sourceRomPath = candidate.path,
+            cacheBadgeImages = false
         )
         cachedGameIds.add(gameIdString)
         matched++

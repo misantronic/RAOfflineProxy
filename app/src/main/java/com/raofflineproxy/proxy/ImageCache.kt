@@ -82,7 +82,13 @@ fun clearAllCachedImages(context: Context) {
     imageCacheRoot(context).deleteRecursively()
 }
 
-fun cachePatchImages(context: Context, gameId: Int, userAgent: String, patchResponseBody: String) {
+fun cachePatchImages(
+    context: Context,
+    gameId: Int,
+    userAgent: String,
+    patchResponseBody: String,
+    cacheBadges: Boolean = true
+) {
     runCatching {
         val patchData = JSONObject(patchResponseBody).optJSONObject("PatchData") ?: return
         val keepNames = mutableSetOf<String>()
@@ -107,7 +113,7 @@ fun cachePatchImages(context: Context, gameId: Int, userAgent: String, patchResp
         }
 
         val achievements = patchData.optJSONArray("Achievements")
-        if (achievements != null) {
+        if (cacheBadges && achievements != null) {
             for (index in 0 until achievements.length()) {
                 val achievement = achievements.optJSONObject(index) ?: continue
                 val badgeName = achievement.optString("BadgeName").takeIf { it.isNotEmpty() } ?: continue

@@ -163,7 +163,8 @@ suspend fun refreshGamePatch(
     creds: LoginCredentials,
     userAgent: String,
     db: AppDatabase,
-    cacheImages: Boolean = true
+    cacheImages: Boolean = true,
+    cacheBadgeImages: Boolean = true
 ): String? {
     val url = buildApiUrl(
         RA_HOST,
@@ -198,7 +199,7 @@ suspend fun refreshGamePatch(
         responseBody = normalizedBody
     ))
     if (cacheImages) {
-        cachePatchImages(context, gameId, userAgent, normalizedBody)
+        cachePatchImages(context, gameId, userAgent, normalizedBody, cacheBadges = cacheBadgeImages)
     }
     Log.i(TAG, "refreshGamePatch: updated cache for gameId=$gameId")
     return normalizedBody
@@ -352,6 +353,16 @@ internal suspend fun fetchGameId(
     db: AppDatabase
 ): Int? =
     run {
+        db.cacheDao().get(CacheKeys.gameId(hash))
+            ?.responseBody
+            ?.let { cachedBody ->
+                val cachedGameId = runCatching { JSONObject(cachedBody).optInt("GameID", 0) }.getOrDefault(0)
+                if (cachedGameId > 0) {
+                    Log.i(TAG, "fetchGameId cache hit for hash=$hash gameId=$cachedGameId")
+                    return@run cachedGameId
+                }
+            }
+
         val url = buildApiUrl(
             RA_HOST,
             "gameid",
@@ -396,7 +407,8 @@ internal suspend fun cacheGame(
     db: AppDatabase,
     romHash: String? = null,
     sourceRomPath: String? = null,
-    cacheImages: Boolean = true
+    cacheImages: Boolean = true,
+    cacheBadgeImages: Boolean = true
 ) {
     val action = if (romHash != null) "achievementsets" else "patch"
     val requestParams = buildMap {
@@ -435,7 +447,7 @@ internal suspend fun cacheGame(
             )
             Log.i(TAG, "cacheGame: cached normalized patch key=${CacheKeys.patch(gameId, creds.user)}")
             if (cacheImages) {
-                cachePatchImages(context, gameId, userAgent, normalizedBody)
+                cachePatchImages(context, gameId, userAgent, normalizedBody, cacheBadges = cacheBadgeImages)
             }
         }
         is HttpGetResult.Failure -> {
@@ -523,6 +535,17 @@ private suspend fun buildUnlocksArray(db: AppDatabase, gameId: Int, user: String
     val pendingAwards = runCatching {
         db.pendingAwardDao().getAllByStatus(PENDING_AWARD_STATUS_PENDING)
     }.getOrDefault(emptyList())
+
+    if (pendingAwards.isEmpty()) {
+        return JSONArray().also { result ->
+            cachedUnlockIds.forEach { id ->
+                result.put(JSONObject().apply {
+                    put("ID", id)
+                    put("When", serverNow)
+                })
+            }
+        }
+    }
 
     val achievementGameIds = buildAchievementGameIds(
         runCatching { db.cacheDao().getAllByPrefix(CacheKeys.PREFIX_PATCH) }.getOrDefault(emptyList())
