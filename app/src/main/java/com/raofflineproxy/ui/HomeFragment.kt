@@ -2,8 +2,6 @@ package com.raofflineproxy.ui
 
 import android.content.Intent
 import android.content.res.ColorStateList
-import android.graphics.ColorMatrix
-import android.graphics.ColorMatrixColorFilter
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.Drawable
 import android.os.Bundle
@@ -127,7 +125,6 @@ class HomeFragment : Fragment() {
                 applyToggleRowStyle(
                     toggle = retroArchToggle,
                     isSelected = state.retroArchEnabled,
-                    isDisabled = !retroArchToggle.row.isEnabled,
                     activeBorderColor = activeBorderColor,
                     activeBackgroundColor = activeBackgroundColor,
                     defaultBorderColor = defaultBorderColor,
@@ -137,7 +134,6 @@ class HomeFragment : Fragment() {
                 applyToggleRowStyle(
                     toggle = dolphinToggle,
                     isSelected = state.dolphinEnabled,
-                    isDisabled = !dolphinToggle.row.isEnabled,
                     activeBorderColor = activeBorderColor,
                     activeBackgroundColor = activeBackgroundColor,
                     defaultBorderColor = defaultBorderColor,
@@ -169,7 +165,6 @@ class HomeFragment : Fragment() {
     private fun applyToggleRowStyle(
         toggle: EmulatorToggleViews,
         isSelected: Boolean,
-        isDisabled: Boolean,
         activeBorderColor: Int,
         activeBackgroundColor: Int,
         defaultBorderColor: Int,
@@ -186,17 +181,9 @@ class HomeFragment : Fragment() {
         } else {
             row.backgroundTintList = ColorStateList.valueOf(borderColor)
         }
-        row.alpha = if (isDisabled) 0.55f else 1f
         toggle.label.setTextColor(if (isSelected) activeTextColor else defaultTextColor)
         toggle.checkIcon.visibility = if (isSelected) View.VISIBLE else View.GONE
-
-        if (isDisabled) {
-            val matrix = ColorMatrix().apply { setSaturation(0f) }
-            toggle.icon.colorFilter = ColorMatrixColorFilter(matrix)
-            toggle.icon.imageAlpha = 160
-        } else {
-            toggle.icon.colorFilter = null
-            toggle.icon.imageAlpha = 255
-        }
+        toggle.icon.colorFilter = null
+        toggle.icon.imageAlpha = 255
     }
 }
