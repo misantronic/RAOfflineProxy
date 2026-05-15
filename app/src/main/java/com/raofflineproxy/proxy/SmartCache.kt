@@ -520,7 +520,7 @@ private fun resolveSmartCacheCandidates(
     val romTrees = romTreeUris.mapNotNull { uri ->
         DocumentFile.fromTreeUri(context, uri)?.let { tree -> uri to tree }
     }
-    val grantedRomRoots = romTreeUris.mapNotNull(::treeUriToAbsolutePath)
+    val grantedRomRoots = romTreeUris.map(::treeUriToAbsolutePath)
 
     candidates.forEach { candidate ->
         val directDocument = resolveDocumentByStoredUri(context, candidate.path)
