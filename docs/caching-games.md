@@ -11,11 +11,11 @@ The rest of this page explains the manual caching flow in the **Cached Games** s
 
 ## Cache Limit
 
-Manual caching is limited to **50 cached games** at a time.
+Manual caching is limited to **100 cached games** at a time.
 
 This limit exists to keep bulk caching from generating too many RetroAchievements requests at once. Each manually cached game can require multiple upstream requests, so the cap helps reduce server load while still leaving enough room for a practical offline library.
 
-When the proxy is running, the **Cached Games** header shows a counter such as `12/50 cached`. Once you reach `50/50`, the **Scan ROM folder** and **Add ROM** actions are disabled until you delete some cached games or clear the cache.
+When the proxy is running, the **Cached Games** header shows a counter such as `12/100 cached`. Once you reach `100/100`, the **Scan ROM folder** and **Add ROM** actions are disabled until you delete some cached games or clear the cache.
 
 ## What Gets Cached
 
@@ -33,6 +33,21 @@ The proxy never contacts RA's session endpoint. Instead, it builds the session r
 
 ## Caching Methods
 
+### Smart Cache
+
+Smart Cache is a shortcut for quickly adding games you have played recently.
+
+When it runs, the app looks at recent game activity from supported emulators, tries to match those games to ROM files you can read, and then caches the ones it recognizes.
+
+This is useful when you do not want to scan an entire ROM folder but still want your most recently played games ready for offline use.
+
+Smart Cache can use recent activity from:
+
+- **RetroArch** recent history
+- **Dolphin** recent GameCube and Wii save data
+
+If Smart Cache does not find anything new, it simply finishes without adding more games.
+
 ### Scan ROM Folder
 
 1. Make sure the proxy is running and you are online
@@ -40,7 +55,7 @@ The proxy never contacts RA's session endpoint. Instead, it builds the session r
 3. Pick the folder containing your ROM files
 4. The app scans all ROM files, identifies them, and saves their achievement data
 
-If the scan reaches the **50-game cache limit**, it stops there and skips the remaining files.
+If the scan reaches the **100-game cache limit**, it stops there and skips the remaining files.
 
 Progress is shown in a snackbar at the bottom of the screen.
 
@@ -56,7 +71,7 @@ ROMs not recognized by RetroAchievements are skipped. Text files and hidden file
 
 This is useful when you just want to cache one or two games without scanning an entire folder.
 
-If adding ROMs would push the cache above **50 games**, the app stops once the limit is reached.
+If adding ROMs would push the cache above **100 games**, the app stops once the limit is reached.
 
 ## The Caching Process
 
@@ -85,8 +100,8 @@ The table below reflects the current app behavior.
 | **Nintendo DS** | Hashes the DS header, ARM9 code, ARM7 code, and icon/title block, while ignoring a 512-byte SuperCard header when present | **✅ Working** |
 | **PlayStation** | Parses the disc image, reads `SYSTEM.CNF`, finds the boot executable, and hashes the executable path plus executable contents | **✅ Working for `.bin` images**. `.iso` is implemented but not manually tested |
 | **PSP** | Parses the ISO and hashes `PSP_GAME\PARAM.SFO` followed by `PSP_GAME\SYSDIR\EBOOT.BIN` | **✅ Working** |
-| **GameCube** | Parses the disc image, hashes the disc header plus the `main.dol` sections the same way RetroAchievements expects for GameCube disc images | **✅ Working for `.iso` and `.gcm` images** |
-| **Wii** | Supports two Wii manual-cache paths: disc-image hashing for Wii `.iso` images and WiiWare hashing for `.wad` packages | **✅ Working for `.iso` and `.wad`** |
+| **GameCube** | Parses the disc image, hashes the disc header plus the `main.dol` sections the same way RetroAchievements expects for GameCube disc images, including Dolphin `.rvz` containers | **✅ Working for `.iso`, `.gcm`, and `.rvz` images** |
+| **Wii** | Supports Wii disc-image hashing for `.iso` and `.rvz` images, plus WiiWare hashing for `.wad` packages | **✅ Working for `.iso`, `.rvz`, and `.wad`** |
 | **Atari 7800** | Ignores the 128-byte A78 header when present, then MD5s the remaining ROM data | **Best effort only** |
 | **Atari Lynx** | Ignores the 64-byte LNX header when present, then MD5s the remaining ROM data | **Best effort only** |
 | **PC Engine**<br>**TurboGrafx-16**<br>**SuperGrafx** | Ignores a 512-byte header when the file size indicates one, then MD5s the ROM | **Best effort only** |
@@ -96,10 +111,6 @@ The table below reflects the current app behavior.
 
 ::: warning Manual caching support is still format-dependent
 If a file format needs custom RetroAchievements hashing and that format is not explicitly listed above, manual caching may skip it even though launching the same game through a supported emulator works.
-:::
-
-::: warning RVZ is not supported yet
-Compressed Dolphin `.rvz` files are not currently supported for manual caching. The app will refuse to hash them rather than falling back to an incorrect whole-file MD5.
 :::
 
 ::: tip A skipped ROM is not always a bug
@@ -115,7 +126,7 @@ The **Cached Games** screen shows a list of all games currently saved. For each 
 - Game title and icon
 - Number of unlocked achievements out of total
 - Date last cached
-- Cached games counter (`X/50`) while the proxy is running
+- Cached games counter (`X/100`) while the proxy is running
 
 ## Refreshing Cache
 
