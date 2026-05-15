@@ -94,14 +94,6 @@ object PrefsConstants {
         return loadSmartCacheRomSafUri(context)?.let(::listOf) ?: emptyList()
     }
 
-    fun saveSmartCacheRomSafUri(context: Context, uri: Uri) {
-        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .edit {
-                putString(KEY_SMART_CACHE_ROM_SAF_TREE_URI, uri.toString())
-                putString(KEY_SMART_CACHE_ROM_SAF_TREE_URIS, JSONArray().put(uri.toString()).toString())
-            }
-    }
-
     fun saveSmartCacheRomSafUris(context: Context, uris: List<Uri>) {
         val distinctUris = uris.distinctBy { uri -> uri.toString().lowercase() }
         val encoded = JSONArray().apply {
