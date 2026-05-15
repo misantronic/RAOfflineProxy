@@ -36,8 +36,7 @@ RAOfflineProxy runs a tiny local proxy on your device. It sits between supported
 - **Scoped storage friendly**: uses SAF/folder access when direct config writes are not available; no all-files storage permission required
 - **ROM scanning**: scan a folder or add individual ROMs to pre-cache everything you need before going offline
 - **Dolphin support**: patches Dolphin's `RetroAchievements.ini`, caches Dolphin `achievementsets`, and supports offline GameCube/Wii flows
-- **GameCube / Wii manual caching**: manual hashing now works for GameCube `.iso` / `.gcm`, Wii `.iso`, and Wii `.wad` files
-- **Safe RVZ handling**: `.rvz` files are detected but intentionally not hashed yet, so the app will not fall back to an incorrect whole-file MD5
+- **GameCube / Wii manual caching**: manual hashing now works for GameCube `.iso` / `.gcm` / `.rvz`, Wii `.iso` / `.rvz`, and Wii `.wad` files
 - **Linux support**: KNULLI support is available in alpha with its own on-device setup and menu flow
 - **Auto-start**: optionally starts automatically on supported platforms
 - **Background refresh**: cached data is refreshed hourly while you are online; stale entries older than 7 days are cleaned up automatically
