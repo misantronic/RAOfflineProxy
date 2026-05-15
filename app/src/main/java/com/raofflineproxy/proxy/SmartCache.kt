@@ -17,6 +17,7 @@ import org.json.JSONObject
 import java.io.File
 import java.io.FileInputStream
 import java.nio.charset.StandardCharsets
+import androidx.core.net.toUri
 
 private const val TAG = "RAProxy/SmartCache"
 
@@ -640,7 +641,7 @@ private fun selectSmartCacheCandidates(
     return selected
 }
 
-private fun treeUriToAbsolutePath(treeUri: Uri): String? {
+private fun treeUriToAbsolutePath(treeUri: Uri): String {
     val documentPath = DocumentsContract.getTreeDocumentId(treeUri)
         .substringAfter(':', missingDelimiterValue = "")
         .trim('/')
@@ -783,7 +784,7 @@ private fun resolveDocumentByStoredUri(context: Context, path: String): Document
         return null
     }
     return runCatching {
-        DocumentFile.fromSingleUri(context, Uri.parse(path))
+        DocumentFile.fromSingleUri(context, path.toUri())
             ?.takeIf { it.exists() && it.isFile }
     }.getOrNull()
 }
@@ -793,7 +794,7 @@ private fun String.toAbsoluteStoragePath(): String? {
         return null
     }
 
-    val uri = runCatching { Uri.parse(this) }.getOrNull() ?: return null
+    val uri = runCatching { this.toUri() }.getOrNull() ?: return null
     if (!uri.authority.equals("com.android.externalstorage.documents", ignoreCase = true)) {
         return null
     }
