@@ -7,7 +7,6 @@ import android.util.Log
 import androidx.documentfile.provider.DocumentFile
 import com.raofflineproxy.MAX_CACHED_GAMES
 import com.raofflineproxy.data.AppDatabase
-import com.raofflineproxy.data.CacheKeys
 import com.raofflineproxy.proxy.hash.RomHashInput
 import com.raofflineproxy.proxy.hash.hashRom
 import com.raofflineproxy.ui.EmulatorSupport
