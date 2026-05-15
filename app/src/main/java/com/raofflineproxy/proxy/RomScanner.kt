@@ -26,6 +26,9 @@ import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
 import kotlin.math.min
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.supervisorScope
 
 private const val TAG = "RAProxy"
 private const val HTTP_ERROR_BODY_LOG_LIMIT = 512
@@ -34,6 +37,7 @@ private const val HTTP_RETRY_AFTER_HEADER = "Retry-After"
 private const val HTTP_GET_MAX_429_RETRIES = 4
 private const val HTTP_GET_INITIAL_429_BACKOFF_MS = 2_000L
 private const val HTTP_GET_MAX_429_BACKOFF_MS = 15_000L
+private const val SCAN_CACHE_PIPELINE_LIMIT = 6
 
 private val FALLBACK_USER_AGENT = "RetroArch/1.21.0 (Android ${Build.VERSION.RELEASE ?: "Unknown"})"
 
@@ -226,55 +230,77 @@ suspend fun scanRomFolder(
     }
     val total = files.size
     var skipped = 0
+    var matched = 0
     var limitReached = false
-    val queueEntries = mutableListOf<CacheQueueEntry>()
-    val queuedNewGameIds = mutableSetOf<String>()
-    val queuedRomPaths = mutableSetOf<String>()
+    val inFlight = ArrayDeque<kotlinx.coroutines.Deferred<Boolean>>()
 
-    for ((index, file) in files.withIndex()) {
-        if (cachedGameIds.size + queuedNewGameIds.size >= MAX_CACHED_GAMES) {
-            skipped += total - index
-            limitReached = true
-            break
+    supervisorScope {
+        for ((index, file) in files.withIndex()) {
+            if (cachedGameIds.size + inFlight.size >= MAX_CACHED_GAMES) {
+                skipped += total - index
+                limitReached = true
+                break
+            }
+            onProgress(index + 1, total, file.name ?: "")
+            val sourceRomPath = resolveDocumentAbsolutePath(file)
+            val normalizedPath = sourceRomPath?.normalizeCachedRomPath()
+            if (normalizedPath != null && normalizedPath in cachedRomPaths) {
+                skipped++
+                continue
+            }
+            val hash = hashRom(context, file)
+            if (hash == null) {
+                skipped++
+                continue
+            }
+            val gameId = fetchGameId(context, hash, credentials, userAgent, db)
+            if (gameId == null) {
+                skipped++
+                continue
+            }
+            val gameIdString = gameId.toString()
+            if (gameIdString in cachedGameIds) {
+                skipped++
+                continue
+            }
+
+            cachedGameIds.add(gameIdString)
+            if (normalizedPath != null) {
+                cachedRomPaths.add(normalizedPath)
+            }
+
+            inFlight += async {
+                cacheGame(
+                    context = context,
+                    gameId = gameId,
+                    creds = credentials,
+                    userAgent = userAgent,
+                    db = db,
+                    romHash = hash,
+                    sourceRomPath = sourceRomPath
+                )
+                true
+            }
+
+            if (inFlight.size >= SCAN_CACHE_PIPELINE_LIMIT) {
+                if (inFlight.removeFirst().await()) {
+                    matched++
+                }
+            }
         }
-        onProgress(index + 1, total, file.name ?: "")
-        val sourceRomPath = resolveDocumentAbsolutePath(file)
-        val normalizedPath = sourceRomPath?.normalizeCachedRomPath()
-        if (normalizedPath != null && (normalizedPath in cachedRomPaths || normalizedPath in queuedRomPaths)) {
-            skipped++
-            continue
-        }
-        val hash = hashRom(context, file)
-        if (hash == null) { skipped++; continue }
-        val gameId = fetchGameId(context, hash, credentials, userAgent, db)
-        if (gameId == null) { skipped++; continue }
-        val gameIdString = gameId.toString()
-        if (!cachedGameIds.contains(gameIdString)) {
-            queuedNewGameIds.add(gameIdString)
-        }
-        queueEntries += CacheQueueEntry(
-            label = file.name ?: "",
-            gameId = gameId,
-            romHash = hash,
-            sourceRomPath = sourceRomPath
-        )
-        if (normalizedPath != null) {
-            queuedRomPaths.add(normalizedPath)
+
+        inFlight.toList().awaitAll().forEach { completed ->
+            if (completed) {
+                matched++
+            }
         }
     }
 
-    val queueResult = executeCacheQueue(
-        context = context,
-        credentials = credentials,
-        userAgent = userAgent,
-        db = db,
-        entries = queueEntries
-    )
     return ScanResult(
-        matched = queueResult.matched,
+        matched = matched,
         total = total,
-        skipped = skipped + queueResult.skipped,
-        limitReached = limitReached || queueResult.limitReached
+        skipped = skipped,
+        limitReached = limitReached
     )
 }
 
