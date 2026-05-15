@@ -636,7 +636,7 @@ internal class RvzRomDataSource private constructor(
         }
 
         private fun decompressUnknownSize(encoded: ByteArray): ByteArray {
-            val expectedSize = Zstd.decompressedSize(encoded).takeIf { it > 0L && it <= Int.MAX_VALUE.toLong() }?.toInt()
+            val expectedSize = Zstd.getFrameContentSize(encoded).takeIf { it > 0L && it <= Int.MAX_VALUE.toLong() }?.toInt()
                 ?: throw IllegalArgumentException("RVZ zstd decompressed size unavailable")
             return decompressZstd(encoded, expectedSize)
         }
