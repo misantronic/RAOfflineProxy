@@ -10,11 +10,7 @@ internal object RvzRomHashStrategy : RomHashStrategy {
         return RvzRomDataSource.open(openDataSource)?.use { rvz ->
             when (rvz.metadata().discType) {
                 RvzDiscType.GAMECUBE -> hashGameCubeDisc(rvz)
-
-                RvzDiscType.WII -> {
-                    logWarn(TAG, "Wii RVZ hashing is not supported yet: ${input.fileName}")
-                    null
-                }
+                RvzDiscType.WII -> hashWiiDisc(rvz)
             }
         }
     }
