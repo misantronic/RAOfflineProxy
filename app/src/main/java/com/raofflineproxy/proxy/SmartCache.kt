@@ -180,7 +180,7 @@ private object DolphinSmartCacheStrategy : SmartCacheStrategy {
                 Log.i(TAG, "Dolphin strategy did not find gamelist.cache in granted tree")
                 return SmartCacheStrategyResult(message = "no_recent_games")
             }
-        val gcRoot = findDirectory(tree, DOLPHIN_GC_PATHS)
+        val gcRoot = findDolphinGcDirectory(tree)
             ?: run {
                 Log.i(TAG, "Dolphin strategy did not find GC save root in granted tree")
                 return SmartCacheStrategyResult(message = "no_recent_games")
@@ -393,8 +393,8 @@ private fun findDocument(root: DocumentFile, pathVariants: List<List<String>>): 
             ?.takeIf { it.exists() && it.isFile }
     }
 
-private fun findDirectory(root: DocumentFile, pathVariants: List<List<String>>): DocumentFile? =
-    pathVariants.firstNotNullOfOrNull { segments ->
+private fun findDolphinGcDirectory(root: DocumentFile): DocumentFile? =
+    DOLPHIN_GC_PATHS.firstNotNullOfOrNull { segments ->
         segments.fold(root as DocumentFile?) { current, segment -> current?.findFile(segment) }
             ?.takeIf { it.exists() && it.isDirectory }
     }

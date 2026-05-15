@@ -1,7 +1,5 @@
 package com.raofflineproxy.proxy.hash
 
-private const val TAG = "RAProxy/RvzHash"
-
 internal object RvzRomHashStrategy : RomHashStrategy {
     override fun matches(fileName: String): Boolean = hasExtension(fileName, "rvz")
 
