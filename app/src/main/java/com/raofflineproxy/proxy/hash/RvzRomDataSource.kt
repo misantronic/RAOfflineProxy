@@ -156,6 +156,11 @@ internal class RvzRomDataSource private constructor(
     private val groupEntries: List<RvzGroupEntry>,
     private val wiiPartitions: List<RvzWiiPartition>
 ) : RomDataSource {
+    private var cachedRawGroupIndex: Int = -1
+    private var cachedRawGroupData: ByteArray? = null
+    private var cachedPartitionGroupIndex: Int = -1
+    private var cachedPartitionGroup: RvzPartitionGroup? = null
+
     override val length: Long
         get() = metadata.isoFileSize
 
@@ -358,13 +363,23 @@ internal class RvzRomDataSource private constructor(
         groupLogicalStart: Long,
         exceptionListCount: Int
     ): RvzPartitionGroup? {
+        if (cachedPartitionGroupIndex == groupIndex) {
+            val cached = cachedPartitionGroup
+            if (cached != null && cached.mainData.size >= logicalSize) {
+                return cached
+            }
+        }
+
         val groupEntry = groupEntries[groupIndex]
         val storedSize = groupEntry.dataSize and RVZ_GROUP_SIZE_MASK
         if (storedSize == 0) {
             return RvzPartitionGroup(
                 mainData = ByteArray(logicalSize),
                 exceptionLists = List(exceptionListCount) { emptyList() }
-            )
+            ).also {
+                cachedPartitionGroupIndex = groupIndex
+                cachedPartitionGroup = it
+            }
         }
 
         val encoded = readExact(groupEntry.dataOffset shl 2, storedSize)
@@ -388,14 +403,27 @@ internal class RvzRomDataSource private constructor(
             packedMainData.copyOf(logicalSize)
         }
 
-        return RvzPartitionGroup(mainData = mainData, exceptionLists = exceptionLists)
+        return RvzPartitionGroup(mainData = mainData, exceptionLists = exceptionLists).also {
+            cachedPartitionGroupIndex = groupIndex
+            cachedPartitionGroup = it
+        }
     }
 
     private fun readGroup(groupIndex: Int, logicalSize: Int, groupLogicalStart: Long): ByteArray {
+        if (cachedRawGroupIndex == groupIndex) {
+            val cached = cachedRawGroupData
+            if (cached != null && cached.size >= logicalSize) {
+                return cached
+            }
+        }
+
         val groupEntry = groupEntries[groupIndex]
         val storedSize = groupEntry.dataSize and RVZ_GROUP_SIZE_MASK
         if (storedSize == 0) {
-            return ByteArray(logicalSize)
+            return ByteArray(logicalSize).also {
+                cachedRawGroupIndex = groupIndex
+                cachedRawGroupData = it
+            }
         }
 
         val encoded = readExact(groupEntry.dataOffset shl 2, storedSize)
@@ -411,6 +439,9 @@ internal class RvzRomDataSource private constructor(
                 throw IllegalArgumentException("RVZ group is shorter than expected logical size")
             }
             decompressed.copyOf(logicalSize)
+        }.also {
+            cachedRawGroupIndex = groupIndex
+            cachedRawGroupData = it
         }
     }
 
