@@ -113,15 +113,6 @@
                 android:text="@string/home_go_to_cached_games"
                 android:visibility="gone" />
 
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/btn_start_smart_cache"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="8dp"
-                android:text="@string/home_start_smart_cache"
-                android:visibility="gone"
-                app:icon="@drawable/ic_smart_cache" />
-
         </LinearLayout>
 
     </LinearLayout>
