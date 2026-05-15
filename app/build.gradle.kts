@@ -74,7 +74,7 @@ dependencies {
     implementation(libs.coil)
     implementation(libs.documentfile)
     implementation(libs.recyclerview)
-    implementation("com.github.luben:zstd-jni:1.5.7-3@aar")
+    implementation(variantOf(libs.zstd.jni) { artifactType("aar") })
     testImplementation(libs.junit)
     testImplementation(libs.zstd.jni)
 }
