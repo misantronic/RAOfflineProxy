@@ -1,5 +1,6 @@
 package com.raofflineproxy
 
+import com.github.luben.zstd.Zstd
 import com.raofflineproxy.proxy.hash.FdsRomHashStrategy
 import com.raofflineproxy.proxy.hash.GameCubeRomHashStrategy
 import com.raofflineproxy.proxy.hash.N64ByteOrder
@@ -7,6 +8,8 @@ import com.raofflineproxy.proxy.hash.NesRomHashStrategy
 import com.raofflineproxy.proxy.hash.NintendoDsRomHashStrategy
 import com.raofflineproxy.proxy.hash.Nintendo64RomHashStrategy
 import com.raofflineproxy.proxy.hash.RvzRomHashStrategy
+import com.raofflineproxy.proxy.hash.decodeRvzPacked
+import com.raofflineproxy.proxy.hash.generateRvzBytes
 import com.raofflineproxy.proxy.hash.Atari7800RomHashStrategy
 import com.raofflineproxy.proxy.hash.AtariLynxRomHashStrategy
 import com.raofflineproxy.proxy.hash.PcEngineRomHashStrategy
@@ -26,12 +29,15 @@ import com.raofflineproxy.proxy.hash.SectorLayout
 import com.raofflineproxy.proxy.hash.WiiDiscRomHashStrategy
 import com.raofflineproxy.proxy.hash.WiiWadRomHashStrategy
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertArrayEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.security.MessageDigest
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 
@@ -495,30 +501,89 @@ class RomScannerHashTest {
     }
 
     @Test
-    fun rvzStrategy_matchesRvzAndReturnsNull() {
+    fun rvzStrategy_matchesRvzAndHashesGameCubeDisc() {
         assertTrue(RvzRomHashStrategy.matches("game.rvz"))
-        assertNull(
+        val disc = buildGameCubeDisc()
+        val rvz = buildRvzImage(disc = disc, discType = 1, compressionType = 0)
+
+        assertEquals(
+            GameCubeRomHashStrategy.hash(
+                RomHashInput(
+                    fileName = "game.gcm",
+                    fileSize = disc.size.toLong(),
+                    openStream = { disc.inputStream() },
+                    openDataSource = { ByteArrayRomDataSource(disc) }
+                )
+            ),
             RvzRomHashStrategy.hash(
                 RomHashInput(
                     fileName = "game.rvz",
-                    fileSize = 4,
-                    openStream = { byteArrayOf(1, 2, 3, 4).inputStream() }
+                    fileSize = rvz.size.toLong(),
+                    openStream = { rvz.inputStream() },
+                    openDataSource = { ByteArrayRomDataSource(rvz) }
                 )
             )
         )
     }
 
     @Test
-    fun hashRom_rvzDoesNotFallBackToGenericMd5() {
+    fun rvzStrategy_hashesZstdCompressedGameCubeDisc() {
+        val disc = buildGameCubeDisc()
+        val rvz = buildRvzImage(disc = disc, discType = 1, compressionType = 5)
+
+        assertEquals(
+            GameCubeRomHashStrategy.hash(
+                RomHashInput(
+                    fileName = "game.gcm",
+                    fileSize = disc.size.toLong(),
+                    openStream = { disc.inputStream() },
+                    openDataSource = { ByteArrayRomDataSource(disc) }
+                )
+            ),
+            hashRom(
+                RomHashInput(
+                    fileName = "game.rvz",
+                    fileSize = rvz.size.toLong(),
+                    openStream = { rvz.inputStream() },
+                    openDataSource = { ByteArrayRomDataSource(rvz) }
+                )
+            )
+        )
+    }
+
+    @Test
+    fun rvzStrategy_returnsNullForWiiRvz() {
+        val disc = buildGameCubeDisc()
+        val rvz = buildRvzImage(disc = disc, discType = 2, compressionType = 0)
+
         assertNull(
             hashRom(
                 RomHashInput(
                     fileName = "game.rvz",
-                    fileSize = 4,
-                    openStream = { byteArrayOf(1, 2, 3, 4).inputStream() }
+                    fileSize = rvz.size.toLong(),
+                    openStream = { rvz.inputStream() },
+                    openDataSource = { ByteArrayRomDataSource(rvz) }
                 )
             )
         )
+    }
+
+    @Test
+    fun decodeRvzPacked_generatedRecordsRespectAbsoluteOffsetWithin32kWindow() {
+        val seed = IntArray(17) { it + 1 }
+        val packed = ByteArrayOutputStream().use { output ->
+            writeBigEndianInt(output, Int.MIN_VALUE or 16)
+            seed.forEach { writeBigEndianInt(output, it) }
+            output.toByteArray()
+        }
+
+        val bytesAtZero = decodeRvzPacked(packed, logicalSize = 16, groupLogicalStart = 0L)
+        val bytesAtOffset = decodeRvzPacked(packed, logicalSize = 16, groupLogicalStart = 0x80L)
+
+        assertTrue(bytesAtZero.isNotEmpty())
+        assertFalse(bytesAtZero.contentEquals(bytesAtOffset))
+        assertArrayEquals(generateRvzBytes(seed, 16, 0L), bytesAtZero)
+        assertArrayEquals(generateRvzBytes(seed, 16, 0x80L), bytesAtOffset)
     }
 
     @Test
@@ -796,6 +861,147 @@ class RomScannerHashTest {
             }
         }
         return output.toByteArray()
+    }
+
+    private fun buildGameCubeDisc(): ByteArray {
+        val disc = ByteArray(0x4000)
+        disc[0x1C] = 0xC2.toByte()
+        disc[0x1D] = 0x33.toByte()
+        disc[0x1E] = 0x9F.toByte()
+        disc[0x1F] = 0x3D.toByte()
+
+        writeBigEndianInt(disc, 0x2454, 0)
+        writeBigEndianInt(disc, 0x2458, 0)
+        writeBigEndianInt(disc, 0x420, 0x3000)
+
+        writeBigEndianInt(disc, 0x3000, 0x3100)
+        writeBigEndianInt(disc, 0x3090, 4)
+        "DOL!".toByteArray(Charsets.US_ASCII).copyInto(disc, 0x3100)
+        return disc
+    }
+
+    private fun buildRvzImage(disc: ByteArray, discType: Int, compressionType: Int): ByteArray {
+        val chunkSize = 0x8000
+        val header1Size = 0x48
+        val header2Size = 0xDC
+        val rawEntries = ByteArray(0x18).apply {
+            writeBigEndianLong(this, 0, 0x80)
+            writeBigEndianLong(this, 8, disc.size.toLong() - 0x80)
+            writeBigEndianInt(this, 16, 0)
+            writeBigEndianInt(this, 20, 1)
+        }
+        val groupEntries = ByteArray(0x0C)
+        val encodedRawEntries = when (compressionType) {
+            0 -> rawEntries
+            5 -> zstdCompress(rawEntries)
+            else -> error("Unsupported test compression type")
+        }
+        val rawEntriesOffset = header1Size + header2Size
+        val groupEntriesOffset = rawEntriesOffset + encodedRawEntries.size
+        val groupData = when (compressionType) {
+            0 -> disc
+            5 -> zstdCompress(disc)
+            else -> error("Unsupported test compression type")
+        }
+        var encodedGroupEntries = ByteArray(0)
+        while (true) {
+            val groupDataOffset = alignTo4(groupEntriesOffset + (if (encodedGroupEntries.isNotEmpty()) encodedGroupEntries.size else groupEntries.size))
+            val dataSize = if (compressionType == 0) {
+                groupData.size
+            } else {
+                groupData.size or Int.MIN_VALUE
+            }
+            writeBigEndianInt(groupEntries, 0, groupDataOffset / 4)
+            writeBigEndianInt(groupEntries, 4, dataSize)
+            writeBigEndianInt(groupEntries, 8, 0)
+            val candidate = when (compressionType) {
+                0 -> groupEntries
+                5 -> zstdCompress(groupEntries)
+                else -> error("Unsupported test compression type")
+            }
+            if (encodedGroupEntries.isNotEmpty() && candidate.size == encodedGroupEntries.size) {
+                encodedGroupEntries = candidate
+                break
+            }
+            encodedGroupEntries = candidate
+            if (compressionType == 0) break
+        }
+        val groupDataOffset = alignTo4(groupEntriesOffset + encodedGroupEntries.size)
+        writeBigEndianInt(groupEntries, 0, groupDataOffset / 4)
+        encodedGroupEntries = when (compressionType) {
+            0 -> groupEntries
+            5 -> zstdCompress(groupEntries)
+            else -> error("Unsupported test compression type")
+        }
+
+        val header2 = ByteArray(header2Size)
+        writeBigEndianInt(header2, 0x00, discType)
+        writeBigEndianInt(header2, 0x04, compressionType)
+        writeBigEndianInt(header2, 0x0C, chunkSize)
+        disc.copyOfRange(0, 0x80).copyInto(header2, 0x10)
+        writeBigEndianInt(header2, 0xB4, 1)
+        writeBigEndianLong(header2, 0xB8, rawEntriesOffset.toLong())
+        writeBigEndianInt(header2, 0xC0, encodedRawEntries.size)
+        writeBigEndianInt(header2, 0xC4, 1)
+        writeBigEndianLong(header2, 0xC8, groupEntriesOffset.toLong())
+        writeBigEndianInt(header2, 0xD0, encodedGroupEntries.size)
+        header2[0xD4] = 0
+
+        val header2Sha1 = MessageDigest.getInstance("SHA-1").digest(header2)
+        val fileSize = groupDataOffset + groupData.size
+        val header1 = ByteArray(header1Size)
+        byteArrayOf('R'.code.toByte(), 'V'.code.toByte(), 'Z'.code.toByte(), 0x01).copyInto(header1, 0)
+        writeBigEndianInt(header1, 0x04, 0x01000000)
+        writeBigEndianInt(header1, 0x08, 0x00030000)
+        writeBigEndianInt(header1, 0x0C, header2Size)
+        header2Sha1.copyInto(header1, 0x10)
+        writeBigEndianLong(header1, 0x24, disc.size.toLong())
+        writeBigEndianLong(header1, 0x2C, fileSize.toLong())
+        val header1Sha1 = MessageDigest.getInstance("SHA-1").digest(header1.copyOfRange(0, 0x34))
+        header1Sha1.copyInto(header1, 0x34)
+
+        return ByteArrayOutputStream().use { output ->
+            output.write(header1)
+            output.write(header2)
+            output.write(encodedRawEntries)
+            output.write(encodedGroupEntries)
+            repeat(groupDataOffset - (groupEntriesOffset + encodedGroupEntries.size)) {
+                output.write(0)
+            }
+            output.write(groupData)
+            output.toByteArray()
+        }
+    }
+
+    private fun writeBigEndianInt(target: ByteArray, offset: Int, value: Int) {
+        target[offset] = ((value ushr 24) and 0xFF).toByte()
+        target[offset + 1] = ((value ushr 16) and 0xFF).toByte()
+        target[offset + 2] = ((value ushr 8) and 0xFF).toByte()
+        target[offset + 3] = (value and 0xFF).toByte()
+    }
+
+    private fun writeBigEndianInt(output: ByteArrayOutputStream, value: Int) {
+        output.write((value ushr 24) and 0xFF)
+        output.write((value ushr 16) and 0xFF)
+        output.write((value ushr 8) and 0xFF)
+        output.write(value and 0xFF)
+    }
+
+    private fun writeBigEndianLong(target: ByteArray, offset: Int, value: Long) {
+        target[offset] = ((value ushr 56) and 0xFF).toByte()
+        target[offset + 1] = ((value ushr 48) and 0xFF).toByte()
+        target[offset + 2] = ((value ushr 40) and 0xFF).toByte()
+        target[offset + 3] = ((value ushr 32) and 0xFF).toByte()
+        target[offset + 4] = ((value ushr 24) and 0xFF).toByte()
+        target[offset + 5] = ((value ushr 16) and 0xFF).toByte()
+        target[offset + 6] = ((value ushr 8) and 0xFF).toByte()
+        target[offset + 7] = (value and 0xFF).toByte()
+    }
+
+    private fun alignTo4(value: Int): Int = (value + 3) and 3.inv()
+
+    private fun zstdCompress(input: ByteArray): ByteArray {
+        return Zstd.compress(input)
     }
 
     private fun tempDir(): File = File(requireNotNull(System.getProperty("java.io.tmpdir")))
