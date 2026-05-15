@@ -836,6 +836,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun clearCache() {
         viewModelScope.launch(Dispatchers.IO) {
             db.cacheDao().deleteByKeyPrefix(CacheKeys.PREFIX_PATCH)
+            db.cacheDao().deleteByKeyPrefix(CacheKeys.PREFIX_ACHIEVEMENTSETS)
             db.cacheDao().deleteByKeyPrefix(CacheKeys.PREFIX_GAMEID)
             db.cacheDao().deleteByKeyPrefix(CacheKeys.PREFIX_UNLOCKS)
             db.cacheDao().deleteByKeyPrefix(CacheKeys.PREFIX_STARTSESSION)
