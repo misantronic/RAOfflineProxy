@@ -2,6 +2,9 @@ package com.raofflineproxy.proxy.hash
 
 import com.github.luben.zstd.Zstd
 import java.security.MessageDigest
+import javax.crypto.Cipher
+import javax.crypto.spec.IvParameterSpec
+import javax.crypto.spec.SecretKeySpec
 
 private const val TAG = "RAProxy/RvzDataSource"
 private val RVZ_MAGIC = byteArrayOf('R'.code.toByte(), 'V'.code.toByte(), 'Z'.code.toByte(), 0x01)
@@ -12,13 +15,35 @@ private const val RVZ_DISC_TYPE_WII = 2
 private const val RVZ_COMPRESSION_NONE = 0
 private const val RVZ_COMPRESSION_ZSTD = 5
 private const val RVZ_DISC_HEADER_SIZE = 0x80
+private const val RVZ_PARTITION_ENTRY_SIZE = 0x30
+private const val RVZ_PARTITION_DATA_ENTRY_SIZE = 0x10
 private const val RVZ_RAW_DATA_ENTRY_SIZE = 0x18
 private const val RVZ_GROUP_ENTRY_SIZE = 0x0C
+private const val RVZ_HASH_EXCEPTION_ENTRY_SIZE = 0x16
 private const val RVZ_GROUP_COMPRESSED_BIT = 0x8000_0000.toInt()
 private const val RVZ_GROUP_SIZE_MASK = 0x7FFF_FFFF
 private const val RVZ_SECTOR_SIZE = 0x8000L
 private const val RVZ_SEED_SIZE = 68
 private const val RVZ_HEADER_1_HASH_END = 0x34
+private const val WII_CLUSTER_HEADER_SIZE = 0x400
+private const val WII_CLUSTER_DATA_SIZE = 0x7C00
+private const val WII_CLUSTER_TOTAL_SIZE = WII_CLUSTER_HEADER_SIZE + WII_CLUSTER_DATA_SIZE
+private const val WII_GROUP_BLOCK_COUNT = 64
+private const val WII_GROUP_HEADER_SIZE = WII_CLUSTER_HEADER_SIZE * WII_GROUP_BLOCK_COUNT
+private const val WII_GROUP_DATA_SIZE = WII_CLUSTER_DATA_SIZE * WII_GROUP_BLOCK_COUNT
+private const val WII_GROUP_TOTAL_SIZE = WII_CLUSTER_TOTAL_SIZE * WII_GROUP_BLOCK_COUNT
+private const val WII_HASH_HEADER_IV_OFFSET = 0x3D0
+private const val WII_EXCEPTION_LIST_COUNT_OFFSET = 0x90
+private const val WII_EXCEPTION_LIST_ENTRY_SIZE_OFFSET = 0x94
+private const val WII_EXCEPTION_LIST_OFFSET_OFFSET = 0x98
+private const val WII_EXCEPTION_LIST_HASH_OFFSET = 0xA0
+private const val RVZ_RAW_ENTRY_COUNT_OFFSET = 0xB4
+private const val RVZ_RAW_ENTRY_OFFSET_OFFSET = 0xB8
+private const val RVZ_RAW_ENTRY_SIZE_OFFSET = 0xC0
+private const val RVZ_GROUP_ENTRY_COUNT_OFFSET = 0xC4
+private const val RVZ_GROUP_ENTRY_OFFSET_OFFSET = 0xC8
+private const val RVZ_GROUP_ENTRY_SIZE_OFFSET = 0xD0
+private val ZERO_IV = IvParameterSpec(ByteArray(16))
 
 internal enum class RvzDiscType {
     GAMECUBE,
@@ -30,6 +55,37 @@ internal data class RvzMetadata(
     val isoFileSize: Long
 )
 
+private data class RvzWiiPartition(
+    val key: ByteArray,
+    val dataEntries: List<RvzWiiPartitionDataEntry>,
+    val firstSector: Int,
+    val totalSectors: Int
+) {
+    val rawDataOffset: Long = firstSector.toLong() * RVZ_SECTOR_SIZE
+    val decryptedSize: Long = totalSectors.toLong() * WII_CLUSTER_DATA_SIZE
+    val groupCache = mutableMapOf<Long, ByteArray>()
+}
+
+private data class RvzWiiPartitionDataEntry(
+    val firstSector: Int,
+    val numberOfSectors: Int,
+    val groupIndex: Int,
+    val groupCount: Int
+) {
+    val rawOffset: Long = firstSector.toLong() * RVZ_SECTOR_SIZE
+    val rawSize: Long = numberOfSectors.toLong() * RVZ_SECTOR_SIZE
+}
+
+private data class RvzHashException(
+    val offset: Int,
+    val hash: ByteArray
+)
+
+private data class RvzPartitionGroup(
+    val mainData: ByteArray,
+    val exceptionLists: List<List<RvzHashException>>
+)
+
 internal class RvzRomDataSource private constructor(
     private val delegate: RomDataSource,
     private val metadata: RvzMetadata,
@@ -37,7 +93,8 @@ internal class RvzRomDataSource private constructor(
     private val chunkSize: Int,
     private val fileCompressionType: Int,
     private val rawEntries: List<RvzRawDataEntry>,
-    private val groupEntries: List<RvzGroupEntry>
+    private val groupEntries: List<RvzGroupEntry>,
+    private val wiiPartitions: List<RvzWiiPartition>
 ) : RomDataSource {
     override val length: Long
         get() = metadata.isoFileSize
@@ -62,6 +119,21 @@ internal class RvzRomDataSource private constructor(
         }
 
         while (totalRead < targetLength) {
+            val partition = wiiPartitions.firstOrNull { currentOffset in it.rawDataOffset until (it.rawDataOffset + it.totalSectors.toLong() * RVZ_SECTOR_SIZE) }
+            if (partition != null) {
+                val bytesFromPartition = readWiiPartitionBytes(
+                    partition = partition,
+                    offset = currentOffset,
+                    destination = buffer,
+                    destinationOffset = totalRead,
+                    maxLength = targetLength - totalRead
+                )
+                if (bytesFromPartition <= 0) break
+                totalRead += bytesFromPartition
+                currentOffset += bytesFromPartition
+                continue
+            }
+
             val entry = rawEntries.firstOrNull { currentOffset in it.logicalStart until it.logicalEnd } ?: break
             val entryOffset = currentOffset - entry.logicalStart
             val groupIndex = (entryOffset / chunkSize.toLong()).toInt()
@@ -91,6 +163,173 @@ internal class RvzRomDataSource private constructor(
     }
 
     internal fun metadata(): RvzMetadata = metadata
+
+    private fun readWiiPartitionBytes(
+        partition: RvzWiiPartition,
+        offset: Long,
+        destination: ByteArray,
+        destinationOffset: Int,
+        maxLength: Int
+    ): Int {
+        val partitionEnd = partition.rawDataOffset + partition.totalSectors.toLong() * RVZ_SECTOR_SIZE
+        val targetEnd = minOf(offset + maxLength, partitionEnd)
+        var currentOffset = offset
+        var totalRead = 0
+        while (currentOffset < targetEnd) {
+            val groupStart = (((currentOffset - partition.rawDataOffset) / WII_GROUP_TOTAL_SIZE) * WII_GROUP_DATA_SIZE)
+            val encryptedGroup = getEncryptedWiiGroup(partition, groupStart) ?: return if (totalRead > 0) totalRead else -1
+            val groupRawStart = partition.rawDataOffset + (groupStart / WII_CLUSTER_DATA_SIZE) * RVZ_SECTOR_SIZE
+            val offsetInGroup = (currentOffset - groupRawStart).toInt()
+            val bytesFromGroup = minOf(encryptedGroup.size - offsetInGroup, (targetEnd - currentOffset).toInt())
+            encryptedGroup.copyInto(
+                destination = destination,
+                destinationOffset = destinationOffset + totalRead,
+                startIndex = offsetInGroup,
+                endIndex = offsetInGroup + bytesFromGroup
+            )
+            totalRead += bytesFromGroup
+            currentOffset += bytesFromGroup
+        }
+        return totalRead
+    }
+
+    private fun getEncryptedWiiGroup(partition: RvzWiiPartition, groupStart: Long): ByteArray? {
+        partition.groupCache[groupStart]?.let { return it }
+
+        val decryptedBlocks = Array(WII_GROUP_BLOCK_COUNT) { ByteArray(WII_CLUSTER_DATA_SIZE) }
+        for (blockIndex in 0 until WII_GROUP_BLOCK_COUNT) {
+            val blockOffset = groupStart + blockIndex * WII_CLUSTER_DATA_SIZE.toLong()
+            if (blockOffset >= partition.decryptedSize) {
+                decryptedBlocks[blockIndex].fill(0)
+                continue
+            }
+            if (!readWiiPartitionDecrypted(partition, blockOffset, decryptedBlocks[blockIndex])) {
+                return null
+            }
+        }
+
+        val hashBlocks = buildWiiHashBlocks(decryptedBlocks)
+        applyWiiHashExceptions(hashBlocks, collectWiiHashExceptions(partition, groupStart))
+
+        val encrypted = ByteArray(WII_GROUP_TOTAL_SIZE)
+        val keySpec = SecretKeySpec(partition.key, "AES")
+        for (blockIndex in 0 until WII_GROUP_BLOCK_COUNT) {
+            val headerBytes = hashBlocks[blockIndex]
+            val encryptedHeader = aesEncryptCbc(keySpec, ZERO_IV, headerBytes)
+            val encryptedData = aesEncryptCbc(
+                keySpec,
+                IvParameterSpec(encryptedHeader.copyOfRange(WII_HASH_HEADER_IV_OFFSET, WII_HASH_HEADER_IV_OFFSET + 16)),
+                decryptedBlocks[blockIndex]
+            )
+            val outputOffset = blockIndex * WII_CLUSTER_TOTAL_SIZE
+            encryptedHeader.copyInto(encrypted, destinationOffset = outputOffset)
+            encryptedData.copyInto(encrypted, destinationOffset = outputOffset + WII_CLUSTER_HEADER_SIZE)
+        }
+
+        partition.groupCache[groupStart] = encrypted
+        return encrypted
+    }
+
+    private fun readWiiPartitionDecrypted(partition: RvzWiiPartition, offset: Long, destination: ByteArray): Boolean {
+        require(destination.size == WII_CLUSTER_DATA_SIZE)
+        for (entry in partition.dataEntries) {
+            val entryOffset = (entry.firstSector - partition.firstSector).toLong() * WII_CLUSTER_DATA_SIZE
+            val entrySize = entry.numberOfSectors.toLong() * WII_CLUSTER_DATA_SIZE
+            if (offset !in entryOffset until (entryOffset + entrySize)) continue
+            val chunkSize = chunkSize.toLong() * WII_CLUSTER_DATA_SIZE / RVZ_SECTOR_SIZE
+            val chunkIndex = ((offset - entryOffset) / chunkSize).toInt()
+            if (chunkIndex !in 0 until entry.groupCount) return false
+            val chunkStart = entryOffset + chunkIndex * chunkSize
+            val chunkLogicalSize = minOf(chunkSize, entryOffset + entrySize - chunkStart).toInt()
+            val exceptionListCount = maxOf(1, (chunkSize / WII_GROUP_DATA_SIZE).toInt())
+            val group = readPartitionGroup(
+                groupIndex = entry.groupIndex + chunkIndex,
+                logicalSize = chunkLogicalSize,
+                groupLogicalStart = chunkStart,
+                exceptionListCount = exceptionListCount
+            ) ?: return false
+            val offsetInChunk = (offset - chunkStart).toInt()
+            if (offsetInChunk + destination.size > group.mainData.size) return false
+            group.mainData.copyInto(destination, startIndex = offsetInChunk, endIndex = offsetInChunk + destination.size)
+            return true
+        }
+        return false
+    }
+
+    private fun collectWiiHashExceptions(partition: RvzWiiPartition, groupStart: Long): List<RvzHashException> {
+        val exceptions = mutableListOf<RvzHashException>()
+        val groupEnd = groupStart + WII_GROUP_DATA_SIZE
+        val chunkSize = chunkSize.toLong() * WII_CLUSTER_DATA_SIZE / RVZ_SECTOR_SIZE
+        for (entry in partition.dataEntries) {
+            val entryOffset = (entry.firstSector - partition.firstSector).toLong() * WII_CLUSTER_DATA_SIZE
+            val entrySize = entry.numberOfSectors.toLong() * WII_CLUSTER_DATA_SIZE
+            val overlapStart = maxOf(entryOffset, groupStart)
+            val overlapEnd = minOf(entryOffset + entrySize, groupEnd)
+            if (overlapStart >= overlapEnd) continue
+
+            val firstChunk = ((overlapStart - entryOffset) / chunkSize).toInt()
+            val lastChunk = ((overlapEnd - entryOffset - 1) / chunkSize).toInt()
+            for (chunkIndex in firstChunk..lastChunk) {
+                if (chunkIndex !in 0 until entry.groupCount) continue
+                val chunkStart = entryOffset + chunkIndex * chunkSize
+                val chunkLogicalSize = minOf(chunkSize, entryOffset + entrySize - chunkStart).toInt()
+                val exceptionListCount = maxOf(1, (chunkSize / WII_GROUP_DATA_SIZE).toInt())
+                val partitionGroup = readPartitionGroup(
+                    groupIndex = entry.groupIndex + chunkIndex,
+                    logicalSize = chunkLogicalSize,
+                    groupLogicalStart = chunkStart,
+                    exceptionListCount = exceptionListCount
+                ) ?: continue
+
+                val exceptionListIndex = if (exceptionListCount == 1) 0 else ((groupStart - chunkStart) / WII_GROUP_DATA_SIZE).toInt()
+                if (exceptionListIndex !in partitionGroup.exceptionLists.indices) continue
+                val additionalOffset = (((chunkStart % WII_GROUP_DATA_SIZE) / WII_CLUSTER_DATA_SIZE) * WII_CLUSTER_HEADER_SIZE).toInt()
+                partitionGroup.exceptionLists[exceptionListIndex].forEach { exception ->
+                    exceptions += exception.copy(offset = exception.offset + additionalOffset)
+                }
+            }
+        }
+        return exceptions
+    }
+
+    private fun readPartitionGroup(
+        groupIndex: Int,
+        logicalSize: Int,
+        groupLogicalStart: Long,
+        exceptionListCount: Int
+    ): RvzPartitionGroup? {
+        val groupEntry = groupEntries[groupIndex]
+        val storedSize = groupEntry.dataSize and RVZ_GROUP_SIZE_MASK
+        if (storedSize == 0) {
+            return RvzPartitionGroup(
+                mainData = ByteArray(logicalSize),
+                exceptionLists = List(exceptionListCount) { emptyList() }
+            )
+        }
+
+        val encoded = readExact(groupEntry.dataOffset shl 2, storedSize)
+        val usesCompression = groupEntry.usesFileCompression
+        val decompressed = if (usesCompression) {
+            decompressUnknownSize(encoded)
+        } else {
+            encoded
+        }
+
+        val (exceptionLists, mainDataOffset) = parseExceptionLists(
+            data = decompressed,
+            exceptionListCount = exceptionListCount,
+            alignLast = !usesCompression
+        )
+        val packedMainData = decompressed.copyOfRange(mainDataOffset, decompressed.size)
+        val mainData = if (groupEntry.packedSize > 0) {
+            decodeRvzPacked(packedMainData.copyOf(groupEntry.packedSize), logicalSize, groupLogicalStart)
+        } else {
+            if (packedMainData.size < logicalSize) return null
+            packedMainData.copyOf(logicalSize)
+        }
+
+        return RvzPartitionGroup(mainData = mainData, exceptionLists = exceptionLists)
+    }
 
     private fun readGroup(groupIndex: Int, logicalSize: Int, groupLogicalStart: Long): ByteArray {
         val groupEntry = groupEntries[groupIndex]
@@ -213,12 +452,25 @@ internal class RvzRomDataSource private constructor(
             val chunkSize = readBigEndianInt(header2, 0x0C) ?: throw IllegalArgumentException("Missing RVZ chunk size")
             require(chunkSize > 0) { "Invalid RVZ chunk size" }
             val discHeader = header2.copyOfRange(0x10, 0x10 + RVZ_DISC_HEADER_SIZE)
-            val rawEntryCount = readBigEndianInt(header2, 0xB4) ?: throw IllegalArgumentException("Missing RVZ raw entry count")
-            val rawEntriesOffset = readBigEndianLong(header2, 0xB8) ?: throw IllegalArgumentException("Missing RVZ raw entry offset")
-            val rawEntriesSize = readBigEndianInt(header2, 0xC0) ?: throw IllegalArgumentException("Missing RVZ raw entry size")
-            val groupEntryCount = readBigEndianInt(header2, 0xC4) ?: throw IllegalArgumentException("Missing RVZ group entry count")
-            val groupEntriesOffset = readBigEndianLong(header2, 0xC8) ?: throw IllegalArgumentException("Missing RVZ group entry offset")
-            val groupEntriesSize = readBigEndianInt(header2, 0xD0) ?: throw IllegalArgumentException("Missing RVZ group entry size")
+            val partitionEntryCount = readBigEndianInt(header2, WII_EXCEPTION_LIST_COUNT_OFFSET) ?: throw IllegalArgumentException("Missing RVZ partition entry count")
+            val partitionEntrySize = readBigEndianInt(header2, WII_EXCEPTION_LIST_ENTRY_SIZE_OFFSET) ?: throw IllegalArgumentException("Missing RVZ partition entry size")
+            val partitionEntriesOffset = readBigEndianLong(header2, WII_EXCEPTION_LIST_OFFSET_OFFSET) ?: throw IllegalArgumentException("Missing RVZ partition entry offset")
+            val partitionEntriesHash = header2.copyOfRange(WII_EXCEPTION_LIST_HASH_OFFSET, WII_EXCEPTION_LIST_HASH_OFFSET + 20)
+            val rawEntryCount = readBigEndianInt(header2, RVZ_RAW_ENTRY_COUNT_OFFSET) ?: throw IllegalArgumentException("Missing RVZ raw entry count")
+            val rawEntriesOffset = readBigEndianLong(header2, RVZ_RAW_ENTRY_OFFSET_OFFSET) ?: throw IllegalArgumentException("Missing RVZ raw entry offset")
+            val rawEntriesSize = readBigEndianInt(header2, RVZ_RAW_ENTRY_SIZE_OFFSET) ?: throw IllegalArgumentException("Missing RVZ raw entry size")
+            val groupEntryCount = readBigEndianInt(header2, RVZ_GROUP_ENTRY_COUNT_OFFSET) ?: throw IllegalArgumentException("Missing RVZ group entry count")
+            val groupEntriesOffset = readBigEndianLong(header2, RVZ_GROUP_ENTRY_OFFSET_OFFSET) ?: throw IllegalArgumentException("Missing RVZ group entry offset")
+            val groupEntriesSize = readBigEndianInt(header2, RVZ_GROUP_ENTRY_SIZE_OFFSET) ?: throw IllegalArgumentException("Missing RVZ group entry size")
+
+            val wiiPartitions = if (discType == RvzDiscType.WII && partitionEntryCount > 0) {
+                val partitionEntriesBytes = readFully(delegate, partitionEntriesOffset, partitionEntryCount * partitionEntrySize)
+                val partitionEntriesDigest = MessageDigest.getInstance("SHA-1").digest(partitionEntriesBytes)
+                require(partitionEntriesDigest.contentEquals(partitionEntriesHash)) { "RVZ partition entries SHA-1 mismatch" }
+                parsePartitionEntries(partitionEntriesBytes, partitionEntryCount, partitionEntrySize)
+            } else {
+                emptyList()
+            }
 
             val rawEntriesBytes = readMetadataBlock(delegate, rawEntriesOffset, rawEntriesSize, compressionType, rawEntryCount * RVZ_RAW_DATA_ENTRY_SIZE)
             val groupEntriesBytes = readMetadataBlock(delegate, groupEntriesOffset, groupEntriesSize, compressionType, groupEntryCount * RVZ_GROUP_ENTRY_SIZE)
@@ -233,9 +485,37 @@ internal class RvzRomDataSource private constructor(
                 chunkSize = chunkSize,
                 fileCompressionType = compressionType,
                 rawEntries = rawEntries,
-                groupEntries = groupEntries
+                groupEntries = groupEntries,
+                wiiPartitions = wiiPartitions
             )
         }
+
+        private fun parsePartitionEntries(bytes: ByteArray, count: Int, entrySize: Int): List<RvzWiiPartition> =
+            List(count) { index ->
+                val offset = index * entrySize
+                val entry = bytes.copyOfRange(offset, offset + entrySize).copyOf(RVZ_PARTITION_ENTRY_SIZE)
+                val dataEntries = List(2) { entryIndex ->
+                    val entryOffset = 16 + entryIndex * RVZ_PARTITION_DATA_ENTRY_SIZE
+                    RvzWiiPartitionDataEntry(
+                        firstSector = readBigEndianInt(entry, entryOffset) ?: 0,
+                        numberOfSectors = readBigEndianInt(entry, entryOffset + 4) ?: 0,
+                        groupIndex = readBigEndianInt(entry, entryOffset + 8) ?: 0,
+                        groupCount = readBigEndianInt(entry, entryOffset + 12) ?: 0
+                    )
+                }.filter { it.numberOfSectors > 0 }
+                val firstSector = dataEntries.firstOrNull()?.firstSector ?: 0
+                val totalSectors = if (dataEntries.size > 1) {
+                    (dataEntries[1].firstSector - firstSector) + dataEntries[1].numberOfSectors
+                } else {
+                    dataEntries.firstOrNull()?.numberOfSectors ?: 0
+                }
+                RvzWiiPartition(
+                    key = entry.copyOfRange(0, 16),
+                    dataEntries = dataEntries,
+                    firstSector = firstSector,
+                    totalSectors = totalSectors
+                )
+            }.filter { it.dataEntries.isNotEmpty() }
 
         private fun readMetadataBlock(
             delegate: RomDataSource,
@@ -303,7 +583,104 @@ internal class RvzRomDataSource private constructor(
             }
             return buffer
         }
+
+        private fun decompressUnknownSize(encoded: ByteArray): ByteArray {
+            val expectedSize = Zstd.decompressedSize(encoded).takeIf { it > 0L && it <= Int.MAX_VALUE.toLong() }?.toInt()
+                ?: throw IllegalArgumentException("RVZ zstd decompressed size unavailable")
+            return decompressZstd(encoded, expectedSize)
+        }
+
+        private fun parseExceptionLists(data: ByteArray, exceptionListCount: Int, alignLast: Boolean): Pair<List<List<RvzHashException>>, Int> {
+            var offset = 0
+            val lists = MutableList(exceptionListCount) { emptyList<RvzHashException>() }
+            repeat(exceptionListCount) { index ->
+                val count = readBigEndianShort(data, offset) ?: throw IllegalArgumentException("Invalid RVZ exception list count")
+                offset += 2
+                val list = MutableList(count) {
+                    val entryOffset = offset + it * RVZ_HASH_EXCEPTION_ENTRY_SIZE
+                    val exceptionOffset = readBigEndianShort(data, entryOffset) ?: throw IllegalArgumentException("Invalid RVZ exception offset")
+                    val hash = data.copyOfRange(entryOffset + 2, entryOffset + RVZ_HASH_EXCEPTION_ENTRY_SIZE)
+                    RvzHashException(offset = exceptionOffset, hash = hash)
+                }
+                offset += count * RVZ_HASH_EXCEPTION_ENTRY_SIZE
+                if (alignLast && index == exceptionListCount - 1) {
+                    offset = alignTo4(offset)
+                }
+                lists[index] = list
+            }
+            return lists to offset
+        }
     }
+}
+
+private fun buildWiiHashBlocks(blocks: Array<ByteArray>): Array<ByteArray> {
+    val headers = Array(WII_GROUP_BLOCK_COUNT) { ByteArray(WII_CLUSTER_HEADER_SIZE) }
+    val subgroupHashes = Array(8) { ByteArray(20) }
+    for (blockIndex in 0 until WII_GROUP_BLOCK_COUNT) {
+        val header = headers[blockIndex]
+        for (chunkIndex in 0 until 31) {
+            val digest = sha1(blocks[blockIndex], chunkIndex * WII_CLUSTER_HEADER_SIZE, WII_CLUSTER_HEADER_SIZE)
+            digest.copyInto(header, destinationOffset = chunkIndex * 20)
+        }
+        val subgroupIndex = blockIndex / 8
+        val positionInSubgroup = blockIndex % 8
+        sha1(header, 0, 31 * 20).copyInto(headers[subgroupIndex * 8], destinationOffset = 0x280 + positionInSubgroup * 20)
+    }
+    for (subgroupIndex in 0 until 8) {
+        val source = headers[subgroupIndex * 8]
+        subgroupHashes[subgroupIndex] = sha1(source, 0x280, 8 * 20)
+        for (copyIndex in 1 until 8) {
+            source.copyOfRange(0x280, 0x340).copyInto(headers[subgroupIndex * 8 + copyIndex], destinationOffset = 0x280)
+        }
+    }
+    val h2Source = ByteArray(8 * 20)
+    for (index in 0 until 8) {
+        subgroupHashes[index].copyInto(h2Source, destinationOffset = index * 20)
+    }
+    val h2Hashes = Array(8) { h2Source.copyOfRange(it * 20, it * 20 + 20) }
+    for (blockIndex in 0 until WII_GROUP_BLOCK_COUNT) {
+        val header = headers[blockIndex]
+        for (hashIndex in 0 until 8) {
+            h2Hashes[hashIndex].copyInto(header, destinationOffset = 0x340 + hashIndex * 20)
+        }
+    }
+    return headers
+}
+
+private fun applyWiiHashExceptions(hashBlocks: Array<ByteArray>, exceptions: List<RvzHashException>) {
+    exceptions.forEach { exception ->
+        val blockIndex = exception.offset / WII_CLUSTER_HEADER_SIZE
+        val offsetInBlock = exception.offset % WII_CLUSTER_HEADER_SIZE
+        if (blockIndex !in hashBlocks.indices || offsetInBlock + exception.hash.size > WII_CLUSTER_HEADER_SIZE) {
+            throw IllegalArgumentException("Invalid RVZ Wii hash exception offset=${exception.offset}")
+        }
+        exception.hash.copyInto(hashBlocks[blockIndex], destinationOffset = offsetInBlock)
+    }
+}
+
+private fun aesEncryptCbc(key: SecretKeySpec, iv: IvParameterSpec, input: ByteArray): ByteArray {
+    val cipher = Cipher.getInstance("AES/CBC/NoPadding")
+    cipher.init(Cipher.ENCRYPT_MODE, key, iv)
+    return cipher.doFinal(input)
+}
+
+private fun sha1(data: ByteArray, offset: Int, size: Int): ByteArray =
+    MessageDigest.getInstance("SHA-1").digest(data.copyOfRange(offset, offset + size))
+
+private fun readBigEndianShort(bytes: ByteArray, offset: Int): Int? {
+    if (offset + 2 > bytes.size) return null
+    return ((bytes[offset].toInt() and 0xFF) shl 8) or (bytes[offset + 1].toInt() and 0xFF)
+}
+
+private fun alignTo4(value: Int): Int = (value + 3) and 3.inv()
+
+private fun decompressZstd(encoded: ByteArray, expectedSize: Int): ByteArray {
+    val result = ByteArray(expectedSize)
+    val decodedSize = Zstd.decompressByteArray(result, 0, result.size, encoded, 0, encoded.size)
+    if (Zstd.isError(decodedSize) || decodedSize.toInt() != expectedSize) {
+        throw IllegalArgumentException("RVZ zstd decompress failed")
+    }
+    return result
 }
 
 internal fun decodeRvzPacked(packed: ByteArray, logicalSize: Int, groupLogicalStart: Long): ByteArray {
