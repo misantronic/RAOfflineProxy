@@ -44,6 +44,7 @@
     <string name="saf_dialog_title">Folder Access Required</string>
     <string name="saf_dialog_message">This app needs access to RetroArch\'s files folder to patch retroarch.cfg. Grant access to the suggested Android/data/RetroArch package/files folder.</string>
     <string name="dolphin_saf_dialog_message">This app needs access to Dolphin\'s package folder so it can patch RetroAchievements.ini and read Dolphin cache/save data for Smart Cache. Grant access to Android/data/org.dolphinemu.dolphinemu.</string>
+    <string name="smart_cache_all_files_access_message">Smart Cache can use broad file access to read ROMs directly from internal storage and SD cards. Grant All Files Access if you want to avoid ROM-folder prompts.</string>
     <string name="smart_cache_rom_saf_dialog_message">Smart Cache needs access to your ROM folder so it can read the recent game paths from RetroArch history and hash those ROM files.</string>
     <string name="saf_dialog_grant">Grant Access</string>
     <string name="action_ok">OK</string>
@@ -115,6 +116,7 @@
     <string name="smart_cache_no_strategies">No enabled Smart Cache strategy is available.</string>
     <string name="smart_cache_requires_retroarch_access">Smart Cache needs access to RetroArch files to read recent history.</string>
     <string name="smart_cache_requires_dolphin_access">Smart Cache needs access to Dolphin\'s package folder to read recent games.</string>
+    <string name="smart_cache_requires_all_files_access">Smart Cache needs All Files Access or ROM-folder access to read ROMs.</string>
     <string name="smart_cache_requires_rom_access">Smart Cache needs access to your ROM folder to read the recent ROM files.</string>
     <string name="smart_cache_history_missing">RetroArch recent history was not found.</string>
     <string name="smart_cache_history_empty">RetroArch recent history is empty.</string>
