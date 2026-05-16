@@ -167,6 +167,7 @@
     <string name="awards_history_clear_blocked_message">You can only clear award history when there are no pending awards.</string>
 
     <!-- Settings fragment -->
+    <string name="setting_smart_caching_label">Enable smart caching</string>
     <string name="setting_proxy_port_label">Proxy port</string>
     <string name="setting_proxy_port_hint">Used for the local emulator proxy. Range: 1024 to 65535. Stop the proxy to change it.</string>
     <string name="setting_proxy_port_invalid">Enter a port between 1024 and 65535.</string>

@@ -28,6 +28,7 @@ class SettingsFragment : Fragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         val cbAutostart = view.findViewById<CheckBox>(R.id.cb_autostart_proxy)
+        val cbSmartCaching = view.findViewById<CheckBox>(R.id.cb_smart_caching)
         val inputProxyPort = view.findViewById<TextInputLayout>(R.id.input_proxy_port)
         val etProxyPort = view.findViewById<TextInputEditText>(R.id.et_proxy_port)
         val tvProxyPortHint = view.findViewById<TextView>(R.id.tv_proxy_port_hint)
@@ -38,6 +39,9 @@ class SettingsFragment : Fragment() {
 
         cbAutostart.setOnCheckedChangeListener { _, isChecked ->
             viewModel.setAutostartProxy(isChecked)
+        }
+        cbSmartCaching.setOnCheckedChangeListener { _, isChecked ->
+            viewModel.setSmartCachingEnabled(isChecked)
         }
 
         fun submitProxyPort(): Boolean {
@@ -103,6 +107,9 @@ class SettingsFragment : Fragment() {
             viewModel.state.collect { state ->
                 if (cbAutostart.isChecked != state.autostartProxy) {
                     cbAutostart.isChecked = state.autostartProxy
+                }
+                if (cbSmartCaching.isChecked != state.smartCachingEnabled) {
+                    cbSmartCaching.isChecked = state.smartCachingEnabled
                 }
                 val proxyPortText = state.proxyPort.toString()
                 if (etProxyPort.text?.toString() != proxyPortText && !etProxyPort.hasFocus()) {
