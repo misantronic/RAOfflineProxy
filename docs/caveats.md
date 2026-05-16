@@ -13,3 +13,9 @@ On Android 15 and 16, the current blocker is the system folder picker: it does n
 - Always stop sync before killing the app.
 - On some devices, swiping the app away or crashing while the proxy is active does not reliably revert the patched emulator config immediately.
 - If the app was killed or crashed during sync, reopen RAOfflineProxy once so it can restore the config on launch.
+
+## Playtime
+
+While you play offline, playtime cannot be tracked.
+
+Achievements, unlock state, and queued softcore awards still work through the proxy, but RetroAchievements does not receive live session updates during offline play. That means any playtime normally recorded by RA will not be updated until you are back online, and offline playtime itself is not recovered later.
