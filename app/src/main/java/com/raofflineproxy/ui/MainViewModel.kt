@@ -81,6 +81,7 @@ data class MainUiState(
     val hasLoginCredentials: Boolean = false,
     val authState: AuthState = AuthState.Unknown,
     val autostartProxy: Boolean = false,
+    val smartCachingEnabled: Boolean = true,
     val proxyPort: Int = PrefsConstants.DEFAULT_PROXY_PORT,
     val retroArchInstalled: Boolean = false,
     val dolphinInstalled: Boolean = false,
@@ -157,6 +158,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         )
         _state.value = _state.value.copy(
             autostartProxy = loadAutostartPref(),
+            smartCachingEnabled = loadSmartCachingEnabled(),
             proxyPort = PrefsConstants.loadProxyPort(app),
             retroArchInstalled = emulatorSupport.retroArchInstalled,
             dolphinInstalled = emulatorSupport.dolphinInstalled,
@@ -725,6 +727,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         if (!pendingSmartCachePromptAfterProxyStart) return
         val currentState = _state.value
         if (!currentState.proxyRunning) return
+        if (!currentState.smartCachingEnabled) {
+            pendingSmartCachePromptAfterProxyStart = false
+            return
+        }
         if (currentState.cachedGames.isNotEmpty()) return
         if (!currentState.isOnline) return
         if (!currentState.hasLoginCredentials) return
@@ -1222,6 +1228,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         _state.value = _state.value.copy(autostartProxy = enabled)
     }
 
+    fun setSmartCachingEnabled(enabled: Boolean) {
+        PrefsConstants.saveSmartCachingEnabled(getApplication(), enabled)
+        _state.value = _state.value.copy(smartCachingEnabled = enabled)
+        if (!enabled) {
+            pendingSmartCachePromptAfterProxyStart = false
+        }
+    }
+
     fun setRetroArchEnabled(enabled: Boolean) {
         val app = getApplication<Application>()
         val support = loadEmulatorSupport(app)
@@ -1285,6 +1299,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         getApplication<Application>()
             .getSharedPreferences(PrefsConstants.PREFS_NAME, Context.MODE_PRIVATE)
             .getBoolean(PrefsConstants.KEY_AUTOSTART_PROXY, false)
+
+    private fun loadSmartCachingEnabled(): Boolean =
+        PrefsConstants.loadSmartCachingEnabled(getApplication())
 
     private fun loadSafUri(): Uri? =
         PrefsConstants.loadSafUri(getApplication())

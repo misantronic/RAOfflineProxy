@@ -14,6 +14,7 @@ object PrefsConstants {
     const val KEY_SMART_CACHE_ROM_SAF_TREE_URI = "smart_cache_rom_saf_tree_uri"
     const val KEY_SMART_CACHE_ROM_SAF_TREE_URIS = "smart_cache_rom_saf_tree_uris"
     const val KEY_AUTOSTART_PROXY = "autostart_proxy"
+    const val KEY_ENABLE_SMART_CACHING = "enable_smart_caching"
     const val KEY_ENABLE_RETROARCH = "enable_retroarch"
     const val KEY_ENABLE_DOLPHIN = "enable_dolphin"
     const val KEY_RETROARCH_HARDCORE_WAS_ENABLED = "retroarch_hardcore_was_enabled"
@@ -127,6 +128,15 @@ object PrefsConstants {
             .getInt(KEY_PROXY_PORT, DEFAULT_PROXY_PORT)
             .takeIf(::isValidProxyPort)
             ?: DEFAULT_PROXY_PORT
+
+    fun loadSmartCachingEnabled(context: Context): Boolean =
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getBoolean(KEY_ENABLE_SMART_CACHING, true)
+
+    fun saveSmartCachingEnabled(context: Context, enabled: Boolean) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit { putBoolean(KEY_ENABLE_SMART_CACHING, enabled) }
+    }
 
     fun saveProxyPort(context: Context, port: Int) {
         require(isValidProxyPort(port)) { "Invalid proxy port: $port" }
