@@ -43,6 +43,7 @@ export default defineConfig({
         collapsed: false,
         items: [
           { text: 'Installation', link: '/installation' },
+          { text: 'Compatibility', link: '/compatibility' },
           { text: 'Emulator Patching', link: '/cfg-patching' },
           { text: 'Caching Games', link: '/caching-games' },
           { text: 'Pending Awards', link: '/pending-awards' },
@@ -66,7 +67,6 @@ export default defineConfig({
       {
         text: 'Help',
         items: [
-          { text: 'Compatibility', link: '/compatibility' },
           { text: 'Troubleshooting / FAQ', link: '/troubleshooting' },
           { text: 'Contact / Feedback', link: '/contact' },
           { text: 'Privacy Policy', link: '/privacy-policy' },
