@@ -2,6 +2,8 @@ package com.raofflineproxy.proxy
 
 import android.content.Context
 import android.net.Uri
+import android.os.Build
+import android.os.Environment
 import android.provider.DocumentsContract
 import android.util.Log
 import androidx.documentfile.provider.DocumentFile
@@ -95,7 +97,8 @@ internal data class SmartCacheRunResult(
     val limitReached: Boolean,
     val needsSafGrant: Boolean = false,
     val message: String? = null,
-    val requiredRomGrantPaths: List<String> = emptyList()
+    val requiredRomGrantPaths: List<String> = emptyList(),
+    val requiredSafGrantTargets: List<SmartCacheEmulator> = emptyList()
 )
 
 private data class ResolvedSmartCacheCandidate(
@@ -231,6 +234,9 @@ private object DolphinSmartCacheStrategy : SmartCacheStrategy {
             .distinctBy { it.path }
 
         Log.i(TAG, "Dolphin strategy discovered ${candidates.size} Dolphin candidates from ${gamelistFile.uri}")
+        candidates.forEach { candidate ->
+            Log.i(TAG, "Dolphin candidate discovered title=${candidate.title} path=${candidate.path}")
+        }
         return if (candidates.isEmpty()) {
             SmartCacheStrategyResult(message = "no_recent_games")
         } else {
@@ -280,6 +286,29 @@ internal suspend fun runSmartCache(
         )
     }
 
+    val requiredSafGrantTargets = activeStrategies.mapNotNull { strategy ->
+        when (strategy.emulator) {
+            SmartCacheEmulator.RetroArch -> if (retroArchTreeUri == null) SmartCacheEmulator.RetroArch else null
+            SmartCacheEmulator.Dolphin -> if (dolphinTreeUri == null) SmartCacheEmulator.Dolphin else null
+        }
+    }
+    if (requiredSafGrantTargets.isNotEmpty()) {
+        Log.i(TAG, "runSmartCache waiting for emulator SAF grants targets=$requiredSafGrantTargets")
+        return SmartCacheRunResult(
+            matched = 0,
+            total = 0,
+            skipped = 0,
+            limitReached = false,
+            needsSafGrant = true,
+            message = when {
+                SmartCacheEmulator.RetroArch in requiredSafGrantTargets -> "needs_saf_grant"
+                SmartCacheEmulator.Dolphin in requiredSafGrantTargets -> "needs_dolphin_saf_grant"
+                else -> null
+            },
+            requiredSafGrantTargets = requiredSafGrantTargets
+        )
+    }
+
     val discoveredCandidates = linkedMapOf<String, SmartCacheCandidate>()
     var needsSafGrant = false
     var strategyMessage: String? = null
@@ -312,7 +341,8 @@ internal suspend fun runSmartCache(
             skipped = 0,
             limitReached = false,
             needsSafGrant = needsSafGrant,
-            message = strategyMessage ?: if (needsSafGrant) "needs_saf_grant" else "no_recent_games"
+            message = strategyMessage ?: if (needsSafGrant) "needs_saf_grant" else "no_recent_games",
+            requiredSafGrantTargets = requiredSafGrantTargets
         )
     }
 
@@ -339,7 +369,8 @@ internal suspend fun runSmartCache(
             limitReached = false,
             needsSafGrant = true,
             message = "needs_rom_saf_grant",
-            requiredRomGrantPaths = preflight.requiredRomGrantPaths
+            requiredRomGrantPaths = preflight.requiredRomGrantPaths,
+            requiredSafGrantTargets = requiredSafGrantTargets
         )
     }
     if (preflight.resolved.isEmpty()) {
@@ -356,6 +387,9 @@ internal suspend fun runSmartCache(
 
     val candidateCap = minOf(remainingSlots, MAX_SMART_CACHE_FILES)
     val resolvedCandidates = selectSmartCacheCandidates(preflight.resolved, candidateCap)
+    resolvedCandidates.filter { it.candidate.emulator == SmartCacheEmulator.Dolphin }.forEach { resolvedCandidate ->
+        Log.i(TAG, "Dolphin candidate selected title=${resolvedCandidate.candidate.title} path=${resolvedCandidate.candidate.path}")
+    }
     Log.i(
         TAG,
         "runSmartCache readable cap=$candidateCap resolved=${preflight.resolved.size} capped=${resolvedCandidates.size} remainingSlots=$remainingSlots retroArchSelected=${resolvedCandidates.count { it.candidate.emulator == SmartCacheEmulator.RetroArch }} dolphinSelected=${resolvedCandidates.count { it.candidate.emulator == SmartCacheEmulator.Dolphin }}"
@@ -565,7 +599,8 @@ private fun resolveSmartCacheCandidates(
 ): SmartCachePreflightResult {
     val resolved = mutableListOf<ResolvedSmartCacheCandidate>()
     var unreadableCount = 0
-    val requiredRomGrantPaths = linkedSetOf<String>()
+    val uncoveredUnreadablePaths = mutableListOf<String>()
+    val hasAllFilesAccess = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && Environment.isExternalStorageManager()
     val romTrees = romTreeUris.mapNotNull { uri ->
         DocumentFile.fromTreeUri(context, uri)?.let { tree -> uri to tree }
     }
@@ -575,6 +610,9 @@ private fun resolveSmartCacheCandidates(
         val directDocument = resolveDocumentByStoredUri(context, candidate.path)
         if (directDocument != null) {
             resolved += ResolvedSmartCacheCandidate(candidate = candidate, documentFile = directDocument)
+            if (candidate.emulator == SmartCacheEmulator.Dolphin) {
+                Log.i(TAG, "Dolphin candidate resolved title=${candidate.title} via=storedUri path=${candidate.path}")
+            }
             return@forEach
         }
 
@@ -582,6 +620,17 @@ private fun resolveSmartCacheCandidates(
         val directFile = File(absolutePath)
         if (directFile.isFile && directFile.canRead()) {
             resolved += ResolvedSmartCacheCandidate(candidate = candidate, directFile = directFile)
+            if (candidate.emulator == SmartCacheEmulator.Dolphin) {
+                Log.i(TAG, "Dolphin candidate resolved title=${candidate.title} via=directFile path=${candidate.path} absolutePath=$absolutePath")
+            }
+            return@forEach
+        }
+
+        if (hasAllFilesAccess) {
+            if (candidate.emulator == SmartCacheEmulator.Dolphin) {
+                Log.i(TAG, "Dolphin candidate unreadable title=${candidate.title} via=allFiles path=${candidate.path} absolutePath=$absolutePath")
+            }
+            unreadableCount++
             return@forEach
         }
 
@@ -590,14 +639,22 @@ private fun resolveSmartCacheCandidates(
         }
         if (document != null) {
             resolved += ResolvedSmartCacheCandidate(candidate = candidate, documentFile = document)
+            if (candidate.emulator == SmartCacheEmulator.Dolphin) {
+                Log.i(TAG, "Dolphin candidate resolved title=${candidate.title} via=romSaf path=${candidate.path} absolutePath=$absolutePath")
+            }
         } else {
-            val requestedGrantPath = computeRequestedRomGrantPath(candidate.path)
-            if (requestedGrantPath != null && grantedRomRoots.none { grantedRoot -> grantedRoot.coversPath(requestedGrantPath) }) {
-                requiredRomGrantPaths += requestedGrantPath
+            val unresolvedPath = absolutePath.takeIf { it.startsWith("/storage/", ignoreCase = true) }
+            if (unresolvedPath != null && grantedRomRoots.none { grantedRoot -> grantedRoot.coversPath(unresolvedPath) }) {
+                uncoveredUnreadablePaths += unresolvedPath
+            }
+            if (candidate.emulator == SmartCacheEmulator.Dolphin) {
+                Log.i(TAG, "Dolphin candidate unresolved title=${candidate.title} path=${candidate.path} absolutePath=$absolutePath")
             }
             unreadableCount++
         }
     }
+
+    val requiredRomGrantPaths = computeRequestedRomGrantPaths(uncoveredUnreadablePaths)
 
     Log.i(
         TAG,
@@ -611,23 +668,45 @@ private fun resolveSmartCacheCandidates(
     )
 }
 
-private fun computeRequestedRomGrantPath(path: String): String? {
-    val absolutePath = path.toAbsoluteStoragePath() ?: path
-    val relativePath = absolutePath.substringAfter("/storage/emulated/0/", missingDelimiterValue = "")
-        .trim('/')
-        .takeIf { it.isNotBlank() }
-        ?: return null
-    val segments = relativePath.split('/').filter { it.isNotBlank() }
-    if (segments.isEmpty()) {
-        return null
+private fun computeRequestedRomGrantPaths(paths: List<String>): List<String> {
+    val normalizedPaths = paths
+        .map { it.replace('\\', '/').trim().trimEnd('/') }
+        .filter { it.startsWith("/storage/", ignoreCase = true) }
+        .distinct()
+    if (normalizedPaths.isEmpty()) {
+        return emptyList()
     }
 
-    val requestedSegments = when (segments.first()) {
-        "Download" -> segments.take(minOf(2, segments.size))
-        "ROMs" -> segments.take(1)
-        else -> segments.take(1)
+    return normalizedPaths
+        .groupBy { path ->
+            val segments = path.trim('/').split('/')
+            val volume = segments.getOrNull(1)?.lowercase().orEmpty()
+            val root = segments.getOrNull(2)?.lowercase().orEmpty()
+            "$volume::$root"
+        }
+        .values
+        .mapNotNull(::commonParentDirectory)
+}
+
+private fun commonParentDirectory(paths: List<String>): String? {
+    val splitPaths = paths.map { path ->
+        path.replace('\\', '/').trim().trimEnd('/').split('/').filter { it.isNotBlank() }
     }
-    return "/storage/emulated/0/${requestedSegments.joinToString("/")}"
+    val first = splitPaths.firstOrNull() ?: return null
+    val minSize = splitPaths.minOf { it.size }
+    val commonSegments = mutableListOf<String>()
+    for (index in 0 until minSize) {
+        val segment = first[index]
+        if (splitPaths.all { it[index].equals(segment, ignoreCase = true) }) {
+            commonSegments += segment
+        } else {
+            break
+        }
+    }
+    if (commonSegments.size <= 1) {
+        return null
+    }
+    return "/${commonSegments.joinToString("/")}"
 }
 
 private fun collapseRequestedRomGrantPaths(paths: List<String>): List<String> {
@@ -657,10 +736,12 @@ private fun selectSmartCacheCandidates(
         .toMutableMap()
     val selected = mutableListOf<ResolvedSmartCacheCandidate>()
     val perEmulatorBudget = minOf(SMART_CACHE_EMULATOR_BUDGET, candidateCap)
+    val emulatorCount = SmartCacheEmulator.entries.size.coerceAtLeast(1)
+    val firstPassBudget = minOf(perEmulatorBudget, candidateCap / emulatorCount)
 
     SmartCacheEmulator.entries.forEach { emulator ->
         val bucket = grouped[emulator] ?: return@forEach
-        repeat(minOf(perEmulatorBudget, bucket.size)) {
+        repeat(minOf(firstPassBudget, bucket.size)) {
             if (selected.size < candidateCap) {
                 selected += bucket.removeAt(0)
             }
@@ -691,12 +772,10 @@ private fun selectSmartCacheCandidates(
 }
 
 private fun treeUriToAbsolutePath(treeUri: Uri): String {
-    val documentPath = DocumentsContract.getTreeDocumentId(treeUri)
-        .substringAfter(':', missingDelimiterValue = "")
-        .trim('/')
+    val treeDocumentId = DocumentsContract.getTreeDocumentId(treeUri)
         .takeIf { it.isNotBlank() }
         ?: return "/storage/emulated/0"
-    return "/storage/emulated/0/$documentPath"
+    return documentIdToAbsoluteStoragePath(treeDocumentId)
 }
 
 private fun String.coversPath(otherPath: String): Boolean {
@@ -733,6 +812,9 @@ private suspend fun executeResolvedSmartCacheCandidates(
 
         val hash = hashResolvedCandidate(context, resolvedCandidate)
         if (hash == null) {
+            if (candidate.emulator == SmartCacheEmulator.Dolphin) {
+                Log.i(TAG, "Dolphin candidate skipped title=${candidate.title} reason=hash-null path=${candidate.path}")
+            }
             Log.d(TAG, "Skipping candidate path=${candidate.path} because hashing returned null")
             skipped++
             continue
@@ -740,6 +822,9 @@ private suspend fun executeResolvedSmartCacheCandidates(
 
         val gameId = fetchGameId(context, hash, credentials, userAgent, db)
         if (gameId == null) {
+            if (candidate.emulator == SmartCacheEmulator.Dolphin) {
+                Log.i(TAG, "Dolphin candidate skipped title=${candidate.title} reason=no-gameid path=${candidate.path} hash=$hash")
+            }
             Log.d(TAG, "Skipping candidate path=${candidate.path} because gameid lookup returned null")
             skipped++
             continue
@@ -747,6 +832,9 @@ private suspend fun executeResolvedSmartCacheCandidates(
 
         val gameIdString = gameId.toString()
         if (gameIdString in cachedGameIds) {
+            if (candidate.emulator == SmartCacheEmulator.Dolphin) {
+                Log.i(TAG, "Dolphin candidate skipped title=${candidate.title} reason=already-cached path=${candidate.path} gameId=$gameId")
+            }
             Log.d(TAG, "Skipping candidate path=${candidate.path} because gameId=$gameId became cached during smart cache")
             skipped++
             continue
@@ -762,6 +850,9 @@ private suspend fun executeResolvedSmartCacheCandidates(
             sourceRomPath = candidate.path,
             cacheBadgeImages = false
         )
+        if (candidate.emulator == SmartCacheEmulator.Dolphin) {
+            Log.i(TAG, "Dolphin candidate cached title=${candidate.title} path=${candidate.path} gameId=$gameId hash=$hash")
+        }
         cachedGameIds.add(gameIdString)
         matched++
     }
@@ -856,11 +947,27 @@ private fun String.toAbsoluteStoragePath(): String? {
     val decodedPath = Uri.decode(encodedPath)
         .substringBefore('?')
         .trim('/')
-    val documentPath = decodedPath.substringAfter(':', missingDelimiterValue = "")
-        .trim('/')
+    return documentIdToAbsoluteStoragePath(decodedPath)
+}
+
+private fun documentIdToAbsoluteStoragePath(documentId: String): String {
+    val volume = documentId.substringBefore(':', missingDelimiterValue = "")
         .takeIf { it.isNotBlank() }
-        ?: return null
-    return "/storage/emulated/0/$documentPath"
+        ?: return "/storage/emulated/0"
+    val relativePath = documentId.substringAfter(':', missingDelimiterValue = "")
+        .trim('/')
+
+    val storageRoot = if (volume.equals("primary", ignoreCase = true)) {
+        "/storage/emulated/0"
+    } else {
+        "/storage/$volume"
+    }
+
+    return if (relativePath.isBlank()) {
+        storageRoot
+    } else {
+        "$storageRoot/$relativePath"
+    }
 }
 
 private fun buildDocumentIdForTree(treeUri: Uri, relativePath: String): String? {

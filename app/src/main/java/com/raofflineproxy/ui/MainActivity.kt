@@ -6,6 +6,7 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
 import android.provider.DocumentsContract
 import android.view.Menu
 import android.view.MenuItem
@@ -83,6 +84,14 @@ class MainActivity : AppCompatActivity() {
         )
         PrefsConstants.addSmartCacheRomSafUri(this, uri)
         viewModel.onSafGranted(SafGrantTarget.SmartCacheRom)
+    }
+
+    private val allFilesAccessLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+        if (viewModel.hasAllFilesAccess()) {
+            viewModel.onSafGranted(SafGrantTarget.AllFilesAccess)
+        } else {
+            viewModel.onSafRejected(SafGrantTarget.AllFilesAccess)
+        }
     }
 
     private val notificationPermissionLauncher =
@@ -360,6 +369,7 @@ class MainActivity : AppCompatActivity() {
         val messageRes = when (target) {
             SafGrantTarget.RetroArch -> R.string.saf_dialog_message
             SafGrantTarget.Dolphin -> R.string.dolphin_saf_dialog_message
+            SafGrantTarget.AllFilesAccess -> R.string.smart_cache_all_files_access_message
             SafGrantTarget.SmartCacheRom -> R.string.smart_cache_rom_saf_dialog_message
         }
         AlertDialog.Builder(this)
@@ -370,6 +380,7 @@ class MainActivity : AppCompatActivity() {
                 when (target) {
                     SafGrantTarget.RetroArch -> safLauncher.launch(Unit)
                     SafGrantTarget.Dolphin -> dolphinSafLauncher.launch(Unit)
+                    SafGrantTarget.AllFilesAccess -> allFilesAccessLauncher.launch(createAllFilesAccessIntent())
                     SafGrantTarget.SmartCacheRom -> smartCacheRomSafLauncher.launch(viewModel.consumePendingSmartCacheRomGrantPath())
                 }
             }
@@ -378,10 +389,20 @@ class MainActivity : AppCompatActivity() {
                 when (target) {
                     SafGrantTarget.RetroArch -> viewModel.onSafRejected(SafGrantTarget.RetroArch)
                     SafGrantTarget.Dolphin -> viewModel.onSafRejected(SafGrantTarget.Dolphin)
+                    SafGrantTarget.AllFilesAccess -> viewModel.onSafRejected(SafGrantTarget.AllFilesAccess)
                     SafGrantTarget.SmartCacheRom -> viewModel.onSafRejected(SafGrantTarget.SmartCacheRom)
                 }
             }
             .show()
+    }
+
+    private fun createAllFilesAccessIntent(): Intent {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
+            return Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)
+        }
+        return Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION).apply {
+            data = Uri.parse("package:$packageName")
+        }
     }
 
     private fun showSmartCacheAfterProxyStartDialog() {
