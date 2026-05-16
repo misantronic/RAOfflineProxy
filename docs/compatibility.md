@@ -9,7 +9,7 @@ Devices confirmed working by either the developer or user reports.
 | <span style="white-space: nowrap;">Ayaneo Pocket Air Mini</span> | <span style="white-space: nowrap;">Android 11</span> | <span style="white-space: nowrap;">✅ Working</span> | Dev tested |
 | <span style="white-space: nowrap;">MagicX One 35</span>          | <span style="white-space: nowrap;">Android 12</span> | <span style="white-space: nowrap;">✅ Working</span> | User tested |
 | <span style="white-space: nowrap;">Retroid Pocket Classic</span> | <span style="white-space: nowrap;">Android 14</span> | <span style="white-space: nowrap;">✅ Working</span> | User tested |
-| <span style="white-space: nowrap;">Mangmi Air X</span>           | <span style="white-space: nowrap;">Android 14</span> | <span style="white-space: nowrap;">⚠️ Needs retest</span> | User tested before 1.0.0-alpha3; Stock, GammaOS_Next_v1.2, may work since 1.0.0-alpha3 |
+| <span style="white-space: nowrap;">Mangmi Air X</span>           | <span style="white-space: nowrap;">Android 14</span> | <span style="white-space: nowrap;">⚠️ Needs retest</span> | User tested before the recent alpha builds; Stock, GammaOS_Next_v1.2, may still work but needs retest |
 
 ## Submit your device
 
