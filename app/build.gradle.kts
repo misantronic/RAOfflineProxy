@@ -58,6 +58,15 @@ kotlin {
     }
 }
 
+androidComponents {
+    onVariants(selector().withBuildType("release")) { variant ->
+        variant.outputs.forEach { output ->
+            val versionName = output.versionName.orNull ?: return@forEach
+            output.outputFileName.set("RAOfflineProxy-v${versionName}.apk")
+        }
+    }
+}
+
 dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.appcompat)
