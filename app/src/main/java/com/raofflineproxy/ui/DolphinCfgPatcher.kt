@@ -87,6 +87,15 @@ internal fun isDolphinInstalled(context: Context): Boolean =
         runCatching { context.packageManager.getPackageInfo(packageName, 0) }.isSuccess
     } || DOLPHIN_SOURCE_CANDIDATES.any { File(it).exists() }
 
+internal fun canPatchDolphinCfgDirectly(): Boolean {
+    val directCandidate = DOLPHIN_SOURCE_CANDIDATES
+        .asSequence()
+        .map(::File)
+        .firstOrNull(File::exists)
+
+    return directCandidate?.canWrite() == true
+}
+
 fun patchDolphinCfg(context: Context, treeUri: Uri?): DolphinPatchResult {
     if (!isDolphinInstalled(context)) {
         Log.i(TAG, "patch: Dolphin not installed")
