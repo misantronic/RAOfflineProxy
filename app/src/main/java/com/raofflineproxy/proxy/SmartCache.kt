@@ -22,6 +22,7 @@ import java.nio.charset.StandardCharsets
 import androidx.core.net.toUri
 
 private const val TAG = "RAProxy/SmartCache"
+private val SMART_CACHE_EXT_STORAGE by lazy { Environment.getExternalStorageDirectory().path }
 
 private val RETROARCH_HISTORY_PATHS = RETROARCH_PACKAGE_CANDIDATES.flatMap { packageName ->
     listOf(
@@ -35,6 +36,22 @@ private val RETROARCH_HISTORY_PATHS = RETROARCH_PACKAGE_CANDIDATES.flatMap { pac
     listOf("playlists", "content_history.lpl")
 )
 
+private val RETROARCH_HISTORY_SOURCE_CANDIDATES by lazy {
+    RETROARCH_PACKAGE_CANDIDATES.flatMap { packageName ->
+        listOf(
+            "$SMART_CACHE_EXT_STORAGE/Android/data/$packageName/files/content_history.lpl",
+            "/storage/emulated/0/Android/data/$packageName/files/content_history.lpl",
+            "$SMART_CACHE_EXT_STORAGE/Android/data/$packageName/files/playlists/content_history.lpl",
+            "/storage/emulated/0/Android/data/$packageName/files/playlists/content_history.lpl"
+        )
+    } + listOf(
+        "$SMART_CACHE_EXT_STORAGE/RetroArch/content_history.lpl",
+        "/storage/emulated/0/RetroArch/content_history.lpl",
+        "$SMART_CACHE_EXT_STORAGE/RetroArch/playlists/content_history.lpl",
+        "/storage/emulated/0/RetroArch/playlists/content_history.lpl"
+    )
+}
+
 private val DOLPHIN_GAMELIST_PATHS = DOLPHIN_PACKAGE_CANDIDATES.map { packageName ->
     listOf(packageName, "cache", "gamelist.cache")
 } + listOf(
@@ -42,12 +59,36 @@ private val DOLPHIN_GAMELIST_PATHS = DOLPHIN_PACKAGE_CANDIDATES.map { packageNam
     listOf("gamelist.cache")
 )
 
+private val DOLPHIN_GAMELIST_SOURCE_CANDIDATES by lazy {
+    DOLPHIN_PACKAGE_CANDIDATES.flatMap { packageName ->
+        listOf(
+            "$SMART_CACHE_EXT_STORAGE/Android/data/$packageName/cache/gamelist.cache",
+            "/storage/emulated/0/Android/data/$packageName/cache/gamelist.cache"
+        )
+    } + listOf(
+        "$SMART_CACHE_EXT_STORAGE/dolphin-emu/cache/gamelist.cache",
+        "/storage/emulated/0/dolphin-emu/cache/gamelist.cache"
+    )
+}
+
 private val DOLPHIN_GC_PATHS = DOLPHIN_PACKAGE_CANDIDATES.map { packageName ->
     listOf(packageName, "files", "GC")
 } + listOf(
     listOf("files", "GC"),
     listOf("GC")
 )
+
+private val DOLPHIN_GC_SOURCE_CANDIDATES by lazy {
+    DOLPHIN_PACKAGE_CANDIDATES.flatMap { packageName ->
+        listOf(
+            "$SMART_CACHE_EXT_STORAGE/Android/data/$packageName/files/GC",
+            "/storage/emulated/0/Android/data/$packageName/files/GC"
+        )
+    } + listOf(
+        "$SMART_CACHE_EXT_STORAGE/dolphin-emu/GC",
+        "/storage/emulated/0/dolphin-emu/GC"
+    )
+}
 
 private val DOLPHIN_WII_DISC_TITLE_PATHS = DOLPHIN_PACKAGE_CANDIDATES.map { packageName ->
     listOf(packageName, "files", "Wii", "title", "00010000")
@@ -57,6 +98,18 @@ private val DOLPHIN_WII_DISC_TITLE_PATHS = DOLPHIN_PACKAGE_CANDIDATES.map { pack
     listOf("title", "00010000"),
     listOf("00010000")
 )
+
+private val DOLPHIN_WII_DISC_TITLE_SOURCE_CANDIDATES by lazy {
+    DOLPHIN_PACKAGE_CANDIDATES.flatMap { packageName ->
+        listOf(
+            "$SMART_CACHE_EXT_STORAGE/Android/data/$packageName/files/Wii/title/00010000",
+            "/storage/emulated/0/Android/data/$packageName/files/Wii/title/00010000"
+        )
+    } + listOf(
+        "$SMART_CACHE_EXT_STORAGE/dolphin-emu/Wii/title/00010000",
+        "/storage/emulated/0/dolphin-emu/Wii/title/00010000"
+    )
+}
 
 private const val MAX_SMART_CACHE_FILES = 50
 private const val SMART_CACHE_EMULATOR_BUDGET = 25
@@ -135,6 +188,18 @@ private object RetroArchSmartCacheStrategy : SmartCacheStrategy {
             emulatorSupport.retroArchEnabled
 
     override fun discoverCandidates(context: Context, treeUri: Uri?): SmartCacheStrategyResult {
+        val directHistoryFile = firstReadableFile(RETROARCH_HISTORY_SOURCE_CANDIDATES)
+        if (directHistoryFile != null) {
+            val directContent = runCatching { directHistoryFile.readText() }
+                .onFailure { error -> Log.w(TAG, "RetroArch strategy could not read direct history path=${directHistoryFile.path}", error) }
+                .getOrNull()
+            if (directContent != null) {
+                val candidates = parseRetroArchHistory(directContent)
+                Log.i(TAG, "RetroArch strategy discovered ${candidates.size} history candidates from ${directHistoryFile.path}")
+                return SmartCacheStrategyResult(candidates = candidates)
+            }
+        }
+
         if (treeUri == null) {
             Log.i(TAG, "RetroArch strategy needs SAF grant for history file")
             return SmartCacheStrategyResult(needsSafGrant = true)
@@ -172,6 +237,24 @@ private object DolphinSmartCacheStrategy : SmartCacheStrategy {
             emulatorSupport.dolphinEnabled
 
     override fun discoverCandidates(context: Context, treeUri: Uri?): SmartCacheStrategyResult {
+        val directGamelistFile = firstReadableFile(DOLPHIN_GAMELIST_SOURCE_CANDIDATES)
+        if (directGamelistFile != null) {
+            val directGamelistBytes = runCatching { directGamelistFile.readBytes() }
+                .onFailure { error -> Log.w(TAG, "Dolphin strategy could not read direct gamelist path=${directGamelistFile.path}", error) }
+                .getOrNull()
+            if (directGamelistBytes != null) {
+                val recentSaveCodes = linkedMapOf<String, Long>().apply {
+                    firstReadableDirectory(DOLPHIN_GC_SOURCE_CANDIDATES)?.let { putAll(loadRecentGameCubeSaveCodes(it)) }
+                    firstReadableDirectory(DOLPHIN_WII_DISC_TITLE_SOURCE_CANDIDATES)?.let { mergeRecentSaveCodes(loadRecentWiiDiscSaveCodes(it)) }
+                }
+                val directResult = buildDolphinStrategyResult(directGamelistBytes, recentSaveCodes, directGamelistFile.path)
+                if (directResult.candidates.isNotEmpty() || treeUri == null) {
+                    return directResult
+                }
+                Log.i(TAG, "Dolphin strategy direct discovery produced no candidates, falling back to SAF")
+            }
+        }
+
         if (treeUri == null) {
             Log.i(TAG, "Dolphin strategy needs SAF grant for package data")
             return SmartCacheStrategyResult(
@@ -202,46 +285,11 @@ private object DolphinSmartCacheStrategy : SmartCacheStrategy {
                 Log.w(TAG, "Dolphin strategy could not read gamelist uri=${gamelistFile.uri}")
                 return SmartCacheStrategyResult(message = "no_recent_games")
             }
-        val entriesByCode = parseDolphinGameListEntries(gamelistBytes)
-            .groupBy { it.gameCode.take(4) }
-        if (entriesByCode.isEmpty()) {
-            Log.i(TAG, "Dolphin strategy parsed no game entries from gamelist.cache")
-            return SmartCacheStrategyResult(message = "no_recent_games")
-        }
-
         val recentSaveCodes = linkedMapOf<String, Long>().apply {
             gcRoot?.let { putAll(loadRecentGameCubeSaveCodes(it)) }
             wiiTitleRoot?.let { mergeRecentSaveCodes(loadRecentWiiDiscSaveCodes(it)) }
         }
-        if (recentSaveCodes.isEmpty()) {
-            Log.i(TAG, "Dolphin strategy found no recent GameCube or Wii disc savefiles")
-            return SmartCacheStrategyResult(message = "no_recent_games")
-        }
-
-        val candidates = recentSaveCodes.entries
-            .sortedByDescending { it.value }
-            .mapNotNull { (code, _) ->
-                entriesByCode[code]?.firstOrNull()?.let { entry ->
-                    SmartCacheCandidate(
-                        emulator = SmartCacheEmulator.Dolphin,
-                        sourceLabel = "Dolphin GC saves",
-                        path = entry.romLocator,
-                        title = entry.title,
-                        priority = 0
-                    )
-                }
-            }
-            .distinctBy { it.path }
-
-        Log.i(TAG, "Dolphin strategy discovered ${candidates.size} Dolphin candidates from ${gamelistFile.uri}")
-        candidates.forEach { candidate ->
-            Log.i(TAG, "Dolphin candidate discovered title=${candidate.title} path=${candidate.path}")
-        }
-        return if (candidates.isEmpty()) {
-            SmartCacheStrategyResult(message = "no_recent_games")
-        } else {
-            SmartCacheStrategyResult(candidates = candidates)
-        }
+        return buildDolphinStrategyResult(gamelistBytes, recentSaveCodes, gamelistFile.uri.toString())
     }
 }
 
@@ -286,28 +334,7 @@ internal suspend fun runSmartCache(
         )
     }
 
-    val requiredSafGrantTargets = activeStrategies.mapNotNull { strategy ->
-        when (strategy.emulator) {
-            SmartCacheEmulator.RetroArch -> if (retroArchTreeUri == null) SmartCacheEmulator.RetroArch else null
-            SmartCacheEmulator.Dolphin -> if (dolphinTreeUri == null) SmartCacheEmulator.Dolphin else null
-        }
-    }
-    if (requiredSafGrantTargets.isNotEmpty()) {
-        Log.i(TAG, "runSmartCache waiting for emulator SAF grants targets=$requiredSafGrantTargets")
-        return SmartCacheRunResult(
-            matched = 0,
-            total = 0,
-            skipped = 0,
-            limitReached = false,
-            needsSafGrant = true,
-            message = when {
-                SmartCacheEmulator.RetroArch in requiredSafGrantTargets -> "needs_saf_grant"
-                SmartCacheEmulator.Dolphin in requiredSafGrantTargets -> "needs_dolphin_saf_grant"
-                else -> null
-            },
-            requiredSafGrantTargets = requiredSafGrantTargets
-        )
-    }
+    val requiredSafGrantTargets = mutableSetOf<SmartCacheEmulator>()
 
     val discoveredCandidates = linkedMapOf<String, SmartCacheCandidate>()
     var needsSafGrant = false
@@ -324,6 +351,7 @@ internal suspend fun runSmartCache(
         )
         if (result.needsSafGrant) {
             needsSafGrant = true
+            requiredSafGrantTargets += strategy.emulator
         }
         if (strategyMessage == null && !result.message.isNullOrBlank()) {
             strategyMessage = result.message
@@ -342,7 +370,7 @@ internal suspend fun runSmartCache(
             limitReached = false,
             needsSafGrant = needsSafGrant,
             message = strategyMessage ?: if (needsSafGrant) "needs_saf_grant" else "no_recent_games",
-            requiredSafGrantTargets = requiredSafGrantTargets
+            requiredSafGrantTargets = requiredSafGrantTargets.toList()
         )
     }
 
@@ -370,7 +398,7 @@ internal suspend fun runSmartCache(
             needsSafGrant = true,
             message = "needs_rom_saf_grant",
             requiredRomGrantPaths = preflight.requiredRomGrantPaths,
-            requiredSafGrantTargets = requiredSafGrantTargets
+            requiredSafGrantTargets = requiredSafGrantTargets.toList()
         )
     }
     if (preflight.resolved.isEmpty()) {
@@ -521,6 +549,55 @@ private fun sanitizeDolphinRomLocator(locator: String): String? {
 private fun deriveSmartCacheTitle(path: String): String? =
     Uri.decode(path.substringAfterLast('/')).takeIf { it.isNotBlank() }
 
+private fun firstReadableFile(paths: List<String>): File? =
+    paths.asSequence().map(::File).firstOrNull { it.isFile && it.canRead() }
+
+private fun firstReadableDirectory(paths: List<String>): File? =
+    paths.asSequence().map(::File).firstOrNull { it.isDirectory && it.canRead() }
+
+private fun buildDolphinStrategyResult(
+    gamelistBytes: ByteArray,
+    recentSaveCodes: Map<String, Long>,
+    source: String
+): SmartCacheStrategyResult {
+    val entriesByCode = parseDolphinGameListEntries(gamelistBytes)
+        .groupBy { it.gameCode.take(4) }
+    if (entriesByCode.isEmpty()) {
+        Log.i(TAG, "Dolphin strategy parsed no game entries from $source")
+        return SmartCacheStrategyResult(message = "no_recent_games")
+    }
+
+    if (recentSaveCodes.isEmpty()) {
+        Log.i(TAG, "Dolphin strategy found no recent GameCube or Wii disc savefiles from $source")
+        return SmartCacheStrategyResult(message = "no_recent_games")
+    }
+
+    val candidates = recentSaveCodes.entries
+        .sortedByDescending { it.value }
+        .mapNotNull { (code, _) ->
+            entriesByCode[code]?.firstOrNull()?.let { entry ->
+                SmartCacheCandidate(
+                    emulator = SmartCacheEmulator.Dolphin,
+                    sourceLabel = "Dolphin GC saves",
+                    path = entry.romLocator,
+                    title = entry.title,
+                    priority = 0
+                )
+            }
+        }
+        .distinctBy { it.path }
+
+    Log.i(TAG, "Dolphin strategy discovered ${candidates.size} Dolphin candidates from $source")
+    candidates.forEach { candidate ->
+        Log.i(TAG, "Dolphin candidate discovered title=${candidate.title} path=${candidate.path}")
+    }
+    return if (candidates.isEmpty()) {
+        SmartCacheStrategyResult(message = "no_recent_games")
+    } else {
+        SmartCacheStrategyResult(candidates = candidates)
+    }
+}
+
 private fun loadRecentGameCubeSaveCodes(root: DocumentFile): Map<String, Long> {
     val recentByCode = linkedMapOf<String, Long>()
     collectDocumentFiles(root)
@@ -543,6 +620,25 @@ private fun loadRecentGameCubeSaveCodes(root: DocumentFile): Map<String, Long> {
     return recentByCode
 }
 
+private fun loadRecentGameCubeSaveCodes(root: File): Map<String, Long> {
+    val recentByCode = linkedMapOf<String, Long>()
+    collectFiles(root)
+        .filter { file -> file.isFile && file.name.endsWith(".gci", ignoreCase = true) }
+        .forEach { file ->
+            val code = DOLPHIN_GCI_CODE_REGEX.matchEntire(file.name)
+                ?.groupValues
+                ?.getOrNull(1)
+                ?.uppercase()
+                ?: return@forEach
+            val modifiedAt = file.lastModified()
+            val previous = recentByCode[code] ?: Long.MIN_VALUE
+            if (modifiedAt > previous) {
+                recentByCode[code] = modifiedAt
+            }
+        }
+    return recentByCode
+}
+
 private fun loadRecentWiiDiscSaveCodes(root: DocumentFile): Map<String, Long> {
     val recentByCode = linkedMapOf<String, Long>()
     root.listFiles()
@@ -551,6 +647,22 @@ private fun loadRecentWiiDiscSaveCodes(root: DocumentFile): Map<String, Long> {
             val titleIdSuffix = document.name?.takeIf { DOLPHIN_WII_TITLE_ID_REGEX.matches(it) } ?: return@forEach
             val code = decodeWiiDiscTitleIdToGameCode(titleIdSuffix) ?: return@forEach
             val modifiedAt = document.lastModified()
+            val previous = recentByCode[code] ?: Long.MIN_VALUE
+            if (modifiedAt > previous) {
+                recentByCode[code] = modifiedAt
+            }
+        }
+    return recentByCode
+}
+
+private fun loadRecentWiiDiscSaveCodes(root: File): Map<String, Long> {
+    val recentByCode = linkedMapOf<String, Long>()
+    root.listFiles()
+        ?.filter { file -> file.isDirectory }
+        ?.forEach { file ->
+            val titleIdSuffix = file.name.takeIf { DOLPHIN_WII_TITLE_ID_REGEX.matches(it) } ?: return@forEach
+            val code = decodeWiiDiscTitleIdToGameCode(titleIdSuffix) ?: return@forEach
+            val modifiedAt = file.lastModified()
             val previous = recentByCode[code] ?: Long.MIN_VALUE
             if (modifiedAt > previous) {
                 recentByCode[code] = modifiedAt
@@ -583,6 +695,22 @@ private fun collectDocumentFiles(root: DocumentFile): List<DocumentFile> = build
         val current = stack.removeFirst()
         add(current)
         current.listFiles().forEach { child ->
+            if (child.isDirectory) {
+                stack.addLast(child)
+            } else {
+                add(child)
+            }
+        }
+    }
+}
+
+private fun collectFiles(root: File): List<File> = buildList {
+    val stack = ArrayDeque<File>()
+    stack.add(root)
+    while (stack.isNotEmpty()) {
+        val current = stack.removeFirst()
+        add(current)
+        current.listFiles()?.forEach { child ->
             if (child.isDirectory) {
                 stack.addLast(child)
             } else {
