@@ -408,7 +408,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val app = getApplication<Application>()
         val prefs = app.getSharedPreferences(PrefsConstants.PREFS_NAME, Context.MODE_PRIVATE)
         if (!pendingProxyStart) {
-            var remaining = _state.value.pendingSafGrantTargets.drop(1)
+            val remaining = _state.value.pendingSafGrantTargets.drop(1)
             if (pendingSmartCacheStart && target == SafGrantTarget.AllFilesAccess) {
                 pendingSmartCacheGrantTargets = remaining
                 _state.value = _state.value.copy(
