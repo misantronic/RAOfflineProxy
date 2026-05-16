@@ -1,5 +1,6 @@
 import os
 import subprocess
+import threading
 import traceback
 import time
 from pathlib import Path
@@ -34,6 +35,7 @@ from .rom_browser import (
     remove_cached_game,
 )
 from .service import service_status, start_service_process, stop_service_process
+from .smart_cache import SMART_CACHE_LIMIT, run_smart_cache, should_offer_smart_cache
 from .state import load_patch_state, save_patch_state
 from .storage import Storage
 from .menu_input import (
@@ -186,6 +188,12 @@ class MenuSdlSession:
         self.browser_entries: list[Path] = []
         self.view_positions: dict[str, tuple[int, int]] = {}
         self.browser_positions: dict[str, tuple[int, int]] = {}
+        self.smart_cache_prompt_available = False
+        self.smart_cache_prompt_count = 0
+        self.smart_cache_in_progress = False
+        self.smart_cache_progress_text: str | None = None
+        self.smart_cache_result: tuple[str, float] | None = None
+        self.smart_cache_thread: threading.Thread | None = None
         self.preview_surface = None
         self.preview_game_id = None
         self.achievement_preview_surface = None
@@ -311,6 +319,9 @@ class MenuSdlSession:
         if self.view == "pending_award_actions":
             return ["Delete pending award", "Back"]
 
+        if self.view == "smart_cache_prompt":
+            return ["Start Smart Cache", "Skip"]
+
         if self.view == "game_actions":
             unlock_titles = self.game_actions_unlock_titles()
             return ["Remove cache", *unlock_titles, "Back"]
@@ -414,6 +425,8 @@ class MenuSdlSession:
                 if self.active_pending_award is not None
                 else "No pending award selected"
             )
+        if self.view == "smart_cache_prompt":
+            return f"SMART CACHE: {self.smart_cache_prompt_count} recent games found"
         if self.view == "game_actions":
             if self.active_game is None:
                 return "No game selected"
@@ -441,7 +454,23 @@ class MenuSdlSession:
 
     def bottom_hint_text(self) -> str | None:
         if self.view != "main":
-            return None
+            if self.view == "smart_cache_prompt":
+                return None
+            return getattr(self, "smart_cache_progress_text", None)
+
+        if (
+            getattr(self, "smart_cache_in_progress", False)
+            and getattr(self, "smart_cache_progress_text", None) is not None
+        ):
+            return self.smart_cache_progress_text
+
+        smart_cache_result = getattr(self, "smart_cache_result", None)
+        if smart_cache_result is not None:
+            text, expires_at = smart_cache_result
+            if time.monotonic() >= expires_at:
+                self.smart_cache_result = None
+            else:
+                return text
 
         if self.is_logged_in():
             return None
@@ -510,6 +539,10 @@ class MenuSdlSession:
 
         if self.view == "pending_award_actions":
             self.activate_pending_award_actions_selected()
+            return
+
+        if self.view == "smart_cache_prompt":
+            self.activate_smart_cache_prompt_selected()
             return
 
         if self.view == "game_actions":
@@ -620,6 +653,13 @@ class MenuSdlSession:
         self.active_pending_award = None
         self.view = "pending_awards"
         self.restore_view_position("pending_awards")
+
+    def activate_smart_cache_prompt_selected(self) -> None:
+        if self.selected_index == 0:
+            self.start_smart_cache()
+            return
+
+        self.dismiss_smart_cache_prompt()
 
     def activate_game_actions_selected(self) -> None:
         if self.active_game is None:
@@ -748,6 +788,10 @@ class MenuSdlSession:
             self.view = "main"
             self.refresh_main_menu_state(force=True)
             self.restore_view_position("main")
+            return
+
+        if self.view == "smart_cache_prompt":
+            self.dismiss_smart_cache_prompt()
             return
 
         if self.view == "pending_award_actions":
@@ -947,6 +991,66 @@ class MenuSdlSession:
         self.selected_index = 0
         self.scroll_offset = 0
 
+    def maybe_offer_smart_cache(self) -> None:
+        self.refresh_main_menu_state(force=True)
+        status = should_offer_smart_cache(
+            self.storage,
+            self.config_data,
+            is_online=bool(getattr(self, "main_online", False)),
+            has_credentials=bool(getattr(self, "main_logged_in", False)),
+        )
+        self.smart_cache_prompt_available = status.found_history
+        self.smart_cache_prompt_count = status.total_candidates
+        if not status.found_history:
+            return
+
+        self.save_view_position("main")
+        self.view = "smart_cache_prompt"
+        self.reset_selection()
+
+    def dismiss_smart_cache_prompt(self) -> None:
+        self.smart_cache_prompt_available = False
+        self.smart_cache_prompt_count = 0
+        self.view = "main"
+        self.restore_view_position("main")
+
+    def start_smart_cache(self) -> None:
+        if self.smart_cache_in_progress:
+            return
+
+        self.smart_cache_in_progress = True
+        self.smart_cache_progress_text = f"Smart Cache: 0 / {SMART_CACHE_LIMIT}"
+        self.smart_cache_result = None
+        self.dismiss_smart_cache_prompt()
+
+        def worker() -> None:
+            try:
+                result = run_smart_cache(
+                    self.storage,
+                    self.config_data,
+                    SMART_CACHE_LIMIT,
+                    on_progress=self.update_smart_cache_progress,
+                )
+                self.refresh_cached_games()
+                self.smart_cache_result = (
+                    f"Smart Cache complete: {result.cached} games cached",
+                    time.monotonic() + 1.5,
+                )
+            except Exception as exc:
+                self.smart_cache_result = (
+                    f"Smart Cache failed: {exc}",
+                    time.monotonic() + ERROR_SECONDS,
+                )
+            finally:
+                self.smart_cache_in_progress = False
+                self.smart_cache_progress_text = None
+
+        self.smart_cache_thread = threading.Thread(target=worker, daemon=True)
+        self.smart_cache_thread.start()
+
+    def update_smart_cache_progress(self, progress) -> None:
+        self.smart_cache_progress_text = f"Smart Cache: {progress.cached} / {SMART_CACHE_LIMIT} - {progress.current_label}"
+
     def refresh_main_menu_state(self, force: bool = False) -> None:
         if not hasattr(self, "main_state_refreshed_at"):
             self.main_state_refreshed_at = 0.0
@@ -1134,7 +1238,9 @@ class MenuSdlSession:
         try:
             start_proxy_inline()
             self.refresh_main_menu_state(force=True)
-            self.message = ("Proxy started", time.monotonic() + 1.2)
+            self.maybe_offer_smart_cache()
+            if self.view != "smart_cache_prompt":
+                self.message = ("Proxy started", time.monotonic() + 1.2)
         except Exception as exc:
             self.message = (f"Start failed: {exc}", time.monotonic() + ERROR_SECONDS)
 

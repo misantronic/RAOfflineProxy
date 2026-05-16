@@ -1,6 +1,7 @@
 import unittest
 import urllib.error
 import logging
+from email.message import Message
 
 from linux.raofflineproxy import config
 from linux.raofflineproxy import network
@@ -9,6 +10,7 @@ from linux.raofflineproxy import network
 class LinuxNetworkTests(unittest.TestCase):
     def tearDown(self) -> None:
         network.reset_retroachievements_reachability_for_tests()
+        network.reset_request_throttle_for_tests()
 
     def test_redacted_url_hides_sensitive_query_values(self) -> None:
         url = "https://retroachievements.org/dorequest.php?r=login2&u=user&p=password&t=secret"
@@ -103,6 +105,58 @@ class LinuxNetworkTests(unittest.TestCase):
             self.assertFalse(network.is_retroachievements_reachable())
         finally:
             network.urllib.request.urlopen = original_urlopen
+
+    def test_http_get_retries_429_then_succeeds(self) -> None:
+        original_urlopen = network.urllib.request.urlopen
+        original_sleep = network.time.sleep
+        original_wait = network._request_throttle.wait
+        attempts = []
+        sleeps = []
+
+        class FakeResponse:
+            headers = {"Content-Type": "application/json"}
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def read(self):
+                return b'{"Success":true}'
+
+        try:
+
+            def fake_urlopen(_request, timeout=0):
+                attempts.append(timeout)
+                if len(attempts) == 1:
+                    headers = Message()
+                    headers["Retry-After"] = "2"
+                    raise urllib.error.HTTPError(
+                        url="https://retroachievements.org/dorequest.php?r=patch",
+                        code=429,
+                        msg="Too Many Requests",
+                        hdrs=headers,
+                        fp=None,
+                    )
+                return FakeResponse()
+
+            network.urllib.request.urlopen = fake_urlopen
+            network.time.sleep = lambda seconds: sleeps.append(seconds)
+            network._request_throttle.wait = lambda action=None: None
+
+            body = network.http_get(
+                "https://retroachievements.org/dorequest.php?r=patch&t=secret",
+                "RetroArch/1.20.0",
+            )
+
+            self.assertEqual(body, '{"Success":true}')
+            self.assertEqual(len(attempts), 2)
+            self.assertEqual(sleeps, [2.0])
+        finally:
+            network.urllib.request.urlopen = original_urlopen
+            network.time.sleep = original_sleep
+            network._request_throttle.wait = original_wait
 
 
 if __name__ == "__main__":
