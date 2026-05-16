@@ -13,4 +13,5 @@ This page tracks which emulators and Linux handheld platforms `RAOfflineProxy` c
 ## Linux
 
 - Knulli
+- ROCKNIX (planned)
 - OnionOS (planned)
