@@ -1,6 +1,6 @@
 # Installation & Setup (Linux / KNULLI)
 
-> You are installing the current alpha build: `v1.0.0-alpha3`.
+> You are installing the current alpha build: `v1.0.0-alpha4`.
 
 ## Prerequisites
 
@@ -14,7 +14,7 @@ RAOfflineProxy patches the RetroArch config it needs in order to redirect RetroA
 
 ## Step 1: Install RAOfflineProxy
 
-Download `RAOfflineProxy-Knulli-v1.0.0-alpha3-Install.sh` from [GitHub Releases](https://github.com/misantronic/RAOfflineProxy/releases).
+Download `RAOfflineProxy-Knulli-v1.0.0-alpha4-Install.sh` from [GitHub Releases](https://github.com/misantronic/RAOfflineProxy/releases).
 
 Copy it to the KNULLI device:
 
