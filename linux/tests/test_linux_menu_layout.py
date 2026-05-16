@@ -190,6 +190,76 @@ class MenuLayoutTests(unittest.TestCase):
             menu_sdl.MenuSdlSession.refresh_cached_games = original_refresh_cached_games
             menu_sdl.load_config = original_load_config
 
+    def test_smart_cache_prompt_labels(self) -> None:
+        session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
+        session.view = "smart_cache_prompt"
+
+        self.assertEqual(
+            menu_sdl.MenuSdlSession.labels(session, running=False),
+            ["Start Smart Cache", "Skip"],
+        )
+
+    def test_maybe_offer_smart_cache_opens_prompt_view(self) -> None:
+        session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
+        session.storage = object()
+        session.config_data = {}
+        session.view = "main"
+        session.selected_index = 0
+        session.scroll_offset = 0
+        session.save_view_position = lambda _view=None: None
+        session.reset_selection = lambda: None
+        session.refresh_main_menu_state = lambda force=False: None
+        session.main_online = True
+        session.main_logged_in = True
+
+        original_should_offer_smart_cache = menu_sdl.should_offer_smart_cache
+        try:
+            menu_sdl.should_offer_smart_cache = lambda _storage, _config, **kwargs: (
+                type(
+                    "Status",
+                    (),
+                    {"found_history": True, "total_candidates": 7},
+                )()
+            )
+
+            menu_sdl.MenuSdlSession.maybe_offer_smart_cache(session)
+
+            self.assertEqual(session.view, "smart_cache_prompt")
+            self.assertTrue(session.smart_cache_prompt_available)
+            self.assertEqual(session.smart_cache_prompt_count, 7)
+        finally:
+            menu_sdl.should_offer_smart_cache = original_should_offer_smart_cache
+
+    def test_status_text_for_smart_cache_prompt(self) -> None:
+        session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
+        session.view = "smart_cache_prompt"
+        session.smart_cache_prompt_count = 9
+
+        self.assertEqual(
+            menu_sdl.MenuSdlSession.status_text(session, running=True),
+            "SMART CACHE: 9 recent games found",
+        )
+
+    def test_start_proxy_opens_smart_cache_prompt_when_eligible(self) -> None:
+        session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
+        session.view = "main"
+        session.message = None
+        session.refresh_main_menu_state = lambda force=False: None
+        session.maybe_offer_smart_cache = lambda: setattr(
+            session, "view", "smart_cache_prompt"
+        )
+
+        original_start_proxy_inline = menu_sdl.start_proxy_inline
+        try:
+            menu_sdl.start_proxy_inline = lambda: None
+
+            menu_sdl.MenuSdlSession.start_proxy(session)
+
+            self.assertEqual(session.view, "smart_cache_prompt")
+            self.assertIsNone(session.message)
+        finally:
+            menu_sdl.start_proxy_inline = original_start_proxy_inline
+
     def test_activate_game_actions_selected_uses_back_index_after_unlock_titles(
         self,
     ) -> None:

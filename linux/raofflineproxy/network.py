@@ -12,6 +12,35 @@ from .utils import proxy_user_agent
 LOGGER = logging.getLogger("raofflineproxy")
 REDACTED_QUERY_KEYS = {"p", "t", "token", "password"}
 REACHABILITY_INTERVAL_SECONDS = 30.0
+HTTP_TOO_MANY_REQUESTS = 429
+HTTP_GET_MAX_429_RETRIES = 4
+HTTP_GET_INITIAL_429_BACKOFF_SECONDS = 2.0
+HTTP_GET_MAX_429_BACKOFF_SECONDS = 15.0
+RA_MIN_REQUEST_INTERVAL_SECONDS = 1.0
+
+
+class RequestThrottle:
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._last_request_at = 0.0
+
+    def wait(self, action: str | None = None) -> None:
+        with self._lock:
+            now = time.monotonic()
+            elapsed = now - self._last_request_at
+            delay = max(0.0, RA_MIN_REQUEST_INTERVAL_SECONDS - elapsed)
+            if delay > 0.0:
+                LOGGER.debug(
+                    "Throttling RetroAchievements request action=%s delay=%.3fs",
+                    action or "unknown",
+                    delay,
+                )
+                time.sleep(delay)
+            self._last_request_at = time.monotonic()
+
+    def reset(self) -> None:
+        with self._lock:
+            self._last_request_at = 0.0
 
 
 class ReachabilityTracker:
@@ -39,6 +68,7 @@ class ReachabilityTracker:
 
 
 _reachability_tracker = ReachabilityTracker()
+_request_throttle = RequestThrottle()
 
 
 def redacted_url(url: str) -> str:
@@ -106,6 +136,10 @@ def reset_retroachievements_reachability_for_tests() -> None:
     _reachability_tracker.reset()
 
 
+def reset_request_throttle_for_tests() -> None:
+    _request_throttle.reset()
+
+
 def should_probe_retroachievements(
     force: bool = False, now: float | None = None
 ) -> bool:
@@ -156,44 +190,88 @@ def probe_retroachievements(
 
 
 def http_get(url: str, user_agent: str) -> str:
-    request = urllib.request.Request(
-        url,
-        headers={
-            "User-Agent": user_agent,
-            "Accept-Encoding": "identity",
-        },
-        method="GET",
+    action = api_action_from_url(url)
+
+    for attempt in range(HTTP_GET_MAX_429_RETRIES + 1):
+        if action is not None:
+            _request_throttle.wait(f"GET {action}")
+
+        request = urllib.request.Request(
+            url,
+            headers={
+                "User-Agent": user_agent,
+                "Accept-Encoding": "identity",
+            },
+            method="GET",
+        )
+
+        try:
+            with urllib.request.urlopen(request, timeout=10) as response:
+                body = read_response_bytes(response)
+                mark_retroachievements_reachable()
+                return decode_response_body(body, response_content_type(response))
+        except urllib.error.HTTPError as error:
+            if error.code >= 500:
+                mark_retroachievements_unreachable()
+            else:
+                mark_retroachievements_reachable()
+
+            if (
+                error.code == HTTP_TOO_MANY_REQUESTS
+                and attempt < HTTP_GET_MAX_429_RETRIES
+            ):
+                retry_after = retry_after_seconds(error, attempt)
+                LOGGER.warning(
+                    "GET hit 429 for %s; retrying in %.3fs (attempt %s/%s)",
+                    action or redacted_url(url),
+                    retry_after,
+                    attempt + 1,
+                    HTTP_GET_MAX_429_RETRIES,
+                )
+                time.sleep(retry_after)
+                continue
+
+            LOGGER.warning(
+                "GET failed status=%s reason=%s url=%s",
+                error.code,
+                error.reason,
+                redacted_url(url),
+            )
+            raise
+        except urllib.error.URLError as error:
+            mark_retroachievements_unreachable()
+            LOGGER.warning(
+                "GET connection failed reason=%s url=%s",
+                error.reason,
+                redacted_url(url),
+            )
+            raise
+        except Exception:
+            mark_retroachievements_unreachable()
+            LOGGER.exception("GET failed url=%s", redacted_url(url))
+            raise
+
+    raise RuntimeError("http_get exceeded retry loop")
+
+
+def api_action_from_url(url: str) -> str | None:
+    return (
+        urlsplit(url).query.split("r=", 1)[1].split("&", 1)[0]
+        if "r=" in urlsplit(url).query
+        else None
     )
 
-    try:
-        with urllib.request.urlopen(request, timeout=10) as response:
-            body = read_response_bytes(response)
-            mark_retroachievements_reachable()
-            return decode_response_body(body, response_content_type(response))
-    except urllib.error.HTTPError as error:
-        if error.code >= 500:
-            mark_retroachievements_unreachable()
-        else:
-            mark_retroachievements_reachable()
-        LOGGER.warning(
-            "GET failed status=%s reason=%s url=%s",
-            error.code,
-            error.reason,
-            redacted_url(url),
-        )
-        raise
-    except urllib.error.URLError as error:
-        mark_retroachievements_unreachable()
-        LOGGER.warning(
-            "GET connection failed reason=%s url=%s",
-            error.reason,
-            redacted_url(url),
-        )
-        raise
-    except Exception:
-        mark_retroachievements_unreachable()
-        LOGGER.exception("GET failed url=%s", redacted_url(url))
-        raise
+
+def retry_after_seconds(error: urllib.error.HTTPError, attempt: int) -> float:
+    header_value = (error.headers.get("Retry-After") or "").strip()
+    header_seconds = float(header_value) if header_value.isdigit() else None
+    if header_seconds is not None and header_seconds > 0:
+        return min(header_seconds, HTTP_GET_MAX_429_BACKOFF_SECONDS)
+
+    return min(
+        HTTP_GET_INITIAL_429_BACKOFF_SECONDS * (2**attempt),
+        HTTP_GET_MAX_429_BACKOFF_SECONDS,
+    )
 
 
 def http_post(
