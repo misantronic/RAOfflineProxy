@@ -1259,7 +1259,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             return
         }
 
-        if (enabled && loadDolphinSafUri() == null) {
+        if (enabled && loadDolphinSafUri() == null && !canPatchDolphinCfgDirectly()) {
             pendingDolphinEnable = true
             _state.value = _state.value.copy(
                 needsSafGrant = true,
