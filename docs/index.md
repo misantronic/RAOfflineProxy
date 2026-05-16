@@ -20,12 +20,12 @@ hero:
       link: https://github.com/misantronic/RAOfflineProxy
 
 features:
-  - icon: 💾
-    title: Play Offline
-    details: Your game and achievement data is saved to your device so everything works without Wi-Fi or mobile data.
   - icon: ⚙️
     title: Easy Setup
     details: Starting the proxy automatically configures supported emulators - stopping it restores your original settings.
+  - icon: 💾
+    title: Play Offline
+    details: Your game and achievement data is saved to your device so everything works without Wi-Fi or mobile data.
   - icon: 🏆
     title: Automatic Sync
     details: Unlocks earned while offline are saved and sent to RetroAchievements the next time you go online.
