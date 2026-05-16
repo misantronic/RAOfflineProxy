@@ -21,7 +21,7 @@ KNULLI already has a usable alpha flow:
 
 The current KNULLI install flow is:
 
-1. Download `RAOfflineProxy-Knulli-v1.0.0-alpha4-Install.sh` from [GitHub Releases](https://github.com/misantronic/RAOfflineProxy/releases)
+1. Download `RAOfflineProxy-Knulli-v1.0.1-alpha4-Install.sh` from [GitHub Releases](https://github.com/misantronic/RAOfflineProxy/releases)
 2. Copy it into `/userdata/roms/tools`
 3. Launch `RAOfflineProxy Install` from EmulationStation Tools
 4. Update gamelists if needed so the new Tools entry appears immediately
