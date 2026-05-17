@@ -22,6 +22,7 @@ import java.nio.charset.StandardCharsets
 import androidx.core.net.toUri
 
 private const val TAG = "RAProxy/SmartCache"
+private const val DOLPHIN_RECENT_WINDOW_MS = 90L * 24 * 60 * 60 * 1000
 private val SMART_CACHE_EXT_STORAGE by lazy { Environment.getExternalStorageDirectory().path }
 
 private val RETROARCH_HISTORY_PATHS = RETROARCH_PACKAGE_CANDIDATES.flatMap { packageName ->
@@ -568,11 +569,22 @@ private fun buildDolphinStrategyResult(
     }
 
     if (recentSaveCodes.isEmpty()) {
-        Log.i(TAG, "Dolphin strategy found no recent GameCube or Wii disc savefiles from $source")
+        Log.i(TAG, "Dolphin strategy found no GameCube or Wii disc savefiles from $source")
         return SmartCacheStrategyResult(message = "no_recent_games")
     }
 
-    val candidates = recentSaveCodes.entries
+    val cutoff = System.currentTimeMillis() - DOLPHIN_RECENT_WINDOW_MS
+    val recentWindowSaveCodes = recentSaveCodes.filterValues { modifiedAt -> modifiedAt >= cutoff }
+    Log.i(
+        TAG,
+        "Dolphin strategy recent-window filter source=$source totalSaveCodes=${recentSaveCodes.size} cutoff=$cutoff retainedSaveCodes=${recentWindowSaveCodes.size}"
+    )
+    if (recentWindowSaveCodes.isEmpty()) {
+        Log.i(TAG, "Dolphin strategy found no savefiles within the last 90 days from $source")
+        return SmartCacheStrategyResult(message = "no_recent_games")
+    }
+
+    val candidates = recentWindowSaveCodes.entries
         .sortedByDescending { it.value }
         .mapNotNull { (code, _) ->
             entriesByCode[code]?.firstOrNull()?.let { entry ->
