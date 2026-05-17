@@ -23,7 +23,7 @@ Before using `RAOfflineProxy` on Linux:
 RAOfflineProxy patches the RetroArch config it needs in order to redirect RetroAchievements traffic through the local proxy. For target-specific details, see [Emulator Patching](/linux-support/cfg-patching).
 :::
 
-## Install Flow
+## Setup
 
 :::tabs key:linux-target
 
@@ -41,6 +41,9 @@ RAOfflineProxy patches the RetroArch config it needs in order to redirect RetroA
 3. Refresh or update gamelists so **RAOfflineProxy Install** appears in the **Tools** menu
 4. Launch **RAOfflineProxy Install** from **Tools**
 5. Refresh or update gamelists again so the main **RAOfflineProxy** entry appears
+6. Launch **RAOfflineProxy** from the **Tools** menu
+7. Start the proxy while online
+8. Cache games either from **Cached Games** then **Add ROM** or by launching them once in RetroArch
 
 == Onion
 
@@ -54,48 +57,16 @@ RAOfflineProxy patches the RetroArch config it needs in order to redirect RetroA
 ```
 
 3. Launch **RAOfflineProxy** from Onion's Apps section
-4. Start the proxy from the Onion menu
-
-:::
-
-## First Online Run
-
-:::tabs key:linux-target
-
-== KNULLI
-
-1. Launch **RAOfflineProxy** from the **Tools** menu
-2. Start the proxy from the on-device menu
-3. Stay online and cache games either from **Cached Games** then **Add ROM** or by launching the game once in RetroArch
-
-== Onion
-
-1. Start the proxy while online
-2. Launch a game once so its data is cached
-
-That prepares the game for offline use.
+4. Start the proxy while online
+5. Launch a game once so its data is cached
 
 :::
 
 See [Caching Games](/linux-support/caching-games) for more detail.
 
-## Play Offline
+## Offline Use
 
-:::tabs key:linux-target
-
-== KNULLI
-
-1. Start the proxy from the KNULLI menu
-2. Launch RetroArch and load a cached game
-3. Earn achievements while offline
-4. Reconnect later and let queued awards flush automatically
-
-== Onion
-
-1. Launch **RAOfflineProxy** from Onion's Apps section
-2. Start the proxy
-3. Launch a game you already cached while online
-4. Earn achievements while offline
-5. Reconnect later and let queued awards flush automatically
-
-:::
+1. Start the proxy.
+2. Launch a game you already cached.
+3. Earn achievements while offline.
+4. Reconnect later and let queued awards flush automatically.
