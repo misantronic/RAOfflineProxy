@@ -5,7 +5,7 @@
 
 RAOfflineProxy is a local proxy that lets you earn **softcore RetroAchievements** without an internet connection.
 
-It currently supports **RetroArch and Dolphin on Android**, and **RetroArch on KNULLI for Linux**.
+It currently supports **RetroArch and Dolphin on Android**, and **KNULLI** plus **Onion** (experimental) for Linux.
 
 > **Current release stage: alpha (`v1.0.1-alpha4`).** This is a public prerelease and has not gone through formal QA.
 
@@ -21,11 +21,11 @@ RAOfflineProxy runs a tiny local proxy on your device. It sits between supported
 - Status: primary supported platform
 - Setup guide: [Android setup](https://raofflineproxy.com/installation.html)
 
-### Linux (KNULLI)
+### Linux
 
 - Supported emulator: **RetroArch**
-- Status: **alpha**
-- Setup guide: [Linux (KNULLI) setup](https://raofflineproxy.com/installation-linux-knulli.html)
+- Supported targets: **KNULLI** (alpha), **Onion** (experimental)
+- Setup guide: [Linux setup](https://raofflineproxy.com/linux-support/)
 
 ## Features
 
@@ -37,7 +37,7 @@ RAOfflineProxy runs a tiny local proxy on your device. It sits between supported
 - **ROM scanning**: scan a folder or add individual ROMs to pre-cache everything you need before going offline
 - **Dolphin support**: patches Dolphin's `RetroAchievements.ini`, caches Dolphin `achievementsets`, and supports offline GameCube/Wii flows
 - **GameCube / Wii manual caching**: manual hashing now works for GameCube `.iso` / `.gcm` / `.rvz`, Wii `.iso` / `.rvz`, and Wii `.wad` files
-- **Linux support**: KNULLI support is available in alpha with its own on-device setup and menu flow
+- **Linux support**: KNULLI is available in alpha, and Onion is available experimentally
 - **Auto-start**: optionally starts automatically on supported platforms
 - **Background refresh**: cached data is refreshed hourly while you are online; stale entries older than 7 days are cleaned up automatically
 - **Anti-tamper protection**: queued awards are cryptographically signed and chained on your device, and signatures are verified before awards are sent
@@ -50,11 +50,12 @@ RAOfflineProxy runs a tiny local proxy on your device. It sits between supported
 - RetroArch and/or Dolphin installed
 - A RetroAchievements account with your credentials configured in every emulator you plan to use
 
-### Linux (KNULLI)
+### Linux
 
-- A KNULLI device
+- A supported Linux target: **KNULLI** or **Onion**
 - RetroArch available on the device
 - A RetroAchievements account configured in RetroArch
+- For Onion, the system clock must be correct
 
 ## Quick Start
 
@@ -65,12 +66,12 @@ RAOfflineProxy runs a tiny local proxy on your device. It sits between supported
 3. Cache your games from **Cached Games**, or start them in RetroArch or Dolphin while online to cache them automatically.
 4. Play offline
 
-### Linux (KNULLI)
+### Linux
 
-1. Copy the installer from [GitHub Releases](https://github.com/misantronic/RAOfflineProxy/releases) to your device at `/userdata/roms/tools`.
-2. Refresh gamelists, then run **RAOfflineProxy Install** from EmulationStation **Tools**.
-3. Refresh gamelists again, open **RAOfflineProxy**, and start the proxy while online.
-4. Cache your games from **Cached Games**, or start them in RetroArch while online to cache them automatically.
+1. Download the correct Linux release from [GitHub Releases](https://github.com/misantronic/RAOfflineProxy/releases).
+2. Follow the [Linux setup guide](https://raofflineproxy.com/linux-support/installation.html) and choose the `KNULLI` or `Onion` tab for your device.
+3. Start the proxy while online.
+4. Launch a game once in RetroArch so its data is cached.
 5. Play offline
 
 ## Important Shutdown Behavior
@@ -89,9 +90,10 @@ Full documentation is available at [raofflineproxy.com](https://raofflineproxy.c
 
 - [Introduction](https://raofflineproxy.com/introduction.html)
 - [Android setup](https://raofflineproxy.com/installation.html)
-- [Linux (KNULLI) setup](https://raofflineproxy.com/installation-linux-knulli.html)
+- [Linux overview](https://raofflineproxy.com/linux-support/)
+- [Linux installation](https://raofflineproxy.com/linux-support/installation.html)
 - [Android emulator patching](https://raofflineproxy.com/cfg-patching.html)
-- [Linux emulator patching](https://raofflineproxy.com/linux-cfg-patching.html)
+- [Linux emulator patching](https://raofflineproxy.com/linux-support/cfg-patching.html)
 
 ## Contact / Feedback
 
