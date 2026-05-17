@@ -22,7 +22,6 @@ What currently works:
 
 What is still rough:
 
-- the app is still terminal-based, not a custom SDL/controller UI like KNULLI
 - runtime payload size and copy time are still larger than ideal
 - patch-state persistence on Onion still deserves cleanup even though fallback revert now works
 
@@ -117,6 +116,12 @@ The current Onion menu supports:
 
 The menu also shows live status information each time it redraws.
 
+The menu keeps the simple numbered input flow.
+
+- Typing `1` to `4` still selects an action
+- D-pad up cycles the selection through `1` to `4`
+- D-pad down cycles the selection through `4` to `1`
+
 ## Autostart And Shutdown Hooks
 
 Enabling autostart creates:
@@ -161,7 +166,6 @@ The Onion launcher exports these defaults:
 
 ## Current Limitations
 
-- no custom non-terminal UI yet
 - no runtime size optimization yet
 - host-mounted SD-card views can lag behind the live device state while Onion is running
 - patch-state fallback behavior is safe now, but saved-state persistence still deserves attention

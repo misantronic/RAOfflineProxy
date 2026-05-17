@@ -45,7 +45,6 @@ It is currently intended for [Onion V4.4.0-beta-20260120](https://github.com/Oni
 
 Current rough edges:
 
-- The UI is still terminal-based
 - The bundled runtime is still larger than ideal and takes time to copy to SD storage
 - Patch-state persistence still deserves more cleanup
 
