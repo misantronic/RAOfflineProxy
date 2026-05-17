@@ -138,6 +138,92 @@ class LinuxProxyCacheKeyTests(unittest.TestCase):
             finally:
                 store.close()
 
+    def test_offline_startsession_includes_pending_awards(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            store = storage.Storage(database_path=Path(temp_dir) / "test.sqlite3")
+            runtime = object.__new__(proxy_service.ProxyRuntimeServer)
+            runtime.storage = store
+            try:
+                store.upsert_cache(
+                    cache_keys.patch(10701, "misantronic"),
+                    '{"Success":true,"PatchData":{"Title":"Tetris","Achievements":{"1":{"ID":1,"Title":"First"},"2":{"ID":2,"Title":"Second"}}}}',
+                )
+                store.upsert_cache(
+                    cache_keys.unlocks(10701, "misantronic"),
+                    '{"Success":true,"UserUnlocks":[1]}',
+                )
+                store.upsert_cache(
+                    cache_keys.start_session(10701, "misantronic"),
+                    '{"Success":true,"ServerNow":1700000000,"Unlocks":[{"ID":1,"When":1700000000}],"HardcoreUnlocks":[]}',
+                )
+                store.upsert_pending_award(
+                    {
+                        "achievementId": 2,
+                        "queryString": "/dorequest.php?r=awardachievement",
+                        "requestBody": "a=2&u=misantronic&h=0",
+                        "userAgent": "RetroArch/1.20.0",
+                        "queuedAt": 1700000000000,
+                        "retryCount": 0,
+                        "lastError": None,
+                        "status": "pending",
+                        "payloadHash": "hash-2",
+                        "prevHash": "hash-1",
+                        "signature": "sig",
+                        "signedAt": 1700000000000,
+                    }
+                )
+
+                response = runtime.handle_start_session(
+                    "/dorequest.php?r=startsession&u=misantronic&t=token&g=10701&h=0&m=hash&l=12.1",
+                    "",
+                )
+
+                self.assertIn(b'"ID":1', response)
+                self.assertIn(b'"ID":2', response)
+            finally:
+                store.close()
+
+    def test_offline_unlocks_includes_pending_awards(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            store = storage.Storage(database_path=Path(temp_dir) / "test.sqlite3")
+            runtime = object.__new__(proxy_service.ProxyRuntimeServer)
+            runtime.storage = store
+            try:
+                store.upsert_cache(
+                    cache_keys.patch(10701, "misantronic"),
+                    '{"Success":true,"PatchData":{"Title":"Tetris","Achievements":{"1":{"ID":1,"Title":"First"},"2":{"ID":2,"Title":"Second"}}}}',
+                )
+                store.upsert_cache(
+                    cache_keys.unlocks(10701, "misantronic"),
+                    '{"Success":true,"UserUnlocks":[1]}',
+                )
+                store.upsert_pending_award(
+                    {
+                        "achievementId": 2,
+                        "queryString": "/dorequest.php?r=awardachievement",
+                        "requestBody": "a=2&u=misantronic&h=0",
+                        "userAgent": "RetroArch/1.20.0",
+                        "queuedAt": 1700000000000,
+                        "retryCount": 0,
+                        "lastError": None,
+                        "status": "pending",
+                        "payloadHash": "hash-2",
+                        "prevHash": "hash-1",
+                        "signature": "sig",
+                        "signedAt": 1700000000000,
+                    }
+                )
+
+                response = runtime.handle_offline_request(
+                    "/dorequest.php?r=unlocks&g=10701&h=0&u=misantronic&t=token",
+                    "",
+                    "unlocks",
+                )
+
+                self.assertIn(b'"UserUnlocks":[1,2]', response)
+            finally:
+                store.close()
+
     def test_online_startsession_is_cached_even_though_general_policy_excludes_it(
         self,
     ) -> None:

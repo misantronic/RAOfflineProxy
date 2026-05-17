@@ -17,7 +17,12 @@ from .image_cache import (
     game_image_dir,
 )
 from .network import build_api_url, http_get
-from .rom_cache import cache_game
+from .rom_cache import (
+    build_achievement_game_ids,
+    cache_game,
+    merge_start_session_unlock_ids,
+    merged_unlock_ids as merged_unlock_ids_for_user,
+)
 from .rom_hashing import hash_rom, hash_rom_candidates, supported_rom_extensions
 from .storage import Storage
 from .utils import proxy_user_agent
@@ -286,36 +291,14 @@ def remove_cached_game(storage: Storage, game_id: int) -> None:
 
 
 def cached_unlock_count(storage: Storage, game_id: int) -> int | None:
-    for entry in storage.get_all_cache_by_prefix(
-        f"{cache_keys.PREFIX_UNLOCKS}{game_id}:"
-    ):
-        try:
-            payload = json.loads(entry["responseBody"])
-        except Exception:
-            continue
-
-        unlock_ids = payload.get("UserUnlocks")
-        if isinstance(unlock_ids, list):
-            return len(unlock_ids)
-
-    return None
+    unlock_ids = merged_unlock_ids(storage, game_id)
+    if unlock_ids is None:
+        return None
+    return len(unlock_ids)
 
 
 def cached_unlock_titles(storage: Storage, game_id: int) -> list[str]:
-    unlock_ids: list[int] | None = None
-    for entry in storage.get_all_cache_by_prefix(
-        f"{cache_keys.PREFIX_UNLOCKS}{game_id}:"
-    ):
-        try:
-            payload = json.loads(entry["responseBody"])
-        except Exception:
-            continue
-
-        value = payload.get("UserUnlocks")
-        if isinstance(value, list):
-            unlock_ids = [item for item in value if isinstance(item, int)]
-            break
-
+    unlock_ids = merged_unlock_ids(storage, game_id)
     if unlock_ids is None:
         return []
 
@@ -361,6 +344,42 @@ def cached_unlock_titles(storage: Storage, game_id: int) -> list[str]:
         if achievement_id in title_by_id
     ]
     return titles
+
+
+def merged_unlock_ids(storage: Storage, game_id: int) -> list[int] | None:
+    cached_unlock_ids: list[int] | None = None
+    unlock_user: str | None = None
+    for entry in storage.get_all_cache_by_prefix(
+        f"{cache_keys.PREFIX_UNLOCKS}{game_id}:"
+    ):
+        try:
+            payload = json.loads(entry["responseBody"])
+        except Exception:
+            continue
+
+        value = payload.get("UserUnlocks")
+        if not isinstance(value, list):
+            continue
+
+        cached_unlock_ids = [item for item in value if isinstance(item, int)]
+        unlock_user = parse_user_from_unlocks_key(entry.get("cacheKey", ""))
+        break
+
+    if cached_unlock_ids is None or unlock_user is None:
+        return None
+    return merged_unlock_ids_for_user(storage, game_id, unlock_user)
+
+
+def parse_user_from_unlocks_key(cache_key: str) -> str | None:
+    if not cache_key.startswith(cache_keys.PREFIX_UNLOCKS):
+        return None
+
+    parts = cache_key.split(":")
+    if len(parts) != 4:
+        return None
+
+    user = parts[2].strip()
+    return user or None
 
 
 def cached_unlock_badge_path(storage: Storage, game_id: int, title: str) -> Path | None:
