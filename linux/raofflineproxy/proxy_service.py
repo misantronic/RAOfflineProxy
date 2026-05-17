@@ -47,6 +47,7 @@ SOCKET_TIMEOUT_SECONDS = 30
 
 AWARD_ACTIONS = {"awardachievement", "submitlbentry"}
 FAKE_OFFLINE_SUCCESS_ACTIONS = {"ping"}
+ALWAYS_TRY_UPSTREAM_ACTIONS = {"login2"}
 
 
 def is_static_asset_request(path: str) -> bool:
@@ -82,6 +83,8 @@ def cache_key_for_request(path: str, body: str) -> str:
         return cache_keys.game_id(hash_value)
     if action == "login2":
         return cache_keys.login(user)
+    if action == "achievementsets":
+        return cache_keys.achievementsets(hash_value or game_id or "unknown", user)
     if action == "startsession":
         return cache_keys.start_session(game_id, user)
     if action == "patch":
@@ -272,6 +275,21 @@ class ProxyRuntimeServer(ThreadingTCPServer):
         if action == "startsession" and not self.is_online():
             return self.handle_start_session(path, raw_body)
 
+        if action in ALWAYS_TRY_UPSTREAM_ACTIONS:
+            upstream = self.forward_to_upstream_result(method, path, raw_body, headers)
+            if upstream[0] in {"success", "http_error"}:
+                status_code = upstream[1]
+                reason = upstream[2]
+                response_body_bytes = upstream[3]
+                content_type = upstream[4]
+                response_body = upstream[5]
+                if response_body is not None and should_cache_response(response_body):
+                    key = cache_key_for_request(path, raw_body)
+                    self.storage.upsert_cache(key, response_body)
+                return raw_response_bytes(
+                    status_code, response_body_bytes, content_type, reason
+                )
+
         if self.is_online():
             return self.handle_online_request(method, path, raw_body, action, headers)
 
@@ -301,6 +319,10 @@ class ProxyRuntimeServer(ThreadingTCPServer):
         user = extract_request_param(path, raw_body, "u")
         if not game_id or not user:
             return error_json(400, "bad request")
+
+        cached = self.storage.get_cache(cache_keys.start_session(game_id, user))
+        if cached is not None:
+            return ok_json(cached["responseBody"])
 
         cache_session(int(game_id), {"user": user, "token": ""}, self.storage)
         cached = self.storage.get_cache(cache_keys.start_session(game_id, user))
@@ -353,6 +375,15 @@ class ProxyRuntimeServer(ThreadingTCPServer):
 
         if response_body is None:
             return error_json(503, "invalid upstream response")
+
+        if action == "startsession" and should_cache_response(response_body):
+            game_id = extract_request_param(path, raw_body, "g")
+            user = extract_request_param(path, raw_body, "u")
+            if game_id and user:
+                self.storage.upsert_cache(
+                    cache_keys.start_session(game_id, user), response_body
+                )
+
         if should_cache_response(response_body) and should_cache_action(action, path):
             key = cache_key_for_request(path, raw_body)
             self.storage.upsert_cache(key, response_body)
@@ -395,6 +426,19 @@ class ProxyRuntimeServer(ThreadingTCPServer):
                 ],
             )
             return game_id_cache_miss()
+
+        if action == "achievementsets":
+            fallback_game_id = extract_request_param(
+                path, raw_body, "g"
+            ) or extract_request_param(path, raw_body, "i")
+            user = extract_request_param(path, raw_body, "u") or ""
+            if fallback_game_id and user:
+                cached = self.storage.get_cache(
+                    cache_keys.achievementsets(fallback_game_id, user)
+                )
+                if cached is not None:
+                    return ok_json(cached["responseBody"])
+
         return error_json(503, "no cached response")
 
     def forward_to_upstream(

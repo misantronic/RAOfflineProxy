@@ -4,6 +4,10 @@ import os
 from pathlib import Path
 
 
+DEFAULT_ONION_APP_DIR = Path("/mnt/SDCARD/App/RAOfflineProxy")
+DEFAULT_ONION_STARTUP_SCRIPT = Path("/mnt/SDCARD/.tmp_update/startup/raofflineproxy.sh")
+
+
 def resolve_config_dir() -> Path:
     configured = os.environ.get("RAOFFLINEPROXY_CONFIG_DIR")
     if configured:
@@ -12,6 +16,9 @@ def resolve_config_dir() -> Path:
     xdg_config_home = os.environ.get("XDG_CONFIG_HOME")
     if xdg_config_home:
         return Path(xdg_config_home).expanduser() / "raofflineproxy"
+
+    if DEFAULT_ONION_APP_DIR.exists():
+        return DEFAULT_ONION_APP_DIR / "data"
 
     if Path("/userdata/system").exists():
         return Path("/userdata/system/.config/raofflineproxy")
@@ -118,6 +125,8 @@ def detect_retroarch_cfg() -> str:
         return env_override
 
     candidates = [
+        Path("/mnt/SDCARD/RetroArch/.retroarch/retroarch.cfg"),
+        Path("/mnt/SDCARD/.tmp_update/config/retroarch.cfg"),
         Path("/userdata/system/configs/retroarch/retroarchcustom.cfg"),
         Path("/userdata/system/configs/retroarch/retroarch.cfg"),
         Path("/userdata/system/.config/retroarch/retroarchcustom.cfg"),
@@ -135,5 +144,8 @@ def detect_retroarch_cfg() -> str:
 
     if Path("/storage").exists():
         return str(Path("/storage/.config/retroarch/retroarch.cfg"))
+
+    if Path("/mnt/SDCARD").exists():
+        return str(Path("/mnt/SDCARD/RetroArch/.retroarch/retroarch.cfg"))
 
     return str(Path.home() / ".config" / "retroarch" / "retroarch.cfg")

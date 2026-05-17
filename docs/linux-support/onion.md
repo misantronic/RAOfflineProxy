@@ -1,75 +1,66 @@
 # Onion
 
-Onion is a planned Linux target for `RAOfflineProxy`, but it does not have a usable public install flow yet.
+Onion is now an experimental Linux target for `RAOfflineProxy`.
 
-This page documents the current state of the investigation and the main obstacles that still need to be solved before Onion can be treated like the existing KNULLI target.
+The current implementation uses an Onion community app bundle under `/App/RAOfflineProxy` and has been validated far enough to support real online and offline proxy flows on device.
 
 ## Current State
 
-What is already known:
+What currently works:
 
-- Onion supports custom ports and launcher scripts from the SD card
-- Onion ships a bundled Python 2.7 runtime through its Parasyte environment
-- Onion also ships `pygame` for that Python 2.7 runtime
-- Onion does not appear to ship a documented runtime that matches the current Linux implementation directly
+- Onion community app packaging under `/App/RAOfflineProxy`
+- bundled private Python 3 runtime support
+- terminal-driven menu for controller use
+- proxy start and stop from the Onion app
+- `retroarch.cfg` patch and revert for Onion's RetroArch path
+- online login and normal online proxy traffic
+- offline award queueing and reconnect flush
+- per-game `achievementsets` caching for the Miyoo request pattern
+- cached real `startsession` reuse for offline unlocked-count display
+- autostart via `/.tmp_update/startup/raofflineproxy.sh`
+- shutdown cleanup via `/.tmp_update/checkoff/raofflineproxy.sh`
 
-That means Onion looks technically possible as a target, but not with the current Linux codebase unchanged.
+## Current Limitations
 
-## Current Obstacles
+What is still rough:
 
-### Python Runtime Mismatch
+- the UI is still terminal-based, not a custom SDL/controller UI like KNULLI
+- the bundled runtime is still larger than ideal and takes time to copy to SD storage
+- patch-state persistence still deserves cleanup even though safe fallback revert behavior exists now
+- host-mounted SD-card views can lag behind live device state while Onion is running
 
-The current Linux implementation in this repository targets a newer Python runtime than Onion appears to provide by default.
+## Runtime Notes
 
-Onion, however, appears to provide Python 2.7 in its standard runtime environment.
+Onion ships Python 2.7 through its Parasyte environment, but the current Linux client requires a newer runtime.
 
-That is currently the biggest blocker because the Linux codebase relies on newer language and standard-library behavior that is not expected to run unchanged in Onion's default environment.
+The Onion target therefore uses a bundled private Python 3 runtime built from the `python-build-standalone` Linux `armv7-unknown-linux-gnueabihf` archive.
 
-So even though Onion has `pygame`, the current Linux app is not expected to run there unchanged.
+Onion's system clock must also be correct for HTTPS requests to `retroachievements.org` to succeed.
 
-### No Confirmed Matching Runtime Path Yet
+## RetroArch Path
 
-The Onion repository shows Python 2.7 binaries in the bundled Parasyte environment, but there is currently no confirmed built-in runtime path that matches the current Linux implementation directly.
+The Onion target expects RetroArch config at:
 
-That means Onion support likely requires one of these approaches:
+```text
+/mnt/SDCARD/RetroArch/.retroarch/retroarch.cfg
+```
 
-- bundle a matching private runtime with `RAOfflineProxy`
-- maintain an Onion-specific Python 2.7-compatible build target
-- reduce the Onion target to a smaller launcher flow that avoids the current menu implementation
+## Menu
 
-No approach has been selected yet.
+The current Onion app menu provides:
 
-### Device-Specific RetroArch Integration Is Still Unverified
+- `Start proxy` or `Stop proxy` depending on current state
+- `Cached games`
+- `Enable autostart` or `Disable autostart`
+- `Exit`
 
-Even if the runtime issue is solved, Onion support still needs real-device validation for:
+## What Still Needs Work
 
-- the active `retroarch.cfg` location used during normal play
-- where Onion expects custom tools or ports to store configuration data
-- how reliable long-running proxy start and stop behavior is on-device
-- what the cleanest user-facing install flow should be
+Before Onion can be treated as a more stable public target, the remaining work is roughly:
 
-Onion documentation is enough to estimate packaging direction, but not enough to claim end-to-end support without hardware testing.
+1. improve runtime size and copy-time behavior
+2. tighten patch-state persistence so exact revert state is always preserved
+3. validate more edge cases around reboot, shutdown, and longer-lived sessions
+4. decide whether Onion should get a richer non-terminal UI later
 
-### Packaging Still Needs a Target-Specific Flow
-
-KNULLI currently has its own install bundle, launcher, and startup assumptions.
-
-Onion will need a separate target-specific package based on Onion's port layout instead of reusing the KNULLI install flow directly.
-
-That likely means:
-
-- a dedicated `linux/onion/` target in this repository
-- Onion-specific launcher scripts
-- Onion-specific install documentation
-- no assumption that KNULLI autostart behavior maps directly to Onion
-
-## What Would Need To Happen Next
-
-Before Onion can move from planned to usable, the remaining work is roughly:
-
-1. choose a runtime strategy for Onion
-2. add a dedicated Onion packaging target
-3. confirm RetroArch and config paths on real hardware
-4. validate start, stop, and offline flow on an actual Onion device
-
-Until then, Onion should be treated as a planned target rather than an experimental install target.
+For now, Onion should be treated as an experimental but working target.

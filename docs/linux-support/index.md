@@ -37,7 +37,7 @@ The first Linux target with a more complete installation and menu flow is:
 
 - [KNULLI](/linux-support/knulli) (alpha)
 - ROCKNIX (planned)
-- [Onion](/linux-support/onion) (planned)
+- [Onion](/linux-support/onion) (experimental)
 
 Additional Linux targets may be documented later, but they are not considered public install targets yet.
 

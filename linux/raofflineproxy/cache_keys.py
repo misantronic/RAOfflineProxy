@@ -5,6 +5,7 @@ PREFIX_PATCH = "patch:"
 PREFIX_UNLOCKS = "unlocks:"
 PREFIX_STARTSESSION = "startsession:"
 PREFIX_GAMEID = "gameid:"
+PREFIX_ACHIEVEMENTSETS = "achievementsets:"
 
 
 def login(user: str) -> str:
@@ -29,6 +30,10 @@ def unlocks(game_id_value: int | str, user: str) -> str:
 
 def start_session(game_id_value: int | str, user: str) -> str:
     return f"startsession:{game_id_value}:{normalize_user(user)}:0"
+
+
+def achievementsets(scope: int | str, user: str) -> str:
+    return f"achievementsets:{scope}:{normalize_user(user)}"
 
 
 def normalize_hash(hash_value: str) -> str:

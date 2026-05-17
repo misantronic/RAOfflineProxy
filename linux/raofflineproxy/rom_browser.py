@@ -62,6 +62,25 @@ def list_cached_games(storage: Storage) -> list[CachedGameEntry]:
             image_url=normalize_preview_url(image_path),
         )
 
+    for entry in storage.get_all_cache_by_prefix(cache_keys.PREFIX_ACHIEVEMENTSETS):
+        try:
+            payload = json.loads(entry["responseBody"])
+        except Exception:
+            continue
+
+        game_id = payload.get("GameId")
+        if not isinstance(game_id, int) or game_id <= 0:
+            continue
+
+        title = payload.get("Title") or f"Game {game_id}"
+        image_path = payload.get("ImageIcon") or payload.get("ImageIconUrl")
+        if game_id not in games:
+            games[game_id] = CachedGameEntry(
+                game_id=game_id,
+                title=title,
+                image_url=normalize_preview_url(image_path),
+            )
+
     return sorted(games.values(), key=lambda game: game.title.lower())
 
 

@@ -50,6 +50,19 @@ class LinuxServiceReconciliationTests(unittest.TestCase):
                 state.PID_FILE = original_pid_file
                 state.STATUS_FILE = original_status_file
 
+    def test_process_has_exited_falls_back_to_process_signal_check(self) -> None:
+        original_proc_state = service._proc_state
+        original_process_is_running = service.process_is_running
+        try:
+            service._proc_state = lambda _pid: None
+            service.process_is_running = lambda pid: pid == 123
+
+            self.assertFalse(service.process_has_exited(123))
+            self.assertTrue(service.process_has_exited(456))
+        finally:
+            service._proc_state = original_proc_state
+            service.process_is_running = original_process_is_running
+
 
 if __name__ == "__main__":
     unittest.main()

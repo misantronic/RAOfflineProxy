@@ -1,5 +1,6 @@
 import logging
 import os
+from pathlib import Path
 import signal
 import subprocess
 import sys
@@ -31,32 +32,24 @@ def process_is_running(pid: int) -> bool:
 
 
 def process_has_exited(pid: int) -> bool:
-    try:
-        status = subprocess.check_output(
-            ["ps", "-p", str(pid), "-o", "stat="], text=True
-        ).strip()
-    except subprocess.CalledProcessError:
-        return True
-
-    if not status:
-        return True
-    return "Z" in status
+    proc_state = _proc_state(pid)
+    if proc_state is not None:
+        return proc_state == "Z"
+    return not process_is_running(pid)
 
 
 def process_matches_service(pid: int) -> bool:
-    try:
-        command = subprocess.check_output(
-            ["ps", "-p", str(pid), "-o", "command="], text=True
-        ).strip()
-    except subprocess.CalledProcessError:
-        return False
-
-    if not command:
-        return False
-    return any(marker in command for marker in SERVICE_COMMAND_MARKERS)
+    command = _proc_command_line(pid)
+    if command:
+        return any(marker in command for marker in SERVICE_COMMAND_MARKERS)
+    return False
 
 
 def discover_service_pid() -> int | None:
+    proc_pid = _discover_service_pid_from_proc()
+    if proc_pid is not None:
+        return proc_pid
+
     try:
         output = subprocess.check_output(["ps", "-eo", "pid=,command="], text=True)
     except subprocess.CalledProcessError:
@@ -82,6 +75,59 @@ def tracked_or_discovered_service_pid() -> int | None:
     if pid is not None and process_is_running(pid) and process_matches_service(pid):
         return pid
     return discover_service_pid()
+
+
+def _proc_state(pid: int) -> str | None:
+    stat_path = Path("/proc") / str(pid) / "stat"
+    try:
+        content = stat_path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+
+    _, _, remainder = content.partition(") ")
+    if not remainder:
+        return None
+
+    fields = remainder.split()
+    if not fields:
+        return None
+    return fields[0]
+
+
+def _proc_command_line(pid: int) -> str:
+    cmdline_path = Path("/proc") / str(pid) / "cmdline"
+    try:
+        raw = cmdline_path.read_bytes()
+    except OSError:
+        return ""
+
+    parts = [
+        part.decode("utf-8", errors="replace") for part in raw.split(b"\x00") if part
+    ]
+    return " ".join(parts)
+
+
+def _discover_service_pid_from_proc() -> int | None:
+    proc_root = Path("/proc")
+    if not proc_root.exists():
+        return None
+
+    try:
+        entries = list(proc_root.iterdir())
+    except OSError:
+        return None
+
+    for entry in entries:
+        if not entry.name.isdigit():
+            continue
+
+        command = _proc_command_line(int(entry.name))
+        if not command:
+            continue
+        if any(marker in command for marker in SERVICE_COMMAND_MARKERS):
+            return int(entry.name)
+
+    return None
 
 
 def save_running_service_state(
