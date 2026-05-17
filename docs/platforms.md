@@ -6,12 +6,12 @@ This page tracks which emulators and Linux handheld platforms `RAOfflineProxy` c
 
 - RetroArch
 - Dolphin
-- melonDS ([planned](https://github.com/misantronic/RAOfflineProxy/issues/1), [PR created](https://github.com/rafaelvcaetano/melonDS-android/pull/1627))
+- MelonDS ([planned](https://github.com/misantronic/RAOfflineProxy/issues/1), [PR created](https://github.com/rafaelvcaetano/melonDS-android/pull/1627))
 - NetherSX2 ([planned](https://github.com/misantronic/RAOfflineProxy/issues/3), [Draft created](https://github.com/Trixarian/NetherSX2-classic/issues/112))
 - NetherSX2-Turnip ([planned](https://github.com/misantronic/RAOfflineProxy/issues/2), [Draft created](https://github.com/nckstwrt/NetherSX2-Turnip/issues/44))
 
-## Linux
+## [Linux](/linux-support/)
 
-- Knulli
+- KNULLI
+- Onion (experimental)
 - ROCKNIX (planned)
-- [Onion](/linux-support/onion) (experimental)

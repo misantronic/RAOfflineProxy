@@ -10,9 +10,9 @@ The Linux implementation follows the same basic chain concept as Android, but it
 
 That means the goal is the same:
 
-- detect queue tampering
-- preserve queue order
-- block sync when integrity fails
+- Detect queue tampering
+- Preserve queue order
+- Block sync when integrity fails
 
 ## How it works
 
@@ -31,9 +31,9 @@ If verification fails, no queued awards are sent.
 
 The hash chain helps detect:
 
-- accidental corruption
-- broken queue ordering
-- manual edits to queued award data
+- Accidental corruption
+- Broken queue ordering
+- Manual edits to queued award data
 
 ## Limitation
 

@@ -4,44 +4,55 @@ Linux support now exists in `RAOfflineProxy` and is currently in **alpha**.
 
 ## Overview
 
-The Linux implementation is focused on keeping the same core proxy behavior as Android.
+The Linux version is for handheld Linux devices where you want the same basic offline flow as on Android:
 
-## Current State
+- Start the proxy
+- Play a game online once so it is cached
+- Keep earning softcore achievements while offline
+- Let queued awards sync later when you reconnect
 
-The Linux version already covers the main offline proxy flow:
-
-- Cache games for offline use
-- Queue softcore achievements while offline and send them later
-- Manage cached games from an on-device menu on supported targets
-- Support manual ROM adding for supported systems
-
-## ROM Hashing
-
-Current Linux ROM hashing coverage includes:
-
-- Game Boy / Game Boy Color / Game Boy Advance
-- NES / FDS / SNES
-- PC Engine
-- Atari 7800 / Atari Lynx
-- Super Cassette Vision
-- Nintendo 64
-- Nintendo DS
-- PSP
-- PSX
-
-Starting a game through RetroArch while the proxy is active still caches that game normally. The ROM hashing list above is specifically about manual ROM adding and offline game identification paths.
+Use the `KNULLI` and `Onion` tabs throughout the Linux section to switch target-specific instructions.
 
 ## Supported Targets
 
-The first Linux target with a more complete installation and menu flow is:
-
-- [KNULLI](/linux-support/knulli) (alpha)
+- KNULLI (alpha)
+- Onion (experimental)
 - ROCKNIX (planned)
-- [Onion](/linux-support/onion) (experimental)
 
-Additional Linux targets may be documented later, but they are not considered public install targets yet.
+## Specifics
+
+:::tabs key:linux-target
+
+== KNULLI
+
+KNULLI is the first Linux target with an end-to-end alpha install and on-device menu flow in `RAOfflineProxy`.
+
+It is currently intended for [KNULLI Gladiator II](https://github.com/knulli-cfw/distribution/releases/tag/20250813).
+
+KNULLI is the most complete Linux target right now.
+
+Current rough edges:
+
+- Install and update flow are still alpha-quality
+- Clearing cache while the proxy is actively running does not stop the service first, so live requests can repopulate game cache entries again
+- Autostart is currently implemented for KNULLI/Batocera-style startup hooks, not every Linux environment
+
+== Onion
+
+Onion is an experimental but working Linux target for `RAOfflineProxy`.
+
+It is currently intended for [Onion V4.4.0-beta-20260120](https://github.com/OnionUI/Onion/releases/tag/latest).
+
+Current rough edges:
+
+- The UI is still terminal-based
+- The bundled runtime is still larger than ideal and takes time to copy to SD storage
+- Patch-state persistence still deserves more cleanup
+
+:::
 
 ## Important Notes
 
 - Linux support is currently in alpha and should still be treated as a prerelease feature.
-- Linux-specific install, startup, and UI behavior can vary by firmware and frontend.
+- Linux install, startup, and UI behavior can vary a lot by firmware and frontend.
+- Always check the correct tab for your device instead of assuming KNULLI and Onion behave the same way.

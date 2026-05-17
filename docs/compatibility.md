@@ -21,10 +21,10 @@ RAOfflineProxy currently supports **RetroArch and Dolphin on Android**.
 
 That support depends on emulator-specific behavior:
 
-- the emulator must expose a compatible RetroAchievements server override or equivalent config path
+- The emulator must expose a compatible RetroAchievements server override or equivalent config path
 - RAOfflineProxy must know how to patch and restore that emulator's config files
-- it must know where that emulator stores RetroAchievements credentials on Android
-- its request handling must match the way that emulator's RetroAchievements client talks to the API
+- It must know where that emulator stores RetroAchievements credentials on Android
+- Its request handling must match the way that emulator's RetroAchievements client talks to the API
 
 Other emulators are not just a different frontend. They may use different config files, different credential storage, different request flows, or no compatible custom server override at all.
 
