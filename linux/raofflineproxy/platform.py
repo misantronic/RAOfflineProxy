@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from .config import detect_retroarch_cfg
+from .config import DEFAULT_ONION_STARTUP_SCRIPT, detect_retroarch_cfg
 
 DEFAULT_KNULLI_ROMS_ROOT = Path("/userdata/roms")
 DEFAULT_KNULLI_STARTUP_SCRIPT = Path("/userdata/system/custom.sh")
@@ -56,6 +56,9 @@ def autostart_enabled(config_data: dict) -> bool:
     if startup_script is None or not startup_script.exists():
         return False
 
+    if startup_script == DEFAULT_ONION_STARTUP_SCRIPT:
+        return True
+
     content = startup_script.read_text(encoding="utf-8", errors="replace")
     return AUTOSTART_SENTINEL_START in content and AUTOSTART_SENTINEL_END in content
 
@@ -64,6 +67,11 @@ def enable_autostart(config_data: dict) -> None:
     startup_script = resolve_startup_script_path(config_data)
     if startup_script is None:
         raise ValueError("Autostart is not supported on this platform")
+
+    if startup_script == DEFAULT_ONION_STARTUP_SCRIPT:
+        startup_script.parent.mkdir(parents=True, exist_ok=True)
+        startup_script.write_text(onion_autostart_script(), encoding="utf-8")
+        return
 
     startup_script.parent.mkdir(parents=True, exist_ok=True)
     existing = (
@@ -82,6 +90,10 @@ def disable_autostart(config_data: dict) -> None:
     if startup_script is None or not startup_script.exists():
         return
 
+    if startup_script == DEFAULT_ONION_STARTUP_SCRIPT:
+        startup_script.unlink()
+        return
+
     existing = startup_script.read_text(encoding="utf-8", errors="replace")
     cleaned = strip_autostart_block(existing).strip()
     startup_script.write_text(f"{cleaned}\n" if cleaned else "", encoding="utf-8")
@@ -91,6 +103,9 @@ def resolve_startup_script_path(config_data: dict) -> Path | None:
     configured = config_data.get("startup_script")
     if configured:
         return Path(str(configured))
+
+    if Path("/mnt/SDCARD/.tmp_update").exists():
+        return DEFAULT_ONION_STARTUP_SCRIPT
 
     if Path("/userdata/system").exists():
         return DEFAULT_KNULLI_STARTUP_SCRIPT
@@ -112,6 +127,10 @@ def autostart_block(config_data: dict) -> str:
 
 
 def autostart_command(config_data: dict) -> tuple[str]:
+    startup_script = resolve_startup_script_path(config_data)
+    if startup_script == DEFAULT_ONION_STARTUP_SCRIPT:
+        return ("/mnt/SDCARD/App/RAOfflineProxy/autostart-launch.sh",)
+
     launcher = str(
         config_data.get("autostart_launcher")
         or "/userdata/system/raofflineproxy/bin/raofflineproxy"
@@ -130,3 +149,18 @@ def strip_autostart_block(content: str) -> str:
 
     end += len(AUTOSTART_SENTINEL_END)
     return f"{content[:start]}{content[end:]}"
+
+
+def onion_autostart_script() -> str:
+    return "\n".join(
+        [
+            "#!/bin/sh",
+            "set -eu",
+            "",
+            "APP_DIR=/mnt/SDCARD/App/RAOfflineProxy",
+            'if [ -x "$APP_DIR/autostart-launch.sh" ]; then',
+            '  sh "$APP_DIR/autostart-launch.sh"',
+            "fi",
+            "",
+        ]
+    )

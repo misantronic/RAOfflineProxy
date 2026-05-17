@@ -1,4 +1,6 @@
 import logging
+import os
+import ssl
 import threading
 import time
 import urllib.error
@@ -110,6 +112,14 @@ def response_content_type(response: object) -> str | None:
     return headers.get("Content-Type")
 
 
+def configured_ssl_context() -> ssl.SSLContext:
+    cafile = os.environ.get("RAOFFLINEPROXY_CA_FILE") or os.environ.get("SSL_CERT_FILE")
+    capath = os.environ.get("SSL_CERT_DIR")
+    if cafile or capath:
+        return ssl.create_default_context(cafile=cafile or None, capath=capath or None)
+    return ssl.create_default_context()
+
+
 def build_api_url(base: str, action: str, params: dict[str, str]) -> str:
     query = urllib.parse.urlencode({"r": action, **params})
     return f"{base.rstrip('/')}/dorequest.php?{query}"
@@ -177,7 +187,9 @@ def probe_retroachievements(
         method="HEAD",
     )
     try:
-        with urllib.request.urlopen(request, timeout=5) as response:
+        with urllib.request.urlopen(
+            request, timeout=5, context=configured_ssl_context()
+        ) as response:
             reachable = 200 <= response.status < 500
             if reachable:
                 mark_retroachievements_reachable(current_time)
@@ -206,7 +218,9 @@ def http_get(url: str, user_agent: str) -> str:
         )
 
         try:
-            with urllib.request.urlopen(request, timeout=10) as response:
+            with urllib.request.urlopen(
+                request, timeout=10, context=configured_ssl_context()
+            ) as response:
                 body = read_response_bytes(response)
                 mark_retroachievements_reachable()
                 return decode_response_body(body, response_content_type(response))
@@ -292,7 +306,9 @@ def http_post(
     )
 
     try:
-        with urllib.request.urlopen(request, timeout=15) as response:
+        with urllib.request.urlopen(
+            request, timeout=15, context=configured_ssl_context()
+        ) as response:
             response_body = read_response_bytes(response)
             mark_retroachievements_reachable()
             return (

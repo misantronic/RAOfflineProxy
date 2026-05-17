@@ -1,6 +1,7 @@
 import unittest
 import urllib.error
 import logging
+import os
 from email.message import Message
 
 from linux.raofflineproxy import config
@@ -11,6 +12,8 @@ class LinuxNetworkTests(unittest.TestCase):
     def tearDown(self) -> None:
         network.reset_retroachievements_reachability_for_tests()
         network.reset_request_throttle_for_tests()
+        os.environ.pop("RAOFFLINEPROXY_CA_FILE", None)
+        os.environ.pop("SSL_CERT_FILE", None)
 
     def test_redacted_url_hides_sensitive_query_values(self) -> None:
         url = "https://retroachievements.org/dorequest.php?r=login2&u=user&p=password&t=secret"
@@ -23,7 +26,7 @@ class LinuxNetworkTests(unittest.TestCase):
     def test_http_get_logs_connection_errors_with_redacted_url(self) -> None:
         original_urlopen = network.urllib.request.urlopen
         try:
-            network.urllib.request.urlopen = lambda _request, timeout=0: (
+            network.urllib.request.urlopen = lambda _request, timeout=0, context=None: (
                 _ for _ in ()
             ).throw(urllib.error.URLError("offline"))
 
@@ -78,7 +81,7 @@ class LinuxNetworkTests(unittest.TestCase):
         try:
             network.mark_retroachievements_reachable(checked_at=10.0)
 
-            def fail_urlopen(_request, timeout=0):
+            def fail_urlopen(_request, timeout=0, context=None):
                 raise AssertionError("probe should not hit the network")
 
             network.urllib.request.urlopen = fail_urlopen
@@ -92,7 +95,7 @@ class LinuxNetworkTests(unittest.TestCase):
     ) -> None:
         original_urlopen = network.urllib.request.urlopen
         try:
-            network.urllib.request.urlopen = lambda _request, timeout=0: (
+            network.urllib.request.urlopen = lambda _request, timeout=0, context=None: (
                 _ for _ in ()
             ).throw(urllib.error.URLError("offline"))
 
@@ -127,7 +130,7 @@ class LinuxNetworkTests(unittest.TestCase):
 
         try:
 
-            def fake_urlopen(_request, timeout=0):
+            def fake_urlopen(_request, timeout=0, context=None):
                 attempts.append(timeout)
                 if len(attempts) == 1:
                     headers = Message()
@@ -157,6 +160,27 @@ class LinuxNetworkTests(unittest.TestCase):
             network.urllib.request.urlopen = original_urlopen
             network.time.sleep = original_sleep
             network._request_throttle.wait = original_wait
+
+    def test_configured_ssl_context_uses_explicit_ca_file(self) -> None:
+        os.environ["RAOFFLINEPROXY_CA_FILE"] = "/tmp/test-ca.pem"
+
+        original_create_default_context = network.ssl.create_default_context
+        captured = {}
+        try:
+
+            def fake_create_default_context(*, cafile=None, capath=None):
+                captured["cafile"] = cafile
+                captured["capath"] = capath
+                return object()
+
+            network.ssl.create_default_context = fake_create_default_context
+            context = network.configured_ssl_context()
+
+            self.assertIsNotNone(context)
+            self.assertEqual(captured["cafile"], "/tmp/test-ca.pem")
+            self.assertIsNone(captured["capath"])
+        finally:
+            network.ssl.create_default_context = original_create_default_context
 
 
 if __name__ == "__main__":

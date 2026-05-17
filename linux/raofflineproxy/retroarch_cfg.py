@@ -146,6 +146,11 @@ def revert_retroarch_cfg(cfg_path: Optional[str] = None) -> dict:
     restore_hardcore = (
         bool(patch_state.get("hardcore_was_enabled", False)) if patch_state else False
     )
+
+    if patch_state is None:
+        previous_host = ""
+        previous_enable = _extract_config_value(current, ENABLE_KEY)
+
     transformed = build_reverted_content(
         current,
         previous_host,

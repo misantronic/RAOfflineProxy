@@ -23,6 +23,8 @@ from .service import (
     stop_service_process,
 )
 from .menu_sdl import run_menu_sdl
+from .rom_browser import list_cached_games
+from .storage import Storage
 from .state import load_patch_state, save_patch_state
 from .ui import write_status_image, write_text_image
 
@@ -84,6 +86,7 @@ def main() -> None:
             "enable-autostart",
             "disable-autostart",
             "autostart-status",
+            "cached-games",
             "status",
             "run-service",
             "ui-image",
@@ -214,6 +217,20 @@ def main() -> None:
 
         if args.command == "autostart-status":
             print("enabled" if autostart_enabled(config_data) else "disabled")
+            return
+
+        if args.command == "cached-games":
+            storage = Storage()
+            try:
+                games = list_cached_games(storage)
+                if not games:
+                    print("No cached games")
+                    return
+
+                for game in games:
+                    print(f"{game.title} ({game.game_id})")
+            finally:
+                storage.close()
             return
 
         status = status_retroarch_cfg(cfg_path, config_data)
