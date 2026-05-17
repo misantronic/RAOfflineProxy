@@ -27,7 +27,13 @@ from .network import (
     response_content_type,
 )
 from .retroarch_cfg import enforce_patched_cfg
-from .rom_cache import cache_session, cache_unlocks, refresh_game_patch
+from .rom_cache import (
+    build_unlocks_array,
+    cache_session,
+    cache_unlocks,
+    merged_unlock_ids,
+    refresh_game_patch,
+)
 from .storage import Storage, current_millis
 from .utils import (
     canonical_reason_phrase,
@@ -320,15 +326,7 @@ class ProxyRuntimeServer(ThreadingTCPServer):
         if not game_id or not user:
             return error_json(400, "bad request")
 
-        cached = self.storage.get_cache(cache_keys.start_session(game_id, user))
-        if cached is not None:
-            return ok_json(cached["responseBody"])
-
-        cache_session(int(game_id), {"user": user, "token": ""}, self.storage)
-        cached = self.storage.get_cache(cache_keys.start_session(game_id, user))
-        if cached is None:
-            return error_json(503, "no cached response")
-        return ok_json(cached["responseBody"])
+        return ok_json(self.build_offline_start_session_response(int(game_id), user))
 
     def queue_offline_award(
         self, path: str, raw_body: str, headers: dict[str, str]
@@ -407,6 +405,12 @@ class ProxyRuntimeServer(ThreadingTCPServer):
         if not should_cache_action(action, path):
             return error_json(503, "offline")
 
+        if action == "unlocks":
+            game_id = extract_request_param(path, raw_body, "g")
+            user = extract_request_param(path, raw_body, "u")
+            if game_id and user:
+                return ok_json(self.build_offline_unlocks_response(int(game_id), user))
+
         key = cache_key_for_request(path, raw_body)
         cached = self.storage.get_cache(key) or self.storage.get_cache_by_prefix(
             f"{key}:"
@@ -440,6 +444,72 @@ class ProxyRuntimeServer(ThreadingTCPServer):
                     return ok_json(cached["responseBody"])
 
         return error_json(503, "no cached response")
+
+    def build_offline_unlocks_response(self, game_id: int, user: str) -> str:
+        entry = self.storage.get_cache(cache_keys.unlocks(game_id, user))
+        payload: dict = {"Success": True, "UserUnlocks": []}
+        if entry is not None:
+            try:
+                payload = json.loads(entry["responseBody"])
+            except Exception:
+                payload = {"Success": True, "UserUnlocks": []}
+
+        payload["Success"] = True
+        payload["UserUnlocks"] = merged_unlock_ids(self.storage, game_id, user)
+        return json.dumps(payload, separators=(",", ":"))
+
+    def build_offline_start_session_response(self, game_id: int, user: str) -> str:
+        entry = self.storage.get_cache(cache_keys.start_session(game_id, user))
+        server_now = int(time.time())
+        payload: dict = {
+            "Success": True,
+            "ServerNow": server_now,
+            "HardcoreUnlocks": [],
+        }
+        if entry is not None:
+            try:
+                payload = json.loads(entry["responseBody"])
+            except Exception:
+                payload = {
+                    "Success": True,
+                    "ServerNow": server_now,
+                    "HardcoreUnlocks": [],
+                }
+
+        server_now = int(payload.get("ServerNow", server_now) or server_now)
+        cached_start_session_unlock_ids = [
+            int(item.get("ID", 0))
+            for item in payload.get("Unlocks", [])
+            if isinstance(item, dict) and int(item.get("ID", 0) or 0) > 0
+        ]
+        payload["Success"] = True
+        payload.setdefault("HardcoreUnlocks", [])
+        payload["Unlocks"] = self.build_merged_start_session_unlocks(
+            game_id, user, server_now, cached_start_session_unlock_ids
+        )
+        return json.dumps(payload, separators=(",", ":"))
+
+    def build_merged_start_session_unlocks(
+        self,
+        game_id: int,
+        user: str,
+        server_now: int,
+        cached_start_session_unlock_ids: list[int],
+    ) -> list[dict]:
+        merged_ids = merged_unlock_ids(self.storage, game_id, user)
+        if not merged_ids:
+            merged_ids = list(cached_start_session_unlock_ids)
+        else:
+            seen_ids = set(merged_ids)
+            for achievement_id in cached_start_session_unlock_ids:
+                if achievement_id <= 0 or achievement_id in seen_ids:
+                    continue
+                merged_ids.append(achievement_id)
+                seen_ids.add(achievement_id)
+
+        return [
+            {"ID": achievement_id, "When": server_now} for achievement_id in merged_ids
+        ]
 
     def forward_to_upstream(
         self, method: str, path: str, raw_body: str, headers: dict[str, str]

@@ -89,6 +89,11 @@ def cache_unlocks(
 def build_unlocks_array(
     storage: Storage, game_id: int, user: str, server_now: int
 ) -> list[dict]:
+    unlock_ids = merged_unlock_ids(storage, game_id, user)
+    return [{"ID": achievement_id, "When": server_now} for achievement_id in unlock_ids]
+
+
+def merged_unlock_ids(storage: Storage, game_id: int, user: str) -> list[int]:
     entry = storage.get_cache(cache_keys.unlocks(game_id, user))
     cached_unlock_ids: list[int] = []
     if entry is not None:
@@ -106,14 +111,13 @@ def build_unlocks_array(
     achievement_game_ids = build_achievement_game_ids(
         storage.get_all_cache_by_prefix(cache_keys.PREFIX_PATCH)
     )
-    unlock_ids = merge_start_session_unlock_ids(
+    return merge_start_session_unlock_ids(
         cached_unlock_ids=cached_unlock_ids,
         pending_awards=storage.get_pending_awards(),
         achievement_game_ids=achievement_game_ids,
         game_id=game_id,
         user=user,
     )
-    return [{"ID": achievement_id, "When": server_now} for achievement_id in unlock_ids]
 
 
 def merge_start_session_unlock_ids(
@@ -174,7 +178,11 @@ def build_achievement_game_ids(patch_entries: list[dict]) -> dict[int, int]:
             continue
 
         patch_data = payload.get("PatchData") or {}
-        for achievement in patch_data.get("Achievements", []):
+        achievements = patch_data.get("Achievements", [])
+        entries = (
+            achievements.values() if isinstance(achievements, dict) else achievements
+        )
+        for achievement in entries:
             achievement_id = achievement.get("ID")
             if isinstance(achievement_id, int) and achievement_id > 0:
                 achievement_game_ids.setdefault(achievement_id, game_id)

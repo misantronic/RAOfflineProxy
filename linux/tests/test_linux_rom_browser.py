@@ -343,6 +343,149 @@ class LinuxRomBrowserTests(unittest.TestCase):
                 rom_browser.resolve_credentials = original_resolve_credentials
                 store.close()
 
+    def test_cached_unlock_count_includes_pending_awards(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            db_path = root / "test.sqlite3"
+            store = storage.Storage(database_path=db_path)
+            try:
+                store.upsert_cache(
+                    cache_keys.patch(10701, "misantronic"),
+                    json.dumps(
+                        {
+                            "Success": True,
+                            "PatchData": {
+                                "Achievements": [
+                                    {"ID": 1, "Title": "First Steps"},
+                                    {"ID": 2, "Title": "Commander"},
+                                ]
+                            },
+                        }
+                    ),
+                )
+                store.upsert_cache(
+                    cache_keys.unlocks(10701, "misantronic"),
+                    '{"UserUnlocks":[1]}',
+                )
+                store.upsert_pending_award(
+                    {
+                        "achievementId": 2,
+                        "queryString": "/dorequest.php?r=awardachievement",
+                        "requestBody": "a=2&u=misantronic&h=0",
+                        "userAgent": "RetroArch/1.20.0",
+                        "queuedAt": 0,
+                        "retryCount": 0,
+                        "lastError": None,
+                        "status": "pending",
+                        "payloadHash": "hash-2",
+                        "prevHash": "hash-1",
+                        "signature": "sig",
+                        "signedAt": 0,
+                    }
+                )
+
+                self.assertEqual(rom_browser.cached_unlock_count(store, 10701), 2)
+            finally:
+                store.close()
+
+    def test_cached_unlock_titles_include_pending_awards(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            db_path = root / "test.sqlite3"
+            store = storage.Storage(database_path=db_path)
+            try:
+                store.upsert_cache(
+                    cache_keys.patch(10701, "misantronic"),
+                    json.dumps(
+                        {
+                            "Success": True,
+                            "PatchData": {
+                                "Achievements": [
+                                    {"ID": 1, "Title": "First Steps"},
+                                    {"ID": 2, "Title": "Commander"},
+                                ]
+                            },
+                        }
+                    ),
+                )
+                store.upsert_cache(
+                    cache_keys.unlocks(10701, "misantronic"),
+                    '{"UserUnlocks":[1]}',
+                )
+                store.upsert_pending_award(
+                    {
+                        "achievementId": 2,
+                        "queryString": "/dorequest.php?r=awardachievement",
+                        "requestBody": "a=2&u=misantronic&h=0",
+                        "userAgent": "RetroArch/1.20.0",
+                        "queuedAt": 0,
+                        "retryCount": 0,
+                        "lastError": None,
+                        "status": "pending",
+                        "payloadHash": "hash-2",
+                        "prevHash": "hash-1",
+                        "signature": "sig",
+                        "signedAt": 0,
+                    }
+                )
+
+                self.assertEqual(
+                    rom_browser.cached_unlock_titles(store, 10701),
+                    ["First Steps", "Commander"],
+                )
+            finally:
+                store.close()
+
+    def test_cached_unlock_titles_include_pending_awards_with_dict_achievements(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            db_path = root / "test.sqlite3"
+            store = storage.Storage(database_path=db_path)
+            try:
+                store.upsert_cache(
+                    cache_keys.patch(10701, "misantronic"),
+                    json.dumps(
+                        {
+                            "Success": True,
+                            "PatchData": {
+                                "Achievements": {
+                                    "1": {"ID": 1, "Title": "First Steps"},
+                                    "2": {"ID": 2, "Title": "Commander"},
+                                }
+                            },
+                        }
+                    ),
+                )
+                store.upsert_cache(
+                    cache_keys.unlocks(10701, "misantronic"),
+                    '{"UserUnlocks":[1]}',
+                )
+                store.upsert_pending_award(
+                    {
+                        "achievementId": 2,
+                        "queryString": "/dorequest.php?r=awardachievement",
+                        "requestBody": "a=2&u=misantronic&h=0",
+                        "userAgent": "RetroArch/1.20.0",
+                        "queuedAt": 0,
+                        "retryCount": 0,
+                        "lastError": None,
+                        "status": "pending",
+                        "payloadHash": "hash-2",
+                        "prevHash": "hash-1",
+                        "signature": "sig",
+                        "signedAt": 0,
+                    }
+                )
+
+                self.assertEqual(
+                    rom_browser.cached_unlock_titles(store, 10701),
+                    ["First Steps", "Commander"],
+                )
+            finally:
+                store.close()
+
     def test_add_rom_to_cache_persists_hash_aliases_for_offline_gameid(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
