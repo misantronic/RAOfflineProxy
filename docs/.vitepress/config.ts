@@ -1,9 +1,16 @@
 import { defineConfig } from 'vitepress'
+import { tabsMarkdownPlugin } from 'vitepress-plugin-tabs'
 
 export default defineConfig({
   title: 'RAOfflineProxy',
   description: 'Play RetroAchievements offline with RAOfflineProxy — documentation',
   base: '/',
+
+  markdown: {
+    config(md) {
+      md.use(tabsMarkdownPlugin)
+    },
+  },
 
   appearance: 'force-dark',
 
@@ -54,14 +61,15 @@ export default defineConfig({
       },
       {
         text: 'Linux',
-        collapsed: true,
+        collapsed: false,
         items: [
-          { text: 'Installation', link: '/installation-linux-knulli' },
-          { text: 'Emulator Patching', link: '/linux-cfg-patching' },
-          { text: 'Caching Games', link: '/linux-caching-games' },
-          { text: 'Pending Awards', link: '/linux-pending-awards' },
+          { text: 'Overview', link: '/linux-support/' },
+          { text: 'Installation', link: '/linux-support/installation' },
+          { text: 'Emulator Patching', link: '/linux-support/cfg-patching' },
+          { text: 'Caching Games', link: '/linux-support/caching-games' },
+          { text: 'Pending Awards', link: '/linux-support/pending-awards' },
           { text: 'Anti-Tamper Hash Chain', link: '/linux-hash-chain' },
-          { text: 'Settings & Auto-start', link: '/linux-settings' },
+          { text: 'Settings & Auto-start', link: '/linux-support/settings' },
         ],
       },
       {
