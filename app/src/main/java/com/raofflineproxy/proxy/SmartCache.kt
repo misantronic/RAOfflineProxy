@@ -23,7 +23,8 @@ import java.nio.charset.StandardCharsets
 import androidx.core.net.toUri
 
 private const val TAG = "RAProxy/SmartCache"
-private const val DOLPHIN_RECENT_WINDOW_MS = 90L * 24 * 60 * 60 * 1000
+private const val DOLPHIN_RECENT_WINDOW_MS = 60L * 24 * 60 * 60 * 1000
+private const val RETROARCH_RECENT_WINDOW_MS = 60L * 24 * 60 * 60 * 1000
 private val SMART_CACHE_EXT_STORAGE by lazy { Environment.getExternalStorageDirectory().path }
 
 private val RETROARCH_PACKAGE_HISTORY_PATHS = listOf(
@@ -50,6 +51,17 @@ private val RETROARCH_SHARED_HISTORY_SOURCE_CANDIDATES by lazy {
 private val RETROARCH_SHARED_HISTORY_PATHS = listOf(
     listOf("playlists", "builtin", "content_history.lpl")
 )
+
+private val RETROARCH_SHARED_LOGS_PATHS = listOf(
+    listOf("playlists", "logs")
+)
+
+private val RETROARCH_SHARED_LOGS_SOURCE_CANDIDATES by lazy {
+    listOf(
+        "$SMART_CACHE_EXT_STORAGE/RetroArch/playlists/logs",
+        "/storage/emulated/0/RetroArch/playlists/logs"
+    )
+}
 
 private val DOLPHIN_GAMELIST_PATHS = DOLPHIN_PACKAGE_CANDIDATES.map { packageName ->
     listOf(packageName, "cache", "gamelist.cache")
@@ -133,7 +145,8 @@ internal data class SmartCacheCandidate(
     val sourceLabel: String,
     val path: String,
     val title: String? = null,
-    val priority: Int = 0
+    val priority: Int = 0,
+    val lastModifiedAt: Long? = null
 )
 
 internal data class SmartCacheStrategyResult(
@@ -187,62 +200,85 @@ private object RetroArchSmartCacheStrategy : SmartCacheStrategy {
             emulatorSupport.retroArchEnabled
 
     override fun discoverCandidates(context: Context, treeUri: Uri?): SmartCacheStrategyResult {
-        readHistoryCandidates(firstReadableFile(RETROARCH_SHARED_HISTORY_SOURCE_CANDIDATES), "direct shared history")
-            ?.let { return SmartCacheStrategyResult(candidates = it) }
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && Environment.isExternalStorageManager()) {
-            readHistoryCandidates(firstExistingFile(RETROARCH_SHARED_HISTORY_SOURCE_CANDIDATES), "all-files shared history")
-                ?.let { return SmartCacheStrategyResult(candidates = it) }
+        val directSharedHistory = firstReadableFile(RETROARCH_SHARED_HISTORY_SOURCE_CANDIDATES)
+        val allFilesSharedHistory = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && Environment.isExternalStorageManager()) {
+            firstExistingFile(RETROARCH_SHARED_HISTORY_SOURCE_CANDIDATES)
+        } else {
+            null
+        }
+        val directPackageHistory = firstReadableFile(RETROARCH_PACKAGE_HISTORY_SOURCE_CANDIDATES)
+        val packageHistoryFromSaf = treeUri?.let { currentTreeUri ->
+            readHistoryCandidatesFromTree(context, currentTreeUri, RETROARCH_PACKAGE_HISTORY_PATHS)
+        }
+        val sharedHistoryFromSaf = PrefsConstants.loadRetroArchSmartCacheSafUri(context)?.let { currentTreeUri ->
+            readHistoryCandidatesFromTree(context, currentTreeUri, RETROARCH_SHARED_HISTORY_PATHS)
         }
 
-        val sharedHistoryFile = RETROARCH_SHARED_HISTORY_SOURCE_CANDIDATES.asSequence()
-            .map(::File)
-            .firstOrNull(File::isFile)
-        if (sharedHistoryFile != null && !(Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && Environment.isExternalStorageManager())) {
-            Log.i(TAG, "RetroArch strategy needs shared RetroArch history access path=${sharedHistoryFile.path}")
-            return SmartCacheStrategyResult(message = "needs_retroarch_shared_access", needsSafGrant = true)
+        val historyResult = when {
+            directSharedHistory != null -> readHistoryCandidates(directSharedHistory, "direct shared history")
+                ?.let { candidates -> directSharedHistory.path to candidates }
+            allFilesSharedHistory != null -> readHistoryCandidates(allFilesSharedHistory, "all-files shared history")
+                ?.let { candidates -> allFilesSharedHistory.path to candidates }
+            directPackageHistory != null -> readHistoryCandidates(directPackageHistory, "direct package history")
+                ?.let { candidates -> directPackageHistory.path to candidates }
+            packageHistoryFromSaf != null -> packageHistoryFromSaf
+            sharedHistoryFromSaf != null -> sharedHistoryFromSaf
+            else -> null
         }
 
-        readHistoryCandidates(firstReadableFile(RETROARCH_PACKAGE_HISTORY_SOURCE_CANDIDATES), "direct package history")
-            ?.let { return SmartCacheStrategyResult(candidates = it) }
-
-        val treeUris = buildList {
-            PrefsConstants.loadRetroArchSmartCacheSafUri(context)?.let(::add)
-            treeUri?.let(::add)
-        }.distinctBy { uri -> uri.toString() }
-
-        if (treeUris.isEmpty()) {
-            Log.i(TAG, "RetroArch strategy needs SAF grant for history file")
-            return SmartCacheStrategyResult(needsSafGrant = true)
-        }
-
-        treeUris.forEachIndexed { index, currentTreeUri ->
-            val tree = DocumentFile.fromTreeUri(context, currentTreeUri)
-                ?: run {
-                    Log.w(TAG, "RetroArch strategy could not open treeUri=$currentTreeUri")
-                    return@forEachIndexed
+        if (historyResult == null) {
+            val sharedHistoryFile = firstExistingFile(RETROARCH_SHARED_HISTORY_SOURCE_CANDIDATES)
+            val packageHistoryFile = firstExistingFile(RETROARCH_PACKAGE_HISTORY_SOURCE_CANDIDATES)
+            return when {
+                sharedHistoryFile != null -> {
+                    Log.i(TAG, "RetroArch strategy needs shared RetroArch history access history=${sharedHistoryFile.path}")
+                    SmartCacheStrategyResult(message = "needs_retroarch_shared_access", needsSafGrant = true)
                 }
-            val historyPaths = if (index == 0 && PrefsConstants.loadRetroArchSmartCacheSafUri(context) == currentTreeUri) {
-                RETROARCH_SHARED_HISTORY_PATHS
-            } else {
-                RETROARCH_PACKAGE_HISTORY_PATHS
+                packageHistoryFile != null && treeUri == null -> {
+                    Log.i(TAG, "RetroArch strategy needs SAF grant for history file")
+                    SmartCacheStrategyResult(needsSafGrant = true)
+                }
+                else -> {
+                    Log.i(TAG, "RetroArch strategy did not find content_history.lpl")
+                    SmartCacheStrategyResult(message = "history_missing")
+                }
             }
-            val historyFile = findDocument(tree, historyPaths) ?: return@forEachIndexed
-            val content = context.contentResolver.openInputStream(historyFile.uri)
-                ?.bufferedReader()
-                ?.use { it.readText() }
-                ?: run {
-                    Log.w(TAG, "RetroArch strategy could not read history file uri=${historyFile.uri}")
-                    return@forEachIndexed
-                }
-
-            val candidates = parseRetroArchHistory(content)
-            Log.i(TAG, "RetroArch strategy discovered ${candidates.size} history candidates from ${historyFile.uri}")
-            return SmartCacheStrategyResult(candidates = candidates)
         }
 
-        Log.i(TAG, "RetroArch strategy did not find content_history.lpl in granted trees")
-        return SmartCacheStrategyResult(message = "history_missing")
+        val (historySource, historyCandidates) = historyResult
+        val directSharedLogs = firstReadableDirectory(RETROARCH_SHARED_LOGS_SOURCE_CANDIDATES)
+        val allFilesSharedLogs = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && Environment.isExternalStorageManager()) {
+            firstExistingDirectory(RETROARCH_SHARED_LOGS_SOURCE_CANDIDATES)
+        } else {
+            null
+        }
+        val sharedLogsFromSaf = PrefsConstants.loadRetroArchSmartCacheSafUri(context)?.let { currentTreeUri ->
+            loadRecentRetroArchLogsFromTree(context, currentTreeUri)
+        }
+
+        val recentLogs = when {
+            directSharedLogs != null -> loadRecentRetroArchLogs(directSharedLogs)
+            allFilesSharedLogs != null -> loadRecentRetroArchLogs(allFilesSharedLogs)
+            sharedLogsFromSaf != null -> sharedLogsFromSaf
+            else -> null
+        }
+
+        if (recentLogs == null) {
+            val sharedLogsDirectory = firstExistingDirectory(RETROARCH_SHARED_LOGS_SOURCE_CANDIDATES)
+            return if (sharedLogsDirectory != null) {
+                Log.i(TAG, "RetroArch strategy needs shared RetroArch log access history=$historySource logs=${sharedLogsDirectory.path}")
+                SmartCacheStrategyResult(message = "needs_retroarch_shared_access", needsSafGrant = true)
+            } else {
+                Log.i(TAG, "RetroArch strategy found no RetroArch runtime logs for source=$historySource")
+                SmartCacheStrategyResult(message = "no_recent_games")
+            }
+        }
+
+        return buildRetroArchStrategyResult(
+            candidates = historyCandidates,
+            recentLogs = recentLogs,
+            source = historySource
+        )
     }
 }
 
@@ -257,6 +293,61 @@ private fun readHistoryCandidates(file: File?, label: String): List<SmartCacheCa
     val candidates = parseRetroArchHistory(content)
     Log.i(TAG, "RetroArch strategy discovered ${candidates.size} history candidates from ${file.path}")
     return candidates
+}
+
+private fun readHistoryCandidatesFromTree(
+    context: Context,
+    treeUri: Uri,
+    historyPaths: List<List<String>>
+): Pair<String, List<SmartCacheCandidate>>? {
+    val tree = DocumentFile.fromTreeUri(context, treeUri) ?: return null
+    val historyFile = findDocument(tree, historyPaths) ?: return null
+    val content = context.contentResolver.openInputStream(historyFile.uri)
+        ?.bufferedReader()
+        ?.use { it.readText() }
+        ?: return null
+    val historyCandidates = parseRetroArchHistory(content)
+    Log.i(TAG, "RetroArch strategy discovered ${historyCandidates.size} history candidates from ${historyFile.uri}")
+    return historyFile.uri.toString() to historyCandidates
+}
+
+private fun buildRetroArchStrategyResult(
+    candidates: List<SmartCacheCandidate>,
+    recentLogs: Map<String, Long>,
+    source: String
+): SmartCacheStrategyResult {
+    if (candidates.isEmpty()) {
+        return SmartCacheStrategyResult(message = "history_empty")
+    }
+
+    val cutoff = System.currentTimeMillis() - RETROARCH_RECENT_WINDOW_MS
+    val recentLogBasenames = recentLogs.filterValues { modifiedAt -> modifiedAt >= cutoff }
+    Log.i(
+        TAG,
+        "RetroArch strategy recent-window filter source=$source totalLogs=${recentLogs.size} cutoff=$cutoff retainedLogs=${recentLogBasenames.size}"
+    )
+
+    if (recentLogBasenames.isEmpty()) {
+        Log.i(TAG, "RetroArch strategy found no log files within the last ${RETROARCH_RECENT_WINDOW_MS / (24L * 60 * 60 * 1000)} days from $source")
+        return SmartCacheStrategyResult(message = "no_recent_games")
+    }
+
+    val filteredCandidates = candidates.filter { candidate ->
+        val logBasename = retroArchRuntimeLogBasename(candidate.path)
+        recentLogBasenames.containsKey(logBasename)
+    }.map { candidate ->
+        val logBasename = retroArchRuntimeLogBasename(candidate.path)
+        candidate.copy(lastModifiedAt = recentLogs[logBasename])
+    }
+    Log.i(
+        TAG,
+        "RetroArch strategy filtered candidates by recent logs source=$source totalCandidates=${candidates.size} retainedCandidates=${filteredCandidates.size} candidatesWithoutLogs=${candidates.count { candidate -> !recentLogs.containsKey(retroArchRuntimeLogBasename(candidate.path)) }}"
+    )
+    return if (filteredCandidates.isEmpty()) {
+        SmartCacheStrategyResult(message = "no_recent_games")
+    } else {
+        SmartCacheStrategyResult(candidates = filteredCandidates)
+    }
 }
 
 private object DolphinSmartCacheStrategy : SmartCacheStrategy {
@@ -391,15 +482,31 @@ internal suspend fun runSmartCache(
         }
     }
 
-    if (discoveredCandidates.isEmpty()) {
-        Log.i(TAG, "runSmartCache found no discovered candidates needsSafGrant=$needsSafGrant strategyMessage=$strategyMessage")
+    if (needsSafGrant) {
+        Log.i(
+            TAG,
+            "runSmartCache stopping before caching because strategy access is still required targets=$requiredSafGrantTargets message=$strategyMessage"
+        )
         return SmartCacheRunResult(
             matched = 0,
             total = 0,
             skipped = 0,
             limitReached = false,
-            needsSafGrant = needsSafGrant,
-            message = strategyMessage ?: if (needsSafGrant) "needs_saf_grant" else "no_recent_games",
+            needsSafGrant = true,
+            message = strategyMessage ?: if (SmartCacheEmulator.RetroArch in requiredSafGrantTargets) "needs_saf_grant" else "needs_dolphin_saf_grant",
+            requiredSafGrantTargets = requiredSafGrantTargets.toList()
+        )
+    }
+
+    if (discoveredCandidates.isEmpty()) {
+        Log.i(TAG, "runSmartCache found no discovered candidates strategyMessage=$strategyMessage")
+        return SmartCacheRunResult(
+            matched = 0,
+            total = 0,
+            skipped = 0,
+            limitReached = false,
+            needsSafGrant = false,
+            message = strategyMessage ?: "no_recent_games",
             requiredSafGrantTargets = requiredSafGrantTargets.toList()
         )
     }
@@ -446,7 +553,16 @@ internal suspend fun runSmartCache(
     val candidateCap = minOf(remainingSlots, MAX_SMART_CACHE_FILES)
     val resolvedCandidates = selectSmartCacheCandidates(preflight.resolved, candidateCap)
     resolvedCandidates.filter { it.candidate.emulator == SmartCacheEmulator.Dolphin }.forEach { resolvedCandidate ->
-        Log.i(TAG, "Dolphin candidate selected title=${resolvedCandidate.candidate.title} path=${resolvedCandidate.candidate.path}")
+        Log.i(
+            TAG,
+            "Dolphin candidate selected title=${resolvedCandidate.candidate.title} path=${resolvedCandidate.candidate.path} lastModifiedAt=${resolvedCandidate.candidate.lastModifiedAt} lastModifiedText=${resolvedCandidate.candidate.lastModifiedAt?.let(::formatSmartCacheTimestamp)}"
+        )
+    }
+    resolvedCandidates.filter { it.candidate.emulator == SmartCacheEmulator.RetroArch }.forEach { resolvedCandidate ->
+        Log.i(
+            TAG,
+            "RetroArch candidate selected title=${resolvedCandidate.candidate.title} path=${resolvedCandidate.candidate.path} lastModifiedAt=${resolvedCandidate.candidate.lastModifiedAt} lastModifiedText=${resolvedCandidate.candidate.lastModifiedAt?.let(::formatSmartCacheTimestamp)}"
+        )
     }
     Log.i(
         TAG,
@@ -469,8 +585,9 @@ internal suspend fun runSmartCache(
             total = relevantTotal,
             skipped = queueResult.skipped,
             limitReached = false,
-            needsSafGrant = needsSafGrant,
-            message = "no_ra_matches"
+            needsSafGrant = false,
+            message = strategyMessage ?: "no_ra_matches",
+            requiredSafGrantTargets = requiredSafGrantTargets.toList()
         )
     }
 
@@ -479,12 +596,13 @@ internal suspend fun runSmartCache(
         total = relevantTotal,
         skipped = queueResult.skipped,
         limitReached = queueResult.limitReached,
-        needsSafGrant = needsSafGrant,
-        message = null
+        needsSafGrant = false,
+        message = strategyMessage,
+        requiredSafGrantTargets = requiredSafGrantTargets.toList()
     ).also {
         Log.i(
             TAG,
-            "runSmartCache complete matched=${it.matched} total=${it.total} skipped=${it.skipped} limitReached=${it.limitReached}"
+            "runSmartCache complete matched=${it.matched} total=${it.total} skipped=${it.skipped} limitReached=${it.limitReached} needsSafGrant=${it.needsSafGrant} message=${it.message}"
         )
     }
 }
@@ -579,14 +697,26 @@ private fun sanitizeDolphinRomLocator(locator: String): String? {
 private fun deriveSmartCacheTitle(path: String): String? =
     Uri.decode(path.substringAfterLast('/')).takeIf { it.isNotBlank() }
 
+private fun retroArchRuntimeLogBasename(path: String): String =
+    Uri.decode(path.substringAfterLast('/')).substringBeforeLast('.')
+
 private fun firstExistingFile(paths: List<String>): File? =
     paths.asSequence().map(::File).firstOrNull(File::isFile)
+
+private fun firstExistingDirectory(paths: List<String>): File? =
+    paths.asSequence().map(::File).firstOrNull(File::isDirectory)
 
 private fun firstReadableFile(paths: List<String>): File? =
     paths.asSequence().map(::File).firstOrNull { it.isFile && it.canRead() }
 
 private fun firstReadableDirectory(paths: List<String>): File? =
     paths.asSequence().map(::File).firstOrNull { it.isDirectory && it.canRead() }
+
+private fun findRetroArchSharedLogsDirectory(root: DocumentFile): DocumentFile? =
+    RETROARCH_SHARED_LOGS_PATHS.firstNotNullOfOrNull { segments ->
+        segments.fold(root as DocumentFile?) { current, segment -> current?.findFile(segment) }
+            ?.takeIf { it.exists() && it.isDirectory }
+    }
 
 private fun buildDolphinStrategyResult(
     gamelistBytes: ByteArray,
@@ -625,7 +755,8 @@ private fun buildDolphinStrategyResult(
                     sourceLabel = "Dolphin GC saves",
                     path = entry.romLocator,
                     title = entry.title,
-                    priority = 0
+                    priority = 0,
+                    lastModifiedAt = recentWindowSaveCodes[code]
                 )
             }
         }
@@ -762,6 +893,49 @@ private fun collectFiles(root: File): List<File> = buildList {
             }
         }
     }
+}
+
+private fun loadRecentRetroArchLogs(root: DocumentFile): Map<String, Long> {
+    val recentByBasename = linkedMapOf<String, Long>()
+    collectDocumentFiles(root)
+        .filter { document -> document.isFile && (document.name?.endsWith(".lrtl", ignoreCase = true) == true) }
+        .forEach { document ->
+            val basename = document.name
+                ?.substringBeforeLast('.')
+                ?.trim()
+                ?.takeIf { it.isNotBlank() }
+                ?: return@forEach
+            val modifiedAt = document.lastModified()
+            val previous = recentByBasename[basename] ?: Long.MIN_VALUE
+            if (modifiedAt > previous) {
+                recentByBasename[basename] = modifiedAt
+            }
+        }
+    return recentByBasename
+}
+
+private fun loadRecentRetroArchLogsFromTree(
+    context: Context,
+    treeUri: Uri
+): Map<String, Long>? {
+    val tree = DocumentFile.fromTreeUri(context, treeUri) ?: return null
+    val logsDirectory = findRetroArchSharedLogsDirectory(tree) ?: return null
+    return loadRecentRetroArchLogs(logsDirectory)
+}
+
+private fun loadRecentRetroArchLogs(root: File): Map<String, Long> {
+    val recentByBasename = linkedMapOf<String, Long>()
+    collectFiles(root)
+        .filter { file -> file.isFile && file.name.endsWith(".lrtl", ignoreCase = true) }
+        .forEach { file ->
+            val basename = file.name.substringBeforeLast('.').trim().takeIf { it.isNotBlank() } ?: return@forEach
+            val modifiedAt = file.lastModified()
+            val previous = recentByBasename[basename] ?: Long.MIN_VALUE
+            if (modifiedAt > previous) {
+                recentByBasename[basename] = modifiedAt
+            }
+        }
+    return recentByBasename
 }
 
 private fun resolveSmartCacheCandidates(
@@ -983,6 +1157,10 @@ private fun String.coversPath(otherPath: String): Boolean {
         normalizedOther.startsWith("$normalizedRoot/", ignoreCase = true)
 }
 
+private fun formatSmartCacheTimestamp(timestamp: Long): String =
+    java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US)
+        .format(java.util.Date(timestamp))
+
 private suspend fun executeResolvedSmartCacheCandidates(
     context: Context,
     credentials: LoginCredentials,
@@ -1011,7 +1189,15 @@ private suspend fun executeResolvedSmartCacheCandidates(
         val hash = hashResolvedCandidate(context, resolvedCandidate)
         if (hash == null) {
             if (candidate.emulator == SmartCacheEmulator.Dolphin) {
-                Log.i(TAG, "Dolphin candidate skipped title=${candidate.title} reason=hash-null path=${candidate.path}")
+                Log.i(
+                    TAG,
+                    "Dolphin candidate skipped title=${candidate.title} reason=hash-null path=${candidate.path} lastModifiedAt=${candidate.lastModifiedAt} lastModifiedText=${candidate.lastModifiedAt?.let(::formatSmartCacheTimestamp)}"
+                )
+            } else {
+                Log.i(
+                    TAG,
+                    "RetroArch candidate skipped title=${candidate.title} reason=hash-null path=${candidate.path} lastModifiedAt=${candidate.lastModifiedAt} lastModifiedText=${candidate.lastModifiedAt?.let(::formatSmartCacheTimestamp)}"
+                )
             }
             Log.d(TAG, "Skipping candidate path=${candidate.path} because hashing returned null")
             skipped++
@@ -1021,7 +1207,15 @@ private suspend fun executeResolvedSmartCacheCandidates(
         val gameId = fetchGameId(context, hash, credentials, userAgent, db)
         if (gameId == null) {
             if (candidate.emulator == SmartCacheEmulator.Dolphin) {
-                Log.i(TAG, "Dolphin candidate skipped title=${candidate.title} reason=no-gameid path=${candidate.path} hash=$hash")
+                Log.i(
+                    TAG,
+                    "Dolphin candidate skipped title=${candidate.title} reason=no-gameid path=${candidate.path} hash=$hash lastModifiedAt=${candidate.lastModifiedAt} lastModifiedText=${candidate.lastModifiedAt?.let(::formatSmartCacheTimestamp)}"
+                )
+            } else {
+                Log.i(
+                    TAG,
+                    "RetroArch candidate skipped title=${candidate.title} reason=no-gameid path=${candidate.path} hash=$hash lastModifiedAt=${candidate.lastModifiedAt} lastModifiedText=${candidate.lastModifiedAt?.let(::formatSmartCacheTimestamp)}"
+                )
             }
             Log.d(TAG, "Skipping candidate path=${candidate.path} because gameid lookup returned null")
             skipped++
@@ -1031,7 +1225,15 @@ private suspend fun executeResolvedSmartCacheCandidates(
         val gameIdString = gameId.toString()
         if (gameIdString in cachedGameIds) {
             if (candidate.emulator == SmartCacheEmulator.Dolphin) {
-                Log.i(TAG, "Dolphin candidate skipped title=${candidate.title} reason=already-cached path=${candidate.path} gameId=$gameId")
+                Log.i(
+                    TAG,
+                    "Dolphin candidate skipped title=${candidate.title} reason=already-cached path=${candidate.path} gameId=$gameId lastModifiedAt=${candidate.lastModifiedAt} lastModifiedText=${candidate.lastModifiedAt?.let(::formatSmartCacheTimestamp)}"
+                )
+            } else {
+                Log.i(
+                    TAG,
+                    "RetroArch candidate skipped title=${candidate.title} reason=already-cached path=${candidate.path} gameId=$gameId lastModifiedAt=${candidate.lastModifiedAt} lastModifiedText=${candidate.lastModifiedAt?.let(::formatSmartCacheTimestamp)}"
+                )
             }
             Log.d(TAG, "Skipping candidate path=${candidate.path} because gameId=$gameId became cached during smart cache")
             skipped++
@@ -1049,7 +1251,15 @@ private suspend fun executeResolvedSmartCacheCandidates(
             cacheBadgeImages = false
         )
         if (candidate.emulator == SmartCacheEmulator.Dolphin) {
-            Log.i(TAG, "Dolphin candidate cached title=${candidate.title} path=${candidate.path} gameId=$gameId hash=$hash")
+            Log.i(
+                TAG,
+                "Dolphin candidate cached title=${candidate.title} path=${candidate.path} gameId=$gameId hash=$hash lastModifiedAt=${candidate.lastModifiedAt} lastModifiedText=${candidate.lastModifiedAt?.let(::formatSmartCacheTimestamp)}"
+            )
+        } else {
+            Log.i(
+                TAG,
+                "RetroArch candidate cached title=${candidate.title} path=${candidate.path} gameId=$gameId hash=$hash lastModifiedAt=${candidate.lastModifiedAt} lastModifiedText=${candidate.lastModifiedAt?.let(::formatSmartCacheTimestamp)}"
+            )
         }
         cachedGameIds.add(gameIdString)
         matched++
