@@ -14,7 +14,7 @@ RAOfflineProxy patches the supported emulator config it needs in order to redire
 
 ## Step 1: Install RAOfflineProxy
 
-Install the APK on your Android device. You can download the latest alpha prerelease from [GitHub Releases](https://github.com/misantronic/RAOfflineProxy/releases) or build from source.
+Install the APK on your Android device. You can download the latest alpha prerelease from [GitHub Releases](https://github.com/misantronic/RAOfflineProxy/releases) or add it to Obtainium from the [Obtainium Emulation Pack](https://github.com/RJNY/Obtainium-Emulation-Pack/releases/tag/v7.9.0).
 
 ## Step 2: Start the Proxy
 
