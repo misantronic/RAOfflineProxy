@@ -43,6 +43,7 @@
     <!-- SAF grant dialog -->
     <string name="saf_dialog_title">Folder Access Required</string>
     <string name="saf_dialog_message">This app needs access to RetroArch\'s files folder to patch retroarch.cfg. Grant access to the suggested Android/data/RetroArch package/files folder.</string>
+    <string name="smart_cache_retroarch_access_message">Smart Cache needs access to RetroArch\'s shared RetroArch folder to read recent history. Grant access to /storage/emulated/0/RetroArch.</string>
     <string name="dolphin_saf_dialog_message">This app needs access to Dolphin\'s package folder so it can patch RetroAchievements.ini and read Dolphin cache/save data for Smart Cache. Grant access to Android/data/org.dolphinemu.dolphinemu.</string>
     <string name="smart_cache_all_files_access_message">Smart Cache can use broad file access to read ROMs directly from internal storage and SD cards. Grant All Files Access if you want to avoid ROM-folder prompts.</string>
     <string name="smart_cache_rom_saf_dialog_message">Smart Cache needs access to your ROM folder so it can read the recent game paths from RetroArch history and hash those ROM files.</string>

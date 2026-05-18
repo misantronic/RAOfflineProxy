@@ -14,6 +14,7 @@ import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContract
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.annotation.RequiresApi
 import androidx.appcompat.app.ActionBarDrawerToggle
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
@@ -32,6 +33,7 @@ import java.util.ArrayDeque
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import androidx.core.net.toUri
 
 class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
@@ -59,6 +61,19 @@ class MainActivity : AppCompatActivity() {
         )
         PrefsConstants.saveSafUri(this, uri)
         viewModel.onSafGranted(SafGrantTarget.RetroArch)
+    }
+
+    private val smartCacheRetroArchSafLauncher = registerForActivityResult(OpenRetroArchHistoryTree()) { uri ->
+        if (uri == null) {
+            viewModel.onSafRejected(SafGrantTarget.SmartCacheRetroArch)
+            return@registerForActivityResult
+        }
+        contentResolver.takePersistableUriPermission(
+            uri,
+            Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+        )
+        PrefsConstants.saveRetroArchSmartCacheSafUri(this, uri)
+        viewModel.onSafGranted(SafGrantTarget.SmartCacheRetroArch)
     }
 
     private val dolphinSafLauncher = registerForActivityResult(OpenDolphinConfigTree()) { uri ->
@@ -91,7 +106,11 @@ class MainActivity : AppCompatActivity() {
         if (viewModel.hasAllFilesAccess()) {
             attemptedGenericAllFilesAccess = false
             viewModel.onSafGranted(SafGrantTarget.AllFilesAccess)
-        } else if (!attemptedGenericAllFilesAccess && canResolveIntent(createGenericAllFilesAccessIntent())) {
+        } else if (
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
+            !attemptedGenericAllFilesAccess &&
+            canResolveIntent(createGenericAllFilesAccessIntent())
+        ) {
             attemptedGenericAllFilesAccess = true
             startActivity(createGenericAllFilesAccessIntent())
         } else {
@@ -374,6 +393,7 @@ class MainActivity : AppCompatActivity() {
         android.util.Log.i("RAProxy/SmartCache", "showSafGrantDialog target=$target")
         val messageRes = when (target) {
             SafGrantTarget.RetroArch -> R.string.saf_dialog_message
+            SafGrantTarget.SmartCacheRetroArch -> R.string.smart_cache_retroarch_access_message
             SafGrantTarget.Dolphin -> R.string.dolphin_saf_dialog_message
             SafGrantTarget.AllFilesAccess -> R.string.smart_cache_all_files_access_message
             SafGrantTarget.SmartCacheRom -> R.string.smart_cache_rom_saf_dialog_message
@@ -385,6 +405,7 @@ class MainActivity : AppCompatActivity() {
                 activeSafGrantTarget = null
                 when (target) {
                     SafGrantTarget.RetroArch -> safLauncher.launch(Unit)
+                    SafGrantTarget.SmartCacheRetroArch -> smartCacheRetroArchSafLauncher.launch(Unit)
                     SafGrantTarget.Dolphin -> dolphinSafLauncher.launch(Unit)
                     SafGrantTarget.AllFilesAccess -> launchAllFilesAccessSettings()
                     SafGrantTarget.SmartCacheRom -> smartCacheRomSafLauncher.launch(viewModel.consumePendingSmartCacheRomGrantPath())
@@ -394,6 +415,7 @@ class MainActivity : AppCompatActivity() {
                 activeSafGrantTarget = null
                 when (target) {
                     SafGrantTarget.RetroArch -> viewModel.onSafRejected(SafGrantTarget.RetroArch)
+                    SafGrantTarget.SmartCacheRetroArch -> viewModel.onSafRejected(SafGrantTarget.SmartCacheRetroArch)
                     SafGrantTarget.Dolphin -> viewModel.onSafRejected(SafGrantTarget.Dolphin)
                     SafGrantTarget.AllFilesAccess -> viewModel.onSafRejected(SafGrantTarget.AllFilesAccess)
                     SafGrantTarget.SmartCacheRom -> viewModel.onSafRejected(SafGrantTarget.SmartCacheRom)
@@ -407,9 +429,11 @@ class MainActivity : AppCompatActivity() {
         val appSpecificIntent = createAppSpecificAllFilesAccessIntent()
         if (canResolveIntent(appSpecificIntent)) {
             allFilesAccessLauncher.launch(appSpecificIntent)
-        } else {
+        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             attemptedGenericAllFilesAccess = true
             allFilesAccessLauncher.launch(createGenericAllFilesAccessIntent())
+        } else {
+            viewModel.onSafRejected(SafGrantTarget.AllFilesAccess)
         }
     }
 
@@ -421,10 +445,11 @@ class MainActivity : AppCompatActivity() {
             return createGenericAllFilesAccessIntent()
         }
         return Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION).apply {
-            data = Uri.parse("package:$packageName")
+            data = "package:$packageName".toUri()
         }
     }
 
+    @RequiresApi(Build.VERSION_CODES.R)
     private fun createGenericAllFilesAccessIntent(): Intent =
         Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)
 
@@ -636,6 +661,23 @@ private class OpenDolphinConfigTree : ActivityResultContract<Unit, Uri?>() {
             runCatching { context.packageManager.getPackageInfo(packageName, 0) }
                 .isSuccess
         } ?: DOLPHIN_PACKAGE_CANDIDATES.first()
+}
+
+private class OpenRetroArchHistoryTree : ActivityResultContract<Unit, Uri?>() {
+    override fun createIntent(context: Context, input: Unit): Intent =
+        Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).apply {
+            initialTreeUriForPath("/storage/emulated/0/RetroArch")
+                ?.let { putExtra(DocumentsContract.EXTRA_INITIAL_URI, it) }
+            addFlags(
+                Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                    Intent.FLAG_GRANT_WRITE_URI_PERMISSION or
+                    Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION or
+                    Intent.FLAG_GRANT_PREFIX_URI_PERMISSION
+            )
+        }
+
+    override fun parseResult(resultCode: Int, intent: Intent?): Uri? =
+        if (resultCode == android.app.Activity.RESULT_OK) intent?.data else null
 }
 
 private class OpenSmartCacheRomTree : ActivityResultContract<String?, Uri?>() {
