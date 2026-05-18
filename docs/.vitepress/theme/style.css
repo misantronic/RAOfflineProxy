@@ -31,7 +31,7 @@
 }
 
 .VPNavBarTitle .title::after {
-  content: 'v1.0.2-alpha4';
+  content: 'v1.0.3-alpha4';
   grid-column: 2;
   grid-row: 2;
   margin-top: -1.4rem;
