@@ -15,6 +15,10 @@ class LinuxStorageTests(unittest.TestCase):
                 store.upsert_cache("login2::misantronic", '{"User":"misantronic"}')
                 store.upsert_cache("ua::last", "RetroArch/1.20.0")
                 store.upsert_cache("patch:10701:misantronic", "patch")
+                store.upsert_cache(
+                    "achievementsets:testhash:misantronic",
+                    '{"GameId":10701}',
+                )
                 store.upsert_cache("unlocks:10701:misantronic:0", "unlocks")
                 store.upsert_cache("startsession:10701:misantronic:0", "session")
                 store.upsert_cache("gameid:abcd", '{"GameID":10701}')
@@ -24,6 +28,7 @@ class LinuxStorageTests(unittest.TestCase):
                 self.assertIsNotNone(store.get_cache("login2::misantronic"))
                 self.assertIsNotNone(store.get_cache("ua::last"))
                 self.assertEqual(store.get_all_cache_by_prefix("patch:"), [])
+                self.assertEqual(store.get_all_cache_by_prefix("achievementsets:"), [])
                 self.assertEqual(store.get_all_cache_by_prefix("unlocks:"), [])
                 self.assertEqual(store.get_all_cache_by_prefix("startsession:"), [])
                 self.assertEqual(store.get_all_cache_by_prefix("gameid:"), [])

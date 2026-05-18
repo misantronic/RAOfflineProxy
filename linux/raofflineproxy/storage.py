@@ -292,8 +292,9 @@ class Storage:
             with self._lock:
                 self._connection.execute(
                     """
-                    DELETE FROM api_cache
-                    WHERE cacheKey LIKE 'patch:%'
+                DELETE FROM api_cache
+                WHERE cacheKey LIKE 'patch:%'
+                       OR cacheKey LIKE 'achievementsets:%'
                        OR cacheKey LIKE 'unlocks:%'
                        OR cacheKey LIKE 'startsession:%'
                        OR cacheKey LIKE 'gameid:%'
@@ -311,6 +312,9 @@ class Storage:
                     for item in self._json_state["api_cache"]
                     if not (
                         item["cacheKey"].startswith(cache_keys.PREFIX_PATCH)
+                        or item["cacheKey"].startswith(
+                            cache_keys.PREFIX_ACHIEVEMENTSETS
+                        )
                         or item["cacheKey"].startswith(cache_keys.PREFIX_UNLOCKS)
                         or item["cacheKey"].startswith(cache_keys.PREFIX_STARTSESSION)
                         or item["cacheKey"].startswith(cache_keys.PREFIX_GAMEID)
