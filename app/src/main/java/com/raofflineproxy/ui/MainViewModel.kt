@@ -117,6 +117,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private var pendingSmartCachePromptAfterProxyStart = false
     private var pendingSmartCacheRomGrantPaths = emptyList<String>()
     private var pendingSmartCacheGrantTargets = emptyList<SafGrantTarget>()
+    private var smartCacheAllFilesRejectedThisRun = false
 
     private fun str(resId: Int): String = getApplication<Application>().getString(resId)
     private fun str(resId: Int, vararg args: Any): String = getApplication<Application>().getString(resId, *args)
@@ -387,6 +388,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             pendingSmartCacheRomGrantPaths = emptyList()
             pendingSmartCacheGrantTargets = pendingSmartCacheGrantTargets.filterNot { it == SafGrantTarget.SmartCacheRom }
             remaining = remaining.filterNot { it == SafGrantTarget.SmartCacheRom }
+            smartCacheAllFilesRejectedThisRun = false
         }
         _state.value = _state.value.copy(
             pendingSafGrantTargets = remaining,
@@ -410,6 +412,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         if (!pendingProxyStart) {
             val remaining = _state.value.pendingSafGrantTargets.drop(1)
             if (pendingSmartCacheStart && target == SafGrantTarget.AllFilesAccess) {
+                smartCacheAllFilesRejectedThisRun = true
                 pendingSmartCacheGrantTargets = remaining
                 _state.value = _state.value.copy(
                     pendingSafGrantTargets = remaining,
@@ -436,6 +439,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             if (pendingSmartCacheStart) {
                 pendingSmartCacheGrantTargets = emptyList()
                 pendingSmartCacheStart = false
+                if (target == SafGrantTarget.AllFilesAccess) {
+                    smartCacheAllFilesRejectedThisRun = true
+                }
                 when (target) {
                     SafGrantTarget.RetroArch -> SnackbarManager.showMessage(str(R.string.smart_cache_requires_retroarch_access), SnackbarDuration.Indefinite)
                     SafGrantTarget.Dolphin -> {
@@ -1038,7 +1044,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                             }
                         }
                         if (result.requiredRomGrantPaths.isNotEmpty() && !hasAllFilesAccess()) {
-                            add(SafGrantTarget.AllFilesAccess)
+                            if (!smartCacheAllFilesRejectedThisRun) {
+                                add(SafGrantTarget.AllFilesAccess)
+                            }
                             repeat(result.requiredRomGrantPaths.size) {
                                 add(SafGrantTarget.SmartCacheRom)
                             }

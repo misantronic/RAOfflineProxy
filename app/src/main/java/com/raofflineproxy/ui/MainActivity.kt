@@ -46,6 +46,7 @@ class MainActivity : AppCompatActivity() {
     private var activeSnackbarKind: ActiveSnackbarKind? = null
     private var suppressNextDismissCallback = false
     private var activeSafGrantTarget: SafGrantTarget? = null
+    private var attemptedGenericAllFilesAccess = false
 
     private val safLauncher = registerForActivityResult(OpenAndroidDataTree()) { uri ->
         if (uri == null) {
@@ -88,8 +89,13 @@ class MainActivity : AppCompatActivity() {
 
     private val allFilesAccessLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
         if (viewModel.hasAllFilesAccess()) {
+            attemptedGenericAllFilesAccess = false
             viewModel.onSafGranted(SafGrantTarget.AllFilesAccess)
+        } else if (!attemptedGenericAllFilesAccess && canResolveIntent(createGenericAllFilesAccessIntent())) {
+            attemptedGenericAllFilesAccess = true
+            startActivity(createGenericAllFilesAccessIntent())
         } else {
+            attemptedGenericAllFilesAccess = false
             viewModel.onSafRejected(SafGrantTarget.AllFilesAccess)
         }
     }
@@ -380,7 +386,7 @@ class MainActivity : AppCompatActivity() {
                 when (target) {
                     SafGrantTarget.RetroArch -> safLauncher.launch(Unit)
                     SafGrantTarget.Dolphin -> dolphinSafLauncher.launch(Unit)
-                    SafGrantTarget.AllFilesAccess -> allFilesAccessLauncher.launch(createAllFilesAccessIntent())
+                    SafGrantTarget.AllFilesAccess -> launchAllFilesAccessSettings()
                     SafGrantTarget.SmartCacheRom -> smartCacheRomSafLauncher.launch(viewModel.consumePendingSmartCacheRomGrantPath())
                 }
             }
@@ -396,14 +402,31 @@ class MainActivity : AppCompatActivity() {
             .show()
     }
 
-    private fun createAllFilesAccessIntent(): Intent {
+    private fun launchAllFilesAccessSettings() {
+        attemptedGenericAllFilesAccess = false
+        val appSpecificIntent = createAppSpecificAllFilesAccessIntent()
+        if (canResolveIntent(appSpecificIntent)) {
+            allFilesAccessLauncher.launch(appSpecificIntent)
+        } else {
+            attemptedGenericAllFilesAccess = true
+            allFilesAccessLauncher.launch(createGenericAllFilesAccessIntent())
+        }
+    }
+
+    private fun canResolveIntent(intent: Intent): Boolean =
+        intent.resolveActivity(packageManager) != null
+
+    private fun createAppSpecificAllFilesAccessIntent(): Intent {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
-            return Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)
+            return createGenericAllFilesAccessIntent()
         }
         return Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION).apply {
             data = Uri.parse("package:$packageName")
         }
     }
+
+    private fun createGenericAllFilesAccessIntent(): Intent =
+        Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)
 
     private fun showSmartCacheAfterProxyStartDialog() {
         AlertDialog.Builder(this)
