@@ -1,12 +1,14 @@
 import json
-import time
+import logging
 
 from . import cache_keys
-from .config import FALLBACK_USER_AGENT, upstream_host
+from .config import FALLBACK_USER_AGENT, image_caching_enabled, upstream_host
 from .image_cache import cache_patch_images
 from .network import build_api_url, http_get
 from .storage import PENDING_AWARD_STATUS_PENDING, Storage
 from .utils import is_hardcore_request, parse_form_params
+
+LOGGER = logging.getLogger("raofflineproxy")
 
 
 class CacheGameError(RuntimeError):
@@ -47,7 +49,10 @@ def refresh_game_patch(
         raise CacheGameError(api_error_message("patch", payload))
 
     storage.upsert_cache(cache_keys.patch(game_id, credentials["user"]), response_body)
-    cache_patch_images(game_id, user_agent, response_body, config_data)
+    if image_caching_enabled(config_data):
+        cache_patch_images(game_id, user_agent, response_body, config_data)
+    else:
+        LOGGER.info("Cache game images skipped gameId=%s", game_id)
     return response_body
 
 
