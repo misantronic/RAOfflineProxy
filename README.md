@@ -18,6 +18,12 @@ RAOfflineProxy runs a tiny local proxy on your device. It sits between supported
 - **Android**: RetroArch, Dolphin
 - **Linux**: KNULLI, Onion (experimental)
 
+## Obtainium
+
+RAOfflineProxy is now listed in the [Obtainium Emulation Pack](https://github.com/RJNY/Obtainium-Emulation-Pack/releases/tag/v7.9.0).
+
+If you use Obtainium on Android, you can add it from there instead of entering the GitHub repository manually.
+
 ## Documentation
 
 Full documentation is available at [raofflineproxy.com](https://raofflineproxy.com).
