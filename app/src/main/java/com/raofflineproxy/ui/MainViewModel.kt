@@ -68,7 +68,7 @@ import org.json.JSONObject
 
 enum class AuthState { Unknown, Valid, Invalid }
 
-enum class SafGrantTarget { RetroArch, Dolphin, SmartCacheRom, AllFilesAccess }
+enum class SafGrantTarget { RetroArch, SmartCacheRetroArch, Dolphin, SmartCacheRom, AllFilesAccess }
 
 sealed interface MainUiEvent {
     data object PromptSmartCacheAfterProxyStart : MainUiEvent
@@ -386,8 +386,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
         if (target == SafGrantTarget.AllFilesAccess) {
             pendingSmartCacheRomGrantPaths = emptyList()
-            pendingSmartCacheGrantTargets = pendingSmartCacheGrantTargets.filterNot { it == SafGrantTarget.SmartCacheRom }
-            remaining = remaining.filterNot { it == SafGrantTarget.SmartCacheRom }
+            pendingSmartCacheGrantTargets = pendingSmartCacheGrantTargets.filterNot {
+                it == SafGrantTarget.SmartCacheRom || it == SafGrantTarget.SmartCacheRetroArch
+            }
+            remaining = remaining.filterNot {
+                it == SafGrantTarget.SmartCacheRom || it == SafGrantTarget.SmartCacheRetroArch
+            }
             smartCacheAllFilesRejectedThisRun = false
         }
         _state.value = _state.value.copy(
@@ -444,6 +448,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 }
                 when (target) {
                     SafGrantTarget.RetroArch -> SnackbarManager.showMessage(str(R.string.smart_cache_requires_retroarch_access), SnackbarDuration.Indefinite)
+                    SafGrantTarget.SmartCacheRetroArch -> {
+                        PrefsConstants.clearRetroArchSmartCacheSafUri(app)
+                        SnackbarManager.showMessage(str(R.string.smart_cache_requires_retroarch_access), SnackbarDuration.Indefinite)
+                    }
                     SafGrantTarget.Dolphin -> {
                         PrefsConstants.clearDolphinSafUri(app)
                         SnackbarManager.showMessage(str(R.string.smart_cache_requires_dolphin_access), SnackbarDuration.Indefinite)
@@ -474,6 +482,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             }
             if (target == SafGrantTarget.RetroArch) {
                 SnackbarManager.showMessage(str(R.string.smart_cache_requires_retroarch_access), SnackbarDuration.Indefinite)
+            } else if (target == SafGrantTarget.SmartCacheRetroArch) {
+                PrefsConstants.clearRetroArchSmartCacheSafUri(app)
+                SnackbarManager.showMessage(str(R.string.smart_cache_requires_retroarch_access), SnackbarDuration.Indefinite)
             }
             return
         }
@@ -482,6 +493,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 prefs.edit { putBoolean(PrefsConstants.KEY_ENABLE_RETROARCH, false) }
                 PrefsConstants.clearSafUri(app)
                 SnackbarManager.showMessage(str(R.string.proxy_disabled_retroarch_saf_rejected), SnackbarDuration.Indefinite)
+            }
+            SafGrantTarget.SmartCacheRetroArch -> {
+                PrefsConstants.clearRetroArchSmartCacheSafUri(app)
+                SnackbarManager.showMessage(str(R.string.smart_cache_requires_retroarch_access), SnackbarDuration.Indefinite)
             }
             SafGrantTarget.Dolphin -> {
                 prefs.edit { putBoolean(PrefsConstants.KEY_ENABLE_DOLPHIN, false) }
@@ -1043,6 +1058,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                                 SmartCacheEmulator.Dolphin -> add(SafGrantTarget.Dolphin)
                             }
                         }
+                        if (result.message == "needs_retroarch_shared_access") {
+                            clear()
+                            if (!hasAllFilesAccess() && !smartCacheAllFilesRejectedThisRun) {
+                                add(SafGrantTarget.AllFilesAccess)
+                            }
+                            add(SafGrantTarget.SmartCacheRetroArch)
+                        }
                         if (result.requiredRomGrantPaths.isNotEmpty() && !hasAllFilesAccess()) {
                             if (!smartCacheAllFilesRejectedThisRun) {
                                 add(SafGrantTarget.AllFilesAccess)
@@ -1058,6 +1080,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         listOf(
                             when (result.message) {
                                 "needs_saf_grant" -> SafGrantTarget.RetroArch
+                                "needs_retroarch_shared_access" -> if (hasAllFilesAccess() || smartCacheAllFilesRejectedThisRun) SafGrantTarget.SmartCacheRetroArch else SafGrantTarget.AllFilesAccess
                                 "needs_dolphin_saf_grant" -> SafGrantTarget.Dolphin
                                 "needs_rom_saf_grant" -> if (hasAllFilesAccess()) SafGrantTarget.SmartCacheRom else SafGrantTarget.AllFilesAccess
                                 else -> SafGrantTarget.SmartCacheRom
@@ -1076,6 +1099,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 val message = when (result.message) {
                     "no_strategies" -> str(R.string.smart_cache_no_strategies)
                     "needs_saf_grant" -> str(R.string.smart_cache_requires_retroarch_access)
+                    "needs_retroarch_shared_access" -> str(R.string.smart_cache_requires_retroarch_access)
                     "needs_dolphin_saf_grant" -> str(R.string.smart_cache_requires_dolphin_access)
                     "needs_rom_saf_grant" -> str(R.string.smart_cache_requires_rom_access)
                     "history_missing" -> str(R.string.smart_cache_history_missing)

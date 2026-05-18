@@ -8,6 +8,7 @@ import android.provider.DocumentsContract
 import android.util.Log
 import androidx.documentfile.provider.DocumentFile
 import com.raofflineproxy.MAX_CACHED_GAMES
+import com.raofflineproxy.PrefsConstants
 import com.raofflineproxy.data.AppDatabase
 import com.raofflineproxy.proxy.hash.RomHashInput
 import com.raofflineproxy.proxy.hash.hashRom
@@ -25,33 +26,30 @@ private const val TAG = "RAProxy/SmartCache"
 private const val DOLPHIN_RECENT_WINDOW_MS = 90L * 24 * 60 * 60 * 1000
 private val SMART_CACHE_EXT_STORAGE by lazy { Environment.getExternalStorageDirectory().path }
 
-private val RETROARCH_HISTORY_PATHS = RETROARCH_PACKAGE_CANDIDATES.flatMap { packageName ->
-    listOf(
-        listOf(packageName, "files", "content_history.lpl"),
-        listOf(packageName, "files", "playlists", "content_history.lpl")
-    )
-} + listOf(
-    listOf("files", "content_history.lpl"),
-    listOf("files", "playlists", "content_history.lpl"),
+private val RETROARCH_PACKAGE_HISTORY_PATHS = listOf(
     listOf("content_history.lpl"),
-    listOf("playlists", "content_history.lpl")
+    listOf("files", "content_history.lpl")
 )
 
-private val RETROARCH_HISTORY_SOURCE_CANDIDATES by lazy {
+private val RETROARCH_PACKAGE_HISTORY_SOURCE_CANDIDATES by lazy {
     RETROARCH_PACKAGE_CANDIDATES.flatMap { packageName ->
         listOf(
             "$SMART_CACHE_EXT_STORAGE/Android/data/$packageName/files/content_history.lpl",
-            "/storage/emulated/0/Android/data/$packageName/files/content_history.lpl",
-            "$SMART_CACHE_EXT_STORAGE/Android/data/$packageName/files/playlists/content_history.lpl",
-            "/storage/emulated/0/Android/data/$packageName/files/playlists/content_history.lpl"
+            "/storage/emulated/0/Android/data/$packageName/files/content_history.lpl"
         )
-    } + listOf(
-        "$SMART_CACHE_EXT_STORAGE/RetroArch/content_history.lpl",
-        "/storage/emulated/0/RetroArch/content_history.lpl",
-        "$SMART_CACHE_EXT_STORAGE/RetroArch/playlists/content_history.lpl",
-        "/storage/emulated/0/RetroArch/playlists/content_history.lpl"
+    }
+}
+
+private val RETROARCH_SHARED_HISTORY_SOURCE_CANDIDATES by lazy {
+    listOf(
+        "$SMART_CACHE_EXT_STORAGE/RetroArch/playlists/builtin/content_history.lpl",
+        "/storage/emulated/0/RetroArch/playlists/builtin/content_history.lpl"
     )
 }
+
+private val RETROARCH_SHARED_HISTORY_PATHS = listOf(
+    listOf("playlists", "builtin", "content_history.lpl")
+)
 
 private val DOLPHIN_GAMELIST_PATHS = DOLPHIN_PACKAGE_CANDIDATES.map { packageName ->
     listOf(packageName, "cache", "gamelist.cache")
@@ -189,45 +187,76 @@ private object RetroArchSmartCacheStrategy : SmartCacheStrategy {
             emulatorSupport.retroArchEnabled
 
     override fun discoverCandidates(context: Context, treeUri: Uri?): SmartCacheStrategyResult {
-        val directHistoryFile = firstReadableFile(RETROARCH_HISTORY_SOURCE_CANDIDATES)
-        if (directHistoryFile != null) {
-            val directContent = runCatching { directHistoryFile.readText() }
-                .onFailure { error -> Log.w(TAG, "RetroArch strategy could not read direct history path=${directHistoryFile.path}", error) }
-                .getOrNull()
-            if (directContent != null) {
-                val candidates = parseRetroArchHistory(directContent)
-                Log.i(TAG, "RetroArch strategy discovered ${candidates.size} history candidates from ${directHistoryFile.path}")
-                return SmartCacheStrategyResult(candidates = candidates)
-            }
+        readHistoryCandidates(firstReadableFile(RETROARCH_SHARED_HISTORY_SOURCE_CANDIDATES), "direct shared history")
+            ?.let { return SmartCacheStrategyResult(candidates = it) }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && Environment.isExternalStorageManager()) {
+            readHistoryCandidates(firstExistingFile(RETROARCH_SHARED_HISTORY_SOURCE_CANDIDATES), "all-files shared history")
+                ?.let { return SmartCacheStrategyResult(candidates = it) }
         }
 
-        if (treeUri == null) {
+        val sharedHistoryFile = RETROARCH_SHARED_HISTORY_SOURCE_CANDIDATES.asSequence()
+            .map(::File)
+            .firstOrNull(File::isFile)
+        if (sharedHistoryFile != null && !(Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && Environment.isExternalStorageManager())) {
+            Log.i(TAG, "RetroArch strategy needs shared RetroArch history access path=${sharedHistoryFile.path}")
+            return SmartCacheStrategyResult(message = "needs_retroarch_shared_access", needsSafGrant = true)
+        }
+
+        readHistoryCandidates(firstReadableFile(RETROARCH_PACKAGE_HISTORY_SOURCE_CANDIDATES), "direct package history")
+            ?.let { return SmartCacheStrategyResult(candidates = it) }
+
+        val treeUris = buildList {
+            PrefsConstants.loadRetroArchSmartCacheSafUri(context)?.let(::add)
+            treeUri?.let(::add)
+        }.distinctBy { uri -> uri.toString() }
+
+        if (treeUris.isEmpty()) {
             Log.i(TAG, "RetroArch strategy needs SAF grant for history file")
             return SmartCacheStrategyResult(needsSafGrant = true)
         }
 
-        val tree = DocumentFile.fromTreeUri(context, treeUri)
-            ?: run {
-                Log.w(TAG, "RetroArch strategy could not open treeUri=$treeUri")
-                return SmartCacheStrategyResult(needsSafGrant = true)
+        treeUris.forEachIndexed { index, currentTreeUri ->
+            val tree = DocumentFile.fromTreeUri(context, currentTreeUri)
+                ?: run {
+                    Log.w(TAG, "RetroArch strategy could not open treeUri=$currentTreeUri")
+                    return@forEachIndexed
+                }
+            val historyPaths = if (index == 0 && PrefsConstants.loadRetroArchSmartCacheSafUri(context) == currentTreeUri) {
+                RETROARCH_SHARED_HISTORY_PATHS
+            } else {
+                RETROARCH_PACKAGE_HISTORY_PATHS
             }
-        val historyFile = findDocument(tree, RETROARCH_HISTORY_PATHS)
-            ?: run {
-                Log.i(TAG, "RetroArch strategy did not find content_history.lpl in granted tree")
-                return SmartCacheStrategyResult(message = "history_missing")
-            }
-        val content = context.contentResolver.openInputStream(historyFile.uri)
-            ?.bufferedReader()
-            ?.use { it.readText() }
-            ?: run {
-                Log.w(TAG, "RetroArch strategy could not read history file uri=${historyFile.uri}")
-                return SmartCacheStrategyResult(message = "history_missing")
-            }
+            val historyFile = findDocument(tree, historyPaths) ?: return@forEachIndexed
+            val content = context.contentResolver.openInputStream(historyFile.uri)
+                ?.bufferedReader()
+                ?.use { it.readText() }
+                ?: run {
+                    Log.w(TAG, "RetroArch strategy could not read history file uri=${historyFile.uri}")
+                    return@forEachIndexed
+                }
 
-        val candidates = parseRetroArchHistory(content)
-        Log.i(TAG, "RetroArch strategy discovered ${candidates.size} history candidates from ${historyFile.uri}")
-        return SmartCacheStrategyResult(candidates = candidates)
+            val candidates = parseRetroArchHistory(content)
+            Log.i(TAG, "RetroArch strategy discovered ${candidates.size} history candidates from ${historyFile.uri}")
+            return SmartCacheStrategyResult(candidates = candidates)
+        }
+
+        Log.i(TAG, "RetroArch strategy did not find content_history.lpl in granted trees")
+        return SmartCacheStrategyResult(message = "history_missing")
     }
+}
+
+private fun readHistoryCandidates(file: File?, label: String): List<SmartCacheCandidate>? {
+    if (file == null) {
+        return null
+    }
+    val content = runCatching { file.readText() }
+        .onFailure { error -> Log.w(TAG, "RetroArch strategy could not read $label path=${file.path}", error) }
+        .getOrNull()
+        ?: return null
+    val candidates = parseRetroArchHistory(content)
+    Log.i(TAG, "RetroArch strategy discovered ${candidates.size} history candidates from ${file.path}")
+    return candidates
 }
 
 private object DolphinSmartCacheStrategy : SmartCacheStrategy {
@@ -549,6 +578,9 @@ private fun sanitizeDolphinRomLocator(locator: String): String? {
 
 private fun deriveSmartCacheTitle(path: String): String? =
     Uri.decode(path.substringAfterLast('/')).takeIf { it.isNotBlank() }
+
+private fun firstExistingFile(paths: List<String>): File? =
+    paths.asSequence().map(::File).firstOrNull(File::isFile)
 
 private fun firstReadableFile(paths: List<String>): File? =
     paths.asSequence().map(::File).firstOrNull { it.isFile && it.canRead() }
