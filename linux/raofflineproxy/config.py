@@ -73,6 +73,19 @@ def load_config() -> dict:
     return data
 
 
+def image_caching_enabled(config_data: dict | None = None) -> bool:
+    config_data = config_data or {}
+    configured = config_data.get("cache_images")
+    if configured is not None:
+        return bool(configured)
+
+    env_value = os.environ.get("RAOFFLINEPROXY_CACHE_IMAGES")
+    if env_value is not None:
+        return env_value.strip().lower() not in {"0", "false", "no", "off"}
+
+    return True
+
+
 def save_config(data: dict) -> None:
     ensure_config_dir()
     with CONFIG_FILE.open("w", encoding="utf-8") as handle:

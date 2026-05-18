@@ -117,6 +117,8 @@ The current Onion menu supports:
 
 The menu also shows live status information each time it redraws.
 
+Onion does not cache RA image assets during game caching, since the current Onion UI never displays them.
+
 The menu keeps the simple numbered input flow.
 
 - Typing `1` to `4` still selects an action

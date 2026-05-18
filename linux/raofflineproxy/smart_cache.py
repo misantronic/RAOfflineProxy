@@ -67,6 +67,10 @@ def run_smart_cache(
             break
 
         scanned += 1
+        result = add_rom_to_cache(path, storage, config_data)
+        if result.success:
+            cached += 1
+
         if on_progress is not None:
             on_progress(
                 SmartCacheProgress(
@@ -76,10 +80,6 @@ def run_smart_cache(
                     current_label=path.name,
                 )
             )
-
-        result = add_rom_to_cache(path, storage, config_data)
-        if result.success:
-            cached += 1
 
         if scanned < total:
             time.sleep(SMART_CACHE_DELAY_SECONDS)
@@ -136,6 +136,11 @@ def find_content_history_lpl(config_data: dict) -> Path | None:
         cfg_path.parent / "content_history.lpl",
         cfg_path.parent / "playlists" / "content_history.lpl",
         cfg_path.parent.parent / "playlists" / "content_history.lpl",
+        cfg_path.parent.parent.parent
+        / "Saves"
+        / "CurrentProfile"
+        / "lists"
+        / "content_history.lpl",
     ]
     for candidate in candidates:
         if candidate.exists():

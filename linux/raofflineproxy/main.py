@@ -1,7 +1,9 @@
 import argparse
+import json
 import sys
 from pathlib import Path
 
+from .auth import resolve_credentials
 from .config import (
     CONFIG_FILE,
     configure_logging,
@@ -23,7 +25,9 @@ from .service import (
     stop_service_process,
 )
 from .menu_sdl import run_menu_sdl
+from .network import online_check
 from .rom_browser import clear_cached_games, list_cached_games
+from .smart_cache import SMART_CACHE_LIMIT, run_smart_cache, should_offer_smart_cache
 from .storage import Storage
 from .state import load_patch_state, save_patch_state
 from .ui import write_status_image, write_text_image
@@ -88,6 +92,8 @@ def main() -> None:
             "autostart-status",
             "cached-games",
             "clear-cached-games",
+            "smart-cache-status",
+            "run-smart-cache",
             "status",
             "run-service",
             "ui-image",
@@ -239,6 +245,71 @@ def main() -> None:
             try:
                 clear_cached_games(storage)
                 print("Cleared cached games")
+            finally:
+                storage.close()
+            return
+
+        if args.command == "smart-cache-status":
+            storage = Storage()
+            try:
+                credentials = resolve_credentials(storage, config_data)
+                status = should_offer_smart_cache(
+                    storage,
+                    config_data,
+                    is_online=online_check(config_data),
+                    has_credentials=credentials is not None,
+                )
+                print(
+                    json.dumps(
+                        {
+                            "found_history": status.found_history,
+                            "total_candidates": status.total_candidates,
+                        },
+                        separators=(",", ":"),
+                    )
+                )
+            finally:
+                storage.close()
+            return
+
+        if args.command == "run-smart-cache":
+            storage = Storage()
+            try:
+
+                def on_progress(progress) -> None:
+                    print(
+                        json.dumps(
+                            {
+                                "type": "progress",
+                                "scanned": progress.scanned,
+                                "total": progress.total,
+                                "cached": progress.cached,
+                                "current_label": progress.current_label,
+                            },
+                            separators=(",", ":"),
+                        ),
+                        flush=True,
+                    )
+
+                result = run_smart_cache(
+                    storage,
+                    config_data,
+                    SMART_CACHE_LIMIT,
+                    on_progress=on_progress,
+                )
+                print(
+                    json.dumps(
+                        {
+                            "type": "result",
+                            "scanned": result.scanned,
+                            "total": result.total,
+                            "cached": result.cached,
+                            "skipped": result.skipped,
+                            "limit_reached": result.limit_reached,
+                        },
+                        separators=(",", ":"),
+                    )
+                )
             finally:
                 storage.close()
             return

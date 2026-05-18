@@ -33,6 +33,113 @@ install_onion_checkoff_script >/dev/null 2>&1 || true
 DPAD_SELECTION=0
 MENU_ITEM_COUNT=5
 
+smart_cache_status() {
+    run_backend "$PYTHON_BIN" smart-cache-status 2>/dev/null || printf '{"found_history":false,"total_candidates":0}\n'
+}
+
+pause_smart_cache_prompt() {
+    count="$1"
+    saved_tty="$(stty -g < /dev/tty)"
+    choice=YES
+    SMART_CACHE_ACTION=
+
+    render_prompt() {
+        clear
+        printf 'RAOfflineProxy\n\n'
+        printf 'Smart Cache found %s recent games.\n\n' "$count"
+        printf 'Cache games: %s\n\n' "$choice"
+        printf 'Use D-Pad to choose.\n'
+        printf 'Press START to continue.\n'
+    }
+
+    render_prompt
+
+    while :; do
+        stty -echo -icanon min 1 time 0 < /dev/tty
+        key="$(read_byte_hex)"
+        case "$key" in
+            0d|0a|20|61|41|73|53)
+                SMART_CACHE_ACTION="$choice"
+                ;;
+            1b)
+                stty -echo -icanon min 0 time 1 < /dev/tty
+                sequence="$(dd bs=1 count=2 2>/dev/null < /dev/tty | od -An -tx1 | tr -d ' \n')"
+                case "$sequence" in
+                    5b41|4f41|5b42|4f42|5b43|4f43|5b44|4f44)
+                        if [ "$choice" = "YES" ]; then
+                            choice=NO
+                        else
+                            choice=YES
+                        fi
+                        render_prompt
+                        ;;
+                esac
+                ;;
+        esac
+
+        if [ -n "${SMART_CACHE_ACTION:-}" ]; then
+            stty "$saved_tty" < /dev/tty
+            drain_tty "$saved_tty"
+            return 0
+        fi
+    done
+}
+
+run_smart_cache_flow() {
+    result_line=
+    backend_rc=0
+    fifo_path="/tmp/raofflineproxy-smart-cache.$$"
+    rm -f "$fifo_path"
+    mkfifo "$fifo_path"
+
+    run_backend "$PYTHON_BIN" run-smart-cache > "$fifo_path" 2>&1 &
+    backend_pid=$!
+
+    while IFS= read -r line; do
+        case "$line" in
+            *'"type":"progress"'*)
+                scanned="$(printf '%s' "$line" | "$PYTHON_BIN" -c 'import json, sys; print(json.loads(sys.stdin.read()).get("scanned", 0))')"
+                total="$(printf '%s' "$line" | "$PYTHON_BIN" -c 'import json, sys; print(json.loads(sys.stdin.read()).get("total", 0))')"
+                current_label="$(printf '%s' "$line" | "$PYTHON_BIN" -c 'import json, sys; print(json.loads(sys.stdin.read()).get("current_label", "..."))')"
+                clear
+                printf 'RAOfflineProxy\n\n'
+                printf 'Smart Cache: %s / %s\n' "${scanned:-0}" "${total:-0}"
+                printf 'Current: %s\n' "${current_label:-...}"
+                ;;
+            *'"type":"result"'*)
+                result_line="$line"
+                ;;
+            *)
+                clear
+                printf 'RAOfflineProxy\n\n'
+                printf '%s\n' "$line"
+                ;;
+        esac
+    done < "$fifo_path"
+
+    if ! wait "$backend_pid"; then
+        backend_rc=$?
+    fi
+    rm -f "$fifo_path"
+
+    if [ "$backend_rc" -ne 0 ]; then
+        pause_prompt
+        return 1
+    fi
+
+    clear
+    printf 'RAOfflineProxy\n\n'
+    if [ -n "$result_line" ]; then
+        cached="$(printf '%s' "$result_line" | "$PYTHON_BIN" -c 'import json, sys; print(json.loads(sys.stdin.read()).get("cached", 0))')"
+        scanned="$(printf '%s' "$result_line" | "$PYTHON_BIN" -c 'import json, sys; print(json.loads(sys.stdin.read()).get("scanned", 0))')"
+        printf 'Smart Cache complete: %s games cached\n' "${cached:-0}"
+        printf 'Scanned: %s\n' "${scanned:-0}"
+    else
+        printf 'Smart Cache complete\n'
+    fi
+    pause_prompt
+}
+
 autostart_is_enabled() {
     [ "$(run_backend "$PYTHON_BIN" autostart-status 2>/dev/null)" = "enabled" ]
 }
@@ -56,6 +163,23 @@ toggle_proxy() {
     fi
 
     run_backend "$PYTHON_BIN" start-proxy || true
+}
+
+maybe_offer_smart_cache() {
+    status_json="$(smart_cache_status)"
+    found_history="$(printf '%s' "$status_json" | sed -n 's/.*"found_history":\(true\|false\).*/\1/p')"
+    total_candidates="$(printf '%s' "$status_json" | sed -n 's/.*"total_candidates":\([0-9][0-9]*\).*/\1/p')"
+
+    if [ "$found_history" != "true" ]; then
+        return 1
+    fi
+
+    pause_smart_cache_prompt "${total_candidates:-0}"
+    if [ "$SMART_CACHE_ACTION" = "YES" ]; then
+        run_smart_cache_flow
+    fi
+
+    return 0
 }
 
 autostart_menu_label() {
@@ -221,7 +345,13 @@ while :; do
     case "$choice" in
         1)
             toggle_proxy
-            pause_prompt
+            if service_is_running; then
+                if ! maybe_offer_smart_cache; then
+                    pause_prompt
+                fi
+            else
+                pause_prompt
+            fi
             ;;
         2)
             show_cached_games || true
