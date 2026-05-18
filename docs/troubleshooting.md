@@ -1,6 +1,6 @@
 # Troubleshooting / FAQ
 
-> Current release stage: alpha (`v1.0.1-alpha4`). Some rough edges are expected while this prerelease is being validated.
+> Current release stage: alpha (`v1.0.2-alpha4`). Some rough edges are expected while this prerelease is being validated.
 
 ## The proxy starts but the emulator still contacts RetroAchievements directly
 
