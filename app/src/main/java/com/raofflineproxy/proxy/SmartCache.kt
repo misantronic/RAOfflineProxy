@@ -825,7 +825,33 @@ private fun computeRequestedRomGrantPaths(paths: List<String>): List<String> {
             "$volume::$root"
         }
         .values
-        .mapNotNull(::commonParentDirectory)
+        .mapNotNull(::preferredGrantPathForGroup)
+}
+
+private fun preferredGrantPathForGroup(paths: List<String>): String? {
+    val commonParent = commonParentDirectory(paths) ?: return null
+    val normalizedCommon = commonParent.replace('\\', '/').trim().trimEnd('/')
+    val segments = normalizedCommon.trim('/').split('/').filter { it.isNotBlank() }
+    val volume = segments.getOrNull(1)?.lowercase().orEmpty()
+    val root = segments.getOrNull(2)?.lowercase().orEmpty()
+
+    if (volume != "emulated" || root != "0") {
+        return normalizedCommon
+    }
+
+    val topLevelRoot = rootSegmentAfterStorage(paths)
+    if (topLevelRoot.equals("roms", ignoreCase = true) || topLevelRoot.equals("rom", ignoreCase = true)) {
+        return listOf("storage", "emulated", "0", topLevelRoot).joinToString(prefix = "/", separator = "/")
+    }
+
+    return normalizedCommon
+}
+
+private fun rootSegmentAfterStorage(paths: List<String>): String {
+    val normalizedSegments = paths
+        .map { it.replace('\\', '/').trim().trimEnd('/').split('/').filter { segment -> segment.isNotBlank() } }
+    val first = normalizedSegments.firstOrNull() ?: return ""
+    return first.getOrNull(3).orEmpty()
 }
 
 private fun commonParentDirectory(paths: List<String>): String? {
