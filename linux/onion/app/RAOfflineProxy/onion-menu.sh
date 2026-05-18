@@ -123,9 +123,14 @@ drain_tty() {
 
 read_choice() {
     saved_tty="$(stty -g < /dev/tty)"
-    pending_choice=
+    if [ "$DPAD_SELECTION" -ge 1 ] && [ "$DPAD_SELECTION" -le "$MENU_ITEM_COUNT" ]; then
+        pending_choice="$DPAD_SELECTION"
+    else
+        pending_choice=1
+        DPAD_SELECTION=1
+    fi
 
-    printf 'Select an action: '
+    printf 'Select an action: %s' "$pending_choice"
 
     while :; do
         stty -echo -icanon min 1 time 0 < /dev/tty
