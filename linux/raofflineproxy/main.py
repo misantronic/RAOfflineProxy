@@ -23,7 +23,7 @@ from .service import (
     stop_service_process,
 )
 from .menu_sdl import run_menu_sdl
-from .rom_browser import list_cached_games
+from .rom_browser import clear_cached_games, list_cached_games
 from .storage import Storage
 from .state import load_patch_state, save_patch_state
 from .ui import write_status_image, write_text_image
@@ -87,6 +87,7 @@ def main() -> None:
             "disable-autostart",
             "autostart-status",
             "cached-games",
+            "clear-cached-games",
             "status",
             "run-service",
             "ui-image",
@@ -229,6 +230,15 @@ def main() -> None:
 
                 for game in games:
                     print(f"{game.title} ({game.game_id})")
+            finally:
+                storage.close()
+            return
+
+        if args.command == "clear-cached-games":
+            storage = Storage()
+            try:
+                clear_cached_games(storage)
+                print("Cleared cached games")
             finally:
                 storage.close()
             return

@@ -111,6 +111,7 @@ The current Onion menu supports:
 
 - `Start proxy` or `Stop proxy` depending on current state
 - `Cached games`
+- `Clear cached games`
 - `Enable autostart` or `Disable autostart` depending on current state
 - `Exit`
 

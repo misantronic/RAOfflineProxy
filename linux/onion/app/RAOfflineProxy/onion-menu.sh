@@ -31,6 +31,7 @@ PYTHON_BIN="$RESOLVED_PYTHON_BIN"
 install_onion_checkoff_script >/dev/null 2>&1 || true
 
 DPAD_SELECTION=0
+MENU_ITEM_COUNT=5
 
 autostart_is_enabled() {
     [ "$(run_backend "$PYTHON_BIN" autostart-status 2>/dev/null)" = "enabled" ]
@@ -89,6 +90,16 @@ show_cached_games() {
     return 0
 }
 
+clear_cached_games() {
+    if run_backend "$PYTHON_BIN" clear-cached-games; then
+        printf 'Cleared cached games\n'
+        return 0
+    fi
+
+    printf 'Failed to clear cached games\n'
+    return 1
+}
+
 show_status() {
     if ! run_backend "$PYTHON_BIN" status | grep -v -E '^(Exists:|State file:)' | sed 's#^Config: /mnt/SDCARD/#Config: /#' ; then
         return 1
@@ -138,6 +149,10 @@ read_choice() {
                 pending_choice=4
                 DPAD_SELECTION=4
                 ;;
+            35)
+                pending_choice=5
+                DPAD_SELECTION=5
+                ;;
             0d|0a|20|61|41|73|53)
                 if [ -n "$pending_choice" ]; then
                     choice="$pending_choice"
@@ -151,7 +166,7 @@ read_choice() {
                 sequence="$(dd bs=1 count=2 2>/dev/null < /dev/tty | od -An -tx1 | tr -d ' \n')"
                 case "$sequence" in
                     5b41|4f41)
-                        if [ "$DPAD_SELECTION" -ge 4 ]; then
+                        if [ "$DPAD_SELECTION" -ge "$MENU_ITEM_COUNT" ]; then
                             DPAD_SELECTION=1
                         else
                             DPAD_SELECTION=$((DPAD_SELECTION + 1))
@@ -160,7 +175,7 @@ read_choice() {
                         ;;
                     5b42|4f42)
                         if [ "$DPAD_SELECTION" -le 1 ]; then
-                            DPAD_SELECTION=4
+                            DPAD_SELECTION="$MENU_ITEM_COUNT"
                         else
                             DPAD_SELECTION=$((DPAD_SELECTION - 1))
                         fi
@@ -189,8 +204,9 @@ while :; do
     printf '\n'
     printf '1. %s\n' "$(proxy_menu_label | tr -d '\n')"
     printf '2. Cached games\n'
-    printf '3. %s\n' "$(autostart_menu_label | tr -d '\n')"
-    printf '4. Exit\n\n'
+    printf '3. Clear cached games\n'
+    printf '4. %s\n' "$(autostart_menu_label | tr -d '\n')"
+    printf '5. Exit\n\n'
     printf 'Use D-Pad to choose\n'
 
     read_choice
@@ -207,10 +223,14 @@ while :; do
             pause_prompt
             ;;
         3)
-            toggle_autostart
+            clear_cached_games
             pause_prompt
             ;;
         4)
+            toggle_autostart
+            pause_prompt
+            ;;
+        5)
             exit 0
             ;;
         *)
