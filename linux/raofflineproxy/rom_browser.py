@@ -287,7 +287,39 @@ def remove_cached_game(storage: Storage, game_id: int) -> None:
     storage.delete_cache_by_prefix(cache_keys.patch_prefix(game_id))
     storage.delete_cache_by_prefix(f"{cache_keys.PREFIX_UNLOCKS}{game_id}:")
     storage.delete_cache_by_prefix(f"{cache_keys.PREFIX_STARTSESSION}{game_id}:")
+    remove_achievementsets_for_game(storage, game_id)
+    remove_gameid_aliases_for_game(storage, game_id)
     delete_cached_images_for_game(game_id)
+
+
+def remove_achievementsets_for_game(storage: Storage, game_id: int) -> None:
+    for entry in storage.get_all_cache_by_prefix(cache_keys.PREFIX_ACHIEVEMENTSETS):
+        try:
+            payload = json.loads(entry["responseBody"])
+        except Exception:
+            continue
+
+        if payload.get("GameId") != game_id:
+            continue
+
+        cache_key = entry.get("cacheKey")
+        if isinstance(cache_key, str) and cache_key:
+            storage.delete_cache(cache_key)
+
+
+def remove_gameid_aliases_for_game(storage: Storage, game_id: int) -> None:
+    for entry in storage.get_all_cache_by_prefix(cache_keys.PREFIX_GAMEID):
+        try:
+            payload = json.loads(entry["responseBody"])
+        except Exception:
+            continue
+
+        if payload.get("GameID") != game_id:
+            continue
+
+        cache_key = entry.get("cacheKey")
+        if isinstance(cache_key, str) and cache_key:
+            storage.delete_cache(cache_key)
 
 
 def cached_unlock_count(storage: Storage, game_id: int) -> int | None:

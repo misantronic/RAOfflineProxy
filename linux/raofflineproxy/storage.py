@@ -286,6 +286,27 @@ class Storage:
                 ]
                 self._write_json_state_unlocked()
 
+    def delete_cache(self, cache_key: str) -> None:
+        if self._use_sqlite:
+            assert self._connection is not None
+            with self._lock:
+                self._connection.execute(
+                    "DELETE FROM api_cache WHERE cacheKey = ?", (cache_key,)
+                )
+                self._connection.commit()
+            return
+
+        with self._lock:
+            with self._json_file_lock(exclusive=True):
+                self._reload_json_state_unlocked()
+                assert self._json_state is not None
+                self._json_state["api_cache"] = [
+                    item
+                    for item in self._json_state["api_cache"]
+                    if item["cacheKey"] != cache_key
+                ]
+                self._write_json_state_unlocked()
+
     def clear_cache(self) -> None:
         if self._use_sqlite:
             assert self._connection is not None

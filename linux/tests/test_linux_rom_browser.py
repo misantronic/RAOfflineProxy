@@ -486,6 +486,58 @@ class LinuxRomBrowserTests(unittest.TestCase):
             finally:
                 store.close()
 
+    def test_remove_cached_game_deletes_all_related_game_keys(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            db_path = root / "test.sqlite3"
+            store = storage.Storage(database_path=db_path)
+            try:
+                store.upsert_cache(
+                    cache_keys.game_id("abc123"),
+                    '{"Success":true,"GameID":10701}',
+                )
+                store.upsert_cache(
+                    cache_keys.patch(10701, "misantronic"),
+                    '{"Success":true,"PatchData":{"Title":"Tetris"}}',
+                )
+                store.upsert_cache(
+                    cache_keys.unlocks(10701, "misantronic"),
+                    '{"Success":true,"UserUnlocks":[1]}',
+                )
+                store.upsert_cache(
+                    cache_keys.start_session(10701, "misantronic"),
+                    '{"Success":true,"Unlocks":[{"ID":1,"When":1}]}',
+                )
+                store.upsert_cache(
+                    cache_keys.achievementsets("abc123", "misantronic"),
+                    '{"Success":true,"GameId":10701,"Title":"Tetris"}',
+                )
+                store.upsert_cache(
+                    cache_keys.patch(506, "misantronic"),
+                    '{"Success":true,"PatchData":{"Title":"Advance Wars"}}',
+                )
+
+                rom_browser.remove_cached_game(store, 10701)
+
+                remaining_keys = {
+                    entry["cacheKey"] for entry in store.get_all_cache_by_prefix("")
+                }
+                self.assertNotIn(cache_keys.game_id("abc123"), remaining_keys)
+                self.assertNotIn(cache_keys.patch(10701, "misantronic"), remaining_keys)
+                self.assertNotIn(
+                    cache_keys.unlocks(10701, "misantronic"), remaining_keys
+                )
+                self.assertNotIn(
+                    cache_keys.start_session(10701, "misantronic"), remaining_keys
+                )
+                self.assertNotIn(
+                    cache_keys.achievementsets("abc123", "misantronic"),
+                    remaining_keys,
+                )
+                self.assertIn(cache_keys.patch(506, "misantronic"), remaining_keys)
+            finally:
+                store.close()
+
     def test_add_rom_to_cache_persists_hash_aliases_for_offline_gameid(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
