@@ -69,11 +69,11 @@ def safe_stop_proxy(config_data: dict, cfg_path: str | None) -> list[str]:
             revert_result = None
 
     if revert_result is None:
-        output.append("Proxy config already reverted")
+        output.append("retroarch.cfg already reverted")
     elif revert_result["changed"]:
-        output.append(f"Reverted proxy config in {revert_result['cfg_path']}")
+        output.append("Reverted retroarch.cfg")
     else:
-        output.append(f"Proxy config already reverted in {revert_result['cfg_path']}")
+        output.append("retroarch.cfg already reverted")
 
     return output
 
@@ -192,13 +192,11 @@ def main() -> None:
             save_patch_state(patch_state)
             service = start_service_process(config_data)
             if result["already_patched"]:
-                print(f"Proxy config already active in {result['cfg_path']}")
+                print("retroarch.cfg already patched")
             elif result["changed"]:
-                print(
-                    f"Patched {result['cfg_path']} with cheevos_custom_host={result['proxy_host']}"
-                )
+                print("Patched retroarch.cfg")
             else:
-                print(f"Proxy config active in {result['cfg_path']}")
+                print("retroarch.cfg already patched")
             if batocera.get("exists"):
                 print(f"Patched batocera.conf at {batocera['path']}")
             if service["already_running"]:
@@ -322,12 +320,8 @@ def main() -> None:
         print(f"State file: {'present' if status['state_present'] else 'missing'}")
         if status["exists"]:
             print(
-                f"Cheevos enabled: {'yes' if status.get('cheevos_enabled', False) else 'no'}"
-            )
-            print(
                 f"Hardcore enabled: {'yes' if status.get('hardcore_enabled', False) else 'no'}"
             )
-        print(f"Proxy target: {status['proxy_host']}")
         print(f"Service running: {'yes' if service.get('running') else 'no'}")
         if service.get("pid"):
             print(f"Service PID: {service['pid']}")

@@ -18,7 +18,7 @@ if ! resolve_python_bin; then
         printf '  %s\n\n' "$RUNTIME_FAILURE_REASON"
     fi
     printf 'RetroArch cfg default:\n'
-    printf '  %s\n\n' "$RAOFFLINEPROXY_RETROARCH_CFG"
+    printf '  %s\n\n' "$(printf '%s' "$RAOFFLINEPROXY_RETROARCH_CFG" | normalize_display_paths)"
     printf 'Debug log:\n'
     printf '  %s\n\n' "$RUNTIME_DETECT_LOG"
     printf 'Press START to exit...'
