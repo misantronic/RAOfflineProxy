@@ -120,12 +120,12 @@ class LinuxRomBrowserTests(unittest.TestCase):
             )
             rom_path.write_bytes(b"rom")
             store = storage.Storage(database_path=db_path)
-            original_hash_rom = rom_browser.hash_rom
+            original_hash_rom_candidates = rom_browser.hash_rom_candidates
             original_resolve_credentials = rom_browser.resolve_credentials
             original_fetch_game_id = rom_browser.fetch_game_id
             original_cache_game = rom_browser.cache_game
             try:
-                rom_browser.hash_rom = lambda _path: "abcd"
+                rom_browser.hash_rom_candidates = lambda _path: ["abcd"]
                 rom_browser.resolve_credentials = lambda _store, _config, _ua: {
                     "user": "misantronic",
                     "token": "token",
@@ -144,8 +144,14 @@ class LinuxRomBrowserTests(unittest.TestCase):
                     return 10701
 
                 def fake_cache_game(
-                    game_id, credentials, _user_agent, cache_store, _config_data
+                    game_id,
+                    hash_value,
+                    credentials,
+                    _user_agent,
+                    cache_store,
+                    _config_data,
                 ):
+                    self.assertEqual(hash_value, "abcd")
                     cache_store.upsert_cache(
                         cache_keys.patch(game_id, credentials["user"]),
                         '{"Success":true,"PatchData":{"Title":"Tetris"}}',
@@ -163,7 +169,7 @@ class LinuxRomBrowserTests(unittest.TestCase):
                 self.assertTrue(result.success)
                 self.assertIsNotNone(store.get_cache("patch:10701:misantronic"))
             finally:
-                rom_browser.hash_rom = original_hash_rom
+                rom_browser.hash_rom_candidates = original_hash_rom_candidates
                 rom_browser.resolve_credentials = original_resolve_credentials
                 rom_browser.fetch_game_id = original_fetch_game_id
                 rom_browser.cache_game = original_cache_game
@@ -181,12 +187,12 @@ class LinuxRomBrowserTests(unittest.TestCase):
             )
             rom_path.write_bytes(b"rom")
             store = storage.Storage(database_path=db_path)
-            original_hash_rom = rom_browser.hash_rom
+            original_hash_rom_candidates = rom_browser.hash_rom_candidates
             original_resolve_credentials = rom_browser.resolve_credentials
             original_fetch_game_id = rom_browser.fetch_game_id
             original_cache_game = rom_browser.cache_game
             try:
-                rom_browser.hash_rom = lambda _path: "abcd"
+                rom_browser.hash_rom_candidates = lambda _path: ["abcd"]
                 rom_browser.resolve_credentials = lambda _store, _config, _ua: {
                     "user": "misantronic",
                     "token": "token",
@@ -194,11 +200,7 @@ class LinuxRomBrowserTests(unittest.TestCase):
                 rom_browser.fetch_game_id = (
                     lambda _hash, _credentials, _user_agent, _config_data, _store: 10701
                 )
-                rom_browser.cache_game = (
-                    lambda _game_id, _credentials, _user_agent, _store, _config_data: (
-                        None
-                    )
-                )
+                rom_browser.cache_game = lambda *_args: None
 
                 result = rom_browser.add_rom_to_cache(
                     rom_path,
@@ -212,7 +214,7 @@ class LinuxRomBrowserTests(unittest.TestCase):
                     "Caching failed: patch data was not stored",
                 )
             finally:
-                rom_browser.hash_rom = original_hash_rom
+                rom_browser.hash_rom_candidates = original_hash_rom_candidates
                 rom_browser.resolve_credentials = original_resolve_credentials
                 rom_browser.fetch_game_id = original_fetch_game_id
                 rom_browser.cache_game = original_cache_game
@@ -230,12 +232,12 @@ class LinuxRomBrowserTests(unittest.TestCase):
             )
             rom_path.write_bytes(b"rom")
             store = storage.Storage(database_path=db_path)
-            original_hash_rom = rom_browser.hash_rom
+            original_hash_rom_candidates = rom_browser.hash_rom_candidates
             original_resolve_credentials = rom_browser.resolve_credentials
             original_fetch_game_id = rom_browser.fetch_game_id
             original_cache_game = rom_browser.cache_game
             try:
-                rom_browser.hash_rom = lambda _path: "abcd"
+                rom_browser.hash_rom_candidates = lambda _path: ["abcd"]
                 rom_browser.resolve_credentials = lambda _store, _config, _ua: {
                     "user": "misantronic",
                     "token": "bad-token",
@@ -259,7 +261,7 @@ class LinuxRomBrowserTests(unittest.TestCase):
                     "Caching failed: patch failed: invalid credentials",
                 )
             finally:
-                rom_browser.hash_rom = original_hash_rom
+                rom_browser.hash_rom_candidates = original_hash_rom_candidates
                 rom_browser.resolve_credentials = original_resolve_credentials
                 rom_browser.fetch_game_id = original_fetch_game_id
                 rom_browser.cache_game = original_cache_game
@@ -296,8 +298,14 @@ class LinuxRomBrowserTests(unittest.TestCase):
                     return 10701
 
                 def fake_cache_game(
-                    game_id, credentials, _user_agent, cache_store, _config_data
+                    game_id,
+                    hash_value,
+                    credentials,
+                    _user_agent,
+                    cache_store,
+                    _config_data,
                 ):
+                    self.assertEqual(hash_value, "5f397a1e588cfe96b4aa4bab7a5b1d44")
                     cache_store.upsert_cache(
                         cache_keys.patch(game_id, credentials["user"]),
                         '{"Success":true,"PatchData":{"Title":"Tetris"}}',
@@ -385,6 +393,35 @@ class LinuxRomBrowserTests(unittest.TestCase):
                 )
 
                 self.assertEqual(rom_browser.cached_unlock_count(store, 10701), 2)
+            finally:
+                store.close()
+
+    def test_cached_unlock_count_falls_back_to_start_session_unlocks(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            db_path = root / "test.sqlite3"
+            store = storage.Storage(database_path=db_path)
+            try:
+                store.upsert_cache(
+                    cache_keys.patch(10701, "misantronic"),
+                    json.dumps(
+                        {
+                            "Success": True,
+                            "PatchData": {
+                                "Achievements": [
+                                    {"ID": 1, "Title": "First Steps"},
+                                    {"ID": 2, "Title": "Commander"},
+                                ]
+                            },
+                        }
+                    ),
+                )
+                store.upsert_cache(
+                    cache_keys.start_session(10701, "misantronic"),
+                    '{"Success":true,"Unlocks":[{"ID":1,"When":1}]}',
+                )
+
+                self.assertEqual(rom_browser.cached_unlock_count(store, 10701), 1)
             finally:
                 store.close()
 
@@ -486,6 +523,240 @@ class LinuxRomBrowserTests(unittest.TestCase):
             finally:
                 store.close()
 
+    def test_cached_unlock_titles_fall_back_to_start_session_unlocks(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            db_path = root / "test.sqlite3"
+            store = storage.Storage(database_path=db_path)
+            try:
+                store.upsert_cache(
+                    cache_keys.patch(10701, "misantronic"),
+                    json.dumps(
+                        {
+                            "Success": True,
+                            "PatchData": {
+                                "Achievements": [
+                                    {"ID": 1, "Title": "First Steps"},
+                                    {"ID": 2, "Title": "Commander"},
+                                ]
+                            },
+                        }
+                    ),
+                )
+                store.upsert_cache(
+                    cache_keys.start_session(10701, "misantronic"),
+                    '{"Success":true,"Unlocks":[{"ID":1,"When":1}]}',
+                )
+
+                self.assertEqual(
+                    rom_browser.cached_unlock_titles(store, 10701),
+                    ["First Steps"],
+                )
+            finally:
+                store.close()
+
+    def test_cached_unlock_titles_merge_pending_awards_with_start_session_fallback(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            db_path = root / "test.sqlite3"
+            store = storage.Storage(database_path=db_path)
+            try:
+                store.upsert_cache(
+                    cache_keys.patch(10701, "misantronic"),
+                    json.dumps(
+                        {
+                            "Success": True,
+                            "PatchData": {
+                                "Achievements": [
+                                    {"ID": 1, "Title": "First Steps"},
+                                    {"ID": 2, "Title": "Commander"},
+                                ]
+                            },
+                        }
+                    ),
+                )
+                store.upsert_cache(
+                    cache_keys.start_session(10701, "misantronic"),
+                    '{"Success":true,"Unlocks":[{"ID":1,"When":1}]}',
+                )
+                store.upsert_pending_award(
+                    {
+                        "achievementId": 2,
+                        "queryString": "/dorequest.php?r=awardachievement",
+                        "requestBody": "a=2&u=misantronic&h=0",
+                        "userAgent": "RetroArch/1.20.0",
+                        "queuedAt": 0,
+                        "retryCount": 0,
+                        "lastError": None,
+                        "status": "pending",
+                        "payloadHash": "hash-2",
+                        "prevHash": "hash-1",
+                        "signature": "sig",
+                        "signedAt": 0,
+                    }
+                )
+
+                self.assertEqual(
+                    rom_browser.cached_unlock_titles(store, 10701),
+                    ["First Steps", "Commander"],
+                )
+            finally:
+                store.close()
+
+    def test_cached_unlock_titles_use_achievementsets_when_patch_missing(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            db_path = root / "test.sqlite3"
+            store = storage.Storage(database_path=db_path)
+            try:
+                store.upsert_cache(
+                    cache_keys.achievementsets(
+                        "3e399fdc568d0a0e140a5a277a5c32f3", "misantronic"
+                    ),
+                    json.dumps(
+                        {
+                            "Success": True,
+                            "GameId": 10701,
+                            "Title": "Tetris",
+                            "Achievements": {
+                                "1": {"ID": 1, "Title": "First Steps"},
+                                "2": {"ID": 2, "Title": "Commander"},
+                            },
+                        }
+                    ),
+                )
+                store.upsert_cache(
+                    cache_keys.start_session(10701, "misantronic"),
+                    '{"Success":true,"Unlocks":[{"ID":1,"When":1},{"ID":2,"When":2}]}',
+                )
+
+                self.assertEqual(rom_browser.cached_unlock_count(store, 10701), 2)
+                self.assertEqual(
+                    rom_browser.cached_unlock_titles(store, 10701),
+                    ["First Steps", "Commander"],
+                )
+            finally:
+                store.close()
+
+    def test_cached_unlock_titles_use_nested_achievementsets_sets_when_patch_missing(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            db_path = root / "test.sqlite3"
+            store = storage.Storage(database_path=db_path)
+            try:
+                store.upsert_cache(
+                    cache_keys.achievementsets(
+                        "0e5f788550ca1fad8d4e5034d9964307", "misantronic"
+                    ),
+                    json.dumps(
+                        {
+                            "Success": True,
+                            "GameId": 10701,
+                            "Title": "~Test Kit~ SNES Burn-in Test Cartridge",
+                            "Sets": [
+                                {
+                                    "Type": "core",
+                                    "AchievementSetId": 4479,
+                                    "GameId": 10701,
+                                    "Achievements": [
+                                        {
+                                            "ID": 52112,
+                                            "Title": "I Can Hear!",
+                                            "BadgeName": "53693",
+                                        },
+                                        {
+                                            "ID": 52115,
+                                            "Title": "WORK RAM PASS",
+                                            "BadgeName": "53696",
+                                        },
+                                        {
+                                            "ID": 52116,
+                                            "Title": 'Say "Aaaaaaaah"',
+                                            "BadgeName": "53697",
+                                        },
+                                        {
+                                            "ID": 52117,
+                                            "Title": "Official RetroAchievements License",
+                                            "BadgeName": "53703",
+                                        },
+                                    ],
+                                }
+                            ],
+                        }
+                    ),
+                )
+                store.upsert_cache(
+                    cache_keys.start_session(10701, "misantronic"),
+                    json.dumps(
+                        {
+                            "Success": True,
+                            "ServerNow": 1779230395,
+                            "HardcoreUnlocks": [],
+                            "Unlocks": [
+                                {"ID": 52112, "When": 1778445265},
+                                {"ID": 52115, "When": 1778426162},
+                                {"ID": 52116, "When": 1778426236},
+                                {"ID": 52117, "When": 1778445300},
+                            ],
+                        }
+                    ),
+                )
+
+                self.assertEqual(rom_browser.cached_unlock_count(store, 10701), 4)
+                self.assertEqual(
+                    rom_browser.cached_unlock_titles(store, 10701),
+                    [
+                        "I Can Hear!",
+                        "WORK RAM PASS",
+                        'Say "Aaaaaaaah"',
+                        "Official RetroAchievements License",
+                    ],
+                )
+            finally:
+                store.close()
+
+    def test_cached_unlock_titles_prefer_unlocks_over_start_session(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            db_path = root / "test.sqlite3"
+            store = storage.Storage(database_path=db_path)
+            try:
+                store.upsert_cache(
+                    cache_keys.patch(10701, "misantronic"),
+                    json.dumps(
+                        {
+                            "Success": True,
+                            "PatchData": {
+                                "Achievements": [
+                                    {"ID": 1, "Title": "First Steps"},
+                                    {"ID": 2, "Title": "Commander"},
+                                    {"ID": 3, "Title": "Champion"},
+                                ]
+                            },
+                        }
+                    ),
+                )
+                store.upsert_cache(
+                    cache_keys.unlocks(10701, "misantronic"),
+                    '{"Success":true,"UserUnlocks":[1]}',
+                )
+                store.upsert_cache(
+                    cache_keys.start_session(10701, "misantronic"),
+                    '{"Success":true,"Unlocks":[{"ID":2,"When":1},{"ID":3,"When":2}]}',
+                )
+
+                self.assertEqual(rom_browser.cached_unlock_count(store, 10701), 1)
+                self.assertEqual(
+                    rom_browser.cached_unlock_titles(store, 10701),
+                    ["First Steps"],
+                )
+            finally:
+                store.close()
+
     def test_remove_cached_game_deletes_all_related_game_keys(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -560,8 +831,14 @@ class LinuxRomBrowserTests(unittest.TestCase):
                 )
 
                 def fake_cache_game(
-                    game_id, credentials, _user_agent, cache_store, _config_data
+                    game_id,
+                    hash_value,
+                    credentials,
+                    _user_agent,
+                    cache_store,
+                    _config_data,
                 ):
+                    self.assertEqual(hash_value, "primary")
                     cache_store.upsert_cache(
                         cache_keys.patch(game_id, credentials["user"]),
                         '{"Success":true,"PatchData":{"Title":"Tetris"}}',
@@ -580,6 +857,67 @@ class LinuxRomBrowserTests(unittest.TestCase):
 
                 self.assertTrue(result.success)
                 self.assertIn(b'"GameID":10701', response)
+            finally:
+                rom_browser.resolve_credentials = original_resolve_credentials
+                rom_browser.hash_rom_candidates = original_hash_candidates
+                rom_browser.fetch_game_id = original_fetch_game_id
+                rom_browser.cache_game = original_cache_game
+                store.close()
+
+    def test_add_rom_to_cache_stores_hash_scoped_achievementsets(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            db_path = root / "test.sqlite3"
+            rom_path = root / "tetris.gb"
+            rom_path.write_bytes(b"rom")
+            store = storage.Storage(database_path=db_path)
+            original_resolve_credentials = rom_browser.resolve_credentials
+            original_hash_candidates = rom_browser.hash_rom_candidates
+            original_fetch_game_id = rom_browser.fetch_game_id
+            original_cache_game = rom_browser.cache_game
+            try:
+                rom_browser.resolve_credentials = lambda _store, _config, _ua: {
+                    "user": "misantronic",
+                    "token": "token",
+                }
+                rom_browser.hash_rom_candidates = lambda _path: [
+                    "3e399fdc568d0a0e140a5a277a5c32f3"
+                ]
+                rom_browser.fetch_game_id = (
+                    lambda _hash, _credentials, _user_agent, _config_data, _store: 10701
+                )
+
+                def fake_cache_game(
+                    game_id,
+                    hash_value,
+                    credentials,
+                    _user_agent,
+                    cache_store,
+                    _config_data,
+                ):
+                    self.assertEqual(game_id, 10701)
+                    self.assertEqual(hash_value, "3e399fdc568d0a0e140a5a277a5c32f3")
+                    cache_store.upsert_cache(
+                        cache_keys.patch(game_id, credentials["user"]),
+                        '{"Success":true,"PatchData":{"Title":"Tetris"}}',
+                    )
+                    cache_store.upsert_cache(
+                        cache_keys.achievementsets(hash_value, credentials["user"]),
+                        '{"Success":true,"GameId":10701,"Title":"Tetris"}',
+                    )
+
+                rom_browser.cache_game = fake_cache_game
+
+                result = rom_browser.add_rom_to_cache(rom_path, store, {})
+
+                self.assertTrue(result.success)
+                self.assertIsNotNone(
+                    store.get_cache(
+                        cache_keys.achievementsets(
+                            "3e399fdc568d0a0e140a5a277a5c32f3", "misantronic"
+                        )
+                    )
+                )
             finally:
                 rom_browser.resolve_credentials = original_resolve_credentials
                 rom_browser.hash_rom_candidates = original_hash_candidates

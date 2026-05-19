@@ -252,6 +252,7 @@ def add_rom_to_cache(path: Path, storage: Storage, config_data: dict) -> AddRomR
     try:
         cache_game(
             game_id,
+            used_hash,
             credentials,
             proxy_user_agent(user_agent),
             storage,
@@ -334,41 +335,13 @@ def cached_unlock_titles(storage: Storage, game_id: int) -> list[str]:
     if unlock_ids is None:
         return []
 
-    patch_entry = next(
-        (
-            entry
-            for entry in storage.get_all_cache_by_prefix(
-                cache_keys.patch_prefix(game_id)
-            )
-        ),
-        None,
-    )
-    if patch_entry is None:
-        return []
-
-    try:
-        patch_payload = json.loads(patch_entry["responseBody"])
-    except Exception:
-        return []
-
-    achievements = patch_payload.get("PatchData", {}).get("Achievements")
-    title_by_id: dict[int, str] = {}
-    if isinstance(achievements, list):
-        for achievement in achievements:
-            if not isinstance(achievement, dict):
-                continue
-            achievement_id = achievement.get("ID")
-            title = achievement.get("Title")
-            if isinstance(achievement_id, int) and isinstance(title, str):
-                title_by_id[achievement_id] = title
-    elif isinstance(achievements, dict):
-        for achievement in achievements.values():
-            if not isinstance(achievement, dict):
-                continue
-            achievement_id = achievement.get("ID")
-            title = achievement.get("Title")
-            if isinstance(achievement_id, int) and isinstance(title, str):
-                title_by_id[achievement_id] = title
+    title_by_id = {
+        achievement_id: achievement.get("Title")
+        for achievement_id, achievement in cached_achievements_by_id(
+            storage, game_id
+        ).items()
+        if isinstance(achievement.get("Title"), str)
+    }
 
     titles = [
         title_by_id[achievement_id]
@@ -397,9 +370,40 @@ def merged_unlock_ids(storage: Storage, game_id: int) -> list[int] | None:
         unlock_user = parse_user_from_unlocks_key(entry.get("cacheKey", ""))
         break
 
-    if cached_unlock_ids is None or unlock_user is None:
-        return None
-    return merged_unlock_ids_for_user(storage, game_id, unlock_user)
+    if unlock_user is None:
+        start_session_entry = storage.get_cache_by_prefix(
+            f"{cache_keys.PREFIX_STARTSESSION}{game_id}:"
+        )
+        if start_session_entry is None:
+            return None
+
+        unlock_user = parse_user_from_start_session_key(
+            start_session_entry.get("cacheKey", "")
+        )
+        if unlock_user is None:
+            return None
+
+        try:
+            payload = json.loads(start_session_entry["responseBody"])
+        except Exception:
+            payload = {}
+
+        cached_unlock_ids = [
+            int(item.get("ID", 0))
+            for item in payload.get("Unlocks", [])
+            if isinstance(item, dict) and int(item.get("ID", 0) or 0) > 0
+        ]
+
+    achievement_game_ids = build_achievement_game_ids(
+        storage.get_all_cache_by_prefix(cache_keys.PREFIX_PATCH)
+    )
+    return merge_start_session_unlock_ids(
+        cached_unlock_ids=cached_unlock_ids or [],
+        pending_awards=storage.get_pending_awards(),
+        achievement_game_ids=achievement_game_ids,
+        game_id=game_id,
+        user=unlock_user,
+    )
 
 
 def parse_user_from_unlocks_key(cache_key: str) -> str | None:
@@ -414,30 +418,20 @@ def parse_user_from_unlocks_key(cache_key: str) -> str | None:
     return user or None
 
 
+def parse_user_from_start_session_key(cache_key: str) -> str | None:
+    if not cache_key.startswith(cache_keys.PREFIX_STARTSESSION):
+        return None
+
+    parts = cache_key.split(":")
+    if len(parts) != 4:
+        return None
+
+    user = parts[2].strip()
+    return user or None
+
+
 def cached_unlock_badge_path(storage: Storage, game_id: int, title: str) -> Path | None:
-    patch_entry = next(
-        (
-            entry
-            for entry in storage.get_all_cache_by_prefix(
-                cache_keys.patch_prefix(game_id)
-            )
-        ),
-        None,
-    )
-    if patch_entry is None:
-        return None
-
-    try:
-        patch_payload = json.loads(patch_entry["responseBody"])
-    except Exception:
-        return None
-
-    achievements = patch_payload.get("PatchData", {}).get("Achievements")
-    entries = achievements.values() if isinstance(achievements, dict) else achievements
-    if not isinstance(entries, list) and not hasattr(entries, "__iter__"):
-        return None
-
-    for achievement in entries:
+    for achievement in cached_achievements_by_id(storage, game_id).values():
         if not isinstance(achievement, dict):
             continue
         if achievement.get("Title") != title:
@@ -449,6 +443,85 @@ def cached_unlock_badge_path(storage: Storage, game_id: int, title: str) -> Path
         return badge_path if badge_path.exists() else None
 
     return None
+
+
+def cached_achievements_by_id(storage: Storage, game_id: int) -> dict[int, dict]:
+    achievements_by_id: dict[int, dict] = {}
+    merge_cached_achievement_entries(
+        achievements_by_id,
+        storage.get_all_cache_by_prefix(cache_keys.patch_prefix(game_id)),
+        lambda payload: payload.get("PatchData", {}).get("Achievements"),
+    )
+    merge_cached_achievement_entries(
+        achievements_by_id,
+        storage.get_all_cache_by_prefix(cache_keys.PREFIX_ACHIEVEMENTSETS),
+        lambda payload: achievementsets_payload_achievements(payload, game_id),
+    )
+    return achievements_by_id
+
+
+def merge_cached_achievement_entries(
+    achievements_by_id: dict[int, dict], entries: list[dict], select_achievements
+) -> None:
+    for entry in entries:
+        try:
+            payload = json.loads(entry["responseBody"])
+        except Exception:
+            continue
+
+        achievements = select_achievements(payload)
+        values = (
+            achievements.values() if isinstance(achievements, dict) else achievements
+        )
+        if not isinstance(values, list) and not hasattr(values, "__iter__"):
+            continue
+
+        for achievement in values:
+            if not isinstance(achievement, dict):
+                continue
+            achievement_id = achievement.get("ID")
+            if not isinstance(achievement_id, int) or achievement_id <= 0:
+                continue
+
+            existing = achievements_by_id.get(achievement_id, {})
+            merged = dict(achievement)
+            merged.update(existing)
+            achievements_by_id[achievement_id] = merged
+
+
+def achievementsets_payload_achievements(
+    payload: dict, game_id: int
+) -> list[dict] | dict | None:
+    if payload.get("GameId") != game_id:
+        return None
+
+    direct_achievements = payload.get("Achievements")
+    if isinstance(direct_achievements, (list, dict)):
+        return direct_achievements
+
+    sets = payload.get("Sets")
+    if not isinstance(sets, list):
+        return None
+
+    achievements: list[dict] = []
+    for achievement_set in sets:
+        if not isinstance(achievement_set, dict):
+            continue
+
+        set_achievements = achievement_set.get("Achievements")
+        values = (
+            set_achievements.values()
+            if isinstance(set_achievements, dict)
+            else set_achievements
+        )
+        if not isinstance(values, list) and not hasattr(values, "__iter__"):
+            continue
+
+        for achievement in values:
+            if isinstance(achievement, dict):
+                achievements.append(achievement)
+
+    return achievements
 
 
 def clear_cached_games(storage: Storage) -> None:
