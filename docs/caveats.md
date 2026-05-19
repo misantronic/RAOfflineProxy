@@ -1,5 +1,13 @@
 # Caveats
 
+## Android 14 on Anbernic
+
+Reports so far suggest RAOfflineProxy is not working reliably on some Anbernic Android 14 devices, especially the RG477M.
+
+I currently do not own an Android 14 Anbernic device such as the RG477M or RG DS, so I cannot reproduce or debug this directly yet.
+
+If someone wants to [donate one](/contact) for testing, I would be very glad to have it.
+
 ## Android 15+
 
 RAOfflineProxy currently does not seem to work reliably on Android 15 and newer.
