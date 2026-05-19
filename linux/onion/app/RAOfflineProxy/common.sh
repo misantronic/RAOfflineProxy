@@ -29,6 +29,10 @@ show_panel() {
     return 0
 }
 
+normalize_display_paths() {
+    sed 's#/mnt/SDCARD/#/#g'
+}
+
 prepare_env() {
     mkdir -p "$APP_DATA_DIR"
     : > "$RUNTIME_DETECT_LOG"
@@ -131,7 +135,7 @@ resolve_python_bin() {
 run_backend() {
     python_bin="$1"
     shift
-    "$python_bin" -m raofflineproxy.main "$@"
+    "$python_bin" -m raofflineproxy.main "$@" | normalize_display_paths
 }
 
 log_path() {
