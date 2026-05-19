@@ -1,5 +1,6 @@
 import json
 import logging
+import time
 
 from . import cache_keys
 from .config import FALLBACK_USER_AGENT, image_caching_enabled, upstream_host
@@ -85,6 +86,40 @@ def cache_unlocks(
     if storage is not None:
         storage.upsert_cache(
             cache_keys.unlocks(game_id, credentials["user"]),
+            response_body,
+        )
+
+    return response_body
+
+
+def cache_achievementsets(
+    hash_value: str,
+    credentials: dict,
+    user_agent: str,
+    config_data: dict,
+    storage: Storage | None = None,
+) -> str | None:
+    url = build_api_url(
+        upstream_host(config_data),
+        "achievementsets",
+        {
+            "m": hash_value,
+            "u": credentials["user"],
+            "t": credentials["token"],
+        },
+    )
+    try:
+        response_body = http_get(url, user_agent)
+        payload = json.loads(response_body)
+    except Exception:
+        return None
+
+    if not payload.get("Success"):
+        return None
+
+    if storage is not None:
+        storage.upsert_cache(
+            cache_keys.achievementsets(hash_value, credentials["user"]),
             response_body,
         )
 
@@ -224,6 +259,7 @@ def cache_session(game_id: int, credentials: dict, storage: Storage) -> str:
 
 def cache_game(
     game_id: int,
+    hash_value: str,
     credentials: dict,
     user_agent: str,
     storage: Storage,
@@ -241,6 +277,13 @@ def cache_game(
 
     unlocks_body = cache_unlocks(
         game_id,
+        credentials,
+        user_agent or FALLBACK_USER_AGENT,
+        config_data,
+        storage,
+    )
+    cache_achievementsets(
+        hash_value,
         credentials,
         user_agent or FALLBACK_USER_AGENT,
         config_data,
