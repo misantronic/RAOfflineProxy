@@ -1,5 +1,6 @@
 import argparse
 import json
+import logging
 import sys
 from pathlib import Path
 
@@ -28,12 +29,18 @@ from .menu_sdl import run_menu_sdl
 from .network import online_check
 from .pending_awards import list_pending_awards
 from .rom_browser import clear_cached_games, list_cached_games
-from .smart_cache import SMART_CACHE_LIMIT, run_smart_cache, should_offer_smart_cache
+from .smart_cache import (
+    SMART_CACHE_LIMIT,
+    load_content_history_paths,
+    run_smart_cache,
+    should_offer_smart_cache,
+)
 from .storage import Storage
 from .state import load_patch_state, save_patch_state
 from .ui import write_status_image, write_text_image
 
 STALE_HOOK_PATH = Path("/userdata/system/scripts/RAOfflineProxy_game_hook.sh")
+LOGGER = logging.getLogger("raofflineproxy")
 
 
 def remove_stale_hook() -> None:
@@ -284,18 +291,25 @@ def main() -> None:
         if args.command == "smart-cache-status":
             storage = Storage()
             try:
-                credentials = resolve_credentials(storage, config_data)
-                status = should_offer_smart_cache(
-                    storage,
-                    config_data,
-                    is_online=online_check(config_data),
-                    has_credentials=credentials is not None,
-                )
+                cached_games = list_cached_games(storage)
+                if cached_games:
+                    LOGGER.info(
+                        "Smart Cache status skipped: cached games already present count=%s",
+                        len(cached_games),
+                    )
+                    total_candidates = 0
+                else:
+                    history_paths = load_content_history_paths(config_data)
+                    total_candidates = len(history_paths)
+                    LOGGER.info(
+                        "Smart Cache status history candidates=%s",
+                        total_candidates,
+                    )
                 print(
                     json.dumps(
                         {
-                            "found_history": status.found_history,
-                            "total_candidates": status.total_candidates,
+                            "found_history": total_candidates > 0,
+                            "total_candidates": total_candidates,
                         },
                         separators=(",", ":"),
                     )
@@ -307,6 +321,16 @@ def main() -> None:
         if args.command == "run-smart-cache":
             storage = Storage()
             try:
+                credentials = resolve_credentials(storage, config_data)
+                if credentials is None:
+                    LOGGER.info(
+                        "Smart Cache run blocked: missing RetroAchievements credentials"
+                    )
+                    raise RuntimeError("RetroAchievements login required")
+                if not online_check(config_data):
+                    LOGGER.info("Smart Cache run blocked: online check failed")
+                    raise RuntimeError("Smart Cache requires an online connection")
+                LOGGER.info("Smart Cache run starting")
 
                 def on_progress(progress) -> None:
                     print(
