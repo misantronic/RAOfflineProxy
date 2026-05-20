@@ -22,7 +22,7 @@ cp -R "${SCRIPT_DIR}/app/RAOfflineProxy/." "${APP_DIR}/"
 mkdir -p "${APP_DIR}/app"
 cp -R "${LINUX_DIR}/raofflineproxy" "${APP_DIR}/app/raofflineproxy"
 cp "${LINUX_DIR}/requirements.txt" "${APP_DIR}/app/requirements.txt"
-sips -z 74 74 "${LINUX_DIR}/../docs/public/logo-onion.png" --out "${APP_DIR}/icon.png" >/dev/null
+sips -z 74 74 "${LINUX_DIR}/../docs/public/logo.png" --out "${APP_DIR}/icon.png" >/dev/null
 mkdir -p "${APP_DIR}/data"
 
 if [ -f "${RUNTIME_ARCHIVE_PATH}" ]; then
