@@ -21,8 +21,19 @@ if ! resolve_python_bin; then
     printf '  %s\n\n' "$(printf '%s' "$RAOFFLINEPROXY_RETROARCH_CFG" | normalize_display_paths)"
     printf 'Debug log:\n'
     printf '  %s\n\n' "$RUNTIME_DETECT_LOG"
-    printf 'Press START to exit...'
-    read _
+    printf 'Press START or A to exit...'
+    saved_tty="$(stty -g < /dev/tty)"
+    while :; do
+        stty -echo -icanon min 1 time 0 < /dev/tty
+        key="$(read_byte_hex)"
+        case "$key" in
+            0d|0a|20|61|41|73|53)
+                stty "$saved_tty" < /dev/tty
+                drain_tty "$saved_tty"
+                break
+                ;;
+        esac
+    done
     exit 1
 fi
 
@@ -57,7 +68,7 @@ pause_smart_cache_prompt() {
         printf 'Smart Cache found %s recent games.\n\n' "$count"
         printf 'Cache games: %s\n\n' "$choice"
         printf 'Use D-Pad to choose.\n'
-        printf 'Press START to continue.\n'
+        printf 'Press START or A to continue.\n'
     }
 
     render_prompt
@@ -211,8 +222,20 @@ toggle_autostart() {
 }
 
 pause_prompt() {
-    printf '\nPress START to continue...'
-    read _
+    saved_tty="$(stty -g < /dev/tty)"
+    printf '\nPress START or A to continue...'
+    while :; do
+        stty -echo -icanon min 1 time 0 < /dev/tty
+        key="$(read_byte_hex)"
+        case "$key" in
+            0d|0a|20|61|41|73|53)
+                stty "$saved_tty" < /dev/tty
+                drain_tty "$saved_tty"
+                printf '\n'
+                return 0
+                ;;
+        esac
+    done
 }
 
 show_cached_games() {
