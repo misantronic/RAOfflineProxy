@@ -380,9 +380,10 @@ def main() -> None:
             print(
                 f"Hardcore enabled: {'yes' if status.get('hardcore_enabled', False) else 'no'}"
             )
-        print(f"Service running: {'yes' if service.get('running') else 'no'}")
-        if service.get("pid"):
-            print(f"Service PID: {service['pid']}")
+        service_line = f"Service running: {'yes' if service.get('running') else 'no'}"
+        if service.get("running") and service.get("pid"):
+            service_line += f" | PID: {service['pid']}"
+        print(service_line)
     except Exception as exc:
         print(str(exc), file=sys.stderr)
         if not CONFIG_FILE.exists():
