@@ -1,10 +1,12 @@
 # Caveats
 
-## Android 14 on Anbernic
+## Android 14 on Anbernic and Mangmi
 
-Reports so far suggest RAOfflineProxy is not working reliably on some Anbernic Android 14 devices, especially the RG477M.
+Reports so far suggest RAOfflineProxy is not working reliably on some Anbernic and Mangmi Android 14 devices, especially the RG477M and Mangmi Air X.
 
-I currently do not own an Android 14 Anbernic device such as the RG477M or RG DS, so I cannot reproduce or debug this directly yet.
+One reported blocker on Mangmi Air X is that it is still not possible to grant access to `Android/data/com.retroarch.aarch64/files`. The system folder picker shows **Use this folder** as greyed out, and trying to confirm it returns: `To protect your privacy, choose another folder`.
+
+I currently do not own an Android 14 device from mentioned brand, so I cannot reproduce or debug this directly yet.
 
 If someone wants to [donate one](/contact) for testing, I would be very glad to have it.
 
