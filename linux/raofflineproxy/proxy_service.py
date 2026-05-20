@@ -1,5 +1,6 @@
 import json
 import logging
+from collections.abc import Sequence
 from pathlib import Path
 import socket
 import socketserver
@@ -381,6 +382,9 @@ class ProxyRuntimeServer(ThreadingTCPServer):
                 self.storage.upsert_cache(
                     cache_keys.start_session(game_id, user), response_body
                 )
+                self.refresh_unlocks_from_start_session(
+                    int(game_id), user, response_body
+                )
 
         if should_cache_response(response_body) and should_cache_action(action, path):
             key = cache_key_for_request(path, raw_body)
@@ -398,6 +402,36 @@ class ProxyRuntimeServer(ThreadingTCPServer):
                         self.storage,
                     )
         return response_bytes(status_code, response_body, reason)
+
+    def refresh_unlocks_from_start_session(
+        self, game_id: int, user: str, response_body: str
+    ) -> None:
+        try:
+            payload = json.loads(response_body)
+        except Exception:
+            return
+
+        unlock_entries = payload.get("Unlocks")
+        if not isinstance(unlock_entries, Sequence) or isinstance(
+            unlock_entries, (str, bytes, bytearray)
+        ):
+            return
+
+        unlock_ids: list[int] = []
+        for item in unlock_entries:
+            if not isinstance(item, dict):
+                continue
+            achievement_id = item.get("ID")
+            if isinstance(achievement_id, int) and achievement_id > 0:
+                unlock_ids.append(achievement_id)
+
+        self.storage.upsert_cache(
+            cache_keys.unlocks(game_id, user),
+            json.dumps(
+                {"Success": True, "UserUnlocks": unlock_ids},
+                separators=(",", ":"),
+            ),
+        )
 
     def handle_offline_request(
         self, path: str, raw_body: str, action: str | None
