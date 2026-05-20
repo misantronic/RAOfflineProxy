@@ -105,11 +105,17 @@ pause_smart_cache_prompt() {
 }
 
 run_smart_cache_flow() {
+    total_count="$1"
     result_line=
     backend_rc=0
     fifo_path="/tmp/raofflineproxy-smart-cache.$$"
     rm -f "$fifo_path"
     mkfifo "$fifo_path"
+
+    clear
+    printf 'RAOfflineProxy\n\n'
+    printf 'Smart Cache: 0 / %s\n' "${total_count:-0}"
+    printf 'Preparing...\n'
 
     run_backend "$PYTHON_BIN" run-smart-cache > "$fifo_path" 2>&1 &
     backend_pid=$!
@@ -195,7 +201,7 @@ maybe_offer_smart_cache() {
 
     pause_smart_cache_prompt "${total_candidates:-0}"
     if [ "$SMART_CACHE_ACTION" = "YES" ]; then
-        run_smart_cache_flow
+        run_smart_cache_flow "${total_candidates:-0}"
     fi
 
     return 0
@@ -256,7 +262,6 @@ show_pending_awards() {
 
 clear_cached_games() {
     if run_backend "$PYTHON_BIN" clear-cached-games; then
-        printf 'Cleared cached games\n'
         return 0
     fi
 
@@ -409,6 +414,7 @@ while :; do
             pause_prompt
             ;;
         4)
+            clear
             clear_cached_games
             pause_prompt
             ;;
