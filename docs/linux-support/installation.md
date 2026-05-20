@@ -16,6 +16,7 @@ Before using `RAOfflineProxy` on Linux:
 
 - Make sure the system clock is correct
 - Enter your RetroAchievements account details in RetroArch
+- Delete the old `/App/RAOfflineProxy` folder before copying a new version
 
 :::
 
