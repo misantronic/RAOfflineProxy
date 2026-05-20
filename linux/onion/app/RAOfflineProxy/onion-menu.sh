@@ -31,7 +31,15 @@ PYTHON_BIN="$RESOLVED_PYTHON_BIN"
 install_onion_checkoff_script >/dev/null 2>&1 || true
 
 DPAD_SELECTION=0
-MENU_ITEM_COUNT=5
+MENU_ITEM_COUNT=6
+
+cached_games_count() {
+    run_backend "$PYTHON_BIN" cached-games-count 2>/dev/null || printf '0\n'
+}
+
+pending_awards_count() {
+    run_backend "$PYTHON_BIN" pending-awards-count 2>/dev/null || printf '0\n'
+}
 
 smart_cache_status() {
     run_backend "$PYTHON_BIN" smart-cache-status 2>/dev/null || printf '{"found_history":false,"total_candidates":0}\n'
@@ -208,7 +216,16 @@ pause_prompt() {
 }
 
 show_cached_games() {
+    printf 'RAOfflineProxy > Cached games\n\n'
     if ! run_backend "$PYTHON_BIN" cached-games; then
+        return 1
+    fi
+    return 0
+}
+
+show_pending_awards() {
+    printf 'RAOfflineProxy > Pending awards\n\n'
+    if ! run_backend "$PYTHON_BIN" pending-awards; then
         return 1
     fi
     return 0
@@ -282,6 +299,10 @@ read_choice() {
                 pending_choice=5
                 DPAD_SELECTION=5
                 ;;
+            36)
+                pending_choice=6
+                DPAD_SELECTION=6
+                ;;
             0d|0a|20|61|41|73|53)
                 if [ -n "$pending_choice" ]; then
                     choice="$pending_choice"
@@ -327,15 +348,18 @@ read_choice() {
 }
 
 while :; do
+    cached_count="$(cached_games_count)"
+    pending_count="$(pending_awards_count)"
     clear
     printf 'RAOfflineProxy\n\n'
     show_status || true
     printf '\n'
     printf '1. %s\n' "$(proxy_menu_label | tr -d '\n')"
-    printf '2. Cached games\n'
-    printf '3. Clear cached games\n'
-    printf '4. %s\n' "$(autostart_menu_label | tr -d '\n')"
-    printf '5. Exit\n\n'
+    printf '2. Cached games (%s)\n' "$cached_count"
+    printf '3. Pending awards (%s)\n' "$pending_count"
+    printf '4. Clear cached games\n'
+    printf '5. %s\n' "$(autostart_menu_label | tr -d '\n')"
+    printf '6. Exit\n\n'
     printf 'Use D-Pad to choose\n'
 
     read_choice
@@ -358,14 +382,18 @@ while :; do
             pause_prompt
             ;;
         3)
-            clear_cached_games
+            show_pending_awards || true
             pause_prompt
             ;;
         4)
-            toggle_autostart
+            clear_cached_games
             pause_prompt
             ;;
         5)
+            toggle_autostart
+            pause_prompt
+            ;;
+        6)
             exit 0
             ;;
         *)

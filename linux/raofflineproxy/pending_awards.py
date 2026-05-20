@@ -22,8 +22,7 @@ class PendingAwardEntry:
 
     @property
     def summary_text(self) -> str:
-        points_text = f"{self.points}pts." if self.points is not None else "- pts."
-        return f"{self.achievement_title} | {self.date_text} | {points_text}"
+        return f"{self.game_title} | {self.achievement_title} | {self.date_text}"
 
 
 def list_pending_awards(storage: Storage) -> list[PendingAwardEntry]:
@@ -64,6 +63,7 @@ def delete_pending_award(storage: Storage, achievement_id: int) -> None:
 
 def build_patch_index(storage: Storage) -> dict[int, dict]:
     index: dict[int, dict] = {}
+
     for entry in storage.get_all_cache_by_prefix(cache_keys.PREFIX_PATCH):
         game_id = cache_keys.parse_game_id_from_patch_key(entry["cacheKey"])
         if game_id is None:
@@ -86,4 +86,37 @@ def build_patch_index(storage: Storage) -> dict[int, dict]:
                 or f"Achievement {achievement_id}",
                 "points": achievement.get("Points"),
             }
+
+    for entry in storage.get_all_cache_by_prefix(cache_keys.PREFIX_ACHIEVEMENTSETS):
+        try:
+            payload = json.loads(entry["responseBody"])
+        except Exception:
+            continue
+
+        game_id = payload.get("GameId")
+        if not isinstance(game_id, int) or game_id <= 0:
+            continue
+
+        game_title = payload.get("Title") or f"Game {game_id}"
+        achievements = payload.get("Achievements", [])
+        entries = (
+            achievements.values() if isinstance(achievements, dict) else achievements
+        )
+        for achievement in entries:
+            if not isinstance(achievement, dict):
+                continue
+            achievement_id = achievement.get("ID")
+            if not isinstance(achievement_id, int):
+                continue
+            index.setdefault(
+                achievement_id,
+                {
+                    "game_id": game_id,
+                    "game_title": game_title,
+                    "achievement_title": achievement.get("Title")
+                    or f"Achievement {achievement_id}",
+                    "points": achievement.get("Points"),
+                },
+            )
+
     return index
