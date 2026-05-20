@@ -26,6 +26,7 @@ from .service import (
 )
 from .menu_sdl import run_menu_sdl
 from .network import online_check
+from .pending_awards import list_pending_awards
 from .rom_browser import clear_cached_games, list_cached_games
 from .smart_cache import SMART_CACHE_LIMIT, run_smart_cache, should_offer_smart_cache
 from .storage import Storage
@@ -91,7 +92,10 @@ def main() -> None:
             "disable-autostart",
             "autostart-status",
             "cached-games",
+            "cached-games-count",
             "clear-cached-games",
+            "pending-awards",
+            "pending-awards-count",
             "smart-cache-status",
             "run-smart-cache",
             "status",
@@ -232,8 +236,16 @@ def main() -> None:
                     print("No cached games")
                     return
 
-                for game in games:
-                    print(f"{game.title} ({game.game_id})")
+                for index, game in enumerate(games, start=1):
+                    print(f"{index}. {game.title} ({game.game_id})")
+            finally:
+                storage.close()
+            return
+
+        if args.command == "cached-games-count":
+            storage = Storage()
+            try:
+                print(len(list_cached_games(storage)))
             finally:
                 storage.close()
             return
@@ -243,6 +255,28 @@ def main() -> None:
             try:
                 clear_cached_games(storage)
                 print("Cleared cached games")
+            finally:
+                storage.close()
+            return
+
+        if args.command == "pending-awards":
+            storage = Storage()
+            try:
+                awards = list_pending_awards(storage)
+                if not awards:
+                    print("No pending awards")
+                    return
+
+                for index, award in enumerate(awards, start=1):
+                    print(f"{index}. {award.summary_text}")
+            finally:
+                storage.close()
+            return
+
+        if args.command == "pending-awards-count":
+            storage = Storage()
+            try:
+                print(len(list_pending_awards(storage)))
             finally:
                 storage.close()
             return
