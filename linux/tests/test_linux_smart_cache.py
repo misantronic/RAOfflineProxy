@@ -161,33 +161,28 @@ class LinuxSmartCacheTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             cfg_path = root / "retroarch.cfg"
+            rom_path = root / "roms" / "tetris.gb"
+            history_path = root / "playlists" / "content_history.lpl"
             cfg_path.write_text("# cfg\n", encoding="utf-8")
+            rom_path.parent.mkdir(parents=True)
+            history_path.parent.mkdir(parents=True)
+            rom_path.write_bytes(b"one")
+            history_path.write_text(
+                json.dumps({"items": [{"path": str(rom_path)}]}),
+                encoding="utf-8",
+            )
 
             stdout = StringIO()
             with mock.patch("sys.argv", ["raofflineproxy", "smart-cache-status"]):
                 with mock.patch.object(
                     main, "load_config", return_value={"retroarch_cfg": str(cfg_path)}
                 ):
-                    with mock.patch.object(
-                        main,
-                        "resolve_credentials",
-                        return_value={"user": "u", "token": "t"},
-                    ):
-                        with mock.patch.object(main, "online_check", return_value=True):
-                            with mock.patch.object(
-                                main,
-                                "should_offer_smart_cache",
-                                return_value=smart_cache.SmartCacheStatus(
-                                    found_history=True,
-                                    total_candidates=3,
-                                ),
-                            ):
-                                with mock.patch("sys.stdout", stdout):
-                                    main.main()
+                    with mock.patch("sys.stdout", stdout):
+                        main.main()
 
             self.assertEqual(
                 stdout.getvalue().strip(),
-                '{"found_history":true,"total_candidates":3}',
+                '{"found_history":true,"total_candidates":1}',
             )
 
     def test_main_run_smart_cache_outputs_progress_and_result_json(self) -> None:
@@ -221,10 +216,18 @@ class LinuxSmartCacheTests(unittest.TestCase):
                     main, "load_config", return_value={"retroarch_cfg": str(cfg_path)}
                 ):
                     with mock.patch.object(
-                        main, "run_smart_cache", side_effect=fake_run_smart_cache
+                        main,
+                        "resolve_credentials",
+                        return_value={"user": "u", "token": "t"},
                     ):
-                        with mock.patch("sys.stdout", stdout):
-                            main.main()
+                        with mock.patch.object(main, "online_check", return_value=True):
+                            with mock.patch.object(
+                                main,
+                                "run_smart_cache",
+                                side_effect=fake_run_smart_cache,
+                            ):
+                                with mock.patch("sys.stdout", stdout):
+                                    main.main()
 
             lines = stdout.getvalue().strip().splitlines()
             self.assertEqual(

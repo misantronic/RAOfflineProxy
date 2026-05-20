@@ -135,7 +135,13 @@ resolve_python_bin() {
 run_backend() {
     python_bin="$1"
     shift
-    "$python_bin" -m raofflineproxy.main "$@" | normalize_display_paths
+    run_backend_raw "$python_bin" "$@" | normalize_display_paths
+}
+
+run_backend_raw() {
+    python_bin="$1"
+    shift
+    "$python_bin" -m raofflineproxy.main "$@"
 }
 
 log_path() {

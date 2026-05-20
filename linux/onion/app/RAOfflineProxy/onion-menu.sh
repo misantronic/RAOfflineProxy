@@ -117,7 +117,7 @@ run_smart_cache_flow() {
     printf 'Smart Cache: 0 / %s\n' "${total_count:-0}"
     printf 'Preparing...\n'
 
-    run_backend "$PYTHON_BIN" run-smart-cache > "$fifo_path" 2>&1 &
+    run_backend_raw "$PYTHON_BIN" run-smart-cache > "$fifo_path" 2>&1 &
     backend_pid=$!
 
     while IFS= read -r line; do
