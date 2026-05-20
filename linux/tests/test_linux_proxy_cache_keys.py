@@ -262,6 +262,57 @@ class LinuxProxyCacheKeyTests(unittest.TestCase):
                 cached = store.get_cache(cache_keys.start_session(10701, "misantronic"))
                 self.assertIsNotNone(cached)
                 self.assertIn('"ID":52113', cached["responseBody"])
+                unlocks = store.get_cache(cache_keys.unlocks(10701, "misantronic"))
+                self.assertIsNotNone(unlocks)
+                self.assertEqual(
+                    unlocks["responseBody"],
+                    '{"Success":true,"UserUnlocks":[52113]}',
+                )
+            finally:
+                store.close()
+
+    def test_online_startsession_replaces_stale_unlock_cache(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            store = storage.Storage(database_path=Path(temp_dir) / "test.sqlite3")
+            runtime = object.__new__(proxy_service.ProxyRuntimeServer)
+            runtime.storage = store
+            runtime.config_data = {}
+            try:
+                store.upsert_cache(
+                    cache_keys.unlocks(10701, "misantronic"),
+                    '{"Success":true,"UserUnlocks":[1,2,3,4,5,6,7]}',
+                )
+
+                def forward_to_upstream_result(_self, method, path, raw_body, headers):
+                    self.assertEqual(method, "POST")
+                    self.assertIn("r=startsession", raw_body)
+                    return (
+                        "success",
+                        200,
+                        "OK",
+                        b'{"Success":true,"ServerNow":1700000000,"Unlocks":[{"ID":1,"When":1700000000},{"ID":2,"When":1700000000},{"ID":3,"When":1700000000},{"ID":4,"When":1700000000}],"HardcoreUnlocks":[]}',
+                        "application/json",
+                        '{"Success":true,"ServerNow":1700000000,"Unlocks":[{"ID":1,"When":1700000000},{"ID":2,"When":1700000000},{"ID":3,"When":1700000000},{"ID":4,"When":1700000000}],"HardcoreUnlocks":[]}',
+                    )
+
+                runtime.forward_to_upstream_result = MethodType(
+                    forward_to_upstream_result, runtime
+                )
+
+                runtime.handle_online_request(
+                    "POST",
+                    "/dorequest.php",
+                    "r=startsession&u=misantronic&t=token&g=10701&h=0&m=hash&l=12.1",
+                    "startsession",
+                    {},
+                )
+
+                unlocks = store.get_cache(cache_keys.unlocks(10701, "misantronic"))
+                self.assertIsNotNone(unlocks)
+                self.assertEqual(
+                    unlocks["responseBody"],
+                    '{"Success":true,"UserUnlocks":[1,2,3,4]}',
+                )
             finally:
                 store.close()
 
