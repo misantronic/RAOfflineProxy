@@ -39,10 +39,6 @@ When a queued award is flushed, the proxy computes the elapsed time since it was
 | **Network error** | Retried up to **5 times**. After that, the award stays in the queue with an error message |
 | **Chain broken** | Entire sync is blocked - see [Anti-Tamper Hash Chain](./hash-chain)                       |
 
-::: warning Hardcore awards
-If a hardcore award somehow ends up in the queue (from an older version), it is silently removed during sync rather than sent to RA.
-:::
-
 ## Stale Award Filtering
 
 Before syncing, the proxy checks each queued achievement against your cached game data. If an achievement has been retired or removed from RetroAchievements since you earned it, the award is flagged as stale and skipped during sync. Stale awards remain in the queue with an error message so you can see which ones were affected - they are not silently deleted.
