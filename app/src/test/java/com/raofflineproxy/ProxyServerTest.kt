@@ -687,4 +687,5 @@ class ProxyServerTest {
         val response = proxyHttpGameIdCacheMiss()
         assertTrue(response.contains("Game not cached"))
     }
+
 }

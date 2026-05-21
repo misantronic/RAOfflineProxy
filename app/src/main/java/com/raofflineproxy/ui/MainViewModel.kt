@@ -50,6 +50,8 @@ import com.raofflineproxy.proxy.loginAndCacheToken
 import com.raofflineproxy.proxy.loadLoginCredentials
 import com.raofflineproxy.proxy.runSmartCache
 import com.raofflineproxy.proxy.loadUserAgent
+import com.raofflineproxy.proxy.compactCachedRawResponse
+import com.raofflineproxy.proxy.normalizeCachedResponse
 import com.raofflineproxy.proxy.resolveCachedGameIconPath
 import com.raofflineproxy.proxy.scanRomFolder
 import com.raofflineproxy.proxy.SmartCacheEmulator
@@ -152,6 +154,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         )
 
         checkCfgPatched(treeUri = loadSafUri())
+        viewModelScope.launch(Dispatchers.IO) {
+            compactCachedShadowPatches()
+            compactCachedRawAchievementSets()
+        }
         val emulatorSupport = loadEmulatorSupport(app)
         Log.i(
             "RAProxy/Emulators",
@@ -992,7 +998,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         SnackbarManager.showProgress(progressMessage)
                     }
                 }
-                Log.i("RAProxy/Scan", "scanRoms complete matched=${result.matched} total=${result.total} skipped=${result.skipped} limitReached=${result.limitReached}")
                 completionMessage = if (result.limitReached) {
                     str(R.string.scan_complete_limit, result.matched, result.total, result.skipped, MAX_CACHED_GAMES)
                 } else {
@@ -1002,7 +1007,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 Log.e("RAProxy/Scan", "scanRoms failed for treeUri=$treeUri", t)
                 SnackbarManager.showError(t.message ?: "ROM scan failed.")
             } finally {
-                Log.i("RAProxy/Scan", "scanRoms clearing progress UI")
                 _state.value = _state.value.copy(
                     scanInProgress = false,
                     scanProgress = null
@@ -1406,6 +1410,37 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 responseBody = body
             )
         )
+    }
+
+    private suspend fun compactCachedShadowPatches() {
+        val patchEntries = runCatching { db.cacheDao().getAllByPrefix(CacheKeys.PREFIX_PATCH) }.getOrDefault(emptyList())
+        patchEntries.forEach { entry ->
+            val normalized = runCatching {
+                normalizeCachedResponse("patch", "", "", entry.responseBody)
+            }.getOrNull() ?: return@forEach
+            db.cacheDao().upsert(
+                entry.copy(
+                    responseBody = normalized,
+                    cachedAt = System.currentTimeMillis()
+                )
+            )
+        }
+    }
+
+    private suspend fun compactCachedRawAchievementSets() {
+        val rawEntries = runCatching { db.cacheDao().getAllByPrefix(CacheKeys.PREFIX_ACHIEVEMENTSETS) }.getOrDefault(emptyList())
+        rawEntries.forEach { entry ->
+            val compacted = runCatching {
+                compactCachedRawResponse("achievementsets", entry.responseBody)
+            }.getOrNull() ?: return@forEach
+            if (compacted == entry.responseBody) return@forEach
+            db.cacheDao().upsert(
+                entry.copy(
+                    responseBody = compacted,
+                    cachedAt = System.currentTimeMillis()
+                )
+            )
+        }
     }
 }
 

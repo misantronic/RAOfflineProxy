@@ -399,13 +399,13 @@ internal suspend fun cacheGame(
             val normalizedBody = normalizeCachedResponse(action, "", requestParams.entries.joinToString("&") { "${it.key}=${it.value}" }, result.body)
             if (romHash != null) {
                 val achievementSetsKey = CacheKeys.achievementSets(romHash, creds.user)
+                val rawBodyToCache = compactCachedRawResponse(action, result.body)
                 db.cacheDao().upsert(
                     CacheEntry(
                         cacheKey = achievementSetsKey,
-                        responseBody = result.body
+                        responseBody = rawBodyToCache
                     )
                 )
-                Log.i(TAG, "cacheGame: cached raw achievementsets key=$achievementSetsKey for gameId=$gameId")
             }
             db.cacheDao().upsert(
                 CacheEntry(
@@ -414,7 +414,6 @@ internal suspend fun cacheGame(
                     sourceRomPath = sourceRomPath
                 )
             )
-            Log.i(TAG, "cacheGame: cached normalized patch key=${CacheKeys.patch(gameId, creds.user)}")
             if (cacheImages) {
                 cachePatchImages(context, gameId, userAgent, normalizedBody, cacheBadges = cacheBadgeImages)
             }
