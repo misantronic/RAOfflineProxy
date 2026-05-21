@@ -100,8 +100,8 @@ The table below reflects the current app behavior.
 | **Nintendo DS** | Hashes the DS header, ARM9 code, ARM7 code, and icon/title block, while ignoring a 512-byte SuperCard header when present | **✅ Working** |
 | **PlayStation** | Parses the disc image, reads `SYSTEM.CNF`, finds the boot executable, and hashes the executable path plus executable contents | **✅ Working for `.bin` images**. `.iso` is implemented but not manually tested |
 | **PSP** | Parses the ISO and hashes `PSP_GAME\PARAM.SFO` followed by `PSP_GAME\SYSDIR\EBOOT.BIN` | **✅ Working** |
-| **GameCube** | Parses the disc image, hashes the disc header plus the `main.dol` sections the same way RetroAchievements expects for GameCube disc images, including supported container formats | **✅ Working for `.iso`, `.gcm`, and `.rvz` images**. `.ciso` and `.gcz` are implemented but not manually validated yet |
-| **Wii** | Supports Wii disc-image hashing plus WiiWare hashing for `.wad` packages, including supported container formats | **✅ Working for `.iso`, `.rvz`, and `.wad`**. `.ciso`, `.gcz`, and `.wbfs` are implemented but not manually validated yet |
+| **GameCube** | Parses the disc image, hashes the disc header plus the `main.dol` sections the same way RetroAchievements expects for GameCube disc images, including supported container formats | **✅ Working for `.iso`, `.gcm`, `.rvz`, and `.ciso` images**. `.gcz` is implemented but not manually validated yet |
+| **Wii** | Supports Wii disc-image hashing plus WiiWare hashing for `.wad` packages, including supported container formats | **✅ Working for `.iso`, `.rvz`, `.ciso`, and `.wad`**. `.gcz` and `.wbfs` are implemented but not manually validated yet |
 | **Atari 7800** | Ignores the 128-byte A78 header when present, then MD5s the remaining ROM data | **Best effort only** |
 | **Atari Lynx** | Ignores the 64-byte LNX header when present, then MD5s the remaining ROM data | **Best effort only** |
 | **PC Engine**<br>**TurboGrafx-16**<br>**SuperGrafx** | Ignores a 512-byte header when the file size indicates one, then MD5s the ROM | **Best effort only** |

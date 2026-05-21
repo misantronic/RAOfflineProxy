@@ -657,6 +657,34 @@ class RomScannerHashTest {
     }
 
     @Test
+    fun hashRom_gameCubeCisoWithLargeLogicalSizeStillUsesNintendoDiscPath() {
+        val disc = buildGameCubeDisc()
+        val cisoDataSource = SparseCisoRomDataSource(
+            blockSize = 0x00200000,
+            disc = disc
+        )
+
+        assertEquals(
+            GameCubeRomHashStrategy.hash(
+                RomHashInput(
+                    fileName = "game.gcm",
+                    fileSize = disc.size.toLong(),
+                    openStream = { disc.inputStream() },
+                    openDataSource = { ByteArrayRomDataSource(disc) }
+                )
+            ),
+            hashRom(
+                RomHashInput(
+                    fileName = "game.ciso",
+                    fileSize = cisoDataSource.length,
+                    openStream = { cisoDataSource.bytes().inputStream() },
+                    openDataSource = { cisoDataSource }
+                )
+            )
+        )
+    }
+
+    @Test
     fun hashRom_gameCubeGczUsesNintendoDiscPath() {
         val disc = buildGameCubeDisc()
         val gcz = buildGczImage(disc)
@@ -776,6 +804,64 @@ class RomScannerHashTest {
             val count = minOf(length, data.size - start)
             data.copyInto(buffer, destinationOffset = 0, startIndex = start, endIndex = start + count)
             return count
+        }
+
+        override fun close() = Unit
+    }
+
+    private class SparseCisoRomDataSource(
+        private val blockSize: Int,
+        private val disc: ByteArray
+    ) : RomDataSource {
+        private val header = ByteArray(0x8000).apply {
+            this[0] = 'C'.code.toByte()
+            this[1] = 'I'.code.toByte()
+            this[2] = 'S'.code.toByte()
+            this[3] = 'O'.code.toByte()
+            this[4] = (blockSize and 0xFF).toByte()
+            this[5] = ((blockSize shr 8) and 0xFF).toByte()
+            this[6] = ((blockSize shr 16) and 0xFF).toByte()
+            this[7] = ((blockSize shr 24) and 0xFF).toByte()
+            this[8] = 1
+        }
+
+        override val length: Long = header.size.toLong() + blockSize
+
+        override fun read(offset: Long, buffer: ByteArray, length: Int): Int {
+            if (offset < 0L || length <= 0 || offset >= this.length) return -1
+
+            val count = minOf(length, buffer.size, (this.length - offset).toInt())
+            buffer.fill(0, 0, count)
+
+            val headerEnd = header.size.toLong()
+            if (offset < headerEnd) {
+                val headerOffset = offset.toInt()
+                val headerCount = minOf(count, header.size - headerOffset)
+                header.copyInto(buffer, destinationOffset = 0, startIndex = headerOffset, endIndex = headerOffset + headerCount)
+            }
+
+            val blockStart = header.size.toLong()
+            val blockEnd = blockStart + blockSize
+            if (offset < blockEnd && offset + count > blockStart) {
+                val sourceStart = (offset - blockStart).coerceAtLeast(0L).toInt()
+                val destinationOffset = (blockStart - offset).coerceAtLeast(0L).toInt()
+                val bytesToCopy = minOf(count - destinationOffset, disc.size - sourceStart)
+                if (bytesToCopy > 0) {
+                    disc.copyInto(
+                        buffer,
+                        destinationOffset = destinationOffset,
+                        startIndex = sourceStart,
+                        endIndex = sourceStart + bytesToCopy
+                    )
+                }
+            }
+
+            return count
+        }
+
+        fun bytes(): ByteArray = ByteArray(header.size + blockSize).apply {
+            header.copyInto(this, destinationOffset = 0)
+            disc.copyInto(this, destinationOffset = header.size)
         }
 
         override fun close() = Unit

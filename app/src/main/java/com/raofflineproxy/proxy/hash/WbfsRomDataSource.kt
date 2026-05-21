@@ -18,7 +18,8 @@ internal class WbfsRomDataSource private constructor(
 
     override fun read(offset: Long, buffer: ByteArray, length: Int): Int {
         if (offset < 0L || length <= 0 || offset >= this.length) return -1
-        val targetLength = minOf(length, buffer.size, (this.length - offset).toInt())
+        val remaining = this.length - offset
+        val targetLength = minOf(length, buffer.size, remaining.coerceAtMost(Int.MAX_VALUE.toLong()).toInt())
         var totalRead = 0
         var currentOffset = offset
 
