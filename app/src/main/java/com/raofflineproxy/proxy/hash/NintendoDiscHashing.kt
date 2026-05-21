@@ -47,8 +47,7 @@ internal data class NintendoDolSection(
 )
 
 internal fun hashGameCubeDisc(input: RomHashInput): String? {
-    val openDataSource = input.openDataSource ?: return null
-    return openDataSource().use { dataSource ->
+    return openNintendoDiscDataSource(input).use { dataSource ->
         if (dataSource == null) return@use null
         hashGameCubeDisc(dataSource)
     }
@@ -61,8 +60,7 @@ internal fun hashGameCubeDisc(dataSource: RomDataSource): String? {
 }
 
 internal fun hashWiiDisc(input: RomHashInput): String? {
-    val openDataSource = input.openDataSource ?: return null
-    return openDataSource().use { dataSource ->
+    return openNintendoDiscDataSource(input).use { dataSource ->
         if (dataSource == null) return@use null
         hashWiiDisc(dataSource)
     }
@@ -88,16 +86,25 @@ internal fun detectNintendoDiscFormat(input: RomHashInput): NintendoDiscFormat? 
     if (hasExtension(input.fileName, "rvz")) return NintendoDiscFormat.RVZ
     if (hasExtension(input.fileName, "wad")) return NintendoDiscFormat.WII_WAD
     if (hasExtension(input.fileName, "gcm")) return NintendoDiscFormat.GAMECUBE
-    if (!hasExtension(input.fileName, "iso")) return null
+    if (!hasExtension(input.fileName, "iso", "ciso", "wbfs", "gcz")) return null
 
-    val openDataSource = input.openDataSource ?: return null
-    return openDataSource().use { dataSource ->
+    return openNintendoDiscDataSource(input).use { dataSource ->
         if (dataSource == null) return@use null
         when {
             readBigEndianInt(dataSource, 0x1CL) == GAMECUBE_DISC_MAGIC -> NintendoDiscFormat.GAMECUBE
             readBigEndianInt(dataSource, 0x18L) == WII_DISC_MAGIC -> NintendoDiscFormat.WII
             else -> null
         }
+    }
+}
+
+private fun openNintendoDiscDataSource(input: RomHashInput): RomDataSource? {
+    val openDataSource = input.openDataSource ?: return null
+    return when {
+        hasExtension(input.fileName, "ciso") -> CisoRomDataSource.open(openDataSource)
+        hasExtension(input.fileName, "wbfs") -> WbfsRomDataSource.open(openDataSource)
+        hasExtension(input.fileName, "gcz") -> GczRomDataSource.open(openDataSource)
+        else -> openDataSource()
     }
 }
 

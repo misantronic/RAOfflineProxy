@@ -15,12 +15,14 @@ private val supportedArchiveRomExtensions = setOf(
     "a78",
     "bin",
     "cart",
+    "ciso",
     "fds",
     "fig",
     "gba",
     "gb",
     "gbc",
     "gcm",
+    "gcz",
     "iso",
     "lnx",
     "n64",
@@ -34,6 +36,7 @@ private val supportedArchiveRomExtensions = setOf(
     "swc",
     "v64",
     "wad",
+    "wbfs",
     "z64"
 )
 

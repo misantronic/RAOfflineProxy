@@ -3,7 +3,7 @@ package com.raofflineproxy.proxy.hash
 private const val TAG = "RAProxy/GameCubeHash"
 
 internal object GameCubeRomHashStrategy : RomHashStrategy {
-    override fun matches(fileName: String): Boolean = hasExtension(fileName, "iso", "gcm")
+    override fun matches(fileName: String): Boolean = hasExtension(fileName, "iso", "gcm", "ciso", "gcz")
 
     override fun hash(input: RomHashInput): String? {
         val hash = hashGameCubeDisc(input)
