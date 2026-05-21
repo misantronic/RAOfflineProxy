@@ -166,6 +166,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             retroArchEnabled = emulatorSupport.retroArchEnabled,
             dolphinEnabled = emulatorSupport.dolphinEnabled
         )
+        restoreDolphinCredentialsOnLaunch(emulatorSupport)
         validateToken()
         viewModelScope.launch {
             AwardFlusher.events.collect { event ->
@@ -336,6 +337,18 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 SnackbarManager.showError(retroArchResult.message)
             } else if (!dolphinRevertedTarget && !dolphinResult.needsSafGrant) {
                 SnackbarManager.showError(dolphinResult.message)
+            }
+        }
+    }
+
+    private fun restoreDolphinCredentialsOnLaunch(emulatorSupport: EmulatorSupport) {
+        if (!emulatorSupport.dolphinEnabled) return
+
+        val app = getApplication<Application>()
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) {
+                val storedCredentials = loadLoginCredentials(db) ?: return@withContext
+                restoreDolphinCredentials(app, loadDolphinSafUri(), storedCredentials)
             }
         }
     }
@@ -694,8 +707,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     prefs.edit { remove(PrefsConstants.KEY_RETROARCH_PATCHED_THIS_RUN) }
                 }
 
+                val dolphinStoredCredentials = if (emulatorSupport.dolphinEnabled) {
+                    withContext(Dispatchers.IO) { loadLoginCredentials(db) }
+                } else {
+                    null
+                }
                 val dolphinResult = if (emulatorSupport.dolphinEnabled) {
-                    withContext(Dispatchers.IO) { patchDolphinCfg(app, dolphinTreeUri) }
+                    withContext(Dispatchers.IO) {
+                        patchDolphinCfg(app, dolphinTreeUri, dolphinStoredCredentials)
+                    }
                 } else {
                     DolphinPatchResult(success = true, message = "Dolphin disabled.", skippedNotInstalled = true)
                 }

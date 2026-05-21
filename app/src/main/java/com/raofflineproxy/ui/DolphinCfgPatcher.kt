@@ -8,6 +8,7 @@ import android.util.AtomicFile
 import android.util.Log
 import androidx.documentfile.provider.DocumentFile
 import com.raofflineproxy.R
+import com.raofflineproxy.proxy.LoginCredentials
 import com.raofflineproxy.proxyValue
 import java.io.File
 
@@ -96,7 +97,11 @@ internal fun canPatchDolphinCfgDirectly(): Boolean {
     return directCandidate?.canWrite() == true
 }
 
-fun patchDolphinCfg(context: Context, treeUri: Uri?): DolphinPatchResult {
+fun patchDolphinCfg(
+    context: Context,
+    treeUri: Uri?,
+    storedCredentials: LoginCredentials? = null
+): DolphinPatchResult {
     if (!isDolphinInstalled(context)) {
         Log.i(TAG, "patch: Dolphin not installed")
         return DolphinPatchResult(success = true, message = "Dolphin not installed.", skippedNotInstalled = true)
@@ -104,7 +109,13 @@ fun patchDolphinCfg(context: Context, treeUri: Uri?): DolphinPatchResult {
 
     Log.i(TAG, "patch: starting treeUri=$treeUri proxy=${proxyValue(context)}")
 
-    val transform: (String) -> String = { buildPatchedDolphinContent(it, proxyValue(context)) }
+    val transform: (String) -> String = {
+        buildPatchedDolphinContent(
+            content = it,
+            proxyAddress = proxyValue(context),
+            storedCredentials = storedCredentials
+        )
+    }
     return applyDolphinTransform(
         context = context,
         treeUri = treeUri,
@@ -308,10 +319,29 @@ internal fun extractDolphinCredentials(content: String): ImportedCredentials? {
     return ImportedCredentials.Token(username = username, token = token)
 }
 
-internal fun buildPatchedDolphinContent(content: String, proxyAddress: String): String =
+internal fun buildDolphinCredentialsRestoredContent(
+    content: String,
+    proxyAddress: String,
+    storedCredentials: LoginCredentials? = null
+): String {
+    val restoredFields = dolphinCredentialRestoreFields(content, proxyAddress, storedCredentials)
+    if (restoredFields.isEmpty()) return content
+
+    return updateDolphinAchievementsSection(content) {
+        restoredFields.forEach { (key, value) -> put(key, value) }
+    }
+}
+
+internal fun buildPatchedDolphinContent(
+    content: String,
+    proxyAddress: String,
+    storedCredentials: LoginCredentials? = null
+): String =
     updateDolphinAchievementsSection(content) {
         put("HostUrl", proxyAddress)
         put("HardcoreEnabled", "False")
+        dolphinCredentialRestoreFields(content, proxyAddress, storedCredentials)
+            .forEach { (key, value) -> put(key, value) }
     }
 
 internal fun buildRevertedDolphinContent(content: String, restoreHardcore: Boolean = false): String =
@@ -356,6 +386,75 @@ fun checkIsDolphinPatched(context: Context, treeUri: Uri?): Boolean {
     }
 
     return false
+}
+
+fun restoreDolphinCredentials(
+    context: Context,
+    treeUri: Uri?,
+    storedCredentials: LoginCredentials?
+): Boolean {
+    if (storedCredentials == null || !isDolphinInstalled(context)) return false
+
+    val proxyAddress = proxyValue(context)
+
+    if (treeUri != null) {
+        val tree = DocumentFile.fromTreeUri(context, treeUri)
+        if (tree != null) {
+            for (segments in DOLPHIN_SAF_CFG_PATHS) {
+                val cfgFile = segments.fold(tree as DocumentFile?) { dir, seg -> dir?.findFile(seg) }
+                if (cfgFile == null || !cfgFile.exists()) continue
+                return try {
+                    val original = context.contentResolver.openInputStream(cfgFile.uri)
+                        ?.bufferedReader()
+                        ?.use { it.readText() }
+                        ?: return false
+                    val restored = buildDolphinCredentialsRestoredContent(original, proxyAddress, storedCredentials)
+                    if (restored != original) {
+                        context.contentResolver.openOutputStream(cfgFile.uri, "wt")
+                            ?.use { it.write(restored.toByteArray()) }
+                            ?: return false
+                    }
+                    true
+                } catch (_: Exception) {
+                    false
+                }
+            }
+        }
+    }
+
+    val directCandidate = DOLPHIN_SOURCE_CANDIDATES.map(::File).firstOrNull { it.exists() && it.canWrite() }
+    if (directCandidate != null) {
+        return try {
+            val original = directCandidate.readText()
+            val restored = buildDolphinCredentialsRestoredContent(original, proxyAddress, storedCredentials)
+            if (restored != original) {
+                writeDolphinFileAtomically(directCandidate, restored)
+            }
+            true
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    return false
+}
+
+private fun dolphinCredentialRestoreFields(
+    content: String,
+    proxyAddress: String,
+    storedCredentials: LoginCredentials?
+): Map<String, String> {
+    if (storedCredentials == null) return emptyMap()
+    if (!isDolphinPatchedContent(content, proxyAddress)) return emptyMap()
+
+    val username = extractDolphinAchievementValue(content, "Username")?.takeIf { it.isNotBlank() }
+    if (username != null && username != storedCredentials.user) return emptyMap()
+
+    return linkedMapOf(
+        "Enabled" to "true",
+        "Username" to storedCredentials.user,
+        "ApiToken" to storedCredentials.token
+    )
 }
 
 private fun updateDolphinAchievementsSection(content: String, update: MutableMap<String, String>.() -> Unit): String {

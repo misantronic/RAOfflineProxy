@@ -1,5 +1,7 @@
 package com.raofflineproxy
 
+import com.raofflineproxy.proxy.LoginCredentials
+import com.raofflineproxy.ui.buildDolphinCredentialsRestoredContent
 import com.raofflineproxy.ui.buildPatchedDolphinContent
 import com.raofflineproxy.ui.buildRevertedDolphinContent
 import com.raofflineproxy.ui.detectDolphinHardcoreEnabled
@@ -99,6 +101,176 @@ class DolphinCfgPatcherTest {
         """.trimIndent()
 
         assertEquals(cfg, buildPatchedDolphinContent(cfg, proxyAddress))
+    }
+
+    @Test
+    fun buildPatchedDolphinContent_restoresMissingTokenFromStoredCredentials() {
+        val cfg = """
+            [Achievements]
+            HostUrl = $proxyAddress
+            Username = player1
+            ApiToken =
+        """.trimIndent()
+
+        val patched = buildPatchedDolphinContent(
+            content = cfg,
+            proxyAddress = proxyAddress,
+            storedCredentials = LoginCredentials("player1", "restored-token")
+        )
+
+        assertTrue(patched.contains("Enabled = true"))
+        assertTrue(patched.contains("Username = player1"))
+        assertTrue(patched.contains("ApiToken = restored-token"))
+        assertTrue(patched.contains("HostUrl = $proxyAddress"))
+    }
+
+    @Test
+    fun buildPatchedDolphinContent_restoresUsernameAndTokenWhenBothMissing() {
+        val cfg = """
+            [Achievements]
+            HostUrl = $proxyAddress
+        """.trimIndent()
+
+        val patched = buildPatchedDolphinContent(
+            content = cfg,
+            proxyAddress = proxyAddress,
+            storedCredentials = LoginCredentials("player1", "restored-token")
+        )
+
+        assertTrue(patched.contains("Enabled = true"))
+        assertTrue(patched.contains("Username = player1"))
+        assertTrue(patched.contains("ApiToken = restored-token"))
+    }
+
+    @Test
+    fun buildDolphinCredentialsRestoredContent_restoresMissingTokenWithoutChangingHost() {
+        val cfg = """
+            [Achievements]
+            HostUrl = $proxyAddress
+            Username = player1
+            ApiToken =
+        """.trimIndent()
+
+        val restored = buildDolphinCredentialsRestoredContent(
+            content = cfg,
+            proxyAddress = proxyAddress,
+            storedCredentials = LoginCredentials("player1", "restored-token")
+        )
+
+        assertTrue(restored.contains("HostUrl = $proxyAddress"))
+        assertTrue(restored.contains("Enabled = true"))
+        assertTrue(restored.contains("ApiToken = restored-token"))
+    }
+
+    @Test
+    fun buildDolphinCredentialsRestoredContent_returnsOriginalWhenTokenExists() {
+        val cfg = """
+            [Achievements]
+            Username = player1
+            ApiToken = existing-token
+        """.trimIndent()
+
+        val restored = buildDolphinCredentialsRestoredContent(
+            content = cfg,
+            proxyAddress = proxyAddress,
+            storedCredentials = LoginCredentials("player1", "restored-token")
+        )
+
+        assertEquals(cfg, restored)
+    }
+
+    @Test
+    fun buildDolphinCredentialsRestoredContent_restoresWhenPatchedAndAchievementsDisabled() {
+        val cfg = """
+            [Achievements]
+            HostUrl = $proxyAddress
+            Enabled = False
+            Username = player1
+            ApiToken = existing-token
+        """.trimIndent()
+
+        val restored = buildDolphinCredentialsRestoredContent(
+            content = cfg,
+            proxyAddress = proxyAddress,
+            storedCredentials = LoginCredentials("player1", "restored-token")
+        )
+
+        assertTrue(restored.contains("Enabled = true"))
+        assertTrue(restored.contains("Username = player1"))
+        assertTrue(restored.contains("ApiToken = restored-token"))
+    }
+
+    @Test
+    fun buildDolphinCredentialsRestoredContent_doesNotRestoreWhenHostIsNotPatched() {
+        val cfg = """
+            [Achievements]
+            Enabled = False
+            Username = player1
+            ApiToken = existing-token
+        """.trimIndent()
+
+        val restored = buildDolphinCredentialsRestoredContent(
+            content = cfg,
+            proxyAddress = proxyAddress,
+            storedCredentials = LoginCredentials("player1", "restored-token")
+        )
+
+        assertEquals(cfg, restored)
+    }
+
+    @Test
+    fun buildDolphinCredentialsRestoredContent_doesNotRestorePatchedHostForDifferentUsername() {
+        val cfg = """
+            [Achievements]
+            HostUrl = $proxyAddress
+            Enabled = False
+            Username = player1
+            ApiToken = existing-token
+        """.trimIndent()
+
+        val restored = buildDolphinCredentialsRestoredContent(
+            content = cfg,
+            proxyAddress = proxyAddress,
+            storedCredentials = LoginCredentials("someone-else", "restored-token")
+        )
+
+        assertEquals(cfg, restored)
+    }
+
+    @Test
+    fun buildPatchedDolphinContent_doesNotOverwriteExistingToken() {
+        val cfg = """
+            [Achievements]
+            Username = player1
+            ApiToken = existing-token
+        """.trimIndent()
+
+        val patched = buildPatchedDolphinContent(
+            content = cfg,
+            proxyAddress = proxyAddress,
+            storedCredentials = LoginCredentials("player1", "restored-token")
+        )
+
+        assertTrue(patched.contains("ApiToken = existing-token"))
+        assertFalse(patched.contains("ApiToken = restored-token"))
+    }
+
+    @Test
+    fun buildPatchedDolphinContent_doesNotRestoreTokenForDifferentUsername() {
+        val cfg = """
+            [Achievements]
+            Username = player1
+            ApiToken =
+        """.trimIndent()
+
+        val patched = buildPatchedDolphinContent(
+            content = cfg,
+            proxyAddress = proxyAddress,
+            storedCredentials = LoginCredentials("someone-else", "restored-token")
+        )
+
+        assertFalse(patched.contains("ApiToken = restored-token"))
+        assertFalse(patched.contains("Username = someone-else"))
     }
 
     @Test

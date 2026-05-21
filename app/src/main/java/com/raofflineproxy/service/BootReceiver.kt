@@ -5,9 +5,12 @@ import android.content.Context
 import android.content.Intent
 import androidx.core.content.edit
 import com.raofflineproxy.PrefsConstants
+import com.raofflineproxy.data.AppDatabase
+import com.raofflineproxy.proxy.loadLoginCredentials
 import com.raofflineproxy.ui.loadEmulatorSupport
 import com.raofflineproxy.ui.patchDolphinCfg
 import com.raofflineproxy.ui.patchRetroArchCfg
+import kotlinx.coroutines.runBlocking
 
 class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
@@ -37,7 +40,14 @@ class BootReceiver : BroadcastReceiver() {
                 }
             }
 
-            val dolphinResult = if (emulatorSupport.dolphinEnabled) patchDolphinCfg(context, dolphinTreeUri)
+            val dolphinStoredCredentials = if (emulatorSupport.dolphinEnabled) {
+                runBlocking { loadLoginCredentials(AppDatabase.getInstance(context)) }
+            } else {
+                null
+            }
+            val dolphinResult = if (emulatorSupport.dolphinEnabled) {
+                patchDolphinCfg(context, dolphinTreeUri, dolphinStoredCredentials)
+            }
             else com.raofflineproxy.ui.DolphinPatchResult(success = true, message = "Dolphin disabled.", skippedNotInstalled = true)
 
             if (dolphinResult.success && !dolphinResult.skippedNotInstalled) {
