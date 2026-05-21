@@ -80,7 +80,22 @@ internal sealed interface QueueAwardResult {
 
 private sealed interface ProxyResponse {
     data class Json(val code: Int, val message: String, val body: String) : ProxyResponse
-    data class Bytes(val body: ByteArray) : ProxyResponse
+    data class Bytes(val body: ByteArray) : ProxyResponse {
+        override fun equals(other: Any?): Boolean {
+            if (this === other) return true
+            if (javaClass != other?.javaClass) return false
+
+            other as Bytes
+
+            if (!body.contentEquals(other.body)) return false
+
+            return true
+        }
+
+        override fun hashCode(): Int {
+            return body.contentHashCode()
+        }
+    }
 }
 
 data class GameActivity(
@@ -568,10 +583,6 @@ class ProxyServer(
     private fun extractParam(param: String, path: String, body: String): String? =
         proxyExtractParam(param, path, body)
 
-    private fun httpOk(body: String): String = proxyHttpOk(body)
-
-    private fun httpGameIdCacheMiss(): String = proxyHttpGameIdCacheMiss()
-
     private fun httpError(code: Int, message: String): String = proxyHttpError(code, message)
 
     private fun httpNoContent(): String = proxyHttpNoContent()
@@ -841,19 +852,6 @@ internal fun proxyHttpResponse(code: Int, message: String, body: String): String
            "Content-Length: ${body.toByteArray(Charsets.UTF_8).size}\r\n" +
            "Connection: close\r\n\r\n" +
            body
-}
-
-internal fun proxyHttpResponseBytes(code: Int, message: String, body: String): ByteArray {
-    val bodyBytes = body.toByteArray(Charsets.UTF_8)
-    val safeMessage = sanitizeHttpReasonPhrase(message, code)
-    val headers = (
-        "HTTP/1.1 $code $safeMessage\r\n" +
-            "Content-Type: application/json\r\n" +
-            "Content-Length: ${bodyBytes.size}\r\n" +
-            "Connection: close\r\n\r\n"
-        ).toByteArray(Charsets.US_ASCII)
-
-    return headers + bodyBytes
 }
 
 private fun okJson(body: String): ProxyResponse = ProxyResponse.Json(200, "OK", body)
