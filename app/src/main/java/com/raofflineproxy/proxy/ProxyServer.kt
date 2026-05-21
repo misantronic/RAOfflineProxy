@@ -27,8 +27,10 @@ import org.json.JSONArray
 import org.json.JSONException
 import org.json.JSONObject
 import java.io.BufferedReader
+import java.io.BufferedWriter
 import java.io.File
 import java.io.InputStreamReader
+import java.io.OutputStreamWriter
 import java.net.InetAddress
 import java.net.ServerSocket
 import java.net.Socket
@@ -74,6 +76,11 @@ internal sealed interface UpstreamResult {
 internal sealed interface QueueAwardResult {
     data object Queued : QueueAwardResult
     data class Error(val message: String) : QueueAwardResult
+}
+
+private sealed interface ProxyResponse {
+    data class Json(val code: Int, val message: String, val body: String) : ProxyResponse
+    data class Bytes(val body: ByteArray) : ProxyResponse
 }
 
 data class GameActivity(
@@ -208,8 +215,7 @@ class ProxyServer(
                 }
 
                 val response = processRequest(method, path, rawBody, headers)
-                output.write(response)
-                output.flush()
+                writeResponse(output, response)
             } catch (e: SocketTimeoutException) {
                 Log.w(TAG, "Connection timed out: ${e.message}")
             } catch (e: Exception) {
@@ -218,21 +224,21 @@ class ProxyServer(
         }
     }
 
-    private fun processRequest(method: String, path: String, rawBody: String, headers: Map<String, String>): ByteArray {
+    private fun processRequest(method: String, path: String, rawBody: String, headers: Map<String, String>): ProxyResponse {
         if (isStaticAssetRequest(path)) {
             val cachedAsset = resolveCachedStaticAsset(context, path)
             if (cachedAsset != null) {
                 Log.d(TAG, "Static asset served from cache: ${redactTokens(path)}")
-                return httpFile(cachedAsset)
+                return ProxyResponse.Bytes(httpFile(cachedAsset))
             }
             Log.d(TAG, "Static asset skipped: ${redactTokens(path)}")
-            return httpNoContent().toHttpBytes()
+            return ProxyResponse.Bytes(httpNoContent().toHttpBytes())
         }
 
-        return processApiRequest(method, path, rawBody, headers).toHttpBytes()
+        return processApiRequest(method, path, rawBody, headers)
     }
 
-    private fun processApiRequest(method: String, path: String, rawBody: String, headers: Map<String, String>): String {
+    private fun processApiRequest(method: String, path: String, rawBody: String, headers: Map<String, String>): ProxyResponse {
 
         val action = extractAction(path, rawBody)
         if (action == "ping") {
@@ -255,11 +261,11 @@ class ProxyServer(
             isHardcoreRequest(path, rawBody) -> {
                 Log.i(TAG, "Hardcore request — bypassing cache, forwarding directly")
                 val upstream = forwardToRA(method, path, rawBody, headers)
-                if (upstream != null) httpOk(upstream) else httpError(503, "upstream unavailable")
+                if (upstream != null) okJson(upstream) else errorJson(503, "upstream unavailable")
             }
             action in FAKE_OFFLINE_SUCCESS_ACTIONS && !isOnline() -> {
                 Log.i(TAG, "Fake success offline: action=$action")
-                httpOk("""{"Success":true}""")
+                okJson("""{"Success":true}""")
             }
             action == "startsession" && !isOnline() -> handleStartSessionRequest(path, rawBody)
             isOnline() -> handleOnlineRequest(method, path, rawBody, action, headers)
@@ -270,18 +276,18 @@ class ProxyServer(
     private fun isHardcoreRequest(path: String, rawBody: String): Boolean =
         proxyIsHardcoreRequest(path, rawBody)
 
-    private fun handleAwardRequest(path: String, rawBody: String, headers: Map<String, String>): String {
+    private fun handleAwardRequest(path: String, rawBody: String, headers: Map<String, String>): ProxyResponse {
         if (isHardcoreRequest(path, rawBody)) {
             Log.w(TAG, "Rejecting hardcore award — hardcore mode is not supported by this proxy")
-            return httpError(403, "hardcore_not_supported")
+            return errorJson(403, "hardcore_not_supported")
         }
 
         if (isOnline()) {
             return when (val upstream = forwardToRAResult("POST", path, rawBody, headers)) {
-                is UpstreamResult.Success -> httpResponse(upstream.statusCode, upstream.message, upstream.body)
+                is UpstreamResult.Success -> ProxyResponse.Json(upstream.statusCode, upstream.message, upstream.body)
                 is UpstreamResult.HttpError -> {
                     Log.w(TAG, "Award request rejected by upstream: ${upstream.statusCode} ${upstream.message}")
-                    httpResponse(upstream.statusCode, upstream.message, upstream.body)
+                    ProxyResponse.Json(upstream.statusCode, upstream.message, upstream.body)
                 }
                 is UpstreamResult.NetworkError -> {
                     Log.w(TAG, "Award request will be queued due to upstream network failure: ${upstream.message}")
@@ -293,11 +299,11 @@ class ProxyServer(
         return queueOfflineAward(path, rawBody, headers)
     }
 
-    private fun handleStartSessionRequest(path: String, rawBody: String): String {
+    private fun handleStartSessionRequest(path: String, rawBody: String): ProxyResponse {
         val gameId = extractParam("g", path, rawBody)?.toIntOrNull()
         val user = extractParam("u", path, rawBody)
         if (gameId == null || user.isNullOrEmpty()) {
-            return httpError(400, "bad request")
+            return errorJson(400, "bad request")
         }
 
         var cached: CacheEntry? = null
@@ -313,36 +319,37 @@ class ProxyServer(
 
         return if (cached != null) {
             Log.i(TAG, "Served synthetic startsession for gameId=$gameId user=$user")
-            httpOk(cached!!.responseBody)
+            okJson(cached!!.responseBody)
         } else {
             Log.e(TAG, "Failed to synthesize startsession for gameId=$gameId user=$user")
-            httpError(503, "no cached response")
+            errorJson(503, "no cached response")
         }
     }
 
-    private fun queueOfflineAward(path: String, rawBody: String, headers: Map<String, String>): String {
+    private fun queueOfflineAward(path: String, rawBody: String, headers: Map<String, String>): ProxyResponse {
         when (val result = queueAward(path, rawBody, headers)) {
             QueueAwardResult.Queued -> Unit
             is QueueAwardResult.Error -> {
                 Log.e(TAG, "Award queueing failed: ${result.message}")
-                return httpError(500, "award_queue_failed")
+                return errorJson(500, "award_queue_failed")
             }
         }
 
         val score = fetchCachedScore(path, rawBody)
-        return httpOk("""{"Success":true,"Score":$score,"SoftcoreScore":0,"AchievementID":0,"Error":"queued_offline"}""")
+        return okJson("""{"Success":true,"Score":$score,"SoftcoreScore":0,"AchievementID":0,"Error":"queued_offline"}""")
     }
 
-    private fun handleOnlineRequest(method: String, path: String, rawBody: String, action: String?, headers: Map<String, String>): String {
+    private fun handleOnlineRequest(method: String, path: String, rawBody: String, action: String?, headers: Map<String, String>): ProxyResponse {
         val upstream = forwardToRA(method, path, rawBody, headers)
         val shouldCache = upstream != null && shouldCacheResponse(upstream)
         if (shouldCache && action in CACHEABLE_ACTIONS) {
             val normalizedBody = normalizeCachedResponse(action, path, rawBody, upstream)
             val rawKey = cacheKey(path, rawBody)
             val key = normalizedCacheKey(action, path, rawBody, normalizedBody)
+            val rawBodyToCache = compactCachedRawResponse(action, upstream)
             val userAgent = headers["user-agent"] ?: ""
             scope.launch(Dispatchers.IO) {
-                db.cacheDao().upsert(CacheEntry(cacheKey = rawKey, responseBody = upstream))
+                db.cacheDao().upsert(CacheEntry(cacheKey = rawKey, responseBody = rawBodyToCache))
                 Log.i(TAG, "Cached: $rawKey")
                 if (key != rawKey) {
                     db.cacheDao().upsert(CacheEntry(cacheKey = key, responseBody = normalizedBody))
@@ -362,18 +369,18 @@ class ProxyServer(
                     }
                 }
             }
-            return httpOk(upstream)
+            return okJson(upstream)
         }
         if (upstream != null) {
             Log.i(TAG, "Forwarded (not cached) action=$action")
-            return httpOk(upstream)
+            return okJson(upstream)
         }
-        return httpError(503, "upstream unavailable")
+        return errorJson(503, "upstream unavailable")
     }
 
-    private fun handleOfflineRequest(path: String, rawBody: String, action: String?): String {
+    private fun handleOfflineRequest(path: String, rawBody: String, action: String?): ProxyResponse {
         if (action !in CACHEABLE_ACTIONS) {
-            return httpError(503, "offline")
+            return errorJson(503, "offline")
         }
         var cached: CacheEntry? = null
         val key = cacheKey(path, rawBody)
@@ -389,13 +396,13 @@ class ProxyServer(
                 ensureOfflineStartSessionCache(path, rawBody)
             }
             Log.i(TAG, "Cache HIT: $key (${cached!!.responseBody.length} bytes)")
-            httpOk(cached!!.responseBody)
+            okJson(cached!!.responseBody)
         } else {
             Log.e(TAG, "Cache MISS: $key")
             if (action == "gameid") {
-                httpGameIdCacheMiss()
+                okJson("""{"Success":false,"Error":"Game not cached. Launch this game while online first.","GameID":0}""")
             } else {
-                httpError(503, "no cached response")
+                errorJson(503, "no cached response")
             }
         }
     }
@@ -573,6 +580,34 @@ class ProxyServer(
 
     private fun writeTextResponse(output: java.io.OutputStream, response: String) {
         output.write(response.toHttpBytes())
+        output.flush()
+    }
+
+    private fun writeBinaryResponse(output: java.io.OutputStream, response: ByteArray) {
+        output.write(response)
+        output.flush()
+    }
+
+    private fun writeResponse(output: java.io.OutputStream, response: ProxyResponse) {
+        when (response) {
+            is ProxyResponse.Bytes -> writeBinaryResponse(output, response.body)
+            is ProxyResponse.Json -> writeJsonResponse(output, response.code, response.message, response.body)
+        }
+    }
+
+    private fun writeJsonResponse(output: java.io.OutputStream, code: Int, message: String, body: String) {
+        val safeMessage = sanitizeHttpReasonPhrase(message, code)
+        val headers = (
+            "HTTP/1.1 $code $safeMessage\r\n" +
+                "Content-Type: application/json\r\n" +
+                "Content-Length: ${utf8Length(body)}\r\n" +
+                "Connection: close\r\n\r\n"
+            ).toByteArray(Charsets.US_ASCII)
+        output.write(headers)
+        BufferedWriter(OutputStreamWriter(output, Charsets.UTF_8)).use { writer ->
+            writer.write(body)
+            writer.flush()
+        }
         output.flush()
     }
 
@@ -803,9 +838,47 @@ internal fun proxyHttpResponse(code: Int, message: String, body: String): String
     val safeMessage = sanitizeHttpReasonPhrase(message, code)
     return "HTTP/1.1 $code $safeMessage\r\n" +
            "Content-Type: application/json\r\n" +
-           "Content-Length: ${body.toByteArray().size}\r\n" +
+           "Content-Length: ${body.toByteArray(Charsets.UTF_8).size}\r\n" +
            "Connection: close\r\n\r\n" +
            body
+}
+
+internal fun proxyHttpResponseBytes(code: Int, message: String, body: String): ByteArray {
+    val bodyBytes = body.toByteArray(Charsets.UTF_8)
+    val safeMessage = sanitizeHttpReasonPhrase(message, code)
+    val headers = (
+        "HTTP/1.1 $code $safeMessage\r\n" +
+            "Content-Type: application/json\r\n" +
+            "Content-Length: ${bodyBytes.size}\r\n" +
+            "Connection: close\r\n\r\n"
+        ).toByteArray(Charsets.US_ASCII)
+
+    return headers + bodyBytes
+}
+
+private fun okJson(body: String): ProxyResponse = ProxyResponse.Json(200, "OK", body)
+
+private fun errorJson(code: Int, message: String): ProxyResponse =
+    ProxyResponse.Json(code, message, """{"Success":false,"Error":"$message"}""")
+
+private fun utf8Length(body: String): Int {
+    var count = 0
+    var index = 0
+    while (index < body.length) {
+        val ch = body[index]
+        val code = ch.code
+        when {
+            code < 0x80 -> count += 1
+            code < 0x800 -> count += 2
+            ch.isHighSurrogate() && index + 1 < body.length && body[index + 1].isLowSurrogate() -> {
+                count += 4
+                index += 1
+            }
+            else -> count += 3
+        }
+        index += 1
+    }
+    return count
 }
 
 internal fun proxyHttpOk(body: String): String =
@@ -834,6 +907,87 @@ internal fun normalizeCachedResponse(action: String?, path: String, body: String
         responseBody
     }
 
+internal fun compactCachedRawResponse(action: String?, responseBody: String): String =
+    if (action == "achievementsets") {
+        compactAchievementSetsResponse(responseBody)
+    } else {
+        responseBody
+    }
+
+internal fun compactAchievementSetsResponse(responseBody: String): String {
+    val source = try {
+        JSONObject(responseBody)
+    } catch (_: Exception) {
+        return responseBody
+    }
+
+    if (!source.optBoolean("Success", false)) {
+        return responseBody
+    }
+
+    val gameId = source.optInt("GameId").takeIf { it > 0 } ?: return responseBody
+    val sets = source.optJSONArray("Sets") ?: return responseBody
+    val coreSet = findCoreAchievementSet(sets, gameId) ?: return responseBody
+
+    val compact = JSONObject().apply {
+        put("Success", true)
+
+        put("GameId", source.optInt("GameId", gameId))
+        put("Title", source.optString("Title"))
+        put("ConsoleId", source.optInt("ConsoleId"))
+        put("ImageIconUrl", source.optString("ImageIconUrl"))
+        source.opt("RichPresenceGameId")?.let { put("RichPresenceGameId", it) }
+        source.opt("RichPresencePatch")?.let { put("RichPresencePatch", it) }
+
+        put(
+            "Sets",
+            JSONArray().apply {
+                put(
+                    JSONObject().apply {
+                        put("AchievementSetId", coreSet.optInt("AchievementSetId"))
+                        put("GameId", coreSet.optInt("GameId", gameId))
+                        put("Title", coreSet.optString("Title", source.optString("Title")))
+                        put("Type", coreSet.optString("Type", "core"))
+                        put("ImageIconUrl", coreSet.optString("ImageIconUrl", source.optString("ImageIconUrl")))
+                        put("Achievements", compactAchievementDefinitions(coreSet.optJSONArray("Achievements")))
+                        put("Leaderboards", JSONArray())
+                    }
+                )
+            }
+        )
+    }
+
+    return compact.toString()
+}
+
+private fun compactAchievementDefinitions(achievements: JSONArray?): JSONArray {
+    if (achievements == null) return JSONArray()
+
+    return JSONArray().apply {
+        for (index in 0 until achievements.length()) {
+            val achievement = achievements.optJSONObject(index) ?: continue
+            put(
+                JSONObject().apply {
+                    put("ID", achievement.optInt("ID"))
+                    put("Title", achievement.optString("Title"))
+                    put("Description", achievement.optString("Description"))
+                    put("Flags", achievement.optInt("Flags"))
+                    put("Points", achievement.optInt("Points"))
+                    put("MemAddr", achievement.optString("MemAddr"))
+                    put("Author", achievement.optString("Author"))
+                    put("BadgeName", achievement.optString("BadgeName"))
+                    put("Created", achievement.optLong("Created"))
+                    put("Modified", achievement.optLong("Modified"))
+
+                    achievement.optString("Type").takeIf { it.isNotEmpty() }?.let { put("Type", it) }
+                    if (achievement.has("Rarity")) put("Rarity", achievement.optDouble("Rarity"))
+                    if (achievement.has("RarityHardcore")) put("RarityHardcore", achievement.optDouble("RarityHardcore"))
+                }
+            )
+        }
+    }
+}
+
 internal fun normalizeAchievementSetsResponse(path: String, body: String, responseBody: String): String {
     val source = try {
         JSONObject(responseBody)
@@ -859,9 +1013,8 @@ internal fun normalizeAchievementSetsResponse(path: String, body: String, respon
             put("Title", source.optString("Title"))
             put("ConsoleID", source.optInt("ConsoleId"))
             putPatchImageFields(this, source.optString("ImageIconUrl").takeIf { it.isNotEmpty() })
-            put("RichPresencePatch", source.optString("RichPresencePatch"))
             put("Achievements", coreSet.optJSONArray("Achievements") ?: JSONArray())
-            put("Leaderboards", coreSet.optJSONArray("Leaderboards") ?: JSONArray())
+            put("Leaderboards", JSONArray())
         })
     }.toString()
 
