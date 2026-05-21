@@ -18,6 +18,7 @@ import com.raofflineproxy.proxy.hash.detectIsoSectorLayout
 import com.raofflineproxy.proxy.hash.findFileRecord
 import com.raofflineproxy.proxy.hash.hashZipRom
 import com.raofflineproxy.proxy.hash.readBigEndianInt
+import com.raofflineproxy.proxy.hash.hashWiiDisc
 import com.raofflineproxy.proxy.hash.hashRom
 import com.raofflineproxy.proxy.hash.PsxRomHashStrategy
 import com.raofflineproxy.proxy.hash.PspRomHashStrategy
@@ -488,11 +489,16 @@ class RomScannerHashTest {
     fun gameCubeStrategy_matchesIsoAndGcm() {
         assertTrue(GameCubeRomHashStrategy.matches("game.iso"))
         assertTrue(GameCubeRomHashStrategy.matches("game.gcm"))
+        assertTrue(GameCubeRomHashStrategy.matches("game.ciso"))
+        assertTrue(GameCubeRomHashStrategy.matches("game.gcz"))
     }
 
     @Test
     fun wiiDiscStrategy_matchesIso() {
         assertTrue(WiiDiscRomHashStrategy.matches("game.iso"))
+        assertTrue(WiiDiscRomHashStrategy.matches("game.ciso"))
+        assertTrue(WiiDiscRomHashStrategy.matches("game.gcz"))
+        assertTrue(WiiDiscRomHashStrategy.matches("game.wbfs"))
     }
 
     @Test
@@ -617,6 +623,73 @@ class RomScannerHashTest {
                     fileSize = bytes.size.toLong(),
                     openStream = { bytes.inputStream() },
                     openDataSource = { ByteArrayRomDataSource(bytes) }
+                )
+            )
+        )
+    }
+
+    @Test
+    fun hashRom_gameCubeCisoUsesNintendoDiscPathInsteadOfGenericMd5Fallback() {
+        val disc = buildGameCubeDisc()
+        val ciso = buildCisoImage(disc, blockSize = 0x8000)
+
+        assertEquals(
+            GameCubeRomHashStrategy.hash(
+                RomHashInput(
+                    fileName = "game.gcm",
+                    fileSize = disc.size.toLong(),
+                    openStream = { disc.inputStream() },
+                    openDataSource = { ByteArrayRomDataSource(disc) }
+                )
+            ),
+            hashRom(
+                RomHashInput(
+                    fileName = "game.ciso",
+                    fileSize = ciso.size.toLong(),
+                    openStream = { ciso.inputStream() },
+                    openDataSource = { ByteArrayRomDataSource(ciso) }
+                )
+            )
+        )
+    }
+
+    @Test
+    fun hashRom_gameCubeGczUsesNintendoDiscPath() {
+        val disc = buildGameCubeDisc()
+        val gcz = buildGczImage(disc, blockSize = 0x8000)
+
+        assertEquals(
+            GameCubeRomHashStrategy.hash(
+                RomHashInput(
+                    fileName = "game.gcm",
+                    fileSize = disc.size.toLong(),
+                    openStream = { disc.inputStream() },
+                    openDataSource = { ByteArrayRomDataSource(disc) }
+                )
+            ),
+            hashRom(
+                RomHashInput(
+                    fileName = "game.gcz",
+                    fileSize = gcz.size.toLong(),
+                    openStream = { gcz.inputStream() },
+                    openDataSource = { ByteArrayRomDataSource(gcz) }
+                )
+            )
+        )
+    }
+
+    @Test
+    fun hashRom_wiiWbfsUsesNintendoDiscPath() {
+        val disc = buildWiiDisc()
+        val wbfs = buildWbfsImage(disc, wbfsSectorShift = 17)
+
+        assertNotNull(
+            hashRom(
+                RomHashInput(
+                    fileName = "game.wbfs",
+                    fileSize = wbfs.size.toLong(),
+                    openStream = { wbfs.inputStream() },
+                    openDataSource = { ByteArrayRomDataSource(wbfs) }
                 )
             )
         )
@@ -763,6 +836,145 @@ class RomScannerHashTest {
         return result
     }
 
+    private fun buildCisoImage(disc: ByteArray, blockSize: Int): ByteArray {
+        require(blockSize > 0)
+        val blockCount = (disc.size + blockSize - 1) / blockSize
+        require(blockCount <= 0x7FF8)
+
+        val image = ByteArray(0x8000 + blockCount * blockSize)
+        image[0] = 'C'.code.toByte()
+        image[1] = 'I'.code.toByte()
+        image[2] = 'S'.code.toByte()
+        image[3] = 'O'.code.toByte()
+        image[4] = (blockSize and 0xFF).toByte()
+        image[5] = ((blockSize shr 8) and 0xFF).toByte()
+        image[6] = ((blockSize shr 16) and 0xFF).toByte()
+        image[7] = ((blockSize shr 24) and 0xFF).toByte()
+
+        repeat(blockCount) { index ->
+            image[8 + index] = 1
+            val sourceStart = index * blockSize
+            val sourceEnd = minOf(sourceStart + blockSize, disc.size)
+            disc.copyInto(
+                destination = image,
+                destinationOffset = 0x8000 + index * blockSize,
+                startIndex = sourceStart,
+                endIndex = sourceEnd
+            )
+        }
+
+        return image
+    }
+
+    private fun buildGczImage(disc: ByteArray, blockSize: Int): ByteArray {
+        val blockCount = (disc.size + blockSize - 1) / blockSize
+        val pointers = LongArray(blockCount)
+        val hashes = IntArray(blockCount)
+        val blocks = ArrayList<ByteArray>(blockCount)
+        var compressedOffset = 0L
+
+        repeat(blockCount) { index ->
+            val start = index * blockSize
+            val end = minOf(start + blockSize, disc.size)
+            val block = ByteArray(blockSize)
+            disc.copyInto(block, endIndex = end, destinationOffset = 0, startIndex = start)
+            pointers[index] = compressedOffset or Long.MIN_VALUE
+            hashes[index] = adler32(block)
+            blocks += block
+            compressedOffset += block.size.toLong()
+        }
+
+        val header = ByteArray(32).apply {
+            writeLittleEndianInt(this, 0, 0xB10BC001.toInt())
+            writeLittleEndianInt(this, 4, 0)
+            writeLittleEndianLong(this, 8, compressedOffset)
+            writeLittleEndianLong(this, 16, disc.size.toLong())
+            writeLittleEndianInt(this, 24, blockSize)
+            writeLittleEndianInt(this, 28, blockCount)
+        }
+
+        return ByteArrayOutputStream().use { output ->
+            output.write(header)
+            pointers.forEach { writeLittleEndianLong(output, it) }
+            hashes.forEach {
+                output.write(it and 0xFF)
+                output.write((it shr 8) and 0xFF)
+                output.write((it shr 16) and 0xFF)
+                output.write((it shr 24) and 0xFF)
+            }
+            blocks.forEach(output::write)
+            output.toByteArray()
+        }
+    }
+
+    private fun buildWiiDisc(): ByteArray {
+        val disc = ByteArray(0x60000)
+        disc[0x18] = 0x5D.toByte()
+        disc[0x19] = 0x1C.toByte()
+        disc[0x1A] = 0x9E.toByte()
+        disc[0x1B] = 0xA3.toByte()
+        disc[0x61] = 1
+        disc[0x4E000] = 0x12
+        disc[0x4E001] = 0x34
+        disc[0x4E002] = 0x56
+        disc[0x4E003] = 0x78
+
+        writeBigEndianInt(disc, 0x40000, 1)
+        writeBigEndianInt(disc, 0x40004, 0x10000)
+        writeBigEndianInt(disc, 0x10000, 0x20000 shr 2)
+        writeBigEndianInt(disc, 0x10004, 0)
+        writeBigEndianInt(disc, 0x102A4, 0x200)
+        writeBigEndianInt(disc, 0x102A8, 0x400 shr 2)
+        writeBigEndianInt(disc, 0x102B8, 0x30000 shr 2)
+        writeBigEndianInt(disc, 0x102BC, 0x8000 shr 2)
+
+        for (index in 0 until 0x200) {
+            disc[0x10400 + index] = (index and 0xFF).toByte()
+        }
+
+        writeBigEndianInt(disc, 0x30420, 0x40000 shr 2)
+        writeBigEndianInt(disc, 0x40000, 0x41000 shr 2)
+        writeBigEndianInt(disc, 0x40090, 4 shr 2)
+        "WII!".toByteArray(Charsets.US_ASCII).copyInto(disc, 0x41000)
+        return disc
+    }
+
+    private fun buildWbfsImage(disc: ByteArray, wbfsSectorShift: Int): ByteArray {
+        val hdSectorShift = 9
+        val hdSectorSize = 1 shl hdSectorShift
+        val wbfsSectorSize = 1 shl wbfsSectorShift
+        val blocksPerDisc = (disc.size + wbfsSectorSize - 1) / wbfsSectorSize
+        val discInfoSize = alignUp(256 + blocksPerDisc * 2, hdSectorSize)
+        val totalSize = hdSectorSize + discInfoSize + blocksPerDisc * wbfsSectorSize
+        val image = ByteArray(totalSize)
+
+        image[0] = 'W'.code.toByte()
+        image[1] = 'B'.code.toByte()
+        image[2] = 'F'.code.toByte()
+        image[3] = 'S'.code.toByte()
+        writeBigEndianInt(image, 4, totalSize / hdSectorSize)
+        image[8] = hdSectorShift.toByte()
+        image[9] = wbfsSectorShift.toByte()
+        image[12] = 1
+
+        repeat(blocksPerDisc) { index ->
+            val tableOffset = hdSectorSize + 256 + index * 2
+            val blockValue = index + 1
+            image[tableOffset] = ((blockValue shr 8) and 0xFF).toByte()
+            image[tableOffset + 1] = (blockValue and 0xFF).toByte()
+            val sourceStart = index * wbfsSectorSize
+            val sourceEnd = minOf(sourceStart + wbfsSectorSize, disc.size)
+            disc.copyInto(
+                destination = image,
+                destinationOffset = hdSectorSize + discInfoSize + index * wbfsSectorSize,
+                startIndex = sourceStart,
+                endIndex = sourceEnd
+            )
+        }
+
+        return image
+    }
+
     private fun buildIsoImage(entries: Map<String, DirectoryEntry>): ByteArray {
         val totalSectors = 64
         val image = ByteArray(totalSectors * 2048)
@@ -844,12 +1056,31 @@ class RomScannerHashTest {
         target[offset + 1] = ((value shr 8) and 0xFF).toByte()
         target[offset + 2] = ((value shr 16) and 0xFF).toByte()
         target[offset + 3] = ((value shr 24) and 0xFF).toByte()
-
-        target[offset + 4] = ((value shr 24) and 0xFF).toByte()
-        target[offset + 5] = ((value shr 16) and 0xFF).toByte()
-        target[offset + 6] = ((value shr 8) and 0xFF).toByte()
-        target[offset + 7] = (value and 0xFF).toByte()
     }
+
+    private fun writeLittleEndianLong(target: ByteArray, offset: Int, value: Long) {
+        repeat(8) { index ->
+            target[offset + index] = ((value shr (index * 8)) and 0xFF).toByte()
+        }
+    }
+
+    private fun writeLittleEndianLong(output: ByteArrayOutputStream, value: Long) {
+        repeat(8) { index ->
+            output.write(((value shr (index * 8)) and 0xFF).toInt())
+        }
+    }
+
+    private fun adler32(bytes: ByteArray): Int {
+        var a = 1
+        var b = 0
+        bytes.forEach { byte ->
+            a = (a + (byte.toInt() and 0xFF)) % 65521
+            b = (b + a) % 65521
+        }
+        return (b shl 16) or a
+    }
+
+    private fun alignUp(value: Int, alignment: Int): Int = ((value + alignment - 1) / alignment) * alignment
 
     private fun createZip(vararg entries: Pair<String, ByteArray>): ByteArray {
         val output = ByteArrayOutputStream()
