@@ -2,10 +2,13 @@ import json
 import tempfile
 import unittest
 import zipfile
+from io import StringIO
 from pathlib import Path
+from unittest import mock
 
 from linux.raofflineproxy import platform
 from linux.raofflineproxy import image_cache
+from linux.raofflineproxy import main
 from linux.raofflineproxy import proxy_service
 from linux.raofflineproxy import rom_browser
 from linux.raofflineproxy import rom_cache
@@ -74,6 +77,77 @@ class LinuxRomBrowserTests(unittest.TestCase):
             entries = rom_browser.list_browser_entries(root)
 
             self.assertEqual([entry.name for entry in entries], ["rom-tree"])
+
+    def test_list_browser_entries_fast_keeps_directories_without_recursive_checks(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / "empty-tree").mkdir()
+            (root / "rom-tree" / "nested").mkdir(parents=True)
+            (root / "rom-tree" / "nested" / "metroid.gba").write_bytes(b"gba")
+
+            entries = rom_browser.list_browser_entries_fast(root)
+
+            self.assertEqual(
+                [entry.name for entry in entries],
+                ["empty-tree", "rom-tree"],
+            )
+
+    def test_list_browser_entries_fast_excludes_imgs_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / "Imgs").mkdir()
+            (root / "GBA").mkdir()
+
+            entries = rom_browser.list_browser_entries_fast(root)
+
+            self.assertEqual([entry.name for entry in entries], ["GBA"])
+
+    def test_describe_browser_entries_marks_cached_files(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            db_path = root / "test.sqlite3"
+            rom_path = root / "tetris.gb"
+            rom_path.write_bytes(b"rom")
+            store = storage.Storage(database_path=db_path)
+            original_hash_candidates = rom_browser.hash_rom_candidates
+            try:
+                rom_browser.hash_rom_candidates = lambda _path: ["cached-hash"]
+                store.upsert_cache(
+                    cache_keys.game_id("cached-hash"),
+                    '{"GameID":10701}',
+                )
+                store.upsert_cache(
+                    cache_keys.patch(10701, "misantronic"),
+                    '{"Success":true,"PatchData":{"Title":"Tetris"}}',
+                )
+
+                entries = rom_browser.describe_browser_entries(root, store)
+
+                self.assertEqual(len(entries), 1)
+                self.assertEqual(entries[0].name, "tetris.gb")
+                self.assertTrue(entries[0].is_cached)
+            finally:
+                rom_browser.hash_rom_candidates = original_hash_candidates
+                store.close()
+
+    def test_resolve_rom_root_falls_back_to_onion_roms_root(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            cfg_path = root / "retroarch.cfg"
+            onion_roms = root / "Roms"
+            cfg_path.write_text("# cfg\n", encoding="utf-8")
+            onion_roms.mkdir()
+            original_onion_root = platform.DEFAULT_ONION_ROMS_ROOT
+            try:
+                platform.DEFAULT_ONION_ROMS_ROOT = onion_roms
+
+                resolved = platform.resolve_rom_root({"retroarch_cfg": str(cfg_path)})
+
+                self.assertEqual(resolved, onion_roms)
+            finally:
+                platform.DEFAULT_ONION_ROMS_ROOT = original_onion_root
 
     def test_hash_rom_file_uses_md5(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -1023,6 +1097,118 @@ class LinuxRomBrowserTests(unittest.TestCase):
             rom_browser.normalize_preview_url("/Images/012345.png"),
             "https://retroachievements.org/Images/012345.png",
         )
+
+    def test_main_browser_root_outputs_resolved_root(self) -> None:
+        stdout = StringIO()
+        with mock.patch("sys.argv", ["raofflineproxy", "browser-root"]):
+            with mock.patch.object(main, "load_config", return_value={}):
+                with mock.patch.object(
+                    main, "resolve_rom_root", return_value=Path("/tmp/Roms")
+                ):
+                    with mock.patch("sys.stdout", stdout):
+                        main.main()
+
+        self.assertEqual(stdout.getvalue().strip(), "/tmp/Roms")
+
+    def test_main_browser_list_outputs_entry_metadata(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            stdout = StringIO()
+            with mock.patch(
+                "sys.argv", ["raofflineproxy", "browser-list", "--path", str(root)]
+            ):
+                with mock.patch.object(main, "load_config", return_value={}):
+                    with mock.patch.object(
+                        main,
+                        "describe_browser_entries",
+                        return_value=[
+                            rom_browser.BrowserEntry(
+                                path=root / "Games",
+                                name="Games",
+                                is_dir=True,
+                                is_cached=False,
+                            ),
+                            rom_browser.BrowserEntry(
+                                path=root / "tetris.gb",
+                                name="tetris.gb",
+                                is_dir=False,
+                                is_cached=True,
+                            ),
+                        ],
+                    ):
+                        with mock.patch("sys.stdout", stdout):
+                            main.main()
+
+            self.assertEqual(
+                stdout.getvalue().strip().splitlines(),
+                [
+                    f"1\t0\t{root / 'Games'}\tGames",
+                    f"0\t1\t{root / 'tetris.gb'}\ttetris.gb",
+                ],
+            )
+
+    def test_main_browser_list_fast_outputs_entry_metadata(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            stdout = StringIO()
+            with mock.patch(
+                "sys.argv", ["raofflineproxy", "browser-list-fast", "--path", str(root)]
+            ):
+                with mock.patch.object(main, "load_config", return_value={}):
+                    with mock.patch.object(
+                        main,
+                        "describe_browser_entries_fast",
+                        return_value=[
+                            rom_browser.BrowserEntry(
+                                path=root / "GBA",
+                                name="GBA",
+                                is_dir=True,
+                                is_cached=False,
+                            ),
+                            rom_browser.BrowserEntry(
+                                path=root / "tetris.gba",
+                                name="tetris.gba",
+                                is_dir=False,
+                                is_cached=False,
+                            ),
+                        ],
+                    ):
+                        with mock.patch("sys.stdout", stdout):
+                            main.main()
+
+            self.assertEqual(
+                stdout.getvalue().strip().splitlines(),
+                [
+                    f"1\t0\t{root / 'GBA'}\tGBA",
+                    f"0\t0\t{root / 'tetris.gba'}\ttetris.gba",
+                ],
+            )
+
+    def test_main_cache_rom_prints_result_message(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            rom_path = root / "tetris.gb"
+            cfg_path = root / "retroarch.cfg"
+            rom_path.write_bytes(b"rom")
+            cfg_path.write_text("# cfg\n", encoding="utf-8")
+            stdout = StringIO()
+            with mock.patch(
+                "sys.argv", ["raofflineproxy", "cache-rom", "--path", str(rom_path)]
+            ):
+                with mock.patch.object(
+                    main,
+                    "load_config",
+                    return_value={"retroarch_cfg": str(cfg_path)},
+                ):
+                    with mock.patch.object(
+                        main,
+                        "add_rom_to_cache",
+                        return_value=rom_browser.AddRomResult(True, "Cached Tetris"),
+                    ):
+                        with mock.patch("sys.stdout", stdout):
+                            main.main()
+
+            self.assertEqual(stdout.getvalue().strip(), "Cached Tetris")
 
 
 if __name__ == "__main__":

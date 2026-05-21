@@ -3,6 +3,7 @@ from pathlib import Path
 from .config import DEFAULT_ONION_STARTUP_SCRIPT, detect_retroarch_cfg
 
 DEFAULT_KNULLI_ROMS_ROOT = Path("/userdata/roms")
+DEFAULT_ONION_ROMS_ROOT = Path("/mnt/SDCARD/Roms")
 DEFAULT_KNULLI_STARTUP_SCRIPT = Path("/userdata/system/custom.sh")
 ROM_DIRECTORY_KEYS = [
     "rgui_browser_directory",
@@ -29,6 +30,9 @@ def resolve_rom_root(config_data: dict) -> Path:
 
     if DEFAULT_KNULLI_ROMS_ROOT.exists() and DEFAULT_KNULLI_ROMS_ROOT.is_dir():
         return DEFAULT_KNULLI_ROMS_ROOT
+
+    if DEFAULT_ONION_ROMS_ROOT.exists() and DEFAULT_ONION_ROMS_ROOT.is_dir():
+        return DEFAULT_ONION_ROMS_ROOT
 
     return cfg_path.parent
 

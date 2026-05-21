@@ -4,7 +4,7 @@ APP_DIR=/mnt/SDCARD/App/RAOfflineProxy
 APP_DATA_DIR="$APP_DIR/data"
 APP_RUNTIME_DIR="$APP_DIR/runtime"
 APP_PACKAGE_DIR="$APP_DIR/app"
-APP_RETROARCH_CFG=/mnt/SDCARD/RetroArch/.retroarch/retroarch.cfg
+APP_RETROARCH_CFG=
 APP_LOG_PANEL=/mnt/SDCARD/.tmp_update/bin/infoPanel
 APP_CERT_FILE="$APP_RUNTIME_DIR/lib/python3.10/site-packages/pip/_vendor/certifi/cacert.pem"
 APP_ONION_STARTUP_DIR=/mnt/SDCARD/.tmp_update/startup
@@ -36,6 +36,12 @@ normalize_display_paths() {
 prepare_env() {
     mkdir -p "$APP_DATA_DIR"
     : > "$RUNTIME_DETECT_LOG"
+
+    if [ -f /mnt/SDCARD/.tmp_update/config/retroarch.cfg ]; then
+        APP_RETROARCH_CFG=/mnt/SDCARD/.tmp_update/config/retroarch.cfg
+    else
+        APP_RETROARCH_CFG=/mnt/SDCARD/RetroArch/.retroarch/retroarch.cfg
+    fi
 
     export RAOFFLINEPROXY_CONFIG_DIR="$APP_DATA_DIR"
     export RAOFFLINEPROXY_RETROARCH_CFG="$APP_RETROARCH_CFG"
