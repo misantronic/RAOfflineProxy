@@ -615,7 +615,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 return@launch
             }
             val gameId = withContext(Dispatchers.IO) {
-                db.cacheDao().getAllByPrefix(CacheKeys.PREFIX_PATCH).firstOrNull()
+                db.cacheDao().getAllSummariesByPrefix(CacheKeys.PREFIX_PATCH).firstOrNull()
                     ?.let { CacheKeys.parseGameIdStringFromPatchKey(it.cacheKey) }
             }
             if (gameId == null) {

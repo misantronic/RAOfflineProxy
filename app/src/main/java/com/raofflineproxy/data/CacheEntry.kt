@@ -16,3 +16,20 @@ data class CacheEntry(
     val cachedAt: Long = System.currentTimeMillis(),
     val firstCachedAt: Long = System.currentTimeMillis()
 )
+
+data class CacheEntrySummary(
+    val id: Long = 0,
+    val cacheKey: String,
+    val sourceRomPath: String? = null,
+    val cachedAt: Long,
+    val firstCachedAt: Long
+) {
+    fun toCacheEntry(responseBody: String): CacheEntry = CacheEntry(
+        id = id,
+        cacheKey = cacheKey,
+        responseBody = responseBody,
+        sourceRomPath = sourceRomPath,
+        cachedAt = cachedAt,
+        firstCachedAt = firstCachedAt
+    )
+}
