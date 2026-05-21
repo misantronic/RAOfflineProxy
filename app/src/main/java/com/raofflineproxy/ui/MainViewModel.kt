@@ -266,21 +266,23 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             val retroArchTreeUri = loadSafUri()
             val dolphinTreeUri = loadDolphinSafUri()
-            val patched = withContext(Dispatchers.IO) { checkIsPatched(app, retroArchTreeUri) }
+            val retroArchPatched = withContext(Dispatchers.IO) { checkRetroArchIsPatched(app, retroArchTreeUri) }
+            val dolphinPatched = withContext(Dispatchers.IO) { checkIsDolphinPatched(app, dolphinTreeUri) }
+            val anyPatched = retroArchPatched || dolphinPatched
             val proxyRunning = ProxyService.isRunning(app)
             val prefs = app.getSharedPreferences(PrefsConstants.PREFS_NAME, Context.MODE_PRIVATE)
             val retroArchPatchedThisRun = prefs.getBoolean(PrefsConstants.KEY_RETROARCH_PATCHED_THIS_RUN, false)
             val dolphinPatchedThisRun = prefs.getBoolean(PrefsConstants.KEY_DOLPHIN_PATCHED_THIS_RUN, false)
 
-            if ((!patched && !retroArchPatchedThisRun && !dolphinPatchedThisRun) || proxyRunning) {
+            if ((!anyPatched && !retroArchPatchedThisRun && !dolphinPatchedThisRun) || proxyRunning) {
                 _state.value = _state.value.copy(
                     proxyRunning = proxyRunning,
-                    cfgIsPatched = patched
+                    cfgIsPatched = anyPatched
                 )
                 return@launch
             }
 
-            val result = if (retroArchPatchedThisRun) {
+            val retroArchResult = if (retroArchPatchedThisRun || retroArchPatched) {
                 val restoreHardcore = prefs.getBoolean(PrefsConstants.KEY_RETROARCH_HARDCORE_WAS_ENABLED, false)
                 withContext(Dispatchers.IO) {
                     revertRetroArchCfg(app, retroArchTreeUri, restoreHardcore)
@@ -288,9 +290,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             } else {
                 PatchResult(success = true, message = "RetroArch not patched this run.")
             }
-            val revertedTarget = result.success && result.copyBackPath == null
+            val retroArchRevertedTarget = retroArchResult.success && retroArchResult.copyBackPath == null
 
-            val dolphinResult = if (dolphinPatchedThisRun) {
+            val dolphinResult = if (dolphinPatchedThisRun || dolphinPatched) {
                 val restoreDolphinHardcore = prefs.getBoolean(PrefsConstants.KEY_DOLPHIN_HARDCORE_WAS_ENABLED, false)
                 withContext(Dispatchers.IO) {
                     revertDolphinCfg(app, dolphinTreeUri, restoreDolphinHardcore)
@@ -298,30 +300,42 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             } else {
                 DolphinPatchResult(success = true, message = "Dolphin not patched this run.", skippedNotInstalled = true)
             }
+            val dolphinRevertedTarget = dolphinResult.success && dolphinResult.copyBackPath == null
 
-            if (revertedTarget) {
+            if (retroArchRevertedTarget) {
                 prefs.edit {
                     remove(PrefsConstants.KEY_RETROARCH_HARDCORE_WAS_ENABLED)
                     remove(PrefsConstants.KEY_RETROARCH_PATCHED_THIS_RUN)
                 }
             }
-            if (dolphinResult.success && dolphinResult.copyBackPath == null) {
+
+            if (dolphinRevertedTarget) {
                 prefs.edit {
                     remove(PrefsConstants.KEY_DOLPHIN_HARDCORE_WAS_ENABLED)
                     remove(PrefsConstants.KEY_DOLPHIN_PATCHED_THIS_RUN)
                 }
             }
 
+            val needsSafGrant = retroArchResult.needsSafGrant || dolphinResult.needsSafGrant
+            val safGrantTarget = when {
+                retroArchResult.needsSafGrant -> SafGrantTarget.RetroArch
+                dolphinResult.needsSafGrant -> SafGrantTarget.Dolphin
+                else -> null
+            }
+            val cfgCopyBackPath = retroArchResult.copyBackPath ?: dolphinResult.copyBackPath
+
             _state.value = _state.value.copy(
                 proxyRunning = false,
-                cfgIsPatched = !revertedTarget,
-                needsSafGrant = result.needsSafGrant,
-                safGrantTarget = if (result.needsSafGrant) SafGrantTarget.RetroArch else null,
-                cfgCopyBackPath = result.copyBackPath
+                cfgIsPatched = !(retroArchRevertedTarget && dolphinRevertedTarget),
+                needsSafGrant = needsSafGrant,
+                safGrantTarget = safGrantTarget,
+                cfgCopyBackPath = cfgCopyBackPath
             )
 
-            if (!revertedTarget) {
-                SnackbarManager.showError(result.message)
+            if (!retroArchRevertedTarget) {
+                SnackbarManager.showError(retroArchResult.message)
+            } else if (!dolphinRevertedTarget && !dolphinResult.needsSafGrant) {
+                SnackbarManager.showError(dolphinResult.message)
             }
         }
     }
@@ -853,7 +867,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun checkCfgPatched(treeUri: Uri? = null) {
         val app = getApplication<Application>()
         viewModelScope.launch {
-            val patched = withContext(Dispatchers.IO) { checkIsPatched(app, treeUri) }
+            val patched = withContext(Dispatchers.IO) {
+                checkRetroArchIsPatched(app, treeUri) || checkIsDolphinPatched(app, loadDolphinSafUri())
+            }
             _state.value = _state.value.copy(cfgIsPatched = patched)
         }
     }

@@ -353,9 +353,9 @@ internal fun isPatchedContent(content: String, proxyAddress: String): Boolean {
     return hostRegex.containsMatchIn(content)
 }
 
-fun checkIsPatched(context: Context, treeUri: Uri?): Boolean {
+fun checkRetroArchIsPatched(context: Context, treeUri: Uri?): Boolean {
     val proxyAddress = proxyValue(context)
-    Log.d(TAG, "checkIsPatched: treeUri=$treeUri proxy=$proxyAddress")
+    Log.d(TAG, "checkRetroArchIsPatched: treeUri=$treeUri proxy=$proxyAddress")
 
     if (treeUri != null) {
         val tree = DocumentFile.fromTreeUri(context, treeUri)
