@@ -622,9 +622,6 @@ class ProxyServer(
         output.flush()
     }
 
-    private fun httpResponse(code: Int, message: String, body: String): String =
-        proxyHttpResponse(code, message, body)
-
     private fun newExecutor(): ThreadPoolExecutor = ThreadPoolExecutor(
         2, MAX_WORKER_THREADS,
         60L, TimeUnit.SECONDS,

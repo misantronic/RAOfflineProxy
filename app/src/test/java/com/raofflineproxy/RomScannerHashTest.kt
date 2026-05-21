@@ -850,10 +850,10 @@ class RomScannerHashTest {
         image[1] = 'I'.code.toByte()
         image[2] = 'S'.code.toByte()
         image[3] = 'O'.code.toByte()
-        image[4] = (blockSize and 0xFF).toByte()
-        image[5] = ((blockSize shr 8) and 0xFF).toByte()
-        image[6] = ((blockSize shr 16) and 0xFF).toByte()
-        image[7] = ((blockSize shr 24) and 0xFF).toByte()
+        image[4] = 0x00
+        image[5] = 0x80.toByte()
+        image[6] = 0x00
+        image[7] = 0x00
 
         repeat(blockCount) { index ->
             image[8 + index] = 1
