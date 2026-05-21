@@ -12,7 +12,12 @@ from .config import (
     load_config,
     proxy_value,
 )
-from .platform import autostart_enabled, disable_autostart, enable_autostart
+from .platform import (
+    autostart_enabled,
+    disable_autostart,
+    enable_autostart,
+    resolve_rom_root,
+)
 from .batocera_conf import patch_batocera_conf, revert_batocera_conf
 from .retroarch_cfg import (
     patch_retroarch_cfg,
@@ -28,7 +33,13 @@ from .service import (
 from .menu_sdl import run_menu_sdl
 from .network import online_check
 from .pending_awards import list_pending_awards
-from .rom_browser import clear_cached_games, list_cached_games
+from .rom_browser import (
+    add_rom_to_cache,
+    clear_cached_games,
+    describe_browser_entries,
+    describe_browser_entries_fast,
+    list_cached_games,
+)
 from .smart_cache import (
     SMART_CACHE_LIMIT,
     load_content_history_paths,
@@ -103,6 +114,10 @@ def main() -> None:
             "clear-cached-games",
             "pending-awards",
             "pending-awards-count",
+            "browser-root",
+            "browser-list",
+            "browser-list-fast",
+            "cache-rom",
             "smart-cache-status",
             "run-smart-cache",
             "status",
@@ -118,6 +133,11 @@ def main() -> None:
         "--retroarch-cfg",
         dest="retroarch_cfg",
         help="Override RetroArch config path",
+    )
+    parser.add_argument(
+        "--path",
+        dest="path",
+        help="Filesystem path for browser and cache commands",
     )
     parser.add_argument(
         "--output",
@@ -286,6 +306,76 @@ def main() -> None:
                 print(len(list_pending_awards(storage)))
             finally:
                 storage.close()
+            return
+
+        if args.command == "browser-root":
+            print(resolve_rom_root(config_data))
+            return
+
+        if args.command == "browser-list":
+            if not args.path:
+                raise ValueError("browser-list requires --path")
+
+            current_dir = Path(args.path).expanduser()
+            if not current_dir.exists() or not current_dir.is_dir():
+                raise ValueError(f"Invalid browser directory: {current_dir}")
+
+            storage = Storage()
+            try:
+                for entry in describe_browser_entries(current_dir, storage):
+                    print(
+                        "\t".join(
+                            [
+                                "1" if entry.is_dir else "0",
+                                "1" if entry.is_cached else "0",
+                                str(entry.path),
+                                entry.name,
+                            ]
+                        )
+                    )
+            finally:
+                storage.close()
+            return
+
+        if args.command == "browser-list-fast":
+            if not args.path:
+                raise ValueError("browser-list-fast requires --path")
+
+            current_dir = Path(args.path).expanduser()
+            if not current_dir.exists() or not current_dir.is_dir():
+                raise ValueError(f"Invalid browser directory: {current_dir}")
+
+            for entry in describe_browser_entries_fast(current_dir):
+                print(
+                    "\t".join(
+                        [
+                            "1" if entry.is_dir else "0",
+                            "1" if entry.is_cached else "0",
+                            str(entry.path),
+                            entry.name,
+                        ]
+                    )
+                )
+            return
+
+        if args.command == "cache-rom":
+            if not args.path:
+                raise ValueError("cache-rom requires --path")
+
+            rom_path = Path(args.path).expanduser()
+            if not rom_path.exists() or not rom_path.is_file():
+                raise ValueError(f"Invalid ROM path: {rom_path}")
+
+            storage = Storage()
+            try:
+                result = add_rom_to_cache(rom_path, storage, config_data)
+            finally:
+                storage.close()
+
+            if not result.success:
+                raise RuntimeError(result.message)
+
+            print(result.message)
             return
 
         if args.command == "smart-cache-status":

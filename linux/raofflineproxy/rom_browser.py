@@ -30,6 +30,7 @@ from .utils import proxy_user_agent
 LOGGER = logging.getLogger("raofflineproxy")
 SUPPORTED_ROM_EXTENSIONS = supported_rom_extensions()
 SUPPORTED_ARCHIVE_EXTENSIONS = {".zip"}
+EXCLUDED_BROWSER_DIR_NAMES = {"Imgs"}
 MAX_CACHED_GAMES = 50
 
 
@@ -45,6 +46,14 @@ class AddRomResult:
     success: bool
     message: str
     game: CachedGameEntry | None = None
+
+
+@dataclass
+class BrowserEntry:
+    path: Path
+    name: str
+    is_dir: bool
+    is_cached: bool
 
 
 def list_cached_games(storage: Storage) -> list[CachedGameEntry]:
@@ -98,12 +107,105 @@ def list_browser_entries(current_dir: Path) -> list[Path]:
         if entry.name.startswith("."):
             continue
         if entry.is_dir():
+            if entry.name in EXCLUDED_BROWSER_DIR_NAMES:
+                continue
             if directory_has_supported_roms(entry):
                 directories.append(entry)
             continue
         if is_supported_browser_file(entry):
             files.append(entry)
     return directories + files
+
+
+def list_browser_entries_fast(current_dir: Path) -> list[Path]:
+    directories: list[Path] = []
+    files: list[Path] = []
+    for entry in sorted(
+        current_dir.iterdir(), key=lambda path: (not path.is_dir(), path.name.lower())
+    ):
+        if entry.name.startswith("."):
+            continue
+        if entry.is_dir():
+            if entry.name in EXCLUDED_BROWSER_DIR_NAMES:
+                continue
+            directories.append(entry)
+            continue
+        if is_supported_browser_file(entry):
+            files.append(entry)
+    return directories + files
+
+
+def describe_browser_entries_fast(current_dir: Path) -> list[BrowserEntry]:
+    return [
+        BrowserEntry(
+            path=path,
+            name=path.name,
+            is_dir=path.is_dir(),
+            is_cached=False,
+        )
+        for path in list_browser_entries_fast(current_dir)
+    ]
+
+
+def describe_browser_entries(current_dir: Path, storage: Storage) -> list[BrowserEntry]:
+    cached_game_ids = {game.game_id for game in list_cached_games(storage)}
+    entries: list[BrowserEntry] = []
+    for path in list_browser_entries(current_dir):
+        entries.append(
+            BrowserEntry(
+                path=path,
+                name=path.name,
+                is_dir=path.is_dir(),
+                is_cached=not path.is_dir()
+                and browser_file_is_cached(path, storage, cached_game_ids),
+            )
+        )
+    return entries
+
+
+def browser_file_is_cached(
+    path: Path, storage: Storage, cached_game_ids: set[int] | None = None
+) -> bool:
+    if cached_game_ids is None:
+        cached_game_ids = {game.game_id for game in list_cached_games(storage)}
+
+    try:
+        hash_candidates = hash_candidates_for_manual_cache(path)
+    except Exception:
+        return False
+
+    for hash_value in hash_candidates:
+        game_id = cached_game_id_for_hash(storage, hash_value)
+        if game_id is not None and game_id in cached_game_ids:
+            return True
+
+    return False
+
+
+def cached_game_id_for_hash(storage: Storage, hash_value: str) -> int | None:
+    entry = storage.get_cache(cache_keys.game_id(hash_value))
+    if entry is not None:
+        try:
+            payload = json.loads(entry["responseBody"])
+        except Exception:
+            payload = {}
+        game_id = payload.get("GameID")
+        if isinstance(game_id, int) and game_id > 0:
+            return game_id
+
+    achievementsets_entry = storage.get_cache_by_prefix(
+        f"{cache_keys.PREFIX_ACHIEVEMENTSETS}{hash_value}:"
+    )
+    if achievementsets_entry is None:
+        return None
+
+    try:
+        payload = json.loads(achievementsets_entry["responseBody"])
+    except Exception:
+        return None
+
+    game_id = payload.get("GameId")
+    return game_id if isinstance(game_id, int) and game_id > 0 else None
 
 
 def directory_has_supported_roms(path: Path) -> bool:
