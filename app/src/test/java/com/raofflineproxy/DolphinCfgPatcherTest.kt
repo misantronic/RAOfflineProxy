@@ -140,6 +140,21 @@ class DolphinCfgPatcherTest {
     }
 
     @Test
+    fun isDolphinPatchedContent_falseWhenHostCleared() {
+        assertFalse(isDolphinPatchedContent("[Achievements]\nHostUrl = ", proxyAddress))
+    }
+
+    @Test
+    fun buildRevertedDolphinContent_isNotDetectedAsPatched() {
+        val reverted = buildRevertedDolphinContent(
+            "[Achievements]\nHostUrl = $proxyAddress\nHardcoreEnabled = False",
+            restoreHardcore = false
+        )
+
+        assertFalse(isDolphinPatchedContent(reverted, proxyAddress))
+    }
+
+    @Test
     fun ensureDolphinBackupFileExists_createsSiblingBackupWhenMissing() {
         val target = tempFolder.newFile("RetroAchievements.ini")
         val original = "[Achievements]\nHostUrl ="
