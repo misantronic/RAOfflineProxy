@@ -18,7 +18,6 @@ import com.raofflineproxy.proxy.hash.detectIsoSectorLayout
 import com.raofflineproxy.proxy.hash.findFileRecord
 import com.raofflineproxy.proxy.hash.hashZipRom
 import com.raofflineproxy.proxy.hash.readBigEndianInt
-import com.raofflineproxy.proxy.hash.hashWiiDisc
 import com.raofflineproxy.proxy.hash.hashRom
 import com.raofflineproxy.proxy.hash.PsxRomHashStrategy
 import com.raofflineproxy.proxy.hash.PspRomHashStrategy
@@ -43,6 +42,10 @@ import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 
 class RomScannerHashTest {
+    private companion object {
+        const val TEST_DISC_BLOCK_SIZE = 0x8000
+        const val TEST_WBFS_SECTOR_SHIFT = 17
+    }
 
     @Test
     fun nesHeaderBytesToSkip_nesHeader_skips16Bytes() {
@@ -631,7 +634,7 @@ class RomScannerHashTest {
     @Test
     fun hashRom_gameCubeCisoUsesNintendoDiscPathInsteadOfGenericMd5Fallback() {
         val disc = buildGameCubeDisc()
-        val ciso = buildCisoImage(disc, blockSize = 0x8000)
+        val ciso = buildCisoImage(disc)
 
         assertEquals(
             GameCubeRomHashStrategy.hash(
@@ -656,7 +659,7 @@ class RomScannerHashTest {
     @Test
     fun hashRom_gameCubeGczUsesNintendoDiscPath() {
         val disc = buildGameCubeDisc()
-        val gcz = buildGczImage(disc, blockSize = 0x8000)
+        val gcz = buildGczImage(disc)
 
         assertEquals(
             GameCubeRomHashStrategy.hash(
@@ -681,7 +684,7 @@ class RomScannerHashTest {
     @Test
     fun hashRom_wiiWbfsUsesNintendoDiscPath() {
         val disc = buildWiiDisc()
-        val wbfs = buildWbfsImage(disc, wbfsSectorShift = 17)
+        val wbfs = buildWbfsImage(disc)
 
         assertNotNull(
             hashRom(
@@ -836,7 +839,8 @@ class RomScannerHashTest {
         return result
     }
 
-    private fun buildCisoImage(disc: ByteArray, blockSize: Int): ByteArray {
+    private fun buildCisoImage(disc: ByteArray): ByteArray {
+        val blockSize = TEST_DISC_BLOCK_SIZE
         require(blockSize > 0)
         val blockCount = (disc.size + blockSize - 1) / blockSize
         require(blockCount <= 0x7FF8)
@@ -866,7 +870,8 @@ class RomScannerHashTest {
         return image
     }
 
-    private fun buildGczImage(disc: ByteArray, blockSize: Int): ByteArray {
+    private fun buildGczImage(disc: ByteArray): ByteArray {
+        val blockSize = TEST_DISC_BLOCK_SIZE
         val blockCount = (disc.size + blockSize - 1) / blockSize
         val pointers = LongArray(blockCount)
         val hashes = IntArray(blockCount)
@@ -939,7 +944,8 @@ class RomScannerHashTest {
         return disc
     }
 
-    private fun buildWbfsImage(disc: ByteArray, wbfsSectorShift: Int): ByteArray {
+    private fun buildWbfsImage(disc: ByteArray): ByteArray {
+        val wbfsSectorShift = TEST_WBFS_SECTOR_SHIFT
         val hdSectorShift = 9
         val hdSectorSize = 1 shl hdSectorShift
         val wbfsSectorSize = 1 shl wbfsSectorShift
