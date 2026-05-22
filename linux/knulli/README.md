@@ -84,14 +84,14 @@ From repo root:
 
 This creates:
 
-- `linux/knulli/dist/RAOfflineProxy Install.sh`
+- `linux/knulli/dist/RAOfflineProxy-Knulli-v1.1.0-linux-alpha-Install.sh`
 
 ## Install On KNULLI
 
 Copy the single-file installer to `/userdata/roms/tools` and launch it from EmulationStation Tools.
 
 ```bash
-cp "path/to/RAOfflineProxy/linux/knulli/dist/RAOfflineProxy Install.sh" /path/to/mounted/knulli/share/roms/tools/
+cp "path/to/RAOfflineProxy/linux/knulli/dist/RAOfflineProxy-Knulli-v1.1.0-linux-alpha-Install.sh" /path/to/mounted/knulli/share/roms/tools/
 ```
 
 Then run `RAOfflineProxy Install` from EmulationStation Tools.

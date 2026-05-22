@@ -1,7 +1,7 @@
 #!/bin/sh
 
 APP_DIR=/mnt/SDCARD/App/RAOfflineProxy
-APP_VERSION=v1.0.3-experimental
+APP_VERSION=v1.1.0-linux-alpha
 APP_MAX_CACHED_GAMES=100
 APP_DATA_DIR="$APP_DIR/data"
 APP_RUNTIME_DIR="$APP_DIR/runtime"
