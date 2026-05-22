@@ -77,6 +77,11 @@ browser_cleanup() {
 
 trap browser_cleanup EXIT INT TERM
 
+read_escape_sequence() {
+    stty -echo -icanon min 0 time 2 < /dev/tty
+    dd bs=1 count=2 2>/dev/null < /dev/tty | od -An -tx1 | tr -d ' \n'
+}
+
 cached_games_count() {
     run_backend "$PYTHON_BIN" cached-games-count 2>/dev/null || printf '0\n'
 }
@@ -124,8 +129,12 @@ pause_yes_no_prompt() {
                 YES_NO_ACTION="$choice"
                 ;;
             1b)
-                stty -echo -icanon min 0 time 1 < /dev/tty
-                sequence="$(dd bs=1 count=2 2>/dev/null < /dev/tty | od -An -tx1 | tr -d ' \n')"
+                sequence="$(read_escape_sequence)"
+                if [ -z "$sequence" ] || [ "$sequence" = '1b' ]; then
+                    stty "$saved_tty" < /dev/tty
+                    drain_tty "$saved_tty"
+                    exit 0
+                fi
                 case "$sequence" in
                     5b41|4f41|5b42|4f42|5b43|4f43|5b44|4f44)
                         if [ "$choice" = "YES" ]; then
@@ -363,8 +372,12 @@ show_cached_games_view() {
                 cached_games_redraw=full
                 ;;
             1b)
-                stty -echo -icanon min 0 time 1 < /dev/tty
-                sequence="$(dd bs=1 count=2 2>/dev/null < /dev/tty | od -An -tx1 | tr -d ' \n')"
+                sequence="$(read_escape_sequence)"
+                if [ -z "$sequence" ] || [ "$sequence" = '1b' ]; then
+                    stty "$saved_tty" < /dev/tty
+                    drain_tty "$saved_tty"
+                    exit 0
+                fi
                 case "$sequence" in
                     5b41|4f41)
                         cached_games_move_selection up
@@ -842,6 +855,7 @@ render_main_menu() {
     printf '\n'
     printf 'Use D-Pad up/down to move.\033[K\n'
     printf 'Press START or A to select.\033[K\n'
+    printf 'Press MENU to exit.\033[K\n'
     printf '\033[J'
 }
 
@@ -1017,8 +1031,12 @@ open_rom_browser() {
                 fi
                 ;;
             1b)
-                stty -echo -icanon min 0 time 1 < /dev/tty
-                sequence="$(dd bs=1 count=2 2>/dev/null < /dev/tty | od -An -tx1 | tr -d ' \n')"
+                sequence="$(read_escape_sequence)"
+                if [ -z "$sequence" ] || [ "$sequence" = '1b' ]; then
+                    stty "$saved_tty" < /dev/tty
+                    drain_tty "$saved_tty"
+                    exit 0
+                fi
                 case "$sequence" in
                     5b41|4f41)
                         browser_move_selection up
@@ -1086,8 +1104,12 @@ read_choice() {
                 fi
                 ;;
             1b)
-                stty -echo -icanon min 0 time 1 < /dev/tty
-                sequence="$(dd bs=1 count=2 2>/dev/null < /dev/tty | od -An -tx1 | tr -d ' \n')"
+                sequence="$(read_escape_sequence)"
+                if [ -z "$sequence" ] || [ "$sequence" = '1b' ]; then
+                    stty "$saved_tty" < /dev/tty
+                    drain_tty "$saved_tty"
+                    exit 0
+                fi
                 case "$sequence" in
                     5b41|4f41)
                         if [ "$DPAD_SELECTION" -le 1 ]; then
