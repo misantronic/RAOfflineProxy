@@ -1198,6 +1198,34 @@ class LinuxRomBrowserTests(unittest.TestCase):
                 ],
             )
 
+    def test_main_cached_games_outputs_unlock_counts(self) -> None:
+        stdout = StringIO()
+        with mock.patch("sys.argv", ["raofflineproxy", "cached-games"]):
+            with mock.patch.object(main, "load_config", return_value={}):
+                with mock.patch.object(
+                    main,
+                    "list_cached_games",
+                    return_value=[
+                        rom_browser.CachedGameEntry(game_id=10701, title="Tetris"),
+                        rom_browser.CachedGameEntry(game_id=204, title="Metroid"),
+                    ],
+                ):
+                    with mock.patch.object(
+                        main,
+                        "cached_unlock_count",
+                        side_effect=[3, None],
+                    ):
+                        with mock.patch("sys.stdout", stdout):
+                            main.main()
+
+        self.assertEqual(
+            stdout.getvalue().strip().splitlines(),
+            [
+                "1. Tetris (3 unlocks)",
+                "2. Metroid",
+            ],
+        )
+
     def test_run_folder_cache_caches_only_listed_files(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
