@@ -738,37 +738,10 @@ read_choice() {
         choice=
 
         case "$key" in
-            31)
-                pending_choice=1
-                DPAD_SELECTION=1
-                ;;
-            32)
-                pending_choice=2
-                DPAD_SELECTION=2
-                ;;
-            33)
-                pending_choice=3
-                DPAD_SELECTION=3
-                ;;
-            34)
-                pending_choice=4
-                DPAD_SELECTION=4
-                ;;
-            35)
-                pending_choice=5
-                DPAD_SELECTION=5
-                ;;
-            36)
-                pending_choice=6
-                DPAD_SELECTION=6
-                ;;
             0d|0a|20|61|41|73|53)
                 if [ -n "$pending_choice" ]; then
                     choice="$pending_choice"
                 fi
-                ;;
-            08|7f|62|42|71|51)
-                choice=4
                 ;;
             1b)
                 stty -echo -icanon min 0 time 1 < /dev/tty
