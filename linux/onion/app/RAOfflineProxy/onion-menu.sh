@@ -42,7 +42,7 @@ PYTHON_BIN="$RESOLVED_PYTHON_BIN"
 install_onion_checkoff_script >/dev/null 2>&1 || true
 
 DPAD_SELECTION=0
-MENU_ITEM_COUNT=6
+MENU_ITEM_COUNT=5
 BROWSER_VISIBLE_COUNT=15
 BROWSER_LIST_TOP_ROW=5
 BROWSER_TERM_COLUMNS=80
@@ -335,6 +335,15 @@ show_cached_games_view() {
                 fi
                 cached_games_redraw=full
                 ;;
+            08|7f)
+                open_rom_browser || true
+                if ! cached_games_reload; then
+                    stty "$saved_tty" < /dev/tty
+                    drain_tty "$saved_tty"
+                    return 0
+                fi
+                cached_games_redraw=full
+                ;;
             09)
                 stty "$saved_tty" < /dev/tty
                 drain_tty "$saved_tty"
@@ -527,6 +536,7 @@ render_cached_games_help() {
     printf 'Use D-Pad up/down to move.\033[K\n'
     printf 'Press LEFT to go back.\033[K\n'
     printf 'Press START or A to remove selected game.\033[K\n'
+    printf 'Press R2 to add ROMs.\033[K\n'
     printf 'Press L2 to clear cached games...\033[K\n'
     printf '\033[J'
 }
@@ -745,7 +755,6 @@ render_browser_help() {
     else
         printf '\033[K\n'
     fi
-    printf 'Press L2 to cancel.\033[K\n'
     printf '\033[J'
 }
 
@@ -754,6 +763,13 @@ render_browser_full() {
     render_browser_header
     render_browser_list
     render_browser_help
+}
+
+render_browser_loading() {
+    printf '\033[2J\033[H'
+    printf 'RAOfflineProxy > Add ROMs\033[K\n\n'
+    printf 'Loading...\033[K\n'
+    printf '\033[J'
 }
 
 render_browser_content() {
@@ -793,11 +809,10 @@ render_main_menu() {
 
     printf '\n'
     render_main_menu_item 1 "$MAIN_PROXY_LABEL"
-    render_main_menu_item 2 'Add ROMs'
-    render_main_menu_item 3 "Cached games (${MAIN_CACHED_COUNT})"
-    render_main_menu_item 4 "Pending awards (${MAIN_PENDING_COUNT})"
-    render_main_menu_item 5 "$MAIN_AUTOSTART_LABEL"
-    render_main_menu_item 6 'Exit'
+    render_main_menu_item 2 "Cached games (${MAIN_CACHED_COUNT})"
+    render_main_menu_item 3 "Pending awards (${MAIN_PENDING_COUNT})"
+    render_main_menu_item 4 "$MAIN_AUTOSTART_LABEL"
+    render_main_menu_item 5 'Exit'
     printf '\n'
     printf 'Use D-Pad up/down to move.\033[K\n'
     printf 'Press START or A to select.\033[K\n'
@@ -932,6 +947,7 @@ open_rom_browser() {
     browser_redraw=full
     set -- $(stty size < /dev/tty)
     BROWSER_TERM_COLUMNS=${2:-80}
+    render_browser_loading
 
     BROWSER_ROOT="$(browser_root | tr -d '\n')"
     if [ -z "$BROWSER_ROOT" ]; then
@@ -973,11 +989,6 @@ open_rom_browser() {
                     browser_cache_folder_listing
                     browser_redraw=full
                 fi
-                ;;
-            09)
-                stty "$saved_tty" < /dev/tty
-                drain_tty "$saved_tty"
-                return 0
                 ;;
             1b)
                 stty -echo -icanon min 0 time 1 < /dev/tty
@@ -1121,20 +1132,17 @@ while :; do
             fi
             ;;
         2)
-            open_rom_browser || true
-            ;;
-        3)
             show_cached_games_view || true
             ;;
-        4)
+        3)
             show_pending_awards || true
             pause_prompt
             ;;
-        5)
+        4)
             toggle_autostart
             pause_prompt
             ;;
-        6)
+        5)
             exit 0
             ;;
         *)

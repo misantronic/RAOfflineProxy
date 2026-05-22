@@ -278,12 +278,12 @@ def main() -> None:
 
                 unlock_counts = cached_unlock_counts(storage)
 
-                for index, game in enumerate(games, start=1):
+                for game in games:
                     unlock_count = unlock_counts.get(game.game_id)
                     suffix = (
                         f" ({unlock_count} unlocks)" if unlock_count is not None else ""
                     )
-                    print(f"{index}. {game.title}{suffix} ##GAMEID:{game.game_id}")
+                    print(f"{game.title}{suffix} ##GAMEID:{game.game_id}")
             finally:
                 storage.close()
             return
