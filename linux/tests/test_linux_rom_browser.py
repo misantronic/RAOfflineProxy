@@ -13,6 +13,7 @@ from linux.raofflineproxy import proxy_service
 from linux.raofflineproxy import rom_browser
 from linux.raofflineproxy import rom_cache
 from linux.raofflineproxy import storage
+from linux.raofflineproxy import smart_cache
 from linux.raofflineproxy import cache_keys
 
 
@@ -103,6 +104,19 @@ class LinuxRomBrowserTests(unittest.TestCase):
             entries = rom_browser.list_browser_entries_fast(root)
 
             self.assertEqual([entry.name for entry in entries], ["GBA"])
+
+    def test_list_browser_files_fast_returns_only_files(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / "GBA").mkdir()
+            (root / "tetris.gb").write_bytes(b"gb")
+            (root / "mario.gba").write_bytes(b"gba")
+
+            entries = rom_browser.list_browser_files_fast(root)
+
+            self.assertEqual(
+                [entry.name for entry in entries], ["mario.gba", "tetris.gb"]
+            )
 
     def test_describe_browser_entries_marks_cached_files(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -999,7 +1013,7 @@ class LinuxRomBrowserTests(unittest.TestCase):
                 rom_browser.cache_game = original_cache_game
                 store.close()
 
-    def test_add_rom_to_cache_respects_fifty_game_limit(self) -> None:
+    def test_add_rom_to_cache_respects_hundred_game_limit(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             db_path = root / "test.sqlite3"
@@ -1011,7 +1025,7 @@ class LinuxRomBrowserTests(unittest.TestCase):
             original_fetch_game_id = rom_browser.fetch_game_id
             original_cache_game = rom_browser.cache_game
             try:
-                for game_id in range(1, 51):
+                for game_id in range(1, 101):
                     store.upsert_cache(
                         cache_keys.patch(game_id, "misantronic"),
                         json.dumps(
@@ -1036,7 +1050,7 @@ class LinuxRomBrowserTests(unittest.TestCase):
                 result = rom_browser.add_rom_to_cache(rom_path, store, {})
 
                 self.assertFalse(result.success)
-                self.assertEqual(result.message, "Cache limit reached: 50 / 50")
+                self.assertEqual(result.message, "Cache limit reached: 100 / 100")
             finally:
                 rom_browser.resolve_credentials = original_resolve_credentials
                 rom_browser.hash_rom_candidates = original_hash_rom_candidates
@@ -1184,6 +1198,50 @@ class LinuxRomBrowserTests(unittest.TestCase):
                 ],
             )
 
+    def test_run_folder_cache_caches_only_listed_files(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            db_path = root / "test.sqlite3"
+            (root / "GBA").mkdir()
+            (root / "tetris.gb").write_bytes(b"gb")
+            (root / "mario.gba").write_bytes(b"gba")
+            store = storage.Storage(database_path=db_path)
+            original_add_rom_to_cache = smart_cache.add_rom_to_cache
+            try:
+                cached_paths = []
+
+                def fake_add_rom_to_cache(path, _storage, _config_data):
+                    cached_paths.append(path.name)
+                    return rom_browser.AddRomResult(True, f"Cached {path.name}")
+
+                smart_cache.add_rom_to_cache = fake_add_rom_to_cache
+
+                result = smart_cache.run_folder_cache(store, {}, root)
+
+                self.assertEqual(result.total, 2)
+                self.assertEqual(result.scanned, 2)
+                self.assertEqual(result.cached, 2)
+                self.assertEqual(result.skipped, 0)
+                self.assertEqual(cached_paths, ["mario.gba", "tetris.gb"])
+            finally:
+                smart_cache.add_rom_to_cache = original_add_rom_to_cache
+                store.close()
+
+    def test_run_folder_cache_returns_empty_result_for_no_files(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            db_path = root / "test.sqlite3"
+            (root / "GBA").mkdir()
+            store = storage.Storage(database_path=db_path)
+            try:
+                result = smart_cache.run_folder_cache(store, {}, root)
+
+                self.assertEqual(result.total, 0)
+                self.assertEqual(result.scanned, 0)
+                self.assertEqual(result.cached, 0)
+            finally:
+                store.close()
+
     def test_main_cache_rom_prints_result_message(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -1209,6 +1267,40 @@ class LinuxRomBrowserTests(unittest.TestCase):
                             main.main()
 
             self.assertEqual(stdout.getvalue().strip(), "Cached Tetris")
+
+    def test_main_cache_folder_listing_prints_result_message(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            cfg_path = root / "retroarch.cfg"
+            cfg_path.write_text("# cfg\n", encoding="utf-8")
+            stdout = StringIO()
+            with mock.patch(
+                "sys.argv",
+                ["raofflineproxy", "cache-folder-listing", "--path", str(root)],
+            ):
+                with mock.patch.object(
+                    main,
+                    "load_config",
+                    return_value={"retroarch_cfg": str(cfg_path)},
+                ):
+                    with mock.patch.object(
+                        main,
+                        "run_folder_cache",
+                        return_value=smart_cache.SmartCacheResult(
+                            2,
+                            2,
+                            2,
+                            0,
+                            False,
+                        ),
+                    ):
+                        with mock.patch("sys.stdout", stdout):
+                            main.main()
+
+            self.assertEqual(
+                stdout.getvalue().strip(),
+                '{"type":"result","scanned":2,"total":2,"cached":2,"skipped":0,"limit_reached":false}',
+            )
 
     def test_main_service_status_prints_service_line(self) -> None:
         stdout = StringIO()

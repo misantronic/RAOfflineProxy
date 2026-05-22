@@ -4,7 +4,12 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .platform import resolve_retroarch_cfg
-from .rom_browser import MAX_CACHED_GAMES, add_rom_to_cache, list_cached_games
+from .rom_browser import (
+    MAX_CACHED_GAMES,
+    add_rom_to_cache,
+    list_browser_files_fast,
+    list_cached_games,
+)
 from .storage import Storage
 
 SMART_CACHE_LIMIT = 25
@@ -57,7 +62,38 @@ def run_smart_cache(
     limit: int = SMART_CACHE_LIMIT,
     on_progress=None,
 ) -> SmartCacheResult:
-    paths = load_content_history_paths(config_data)
+    return run_cache_paths(
+        storage,
+        config_data,
+        load_content_history_paths(config_data),
+        limit=limit,
+        on_progress=on_progress,
+    )
+
+
+def run_folder_cache(
+    storage: Storage,
+    config_data: dict,
+    current_dir: Path,
+    on_progress=None,
+) -> SmartCacheResult:
+    return run_cache_paths(
+        storage,
+        config_data,
+        list_browser_files_fast(current_dir),
+        limit=MAX_CACHED_GAMES,
+        on_progress=on_progress,
+    )
+
+
+def run_cache_paths(
+    storage: Storage,
+    config_data: dict,
+    paths: list[Path],
+    *,
+    limit: int,
+    on_progress=None,
+) -> SmartCacheResult:
     total = len(paths)
     cached = 0
     scanned = 0

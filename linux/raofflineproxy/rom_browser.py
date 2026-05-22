@@ -31,7 +31,7 @@ LOGGER = logging.getLogger("raofflineproxy")
 SUPPORTED_ROM_EXTENSIONS = supported_rom_extensions()
 SUPPORTED_ARCHIVE_EXTENSIONS = {".zip"}
 EXCLUDED_BROWSER_DIR_NAMES = {"Imgs"}
-MAX_CACHED_GAMES = 50
+MAX_CACHED_GAMES = 100
 
 
 @dataclass
@@ -145,6 +145,10 @@ def describe_browser_entries_fast(current_dir: Path) -> list[BrowserEntry]:
         )
         for path in list_browser_entries_fast(current_dir)
     ]
+
+
+def list_browser_files_fast(current_dir: Path) -> list[Path]:
+    return [path for path in list_browser_entries_fast(current_dir) if path.is_file()]
 
 
 def describe_browser_entries(current_dir: Path, storage: Storage) -> list[BrowserEntry]:
