@@ -1210,6 +1210,20 @@ class LinuxRomBrowserTests(unittest.TestCase):
 
             self.assertEqual(stdout.getvalue().strip(), "Cached Tetris")
 
+    def test_main_service_status_prints_service_line(self) -> None:
+        stdout = StringIO()
+        with mock.patch("sys.argv", ["raofflineproxy", "service-status"]):
+            with mock.patch.object(main, "load_config", return_value={}):
+                with mock.patch.object(
+                    main,
+                    "service_status",
+                    return_value={"running": True, "pid": 1234},
+                ):
+                    with mock.patch("sys.stdout", stdout):
+                        main.main()
+
+        self.assertEqual(stdout.getvalue().strip(), "Service running: yes | PID: 1234")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -120,6 +120,7 @@ def main() -> None:
             "cache-rom",
             "smart-cache-status",
             "run-smart-cache",
+            "service-status",
             "status",
             "run-service",
             "ui-image",
@@ -458,6 +459,16 @@ def main() -> None:
                 )
             finally:
                 storage.close()
+            return
+
+        if args.command == "service-status":
+            service = service_status()
+            service_line = (
+                f"Service running: {'yes' if service.get('running') else 'no'}"
+            )
+            if service.get("running") and service.get("pid"):
+                service_line += f" | PID: {service['pid']}"
+            print(service_line)
             return
 
         status = status_retroarch_cfg(cfg_path, config_data)
