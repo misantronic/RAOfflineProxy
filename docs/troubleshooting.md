@@ -1,7 +1,5 @@
 # Troubleshooting / FAQ
 
-> Current release stage: alpha (`v1.1.0-alpha4`). Some rough edges are expected while this prerelease is being validated.
-
 ## The proxy starts but the emulator still contacts RetroAchievements directly
 
 **Cause:** The emulator config is not patched, or the emulator loaded a different config than the one RAOfflineProxy updated.

@@ -7,7 +7,7 @@ RAOfflineProxy is a local proxy that lets you earn **softcore RetroAchievements*
 
 It currently supports **RetroArch and Dolphin on Android**, and **KNULLI** plus **Onion (alpha)** for Linux.
 
-> **Current release stage: alpha (`v1.1.0-alpha4`).** This is a public prerelease and has not gone through formal QA.
+> **Current release stage: `v1.1.0 (alpha)`.** This is a public prerelease and has not gone through formal QA.
 
 RAOfflineProxy runs a tiny local proxy on your device. It sits between supported emulators and the RetroAchievements server, saving game and achievement data for offline use and queuing any achievements you unlock while offline. When you reconnect, queued awards are automatically sent to RetroAchievements.
 
