@@ -61,10 +61,17 @@ BROWSER_SCROLL_OFFSET=0
 BROWSER_ENTRY_COUNT=0
 BROWSER_FILE_COUNT=0
 BROWSER_ENTRIES_FILE=
+CACHED_GAMES_COUNT=0
+CACHED_GAMES_FILE=
+CACHED_GAMES_SELECTED_INDEX=1
+CACHED_GAMES_SCROLL_OFFSET=0
 
 browser_cleanup() {
     if [ -n "${BROWSER_ENTRIES_FILE:-}" ] && [ -f "$BROWSER_ENTRIES_FILE" ]; then
         rm -f "$BROWSER_ENTRIES_FILE"
+    fi
+    if [ -n "${CACHED_GAMES_FILE:-}" ] && [ -f "$CACHED_GAMES_FILE" ]; then
+        rm -f "$CACHED_GAMES_FILE"
     fi
 }
 
@@ -287,33 +294,67 @@ pause_prompt() {
 }
 
 show_cached_games_view() {
+    cached_games_redraw=full
+
+    if ! cached_games_reload; then
+        return 1
+    fi
+
     saved_tty="$(stty -g < /dev/tty)"
-
     while :; do
-        clear
-        show_cached_games || true
-        printf '\nPress START or A to continue...\n'
-        printf 'Press L2 to clear cached games...\n'
+        case "$cached_games_redraw" in
+            full)
+                render_cached_games_full
+                ;;
+            selection)
+                render_cached_games_selection_change "$CACHED_GAMES_PREVIOUS_SELECTION_INDEX" "$CACHED_GAMES_CURRENT_SELECTION_INDEX"
+                ;;
+            list)
+                render_cached_games_list
+                ;;
+        esac
+        cached_games_redraw=
 
-        while :; do
-            stty -echo -icanon min 1 time 0 < /dev/tty
-            key="$(read_byte_hex)"
-            case "$key" in
-                0d|0a|20|61|41|73|53)
+        stty -echo -icanon min 1 time 0 < /dev/tty
+        key="$(read_byte_hex)"
+        case "$key" in
+            0d|0a|20|61|41|73|53)
+                cached_games_remove_selected
+                if ! cached_games_reload; then
                     stty "$saved_tty" < /dev/tty
                     drain_tty "$saved_tty"
                     return 0
-                    ;;
-                09)
-                    stty "$saved_tty" < /dev/tty
-                    drain_tty "$saved_tty"
-                    clear
-                    clear_cached_games
-                    pause_prompt
-                    return 0
-                    ;;
-            esac
-        done
+                fi
+                cached_games_redraw=full
+                ;;
+            09)
+                stty "$saved_tty" < /dev/tty
+                drain_tty "$saved_tty"
+                clear
+                clear_cached_games
+                pause_prompt
+                return 0
+                ;;
+            1b)
+                stty -echo -icanon min 0 time 1 < /dev/tty
+                sequence="$(dd bs=1 count=2 2>/dev/null < /dev/tty | od -An -tx1 | tr -d ' \n')"
+                case "$sequence" in
+                    5b41|4f41)
+                        cached_games_move_selection up
+                        drain_tty "$saved_tty"
+                        ;;
+                    5b42|4f42)
+                        cached_games_move_selection down
+                        drain_tty "$saved_tty"
+                        ;;
+                    5b44|4f44)
+                        stty "$saved_tty" < /dev/tty
+                        drain_tty "$saved_tty"
+                        return 0
+                        ;;
+                esac
+                ;;
+        esac
     done
 }
 
@@ -339,6 +380,216 @@ clear_cached_games() {
     fi
 
     printf 'Failed to clear cached games\n'
+    return 1
+}
+
+load_cached_games_entries() {
+    if [ -n "${CACHED_GAMES_FILE:-}" ] && [ -f "$CACHED_GAMES_FILE" ]; then
+        rm -f "$CACHED_GAMES_FILE"
+    fi
+
+    CACHED_GAMES_FILE="/tmp/raofflineproxy-cached-games.$$"
+    if ! run_backend_raw "$PYTHON_BIN" cached-games > "$CACHED_GAMES_FILE" 2>/dev/null; then
+        rm -f "$CACHED_GAMES_FILE"
+        CACHED_GAMES_FILE=
+        return 1
+    fi
+
+    count=$(wc -l < "$CACHED_GAMES_FILE" | tr -d ' ')
+    CACHED_GAMES_COUNT=${count:-0}
+    return 0
+}
+
+cached_games_entry_line() {
+    index="$1"
+    sed -n "${index}p" "$CACHED_GAMES_FILE"
+}
+
+cached_games_reload() {
+    if ! load_cached_games_entries; then
+        clear
+        printf 'RAOfflineProxy > Cached games\n\n'
+        printf 'Failed to read cached games\n'
+        pause_prompt
+        return 1
+    fi
+
+    if [ "$CACHED_GAMES_COUNT" -le 0 ]; then
+        CACHED_GAMES_SELECTED_INDEX=0
+        CACHED_GAMES_SCROLL_OFFSET=0
+        return 0
+    fi
+
+    if [ "$CACHED_GAMES_SELECTED_INDEX" -le 0 ]; then
+        CACHED_GAMES_SELECTED_INDEX=1
+    fi
+    if [ "$CACHED_GAMES_SELECTED_INDEX" -gt "$CACHED_GAMES_COUNT" ]; then
+        CACHED_GAMES_SELECTED_INDEX="$CACHED_GAMES_COUNT"
+    fi
+    if [ "$CACHED_GAMES_SELECTED_INDEX" -le "$CACHED_GAMES_SCROLL_OFFSET" ]; then
+        CACHED_GAMES_SCROLL_OFFSET=$((CACHED_GAMES_SELECTED_INDEX - 1))
+    fi
+    if [ "$CACHED_GAMES_SELECTED_INDEX" -gt $((CACHED_GAMES_SCROLL_OFFSET + BROWSER_VISIBLE_COUNT)) ]; then
+        CACHED_GAMES_SCROLL_OFFSET=$((CACHED_GAMES_SELECTED_INDEX - BROWSER_VISIBLE_COUNT))
+    fi
+    if [ "$CACHED_GAMES_SCROLL_OFFSET" -lt 0 ]; then
+        CACHED_GAMES_SCROLL_OFFSET=0
+    fi
+    return 0
+}
+
+cached_games_selected_game_id() {
+    if [ "$CACHED_GAMES_SELECTED_INDEX" -le 0 ] || [ "$CACHED_GAMES_COUNT" -le 0 ]; then
+        return 1
+    fi
+
+    line="$(cached_games_entry_line "$CACHED_GAMES_SELECTED_INDEX")"
+    game_id=$(printf '%s' "$line" | sed -n 's/.*##GAMEID:\([0-9][0-9]*\)$/\1/p')
+    if [ -z "$game_id" ]; then
+        return 1
+    fi
+
+    printf '%s\n' "$game_id"
+    return 0
+}
+
+cached_games_display_text() {
+    line="$1"
+    printf '%s' "$line" | sed 's/ ##GAMEID:[0-9][0-9]*$//'
+}
+
+render_cached_games_row() {
+    index="$1"
+    screen_row=$((BROWSER_LIST_TOP_ROW + index - CACHED_GAMES_SCROLL_OFFSET - 1))
+
+    if [ "$screen_row" -lt "$BROWSER_LIST_TOP_ROW" ] || [ "$screen_row" -ge $((BROWSER_LIST_TOP_ROW + BROWSER_VISIBLE_COUNT)) ]; then
+        return 0
+    fi
+
+    printf '\033[%s;1H' "$screen_row"
+
+    if [ "$CACHED_GAMES_COUNT" -eq 0 ] && [ "$index" -eq 1 ]; then
+        printf 'No cached games.\033[K'
+        return 0
+    fi
+
+    line="$(cached_games_entry_line "$index")"
+    marker=' '
+    if [ "$index" -eq "$CACHED_GAMES_SELECTED_INDEX" ]; then
+        marker='>'
+    fi
+    printf '%s %s\033[K' "$marker" "$(truncate_text "$(cached_games_display_text "$line")" $((BROWSER_TERM_COLUMNS - 2)))"
+}
+
+render_cached_games_list() {
+    printf '\033[%s;1H' "$BROWSER_LIST_TOP_ROW"
+    line_index=1
+    printed=0
+    start_index=$((CACHED_GAMES_SCROLL_OFFSET + 1))
+    end_index=$((CACHED_GAMES_SCROLL_OFFSET + BROWSER_VISIBLE_COUNT))
+
+    if [ "$CACHED_GAMES_COUNT" -eq 0 ]; then
+        render_cached_games_row 1
+        printf '\n'
+        printed=1
+    else
+        while [ "$line_index" -le "$CACHED_GAMES_COUNT" ]; do
+            if [ "$line_index" -ge "$start_index" ] && [ "$line_index" -le "$end_index" ]; then
+                render_cached_games_row "$line_index"
+                printf '\n'
+                printed=$((printed + 1))
+            fi
+            line_index=$((line_index + 1))
+        done
+    fi
+
+    while [ "$printed" -lt "$BROWSER_VISIBLE_COUNT" ]; do
+        printf '\033[K\n'
+        printed=$((printed + 1))
+    done
+}
+
+render_cached_games_help() {
+    printf '\033[%s;1H' "$((BROWSER_LIST_TOP_ROW + BROWSER_VISIBLE_COUNT + 1))"
+    printf '\033[K\n'
+    printf 'Use D-Pad up/down to move.\033[K\n'
+    printf 'Press LEFT to go back.\033[K\n'
+    printf 'Press START or A to remove selected game.\033[K\n'
+    printf 'Press L2 to clear cached games...\033[K\n'
+    printf '\033[J'
+}
+
+render_cached_games_full() {
+    printf '\033[2J\033[H'
+    printf 'RAOfflineProxy > Cached games\033[K\n\n'
+    printf '%s / %s games cached\033[K\n\n' "$CACHED_GAMES_COUNT" "$APP_MAX_CACHED_GAMES"
+    render_cached_games_list
+    render_cached_games_help
+}
+
+render_cached_games_selection_change() {
+    previous_index="$1"
+    current_index="$2"
+    render_cached_games_row "$previous_index"
+    render_cached_games_row "$current_index"
+}
+
+cached_games_move_selection() {
+    direction="$1"
+    if [ "$CACHED_GAMES_COUNT" -le 0 ]; then
+        cached_games_redraw=list
+        return 0
+    fi
+
+    previous_index="$CACHED_GAMES_SELECTED_INDEX"
+    previous_scroll="$CACHED_GAMES_SCROLL_OFFSET"
+
+    if [ "$direction" = "down" ]; then
+        if [ "$CACHED_GAMES_SELECTED_INDEX" -ge "$CACHED_GAMES_COUNT" ]; then
+            CACHED_GAMES_SELECTED_INDEX=1
+            CACHED_GAMES_SCROLL_OFFSET=0
+        else
+            CACHED_GAMES_SELECTED_INDEX=$((CACHED_GAMES_SELECTED_INDEX + 1))
+            if [ "$CACHED_GAMES_SELECTED_INDEX" -gt $((CACHED_GAMES_SCROLL_OFFSET + BROWSER_VISIBLE_COUNT)) ]; then
+                CACHED_GAMES_SCROLL_OFFSET=$((CACHED_GAMES_SELECTED_INDEX - BROWSER_VISIBLE_COUNT))
+            fi
+        fi
+    else
+        if [ "$CACHED_GAMES_SELECTED_INDEX" -le 1 ]; then
+            CACHED_GAMES_SELECTED_INDEX="$CACHED_GAMES_COUNT"
+            if [ "$CACHED_GAMES_COUNT" -gt "$BROWSER_VISIBLE_COUNT" ]; then
+                CACHED_GAMES_SCROLL_OFFSET=$((CACHED_GAMES_COUNT - BROWSER_VISIBLE_COUNT))
+            else
+                CACHED_GAMES_SCROLL_OFFSET=0
+            fi
+        else
+            CACHED_GAMES_SELECTED_INDEX=$((CACHED_GAMES_SELECTED_INDEX - 1))
+            if [ "$CACHED_GAMES_SELECTED_INDEX" -le "$CACHED_GAMES_SCROLL_OFFSET" ]; then
+                CACHED_GAMES_SCROLL_OFFSET=$((CACHED_GAMES_SELECTED_INDEX - 1))
+            fi
+        fi
+    fi
+
+    if [ "$previous_scroll" -eq "$CACHED_GAMES_SCROLL_OFFSET" ]; then
+        cached_games_redraw=selection
+        CACHED_GAMES_PREVIOUS_SELECTION_INDEX="$previous_index"
+        CACHED_GAMES_CURRENT_SELECTION_INDEX="$CACHED_GAMES_SELECTED_INDEX"
+    else
+        cached_games_redraw=list
+    fi
+}
+
+cached_games_remove_selected() {
+    game_id="$(cached_games_selected_game_id)" || return 0
+    clear
+    printf 'RAOfflineProxy > Cached games\n\n'
+    if run_backend "$PYTHON_BIN" remove-cached-game --game-id "$game_id"; then
+        printf '\n'
+        pause_prompt
+        return 0
+    fi
+
+    pause_prompt
     return 1
 }
 
