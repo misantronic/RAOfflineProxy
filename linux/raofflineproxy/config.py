@@ -6,6 +6,8 @@ from pathlib import Path
 
 DEFAULT_ONION_APP_DIR = Path("/mnt/SDCARD/App/RAOfflineProxy")
 DEFAULT_ONION_STARTUP_SCRIPT = Path("/mnt/SDCARD/.tmp_update/startup/raofflineproxy.sh")
+DEFAULT_BATOCERA_CONF = Path("/userdata/system/batocera.conf")
+DEFAULT_KNULLI_CONF = Path("/userdata/system/knulli.conf")
 
 
 def resolve_config_dir() -> Path:
@@ -42,7 +44,6 @@ PID_FILE = CONFIG_DIR / "service.pid"
 LOG_FILE = CONFIG_DIR / "service.log"
 STATUS_FILE = CONFIG_DIR / "service_status.json"
 AWARD_SECRET_FILE = CONFIG_DIR / "award_secret.key"
-DEFAULT_BATOCERA_CONF = Path("/userdata/system/batocera.conf")
 
 
 def ensure_config_dir() -> Path:
@@ -125,6 +126,9 @@ def detect_batocera_conf(config_data: dict) -> str | None:
     env_override = os.environ.get("RAOFFLINEPROXY_BATOCERA_CONF")
     if env_override:
         return env_override
+
+    if DEFAULT_KNULLI_CONF.exists():
+        return str(DEFAULT_KNULLI_CONF)
 
     if DEFAULT_BATOCERA_CONF.exists():
         return str(DEFAULT_BATOCERA_CONF)

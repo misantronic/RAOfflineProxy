@@ -13,7 +13,6 @@ from urllib.parse import urlsplit
 from . import cache_keys
 from .auth import resolve_credentials
 from .award_signing import sign_award
-from .batocera_conf import enforce_batocera_conf
 from .config import FALLBACK_USER_AGENT, proxy_host, proxy_port, upstream_host
 from .flusher import flush_pending_awards
 from .image_cache import resolve_cached_static_asset
@@ -27,7 +26,6 @@ from .network import (
     read_response_bytes,
     response_content_type,
 )
-from .retroarch_cfg import enforce_patched_cfg
 from .rom_cache import (
     build_unlocks_array,
     cache_session,
@@ -787,31 +785,6 @@ class PeriodicRefresh(threading.Thread):
             self.server.storage.evict_cache_older_than(before)
 
 
-class ConfigEnforcer(threading.Thread):
-    def __init__(self, config_data: dict, interval_seconds: int = 2):
-        super().__init__(daemon=True)
-        self.config_data = dict(config_data)
-        self.interval_seconds = interval_seconds
-        self.stop_event = threading.Event()
-
-    def stop(self) -> None:
-        self.stop_event.set()
-
-    def run(self) -> None:
-        cfg_path = self.config_data.get("retroarch_cfg")
-        while not self.stop_event.wait(self.interval_seconds):
-            try:
-                if cfg_path:
-                    changed = enforce_patched_cfg(cfg_path, self.config_data)
-                    if changed:
-                        LOGGER.info("Re-applied RetroArch proxy patch to %s", cfg_path)
-                batocera_changed = enforce_batocera_conf(self.config_data)
-                if batocera_changed:
-                    LOGGER.info("Re-applied batocera.conf cheevos settings")
-            except Exception as error:
-                LOGGER.warning("Config enforcer failed: %s", error)
-
-
 def run_proxy_service(
     config_data: dict, stop_event: threading.Event | None = None
 ) -> None:
@@ -819,14 +792,12 @@ def run_proxy_service(
     server = ProxyRuntimeServer(config_data, storage)
     connectivity_monitor = ConnectivityMonitor(server)
     periodic_refresh = PeriodicRefresh(server)
-    config_enforcer = ConfigEnforcer(config_data)
 
     try:
         if server.refresh_reachability(force_probe=True):
             server.flush_pending_awards()
         connectivity_monitor.start()
         periodic_refresh.start()
-        config_enforcer.start()
 
         if stop_event is None:
             server.serve_forever(poll_interval=0.5)
@@ -843,7 +814,6 @@ def run_proxy_service(
         server.shutdown()
         serving_thread.join(timeout=5)
     finally:
-        config_enforcer.stop()
         connectivity_monitor.stop()
         periodic_refresh.stop()
         server.server_close()
