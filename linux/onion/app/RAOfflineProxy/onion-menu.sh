@@ -59,6 +59,7 @@ BROWSER_ROOT=
 BROWSER_SELECTED_INDEX=1
 BROWSER_SCROLL_OFFSET=0
 BROWSER_ENTRY_COUNT=0
+BROWSER_FILE_COUNT=0
 BROWSER_ENTRIES_FILE=
 
 browser_cleanup() {
@@ -133,8 +134,11 @@ pause_smart_cache_prompt() {
     done
 }
 
-run_smart_cache_flow() {
-    total_count="$1"
+run_cache_progress_flow() {
+    title="$1"
+    command_name="$2"
+    total_count="$3"
+    target_path="${4:-}"
     result_line=
     backend_rc=0
     fifo_path="/tmp/raofflineproxy-smart-cache.$$"
@@ -143,10 +147,14 @@ run_smart_cache_flow() {
 
     clear
     printf 'RAOfflineProxy\n\n'
-    printf 'Smart Cache: 0 / %s\n' "${total_count:-0}"
+    printf '%s: 0 / %s\n' "$title" "${total_count:-0}"
     printf 'Preparing...\n'
 
-    run_backend_raw "$PYTHON_BIN" run-smart-cache > "$fifo_path" 2>&1 &
+    if [ -n "$target_path" ]; then
+        run_backend_raw "$PYTHON_BIN" "$command_name" --path "$target_path" > "$fifo_path" 2>&1 &
+    else
+        run_backend_raw "$PYTHON_BIN" "$command_name" > "$fifo_path" 2>&1 &
+    fi
     backend_pid=$!
 
     while IFS= read -r line; do
@@ -157,7 +165,7 @@ run_smart_cache_flow() {
                 current_label="$(printf '%s' "$line" | "$PYTHON_BIN" -c 'import json, sys; print(json.loads(sys.stdin.read()).get("current_label", "..."))')"
                 clear
                 printf 'RAOfflineProxy\n\n'
-                printf 'Smart Cache: %s / %s\n' "${scanned:-0}" "${total:-0}"
+                printf '%s: %s / %s\n' "$title" "${scanned:-0}" "${total:-0}"
                 printf 'Current: %s\n' "${current_label:-...}"
                 ;;
             *'"type":"result"'*)
@@ -186,12 +194,17 @@ run_smart_cache_flow() {
     if [ -n "$result_line" ]; then
         cached="$(printf '%s' "$result_line" | "$PYTHON_BIN" -c 'import json, sys; print(json.loads(sys.stdin.read()).get("cached", 0))')"
         scanned="$(printf '%s' "$result_line" | "$PYTHON_BIN" -c 'import json, sys; print(json.loads(sys.stdin.read()).get("scanned", 0))')"
-        printf 'Smart Cache complete: %s games cached\n' "${cached:-0}"
+        printf '%s complete: %s games cached\n' "$title" "${cached:-0}"
         printf 'Scanned: %s\n' "${scanned:-0}"
     else
-        printf 'Smart Cache complete\n'
+        printf '%s complete\n' "$title"
     fi
     pause_prompt
+}
+
+run_smart_cache_flow() {
+    total_count="$1"
+    run_cache_progress_flow 'Smart Cache' 'run-smart-cache' "$total_count"
 }
 
 autostart_is_enabled() {
@@ -345,6 +358,18 @@ load_browser_entries() {
 
     count=$(wc -l < "$BROWSER_ENTRIES_FILE" | tr -d ' ')
     BROWSER_ENTRY_COUNT=${count:-0}
+    BROWSER_FILE_COUNT=0
+    if [ "$BROWSER_ENTRY_COUNT" -gt 0 ]; then
+        line_index=1
+        while [ "$line_index" -le "$BROWSER_ENTRY_COUNT" ]; do
+            entry_line="$(browser_entry_line "$line_index")"
+            parse_browser_entry_line "$entry_line"
+            if [ "$BROWSER_ENTRY_IS_DIR" != "1" ]; then
+                BROWSER_FILE_COUNT=$((BROWSER_FILE_COUNT + 1))
+            fi
+            line_index=$((line_index + 1))
+        done
+    fi
     return 0
 }
 
@@ -452,6 +477,11 @@ render_browser_help() {
     printf 'Use D-Pad up/down to move.\033[K\n'
     printf 'Press LEFT to go back.\033[K\n'
     printf 'Press START or A to select.\033[K\n'
+    if [ "$BROWSER_FILE_COUNT" -gt 0 ]; then
+        printf 'Press R2 to add folder.\033[K\n'
+    else
+        printf '\033[K\n'
+    fi
     printf 'Press L2 to cancel.\033[K\n'
     printf '\033[J'
 }
@@ -621,6 +651,20 @@ browser_activate_selected() {
     return 1
 }
 
+browser_cache_folder_listing() {
+    if [ "$BROWSER_FILE_COUNT" -le 0 ]; then
+        return 0
+    fi
+
+    if run_cache_progress_flow 'Folder Cache' 'cache-folder-listing' "$BROWSER_FILE_COUNT" "$BROWSER_DIR"; then
+        browser_set_dir "$BROWSER_DIR"
+        return 0
+    fi
+
+    browser_set_dir "$BROWSER_DIR"
+    return 1
+}
+
 open_rom_browser() {
     browser_redraw=full
     set -- $(stty size < /dev/tty)
@@ -660,6 +704,12 @@ open_rom_browser() {
             0d|0a|20|61|41|73|53)
                 browser_activate_selected
                 browser_redraw=full
+                ;;
+            08|7f)
+                if [ "$BROWSER_FILE_COUNT" -gt 0 ]; then
+                    browser_cache_folder_listing
+                    browser_redraw=full
+                fi
                 ;;
             09)
                 stty "$saved_tty" < /dev/tty

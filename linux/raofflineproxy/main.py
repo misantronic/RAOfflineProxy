@@ -43,6 +43,7 @@ from .rom_browser import (
 from .smart_cache import (
     SMART_CACHE_LIMIT,
     load_content_history_paths,
+    run_folder_cache,
     run_smart_cache,
     should_offer_smart_cache,
 )
@@ -118,6 +119,7 @@ def main() -> None:
             "browser-list",
             "browser-list-fast",
             "cache-rom",
+            "cache-folder-listing",
             "smart-cache-status",
             "run-smart-cache",
             "service-status",
@@ -377,6 +379,59 @@ def main() -> None:
                 raise RuntimeError(result.message)
 
             print(result.message)
+            return
+
+        if args.command == "cache-folder-listing":
+            if not args.path:
+                raise ValueError("cache-folder-listing requires --path")
+
+            current_dir = Path(args.path).expanduser()
+            if not current_dir.exists() or not current_dir.is_dir():
+                raise ValueError(f"Invalid browser directory: {current_dir}")
+
+            storage = Storage()
+            try:
+
+                def on_progress(progress) -> None:
+                    print(
+                        json.dumps(
+                            {
+                                "type": "progress",
+                                "scanned": progress.scanned,
+                                "total": progress.total,
+                                "cached": progress.cached,
+                                "current_label": progress.current_label,
+                            },
+                            separators=(",", ":"),
+                        ),
+                        flush=True,
+                    )
+
+                result = run_folder_cache(
+                    storage,
+                    config_data,
+                    current_dir,
+                    on_progress=on_progress,
+                )
+            finally:
+                storage.close()
+
+            if result.total <= 0:
+                raise RuntimeError("No ROM files in this folder")
+
+            print(
+                json.dumps(
+                    {
+                        "type": "result",
+                        "scanned": result.scanned,
+                        "total": result.total,
+                        "cached": result.cached,
+                        "skipped": result.skipped,
+                        "limit_reached": result.limit_reached,
+                    },
+                    separators=(",", ":"),
+                )
+            )
             return
 
         if args.command == "smart-cache-status":
