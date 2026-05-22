@@ -93,17 +93,19 @@ smart_cache_status() {
     run_backend "$PYTHON_BIN" smart-cache-status 2>/dev/null || printf '{"found_history":false,"total_candidates":0}\n'
 }
 
-pause_smart_cache_prompt() {
-    count="$1"
+pause_yes_no_prompt() {
+    title_line="$1"
+    action_label="$2"
+    default_choice="${3:-YES}"
     saved_tty="$(stty -g < /dev/tty)"
-    choice=YES
-    SMART_CACHE_ACTION=
+    choice="$default_choice"
+    YES_NO_ACTION=
 
     render_prompt() {
         clear
         printf 'RAOfflineProxy\n\n'
-        printf 'Smart Cache found %s recent games.\n\n' "$count"
-        printf 'Cache games: %s\n\n' "$choice"
+        printf '%s\n\n' "$title_line"
+        printf '%s: %s\n\n' "$action_label" "$choice"
         printf 'Use D-Pad to choose.\n'
         printf 'Press START or A to continue.\n'
     }
@@ -115,7 +117,7 @@ pause_smart_cache_prompt() {
         key="$(read_byte_hex)"
         case "$key" in
             0d|0a|20|61|41|73|53)
-                SMART_CACHE_ACTION="$choice"
+                YES_NO_ACTION="$choice"
                 ;;
             1b)
                 stty -echo -icanon min 0 time 1 < /dev/tty
@@ -133,12 +135,18 @@ pause_smart_cache_prompt() {
                 ;;
         esac
 
-        if [ -n "${SMART_CACHE_ACTION:-}" ]; then
+        if [ -n "${YES_NO_ACTION:-}" ]; then
             stty "$saved_tty" < /dev/tty
             drain_tty "$saved_tty"
             return 0
         fi
     done
+}
+
+pause_smart_cache_prompt() {
+    count="$1"
+    pause_yes_no_prompt "Smart Cache found ${count} recent games." 'Cache games' 'YES'
+    SMART_CACHE_ACTION="$YES_NO_ACTION"
 }
 
 run_cache_progress_flow() {
@@ -330,10 +338,14 @@ show_cached_games_view() {
             09)
                 stty "$saved_tty" < /dev/tty
                 drain_tty "$saved_tty"
-                clear
-                clear_cached_games
-                pause_prompt
-                return 0
+                pause_yes_no_prompt 'Do you really want to clear all games?' 'Clear games' 'NO'
+                if [ "$YES_NO_ACTION" = 'YES' ]; then
+                    clear
+                    clear_cached_games
+                    pause_prompt
+                    return 0
+                fi
+                cached_games_redraw=full
                 ;;
             1b)
                 stty -echo -icanon min 0 time 1 < /dev/tty
