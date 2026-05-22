@@ -312,7 +312,7 @@ class MenuSdlSession:
         if self.view == "pending_awards":
             labels = []
             for award in self.pending_awards:
-                labels.extend([award.game_title, award.summary_text])
+                labels.extend([award.game_title, award.detail_text])
             labels.append("Back")
             return labels
 
@@ -396,12 +396,6 @@ class MenuSdlSession:
         return TEXT_COLOR
 
     def item_font_for_index(self, index: int):
-        if self.view != "pending_awards":
-            return self.item_font
-
-        if index < len(self.pending_awards) * 2 and index % 2 == 0:
-            return self.title_font
-
         return self.item_font
 
     def game_actions_unlock_titles(self) -> list[str]:

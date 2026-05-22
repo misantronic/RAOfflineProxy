@@ -79,7 +79,7 @@ class MenuLayoutTests(unittest.TestCase):
             "PROXY: STOPPED OFFLINE, LOGIN REQUIRED",
         )
 
-    def test_cached_games_status_shows_count_out_of_fifty(self) -> None:
+    def test_cached_games_status_shows_count_out_of_max(self) -> None:
         session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
         session.view = "cached_games"
         session.cached_games = [
@@ -92,7 +92,7 @@ class MenuLayoutTests(unittest.TestCase):
 
         self.assertEqual(
             menu_sdl.MenuSdlSession.status_text(session, running=False),
-            "CACHED: 5 / 50",
+            "CACHED: 5 / 100",
         )
 
     def test_game_actions_status_includes_cached_unlock_count(self) -> None:
@@ -354,7 +354,7 @@ class MenuLayoutTests(unittest.TestCase):
                 (),
                 {
                     "game_title": "Tetris",
-                    "summary_text": "First Line | 2026-01-01 12:00 | 5pts.",
+                    "detail_text": "First Line | 2026-01-01 12:00 | 5pts.",
                 },
             )(),
             type(
@@ -362,7 +362,7 @@ class MenuLayoutTests(unittest.TestCase):
                 (),
                 {
                     "game_title": "Mega Man",
-                    "summary_text": "Boss Down | 2026-01-01 12:05 | 10pts.",
+                    "detail_text": "Boss Down | 2026-01-01 12:05 | 10pts.",
                 },
             )(),
         ]
@@ -378,7 +378,7 @@ class MenuLayoutTests(unittest.TestCase):
             ],
         )
 
-    def test_pending_awards_uses_title_font_for_game_rows(self) -> None:
+    def test_pending_awards_uses_item_font_for_game_rows(self) -> None:
         session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
         session.view = "pending_awards"
         session.pending_awards = [object(), object()]
@@ -387,7 +387,7 @@ class MenuLayoutTests(unittest.TestCase):
 
         self.assertIs(
             menu_sdl.MenuSdlSession.item_font_for_index(session, 0),
-            session.title_font,
+            session.item_font,
         )
         self.assertIs(
             menu_sdl.MenuSdlSession.item_font_for_index(session, 1),
@@ -395,7 +395,7 @@ class MenuLayoutTests(unittest.TestCase):
         )
         self.assertIs(
             menu_sdl.MenuSdlSession.item_font_for_index(session, 2),
-            session.title_font,
+            session.item_font,
         )
         self.assertIs(
             menu_sdl.MenuSdlSession.item_font_for_index(session, 4),

@@ -26,6 +26,24 @@ class LinuxPendingAwardsTests(unittest.TestCase):
             f"Tetris | First Line | {expected_date}",
         )
 
+    def test_pending_award_detail_text_uses_achievement_date_and_points(self) -> None:
+        expected_date = time.strftime(
+            "%Y-%m-%d %H:%M", time.localtime(1700000000000 / 1000)
+        )
+        entry = pending_awards.PendingAwardEntry(
+            achievement_id=52113,
+            game_id=10701,
+            game_title="Tetris",
+            achievement_title="First Line",
+            points=5,
+            queued_at=1700000000000,
+        )
+
+        self.assertEqual(
+            entry.detail_text,
+            f"First Line | {expected_date} | 5pts.",
+        )
+
     def test_list_pending_awards_resolves_game_and_achievement_metadata(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             db_path = Path(temp_dir) / "test.sqlite3"
