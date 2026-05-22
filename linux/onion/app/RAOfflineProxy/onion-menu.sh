@@ -303,6 +303,8 @@ pause_prompt() {
 
 show_cached_games_view() {
     cached_games_redraw=full
+    set -- $(stty size < /dev/tty)
+    BROWSER_TERM_COLUMNS=${2:-80}
 
     if ! cached_games_reload; then
         return 1
@@ -479,6 +481,26 @@ cached_games_display_text() {
     printf '%s' "$line" | sed 's/ ##GAMEID:[0-9][0-9]*$//'
 }
 
+cached_games_truncated_text() {
+    line="$1"
+    display_text="$(cached_games_display_text "$line")"
+    suffix=$(printf '%s' "$display_text" | sed -n 's/^.*\( ([0-9][0-9]* unlocks)\)$/\1/p')
+    if [ -z "$suffix" ]; then
+        truncate_text "$display_text" $((BROWSER_TERM_COLUMNS - 2))
+        return 0
+    fi
+
+    title=${display_text%$suffix}
+    suffix_len=$(printf '%s' "$suffix" | wc -c | tr -d ' ')
+    available_title_len=$((BROWSER_TERM_COLUMNS - 2 - suffix_len))
+    if [ "$available_title_len" -lt 1 ]; then
+        truncate_text "$display_text" $((BROWSER_TERM_COLUMNS - 2))
+        return 0
+    fi
+
+    printf '%s%s' "$(truncate_text "$title" "$available_title_len")" "$suffix"
+}
+
 render_cached_games_row() {
     index="$1"
     screen_row=$((BROWSER_LIST_TOP_ROW + index - CACHED_GAMES_SCROLL_OFFSET - 1))
@@ -499,7 +521,7 @@ render_cached_games_row() {
     if [ "$index" -eq "$CACHED_GAMES_SELECTED_INDEX" ]; then
         marker='>'
     fi
-    printf '%s %s\033[K' "$marker" "$(truncate_text "$(cached_games_display_text "$line")" $((BROWSER_TERM_COLUMNS - 2)))"
+    printf '%s %s\033[K' "$marker" "$(cached_games_truncated_text "$line")"
 }
 
 render_cached_games_list() {
