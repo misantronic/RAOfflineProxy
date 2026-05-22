@@ -35,6 +35,7 @@ from .network import online_check
 from .pending_awards import list_pending_awards
 from .rom_browser import (
     add_rom_to_cache,
+    cached_unlock_count,
     clear_cached_games,
     describe_browser_entries,
     describe_browser_entries_fast,
@@ -267,7 +268,11 @@ def main() -> None:
                     return
 
                 for index, game in enumerate(games, start=1):
-                    print(f"{index}. {game.title} ({game.game_id})")
+                    unlock_count = cached_unlock_count(storage, game.game_id)
+                    suffix = (
+                        f" ({unlock_count} unlocks)" if unlock_count is not None else ""
+                    )
+                    print(f"{index}. {game.title}{suffix}")
             finally:
                 storage.close()
             return
