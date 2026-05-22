@@ -119,6 +119,7 @@ def main() -> None:
             "clear-cached-games",
             "pending-awards",
             "pending-awards-count",
+            "home-status",
             "browser-root",
             "browser-list",
             "browser-list-fast",
@@ -335,6 +336,26 @@ def main() -> None:
             storage = Storage()
             try:
                 print(len(list_pending_awards(storage)))
+            finally:
+                storage.close()
+            return
+
+        if args.command == "home-status":
+            storage = Storage()
+            try:
+                service = service_status()
+                print(
+                    json.dumps(
+                        {
+                            "cached_games_count": len(list_cached_games(storage)),
+                            "pending_awards_count": len(list_pending_awards(storage)),
+                            "service_running": bool(service.get("running")),
+                            "service_pid": service.get("pid"),
+                            "autostart_enabled": autostart_enabled(config_data),
+                        },
+                        separators=(",", ":"),
+                    )
+                )
             finally:
                 storage.close()
             return
