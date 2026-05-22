@@ -30,9 +30,7 @@ RAOfflineProxy patches the RetroArch config it needs in order to redirect RetroA
 
 == KNULLI
 
-> You are installing the current alpha KNULLI build.
->
-> Intended for [KNULLI Gladiator II](https://github.com/knulli-cfw/distribution/releases/tag/20250813).
+> Intended for [KNULLI Scarab](https://github.com/knulli-cfw/knulli-linux/releases/tag/20260511) and [KNULLI Gladiator II](https://github.com/knulli-cfw/distribution/releases/tag/20250813).
 
 1. Download the KNULLI installer from [GitHub Releases](https://github.com/misantronic/RAOfflineProxy/releases)
 2. Copy it into:
@@ -50,7 +48,7 @@ RAOfflineProxy patches the RetroArch config it needs in order to redirect RetroA
 
 == Onion
 
-> Onion support is currently experimental but working.
+> Onion support is currently in alpha.
 >
 > Intended for [Onion V4.4.0-beta-20260120](https://github.com/OnionUI/Onion/releases/tag/latest).
 

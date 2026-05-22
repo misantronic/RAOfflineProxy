@@ -16,7 +16,7 @@ Use the `KNULLI` and `Onion` tabs throughout the Linux section to switch target-
 ## Supported Targets
 
 - KNULLI (alpha)
-- Onion (experimental)
+- Onion (alpha)
 - ROCKNIX (planned)
 
 ## Specifics
@@ -25,21 +25,14 @@ Use the `KNULLI` and `Onion` tabs throughout the Linux section to switch target-
 
 == KNULLI
 
-KNULLI is the first Linux target with an end-to-end alpha install and on-device menu flow in `RAOfflineProxy`.
-
-It is currently intended for [KNULLI Gladiator II](https://github.com/knulli-cfw/distribution/releases/tag/20250813).
-
-KNULLI is the most complete Linux target right now.
+It is currently intended for [KNULLI Scarab](https://github.com/knulli-cfw/knulli-linux/releases/tag/20260511) and [KNULLI Gladiator II](https://github.com/knulli-cfw/distribution/releases/tag/20250813).
 
 Current rough edges:
 
 - Install and update flow are still alpha-quality
-- Clearing cache while the proxy is actively running does not stop the service first, so live requests can repopulate game cache entries again
 - Autostart is currently implemented for KNULLI/Batocera-style startup hooks, not every Linux environment
 
 == Onion
-
-Onion is an experimental but working Linux target for `RAOfflineProxy`.
 
 It is currently intended for [Onion V4.4.0-beta-20260120](https://github.com/OnionUI/Onion/releases/tag/latest).
 

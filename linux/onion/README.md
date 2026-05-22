@@ -4,7 +4,7 @@ This directory contains the current Onion community app target for the Linux `RA
 
 ## Current State
 
-The Onion target is now a working experimental app bundle built on top of the shared Linux backend.
+The Onion target is now an alpha app bundle built on top of the shared Linux backend.
 
 What currently works:
 
