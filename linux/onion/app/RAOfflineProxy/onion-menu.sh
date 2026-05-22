@@ -665,7 +665,7 @@ open_rom_browser() {
 }
 
 show_status() {
-    if ! run_backend "$PYTHON_BIN" status | grep -v -E '^(Exists:|State file:)' | sed 's#^Config: /mnt/SDCARD/#Config: /#' ; then
+    if ! run_backend "$PYTHON_BIN" service-status; then
         return 1
     fi
     return 0
@@ -781,7 +781,7 @@ while :; do
     render_main_menu_loading
     MAIN_CACHED_COUNT="$(cached_games_count)"
     MAIN_PENDING_COUNT="$(pending_awards_count)"
-    MAIN_STATUS_TEXT="$(run_backend "$PYTHON_BIN" status 2>/dev/null | grep -v -E '^(Exists:|State file:)' | sed 's#^Config: /mnt/SDCARD/#Config: /#' || true)"
+    MAIN_STATUS_TEXT="$(run_backend "$PYTHON_BIN" service-status 2>/dev/null || true)"
     if service_is_running; then
         MAIN_PROXY_RUNNING=1
     else
