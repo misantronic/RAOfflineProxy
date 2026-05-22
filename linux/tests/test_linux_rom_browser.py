@@ -1274,8 +1274,8 @@ class LinuxRomBrowserTests(unittest.TestCase):
         self.assertEqual(
             stdout.getvalue().strip().splitlines(),
             [
-                "1. Tetris (3 unlocks) ##GAMEID:10701",
-                "2. Metroid ##GAMEID:204",
+                "Tetris (3 unlocks) ##GAMEID:10701",
+                "Metroid ##GAMEID:204",
             ],
         )
 
