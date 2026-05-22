@@ -85,6 +85,10 @@ pending_awards_count() {
     run_backend "$PYTHON_BIN" pending-awards-count 2>/dev/null || printf '0\n'
 }
 
+home_status() {
+    run_backend_raw "$PYTHON_BIN" home-status 2>/dev/null || printf '{"cached_games_count":0,"pending_awards_count":0,"service_running":false,"service_pid":null,"autostart_enabled":false}\n'
+}
+
 browser_root() {
     printf '/mnt/SDCARD/Roms\n'
 }
@@ -227,7 +231,7 @@ autostart_is_enabled() {
 }
 
 service_is_running() {
-    [ "$(run_backend "$PYTHON_BIN" status 2>/dev/null | grep '^Service running:' | awk '{print $3}')" = "yes" ]
+    [ "${MAIN_PROXY_RUNNING:-0}" -eq 1 ]
 }
 
 proxy_menu_label() {
@@ -1122,19 +1126,17 @@ read_choice() {
 
 while :; do
     render_main_menu_loading
-    MAIN_CACHED_COUNT="$(cached_games_count)"
-    MAIN_PENDING_COUNT="$(pending_awards_count)"
-    MAIN_STATUS_TEXT="$(run_backend "$PYTHON_BIN" service-status 2>/dev/null || true)"
-    if service_is_running; then
-        MAIN_PROXY_RUNNING=1
-    else
-        MAIN_PROXY_RUNNING=0
-    fi
-    if autostart_is_enabled; then
-        MAIN_AUTOSTART_ENABLED=1
-    else
-        MAIN_AUTOSTART_ENABLED=0
-    fi
+    status_json="$(home_status)"
+    MAIN_CACHED_COUNT="$(printf '%s' "$status_json" | sed -n 's/.*"cached_games_count":\([0-9][0-9]*\).*/\1/p')"
+    MAIN_PENDING_COUNT="$(printf '%s' "$status_json" | sed -n 's/.*"pending_awards_count":\([0-9][0-9]*\).*/\1/p')"
+    MAIN_PROXY_RUNNING="$(printf '%s' "$status_json" | sed -n 's/.*"service_running":\(true\|false\).*/\1/p' | sed 's/true/1/;s/false/0/')"
+    MAIN_PROXY_PID="$(printf '%s' "$status_json" | sed -n 's/.*"service_pid":\([0-9][0-9]*\).*/\1/p')"
+    MAIN_AUTOSTART_ENABLED="$(printf '%s' "$status_json" | sed -n 's/.*"autostart_enabled":\(true\|false\).*/\1/p' | sed 's/true/1/;s/false/0/')"
+    [ -n "$MAIN_CACHED_COUNT" ] || MAIN_CACHED_COUNT=0
+    [ -n "$MAIN_PENDING_COUNT" ] || MAIN_PENDING_COUNT=0
+    [ -n "$MAIN_PROXY_RUNNING" ] || MAIN_PROXY_RUNNING=0
+    [ -n "$MAIN_AUTOSTART_ENABLED" ] || MAIN_AUTOSTART_ENABLED=0
+    MAIN_STATUS_TEXT="Service running: $( [ "$MAIN_PROXY_RUNNING" -eq 1 ] && printf 'yes' || printf 'no' )$( [ -n "$MAIN_PROXY_PID" ] && printf ' | PID: %s' "$MAIN_PROXY_PID" || true)"
     MAIN_PROXY_LABEL="$(proxy_menu_label | tr -d '\n')"
     MAIN_AUTOSTART_LABEL="$(autostart_menu_label | tr -d '\n')"
 
