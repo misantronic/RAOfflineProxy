@@ -274,7 +274,6 @@ def main() -> None:
             try:
                 games = list_cached_games(storage)
                 if not games:
-                    print("No cached games")
                     return
 
                 unlock_counts = cached_unlock_counts(storage)
