@@ -666,14 +666,6 @@ open_rom_browser() {
                 drain_tty "$saved_tty"
                 return 0
                 ;;
-            08|7f|62|42)
-                if ! browser_go_back; then
-                    stty "$saved_tty" < /dev/tty
-                    drain_tty "$saved_tty"
-                    return 0
-                fi
-                browser_redraw=content
-                ;;
             1b)
                 stty -echo -icanon min 0 time 1 < /dev/tty
                 sequence="$(dd bs=1 count=2 2>/dev/null < /dev/tty | od -An -tx1 | tr -d ' \n')"
