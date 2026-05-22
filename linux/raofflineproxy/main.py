@@ -40,6 +40,7 @@ from .rom_browser import (
     describe_browser_entries,
     describe_browser_entries_fast,
     list_cached_games,
+    remove_cached_game,
 )
 from .smart_cache import (
     SMART_CACHE_LIMIT,
@@ -113,6 +114,7 @@ def main() -> None:
             "autostart-status",
             "cached-games",
             "cached-games-count",
+            "remove-cached-game",
             "clear-cached-games",
             "pending-awards",
             "pending-awards-count",
@@ -142,6 +144,12 @@ def main() -> None:
         "--path",
         dest="path",
         help="Filesystem path for browser and cache commands",
+    )
+    parser.add_argument(
+        "--game-id",
+        dest="game_id",
+        type=int,
+        help="Game id for cached game commands",
     )
     parser.add_argument(
         "--output",
@@ -272,7 +280,7 @@ def main() -> None:
                     suffix = (
                         f" ({unlock_count} unlocks)" if unlock_count is not None else ""
                     )
-                    print(f"{index}. {game.title}{suffix}")
+                    print(f"{index}. {game.title}{suffix} ##GAMEID:{game.game_id}")
             finally:
                 storage.close()
             return
@@ -281,6 +289,18 @@ def main() -> None:
             storage = Storage()
             try:
                 print(len(list_cached_games(storage)))
+            finally:
+                storage.close()
+            return
+
+        if args.command == "remove-cached-game":
+            if args.game_id is None or args.game_id <= 0:
+                raise ValueError("remove-cached-game requires --game-id")
+
+            storage = Storage()
+            try:
+                remove_cached_game(storage, args.game_id)
+                print(f"Removed cached game {args.game_id}")
             finally:
                 storage.close()
             return

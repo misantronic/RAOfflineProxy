@@ -1221,10 +1221,22 @@ class LinuxRomBrowserTests(unittest.TestCase):
         self.assertEqual(
             stdout.getvalue().strip().splitlines(),
             [
-                "1. Tetris (3 unlocks)",
-                "2. Metroid",
+                "1. Tetris (3 unlocks) ##GAMEID:10701",
+                "2. Metroid ##GAMEID:204",
             ],
         )
+
+    def test_main_remove_cached_game_prints_result_message(self) -> None:
+        stdout = StringIO()
+        with mock.patch(
+            "sys.argv", ["raofflineproxy", "remove-cached-game", "--game-id", "10701"]
+        ):
+            with mock.patch.object(main, "load_config", return_value={}):
+                with mock.patch.object(main, "remove_cached_game"):
+                    with mock.patch("sys.stdout", stdout):
+                        main.main()
+
+        self.assertEqual(stdout.getvalue().strip(), "Removed cached game 10701")
 
     def test_run_folder_cache_caches_only_listed_files(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
