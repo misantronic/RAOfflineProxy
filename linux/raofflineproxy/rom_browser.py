@@ -436,6 +436,65 @@ def cached_unlock_count(storage: Storage, game_id: int) -> int | None:
     return len(unlock_ids)
 
 
+def cached_unlock_counts(storage: Storage) -> dict[int, int]:
+    achievement_game_ids = build_achievement_game_ids(
+        storage.get_all_cache_by_prefix(cache_keys.PREFIX_PATCH)
+    )
+    pending_awards = storage.get_pending_awards()
+    counts: dict[int, int] = {}
+
+    for entry in storage.get_all_cache_by_prefix(cache_keys.PREFIX_UNLOCKS):
+        game_id = parse_game_id_from_unlock_key(entry.get("cacheKey", ""))
+        user = parse_user_from_unlocks_key(entry.get("cacheKey", ""))
+        if game_id is None or user is None:
+            continue
+
+        try:
+            payload = json.loads(entry["responseBody"])
+        except Exception:
+            continue
+
+        value = payload.get("UserUnlocks")
+        if not isinstance(value, list):
+            continue
+
+        merged_ids = merge_start_session_unlock_ids(
+            cached_unlock_ids=[item for item in value if isinstance(item, int)],
+            pending_awards=pending_awards,
+            achievement_game_ids=achievement_game_ids,
+            game_id=game_id,
+            user=user,
+        )
+        counts[game_id] = len(merged_ids)
+
+    for entry in storage.get_all_cache_by_prefix(cache_keys.PREFIX_STARTSESSION):
+        game_id = parse_game_id_from_start_session_key(entry.get("cacheKey", ""))
+        user = parse_user_from_start_session_key(entry.get("cacheKey", ""))
+        if game_id is None or user is None or game_id in counts:
+            continue
+
+        try:
+            payload = json.loads(entry["responseBody"])
+        except Exception:
+            continue
+
+        cached_unlock_ids = [
+            int(item.get("ID", 0))
+            for item in payload.get("Unlocks", [])
+            if isinstance(item, dict) and int(item.get("ID", 0) or 0) > 0
+        ]
+        merged_ids = merge_start_session_unlock_ids(
+            cached_unlock_ids=cached_unlock_ids,
+            pending_awards=pending_awards,
+            achievement_game_ids=achievement_game_ids,
+            game_id=game_id,
+            user=user,
+        )
+        counts[game_id] = len(merged_ids)
+
+    return counts
+
+
 def cached_unlock_titles(storage: Storage, game_id: int) -> list[str]:
     unlock_ids = merged_unlock_ids(storage, game_id)
     if unlock_ids is None:
@@ -524,6 +583,18 @@ def parse_user_from_unlocks_key(cache_key: str) -> str | None:
     return user or None
 
 
+def parse_game_id_from_unlock_key(cache_key: str) -> int | None:
+    if not cache_key.startswith(cache_keys.PREFIX_UNLOCKS):
+        return None
+
+    parts = cache_key.split(":")
+    if len(parts) != 4:
+        return None
+
+    game_id = int(parts[1]) if parts[1].isdigit() else 0
+    return game_id if game_id > 0 else None
+
+
 def parse_user_from_start_session_key(cache_key: str) -> str | None:
     if not cache_key.startswith(cache_keys.PREFIX_STARTSESSION):
         return None
@@ -534,6 +605,18 @@ def parse_user_from_start_session_key(cache_key: str) -> str | None:
 
     user = parts[2].strip()
     return user or None
+
+
+def parse_game_id_from_start_session_key(cache_key: str) -> int | None:
+    if not cache_key.startswith(cache_keys.PREFIX_STARTSESSION):
+        return None
+
+    parts = cache_key.split(":")
+    if len(parts) != 4:
+        return None
+
+    game_id = int(parts[1]) if parts[1].isdigit() else 0
+    return game_id if game_id > 0 else None
 
 
 def cached_unlock_badge_path(storage: Storage, game_id: int, title: str) -> Path | None:

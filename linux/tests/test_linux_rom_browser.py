@@ -146,6 +146,59 @@ class LinuxRomBrowserTests(unittest.TestCase):
                 rom_browser.hash_rom_candidates = original_hash_candidates
                 store.close()
 
+    def test_cached_unlock_counts_merges_unlocks_and_startsession_once(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "test.sqlite3"
+            store = storage.Storage(database_path=db_path)
+            try:
+                store.upsert_cache(
+                    cache_keys.patch(10701, "misantronic"),
+                    json.dumps(
+                        {
+                            "Success": True,
+                            "PatchData": {
+                                "Title": "Tetris",
+                                "Achievements": [
+                                    {"ID": 1, "Title": "A"},
+                                    {"ID": 2, "Title": "B"},
+                                    {"ID": 3, "Title": "C"},
+                                ],
+                            },
+                        },
+                        separators=(",", ":"),
+                    ),
+                )
+                store.upsert_cache(
+                    cache_keys.patch(204, "misantronic"),
+                    json.dumps(
+                        {
+                            "Success": True,
+                            "PatchData": {
+                                "Title": "Metroid",
+                                "Achievements": [
+                                    {"ID": 7, "Title": "X"},
+                                ],
+                            },
+                        },
+                        separators=(",", ":"),
+                    ),
+                )
+                store.upsert_cache(
+                    cache_keys.unlocks(10701, "misantronic"),
+                    '{"Success":true,"UserUnlocks":[1,2]}',
+                )
+                store.upsert_cache(
+                    cache_keys.start_session(204, "misantronic"),
+                    '{"Success":true,"Unlocks":[{"ID":7,"When":1}]}',
+                )
+
+                counts = rom_browser.cached_unlock_counts(store)
+
+                self.assertEqual(counts[10701], 2)
+                self.assertEqual(counts[204], 1)
+            finally:
+                store.close()
+
     def test_resolve_rom_root_falls_back_to_onion_roms_root(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -1212,8 +1265,8 @@ class LinuxRomBrowserTests(unittest.TestCase):
                 ):
                     with mock.patch.object(
                         main,
-                        "cached_unlock_count",
-                        side_effect=[3, None],
+                        "cached_unlock_counts",
+                        return_value={10701: 3},
                     ):
                         with mock.patch("sys.stdout", stdout):
                             main.main()
