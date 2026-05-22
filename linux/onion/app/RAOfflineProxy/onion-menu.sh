@@ -42,7 +42,7 @@ PYTHON_BIN="$RESOLVED_PYTHON_BIN"
 install_onion_checkoff_script >/dev/null 2>&1 || true
 
 DPAD_SELECTION=0
-MENU_ITEM_COUNT=7
+MENU_ITEM_COUNT=6
 BROWSER_VISIBLE_COUNT=15
 BROWSER_LIST_TOP_ROW=5
 BROWSER_TERM_COLUMNS=80
@@ -273,6 +273,37 @@ pause_prompt() {
     done
 }
 
+show_cached_games_view() {
+    saved_tty="$(stty -g < /dev/tty)"
+
+    while :; do
+        clear
+        show_cached_games || true
+        printf '\nPress START or A to continue...\n'
+        printf 'Press L2 to clear cached games...\n'
+
+        while :; do
+            stty -echo -icanon min 1 time 0 < /dev/tty
+            key="$(read_byte_hex)"
+            case "$key" in
+                0d|0a|20|61|41|73|53)
+                    stty "$saved_tty" < /dev/tty
+                    drain_tty "$saved_tty"
+                    return 0
+                    ;;
+                09)
+                    stty "$saved_tty" < /dev/tty
+                    drain_tty "$saved_tty"
+                    clear
+                    clear_cached_games
+                    pause_prompt
+                    return 0
+                    ;;
+            esac
+        done
+    done
+}
+
 show_cached_games() {
     printf 'RAOfflineProxy > Cached games\n\n'
     if ! run_backend "$PYTHON_BIN" cached-games; then
@@ -421,6 +452,7 @@ render_browser_help() {
     printf 'Use D-Pad up/down to move.\033[K\n'
     printf 'Press LEFT to go back.\033[K\n'
     printf 'Press START or A to select.\033[K\n'
+    printf 'Press L2 to cancel.\033[K\n'
     printf '\033[J'
 }
 
@@ -456,7 +488,7 @@ render_main_menu_item() {
 
 render_main_menu() {
     printf '\033[H'
-    printf 'RAOfflineProxy\033[K\n\n'
+    printf 'RAOfflineProxy (%s)\033[K\n\n' "$APP_VERSION"
 
     if [ -n "${MAIN_STATUS_TEXT:-}" ]; then
         printf '%s\n' "$MAIN_STATUS_TEXT" | while IFS= read -r line; do
@@ -471,9 +503,8 @@ render_main_menu() {
     render_main_menu_item 2 'Add ROMs'
     render_main_menu_item 3 "Cached games (${MAIN_CACHED_COUNT})"
     render_main_menu_item 4 "Pending awards (${MAIN_PENDING_COUNT})"
-    render_main_menu_item 5 'Clear cached games'
-    render_main_menu_item 6 "$MAIN_AUTOSTART_LABEL"
-    render_main_menu_item 7 'Exit'
+    render_main_menu_item 5 "$MAIN_AUTOSTART_LABEL"
+    render_main_menu_item 6 'Exit'
     printf '\n'
     printf 'Use D-Pad up/down to move.\033[K\n'
     printf 'Press START or A to select.\033[K\n'
@@ -482,7 +513,7 @@ render_main_menu() {
 
 render_main_menu_loading() {
     printf '\033[2J\033[H'
-    printf 'RAOfflineProxy\033[K\n\n'
+    printf 'RAOfflineProxy (%s)\033[K\n\n' "$APP_VERSION"
     printf 'Loading...\033[K\n'
     printf '\033[J'
 }
@@ -577,7 +608,7 @@ browser_activate_selected() {
 
     clear
     printf 'RAOfflineProxy > Add ROMs\n\n'
-    printf 'Caching: %s\n\n' "$BROWSER_ENTRY_NAME"
+    printf 'Caching: %s\n' "$BROWSER_ENTRY_NAME"
     if run_backend "$PYTHON_BIN" cache-rom --path "$BROWSER_ENTRY_PATH"; then
         printf '\n'
         pause_prompt
@@ -629,6 +660,11 @@ open_rom_browser() {
             0d|0a|20|61|41|73|53)
                 browser_activate_selected
                 browser_redraw=full
+                ;;
+            09)
+                stty "$saved_tty" < /dev/tty
+                drain_tty "$saved_tty"
+                return 0
                 ;;
             08|7f|62|42)
                 if ! browser_go_back; then
@@ -726,10 +762,6 @@ read_choice() {
                 pending_choice=6
                 DPAD_SELECTION=6
                 ;;
-            37)
-                pending_choice=7
-                DPAD_SELECTION=7
-                ;;
             0d|0a|20|61|41|73|53)
                 if [ -n "$pending_choice" ]; then
                     choice="$pending_choice"
@@ -814,23 +846,17 @@ while :; do
             open_rom_browser || true
             ;;
         3)
-            show_cached_games || true
-            pause_prompt
+            show_cached_games_view || true
             ;;
         4)
             show_pending_awards || true
             pause_prompt
             ;;
         5)
-            clear
-            clear_cached_games
-            pause_prompt
-            ;;
-        6)
             toggle_autostart
             pause_prompt
             ;;
-        7)
+        6)
             exit 0
             ;;
         *)
