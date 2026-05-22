@@ -24,6 +24,13 @@ class PendingAwardEntry:
     def summary_text(self) -> str:
         return f"{self.game_title} | {self.achievement_title} | {self.date_text}"
 
+    @property
+    def detail_text(self) -> str:
+        detail = f"{self.achievement_title} | {self.date_text}"
+        if self.points is None:
+            return detail
+        return f"{detail} | {self.points}pts."
+
 
 def list_pending_awards(storage: Storage) -> list[PendingAwardEntry]:
     patch_index = build_patch_index(storage)
