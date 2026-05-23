@@ -42,7 +42,7 @@ PYTHON_BIN="$RESOLVED_PYTHON_BIN"
 install_onion_checkoff_script >/dev/null 2>&1 || true
 
 DPAD_SELECTION=0
-MENU_ITEM_COUNT=5
+MENU_ITEM_COUNT=4
 BROWSER_VISIBLE_COUNT=15
 BROWSER_LIST_TOP_ROW=5
 BROWSER_TERM_COLUMNS=80
@@ -955,7 +955,6 @@ render_main_menu() {
     render_main_menu_item 2 "Cached games (${MAIN_CACHED_COUNT})"
     render_main_menu_item 3 "Pending awards (${MAIN_PENDING_COUNT})"
     render_main_menu_item 4 "$MAIN_AUTOSTART_LABEL"
-    render_main_menu_item 5 'Exit'
     printf '\n'
     printf 'Use D-Pad up/down to move.\033[K\n'
     printf 'Press START or A to select.\033[K\n'
@@ -1311,9 +1310,6 @@ while :; do
         4)
             toggle_autostart
             pause_prompt
-            ;;
-        5)
-            exit 0
             ;;
         *)
             printf 'Unknown selection: %s\n' "$choice"
