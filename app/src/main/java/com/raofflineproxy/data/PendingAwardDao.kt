@@ -14,6 +14,9 @@ interface PendingAwardDao {
     @Query("SELECT * FROM pending_awards WHERE status = :status ORDER BY queuedAt ASC")
     suspend fun getAllByStatus(status: String = PENDING_AWARD_STATUS_PENDING): List<PendingAward>
 
+    @Query("SELECT * FROM pending_awards WHERE status = :status ORDER BY queuedAt DESC LIMIT 1")
+    suspend fun getLatestByStatus(status: String = PENDING_AWARD_STATUS_PENDING): PendingAward?
+
     @Query("SELECT * FROM pending_awards ORDER BY queuedAt DESC LIMIT 1")
     suspend fun getLatest(): PendingAward?
 
