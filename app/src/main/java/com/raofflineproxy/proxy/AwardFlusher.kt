@@ -200,6 +200,43 @@ internal fun verifyChain(
     return ChainVerificationResult.Valid
 }
 
+internal fun repairPendingChain(
+    awards: List<PendingAward>,
+    signBytes: (ByteArray) -> ByteArray = AwardKeyManager::sign
+): List<PendingAward>? {
+    if (awards.isEmpty()) return emptyList()
+
+    val repaired = mutableListOf<PendingAward>()
+    awards.forEachIndexed { index, award ->
+        if (award.payloadHash.isEmpty()) {
+            repaired += award
+            return@forEachIndexed
+        }
+
+        val expectedPayloadHash = sha256Hex(canonicalPayload(award))
+        if (award.payloadHash != expectedPayloadHash) {
+            return null
+        }
+
+        val prevHash = if (index == 0) {
+            GENESIS_HASH
+        } else {
+            val previousAward = repaired[index - 1]
+            if (previousAward.payloadHash.isEmpty()) GENESIS_HASH else previousAward.payloadHash
+        }
+        val signature = runCatching {
+            val signInput = "${award.payloadHash}:$prevHash".toByteArray(Charsets.UTF_8)
+            java.util.Base64.getEncoder().encodeToString(signBytes(signInput))
+        }.getOrElse {
+            return null
+        }
+
+        repaired += award.copy(prevHash = prevHash, signature = signature, signedAt = System.currentTimeMillis())
+    }
+
+    return repaired
+}
+
 class AwardFlusher(
     private val context: Context,
     private val db: AppDatabase
@@ -296,7 +333,7 @@ class AwardFlusher(
         val awards = db.pendingAwardDao().getAll()
         if (awards.isEmpty()) return@withContext
 
-        val pendingAwards = awards.filter { it.status == PENDING_AWARD_STATUS_PENDING }
+        var pendingAwards = awards.filter { it.status == PENDING_AWARD_STATUS_PENDING }
         if (pendingAwards.isEmpty()) {
             Log.i(TAG, "No pending awards to flush")
             purgeProcessedAwardsIfSafe()
@@ -305,11 +342,23 @@ class AwardFlusher(
 
         Log.i(TAG, "Flushing ${pendingAwards.size} pending awards")
 
-        when (val chain = verifyChain(awards)) {
+        when (val chain = verifyChain(pendingAwards)) {
             is ChainVerificationResult.Broken -> {
+                val repairedAwards = if (chain.reason.contains("prevHash mismatch")) {
+                    repairPendingChain(pendingAwards)
+                } else {
+                    null
+                }
+
+                if (repairedAwards != null && verifyChain(repairedAwards) is ChainVerificationResult.Valid) {
+                    repairedAwards.forEach { db.pendingAwardDao().update(it) }
+                    pendingAwards = repairedAwards
+                    Log.i(TAG, "Repaired pending award chain before flush")
+                } else {
                 Log.w(TAG, "Chain verification failed: ${chain.reason}")
                 _events.emit(FlushEvent.ChainBroken(chain.index, chain.reason))
                 return@withContext
+                }
             }
             ChainVerificationResult.Valid -> {
                 Log.i(TAG, "Chain verification passed")

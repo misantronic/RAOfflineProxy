@@ -529,7 +529,7 @@ class ProxyServer(
                 val latch = CountDownLatch(1)
                 var prevHash = "genesis"
                 scope.launch(Dispatchers.IO) {
-                    prevHash = db.pendingAwardDao().getLatest()?.payloadHash ?: "genesis"
+                    prevHash = db.pendingAwardDao().getLatestByStatus()?.payloadHash ?: "genesis"
                     latch.countDown()
                 }
                 latch.await(3, TimeUnit.SECONDS)

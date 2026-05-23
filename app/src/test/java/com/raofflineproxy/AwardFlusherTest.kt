@@ -8,10 +8,12 @@ import com.raofflineproxy.proxy.canonicalPayload
 import com.raofflineproxy.proxy.clampAwardOffsetSeconds
 import com.raofflineproxy.proxy.computeValidationHash
 import com.raofflineproxy.proxy.isHardcoreAward
+import com.raofflineproxy.proxy.repairPendingChain
 import com.raofflineproxy.proxy.replaceOrAppendFormParam
 import com.raofflineproxy.proxy.verifyChain
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.util.Base64
@@ -345,6 +347,50 @@ class AwardFlusherTest {
         assertTrue(result is ChainVerificationResult.Broken)
         assertEquals(1, (result as ChainVerificationResult.Broken).index)
         assertTrue(result.reason.contains("prevHash"))
+    }
+
+    @Test
+    fun repairPendingChain_rebasesBrokenPendingOnlyChain() {
+        val oldFirst = award(achievementId = 1, queryString = "/dorequest.php?r=awardachievement&a=1", requestBody = "a=1&u=player&t=tok&h=0&v=abc1", queuedAt = 1000L)
+        val oldFirstHash = sha256Hex(canonicalPayload(oldFirst))
+
+        val pendingFirst = award(achievementId = 2, queryString = "/dorequest.php?r=awardachievement&a=2", requestBody = "a=2&u=player&t=tok&h=0&v=abc2", queuedAt = 2000L)
+        val pendingFirstHash = sha256Hex(canonicalPayload(pendingFirst))
+        val pendingSecond = award(achievementId = 3, queryString = "/dorequest.php?r=awardachievement&a=3", requestBody = "a=3&u=player&t=tok&h=0&v=abc3", queuedAt = 3000L)
+        val pendingSecondHash = sha256Hex(canonicalPayload(pendingSecond))
+
+        val repaired = repairPendingChain(
+            listOf(
+                pendingFirst.copy(payloadHash = pendingFirstHash, prevHash = oldFirstHash, signature = signature("old-sig-2")),
+                pendingSecond.copy(payloadHash = pendingSecondHash, prevHash = pendingFirstHash, signature = signature("old-sig-3"))
+            ),
+            signBytes = { data -> "repaired:${String(data, Charsets.UTF_8)}".toByteArray() }
+        )
+
+        assertNotNull(repaired)
+        repaired!!
+        assertEquals(2, repaired.size)
+        assertEquals("genesis", repaired[0].prevHash)
+        assertEquals(pendingFirstHash, repaired[1].prevHash)
+
+        val result = verifyChain(
+            repaired,
+            decodeSignature = { Base64.getDecoder().decode(it) },
+            verifySignature = { data, signatureBytes ->
+                String(signatureBytes, Charsets.UTF_8) == "repaired:${String(data, Charsets.UTF_8)}"
+            }
+        )
+        assertTrue(result is ChainVerificationResult.Valid)
+    }
+
+    @Test
+    fun repairPendingChain_returnsNullForPayloadHashMismatch() {
+        val broken = award(achievementId = 2, queryString = "/p2", requestBody = "b2", queuedAt = 2000L)
+            .copy(payloadHash = "wrong-hash", prevHash = "anything", signature = signature("sig"))
+
+        val repaired = repairPendingChain(listOf(broken))
+
+        assertEquals(null, repaired)
     }
 
     @Test
