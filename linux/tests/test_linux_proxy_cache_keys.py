@@ -1,3 +1,4 @@
+import json
 import unittest
 import tempfile
 from pathlib import Path
@@ -221,6 +222,33 @@ class LinuxProxyCacheKeyTests(unittest.TestCase):
                 )
 
                 self.assertIn(b'"UserUnlocks":[1,2]', response)
+            finally:
+                store.close()
+
+    def test_queue_offline_award_returns_requested_achievement_id(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            store = storage.Storage(database_path=Path(temp_dir) / "test.sqlite3")
+            runtime = object.__new__(proxy_service.ProxyRuntimeServer)
+            runtime.storage = store
+            try:
+                store.upsert_cache(
+                    cache_keys.login("misantronic"),
+                    '{"Success":true,"Score":1234}',
+                )
+
+                response = runtime.queue_offline_award(
+                    "/dorequest.php?r=awardachievement&a=52114&u=misantronic&t=token&h=0",
+                    "a=52114&u=misantronic&t=token&h=0&v=testhash",
+                    {"User-Agent": "RetroArch/1.20.0"},
+                )
+
+                _, _, raw_body = response.partition(b"\r\n\r\n")
+                payload = json.loads(raw_body.decode("utf-8"))
+
+                self.assertTrue(payload["Success"])
+                self.assertEqual(payload["Score"], 1234)
+                self.assertEqual(payload["AchievementID"], 52114)
+                self.assertEqual(payload["Error"], "queued_offline")
             finally:
                 store.close()
 

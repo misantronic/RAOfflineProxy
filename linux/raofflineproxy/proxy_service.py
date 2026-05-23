@@ -334,6 +334,7 @@ class ProxyRuntimeServer(ThreadingTCPServer):
         if not queued:
             return error_json(500, "award_queue_failed")
 
+        achievement_id = int(extract_request_param(path, raw_body, "a") or "0")
         score = self.fetch_cached_score(path, raw_body)
         return ok_json(
             json.dumps(
@@ -341,7 +342,7 @@ class ProxyRuntimeServer(ThreadingTCPServer):
                     "Success": True,
                     "Score": score,
                     "SoftcoreScore": 0,
-                    "AchievementID": 0,
+                    "AchievementID": achievement_id,
                     "Error": "queued_offline",
                 },
                 separators=(",", ":"),
