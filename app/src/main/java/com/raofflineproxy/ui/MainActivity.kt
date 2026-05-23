@@ -29,11 +29,12 @@ import com.raofflineproxy.PrefsConstants
 import com.raofflineproxy.R
 import com.raofflineproxy.databinding.ActivityMainBinding
 import com.raofflineproxy.service.ProxyService
+import com.raofflineproxy.update.AppUpdateInfo
 import java.util.ArrayDeque
+import androidx.core.net.toUri
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import androidx.core.net.toUri
 
 class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
@@ -175,6 +176,7 @@ class MainActivity : AppCompatActivity() {
             if (viewModel.state.value.autostartProxy && !ProxyService.isRunning(this)) {
                 viewModel.startProxy(treeUri = PrefsConstants.loadSafUri(this@MainActivity))
             }
+            viewModel.checkForAppUpdate()
         } else {
             syncNavigationUi()
         }
@@ -218,6 +220,7 @@ class MainActivity : AppCompatActivity() {
             viewModel.events.collect { event ->
                 when (event) {
                     MainUiEvent.PromptSmartCacheAfterProxyStart -> showSmartCacheAfterProxyStartDialog()
+                    is MainUiEvent.ShowAppUpdate -> showAppUpdateDialog(event.update)
                 }
             }
         }
@@ -442,7 +445,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun createAppSpecificAllFilesAccessIntent(): Intent {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
-            return createGenericAllFilesAccessIntent()
+            return Intent()
         }
         return Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION).apply {
             data = "package:$packageName".toUri()
@@ -462,6 +465,24 @@ class MainActivity : AppCompatActivity() {
             }
             .setNegativeButton(R.string.smart_cache_prompt_not_now, null)
             .show()
+    }
+
+    private fun showAppUpdateDialog(update: AppUpdateInfo) {
+        AlertDialog.Builder(this)
+            .setTitle(R.string.app_update_dialog_title)
+            .setMessage(getString(R.string.app_update_dialog_message, update.versionName, BuildConfig.VERSION_NAME))
+            .setPositiveButton(R.string.app_update_action_download) { _, _ ->
+                openUrl(update.apkUrl)
+            }
+            .setNeutralButton(R.string.app_update_action_release_notes) { _, _ ->
+                openUrl(update.releaseUrl)
+            }
+            .setNegativeButton(R.string.app_update_action_later, null)
+            .show()
+    }
+
+    private fun openUrl(url: String) {
+        startActivity(Intent(Intent.ACTION_VIEW, url.toUri()))
     }
 
     private fun enqueueError(message: String) {

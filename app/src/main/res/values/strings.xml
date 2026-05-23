@@ -128,6 +128,11 @@
     <string name="smart_cache_prompt_message">Smart Cache looks at your recently played games and adds them for offline use.</string>
     <string name="smart_cache_prompt_start">Start Smart Cache</string>
     <string name="smart_cache_prompt_not_now">Not now</string>
+    <string name="app_update_dialog_title">Update available</string>
+    <string name="app_update_dialog_message">Version %1$s is available. You are currently using %2$s.</string>
+    <string name="app_update_action_download">Download update</string>
+    <string name="app_update_action_release_notes">View release notes</string>
+    <string name="app_update_action_later">Not now</string>
 
     <!-- Refresh messages -->
     <string name="refresh_progress">Refreshing %1$d/%2$d…</string>

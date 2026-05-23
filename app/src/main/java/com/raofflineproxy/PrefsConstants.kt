@@ -24,6 +24,7 @@ object PrefsConstants {
     const val KEY_RETROARCH_PATCHED_THIS_RUN = "retroarch_patched_this_run"
     const val KEY_DOLPHIN_PATCHED_THIS_RUN = "dolphin_patched_this_run"
     const val KEY_PROXY_PORT = "proxy_port"
+    const val KEY_APP_UPDATE_LAST_CHECKED_AT = "app_update_last_checked_at"
 
     const val DEFAULT_PROXY_PORT = 8080
     private const val MIN_PROXY_PORT = 1024
@@ -159,6 +160,20 @@ object PrefsConstants {
 
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .edit { putInt(KEY_PROXY_PORT, port) }
+    }
+
+    fun loadAppUpdateLastCheckedAt(context: Context): Long =
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getLong(KEY_APP_UPDATE_LAST_CHECKED_AT, 0L)
+
+    fun saveAppUpdateLastCheckedAt(context: Context, checkedAt: Long) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit { putLong(KEY_APP_UPDATE_LAST_CHECKED_AT, checkedAt) }
+    }
+
+    fun clearAppUpdateLastCheckedAt(context: Context) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit { remove(KEY_APP_UPDATE_LAST_CHECKED_AT) }
     }
 
     fun isValidProxyPort(port: Int): Boolean = port in MIN_PROXY_PORT..MAX_PROXY_PORT
