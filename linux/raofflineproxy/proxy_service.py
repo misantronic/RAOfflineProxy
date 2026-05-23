@@ -52,7 +52,7 @@ SOCKET_TIMEOUT_SECONDS = 30
 
 AWARD_ACTIONS = {"awardachievement", "submitlbentry"}
 FAKE_OFFLINE_SUCCESS_ACTIONS = {"ping"}
-ALWAYS_TRY_UPSTREAM_ACTIONS = {"login2"}
+ALWAYS_TRY_UPSTREAM_ACTIONS = {"login", "login2"}
 
 
 def is_static_asset_request(path: str) -> bool:
@@ -86,7 +86,7 @@ def cache_key_for_request(path: str, body: str) -> str:
 
     if action == "gameid":
         return cache_keys.game_id(hash_value)
-    if action == "login2":
+    if action in {"login", "login2"}:
         return cache_keys.login(user)
     if action == "achievementsets":
         return cache_keys.achievementsets(hash_value or game_id or "unknown", user)
