@@ -350,8 +350,9 @@ class ProxyServer(
             }
         }
 
+        val achievementId = extractParam("a", path, rawBody)?.toIntOrNull() ?: 0
         val score = fetchCachedScore(path, rawBody)
-        return okJson("""{"Success":true,"Score":$score,"SoftcoreScore":0,"AchievementID":0,"Error":"queued_offline"}""")
+        return okJson("""{"Success":true,"Score":$score,"SoftcoreScore":0,"AchievementID":$achievementId,"Error":"queued_offline"}""")
     }
 
     private fun handleOnlineRequest(method: String, path: String, rawBody: String, action: String?, headers: Map<String, String>): ProxyResponse {
