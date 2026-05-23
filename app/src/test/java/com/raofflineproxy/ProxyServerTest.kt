@@ -662,6 +662,18 @@ class ProxyServerTest {
         assertTrue(response.startsWith("HTTP/1.1 503 Service Unavailable\r\n"))
     }
 
+    @Test
+    fun offlineQueuedAwardResponse_echoesRequestedAchievementId() {
+        val response = proxyHttpOk(
+            """{"Success":true,"Score":1234,"SoftcoreScore":0,"AchievementID":52114,"Error":"queued_offline"}"""
+        )
+
+        assertTrue(response.contains("\"Success\":true"))
+        assertTrue(response.contains("\"Score\":1234"))
+        assertTrue(response.contains("\"AchievementID\":52114"))
+        assertTrue(response.contains("\"Error\":\"queued_offline\""))
+    }
+
     // ── proxyHttpGameIdCacheMiss() ──
 
     @Test
