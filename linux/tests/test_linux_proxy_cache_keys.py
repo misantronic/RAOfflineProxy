@@ -19,6 +19,14 @@ class LinuxProxyCacheKeyTests(unittest.TestCase):
 
         self.assertEqual(key, "login2::misantronic")
 
+    def test_login_uses_login2_cache_key(self) -> None:
+        key = proxy_service.cache_key_for_request(
+            "/dorequest.php",
+            "r=login&u=misantronic&p=token",
+        )
+
+        self.assertEqual(key, "login2::misantronic")
+
     def test_patch_uses_patch_cache_key(self) -> None:
         key = proxy_service.cache_key_for_request(
             "/dorequest.php",
@@ -399,6 +407,51 @@ class LinuxProxyCacheKeyTests(unittest.TestCase):
                     "POST",
                     "/dorequest.php",
                     "r=login2&u=misantronic&p=token",
+                    {},
+                )
+
+                self.assertIn(b'"Success":true', response)
+                cached = store.get_cache(cache_keys.login("misantronic"))
+                self.assertIsNotNone(cached)
+                self.assertIn('"Token":"abc"', cached["responseBody"])
+            finally:
+                store.close()
+
+    def test_login_tries_upstream_and_caches_as_login2_when_offline_probe_fails(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            store = storage.Storage(database_path=Path(temp_dir) / "test.sqlite3")
+            runtime = object.__new__(proxy_service.ProxyRuntimeServer)
+            runtime.storage = store
+            runtime.config_data = {}
+            runtime.has_internet = False
+
+            def is_online(_self) -> bool:
+                return False
+
+            def forward_to_upstream_result(_self, method, path, raw_body, headers):
+                self.assertEqual(method, "POST")
+                self.assertIn("r=login", raw_body)
+                return (
+                    "success",
+                    200,
+                    "OK",
+                    b'{"Success":true,"User":"misantronic","Token":"abc"}',
+                    "application/json",
+                    '{"Success":true,"User":"misantronic","Token":"abc"}',
+                )
+
+            runtime.is_online = MethodType(is_online, runtime)
+            runtime.forward_to_upstream_result = MethodType(
+                forward_to_upstream_result, runtime
+            )
+
+            try:
+                response = runtime.process_proxy_request(
+                    "POST",
+                    "/dorequest.php",
+                    "r=login&u=misantronic&p=token",
                     {},
                 )
 
