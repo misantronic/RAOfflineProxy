@@ -12,6 +12,7 @@ import android.util.Log
 import androidx.core.content.edit
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.raofflineproxy.BuildConfig
 import com.raofflineproxy.MAX_CACHED_GAMES
 import com.raofflineproxy.buildApiUrl
 import com.raofflineproxy.PrefsConstants
@@ -56,6 +57,8 @@ import com.raofflineproxy.proxy.resolveCachedGameIconPath
 import com.raofflineproxy.proxy.scanRomFolder
 import com.raofflineproxy.proxy.SmartCacheEmulator
 import com.raofflineproxy.service.ProxyService
+import com.raofflineproxy.update.AppUpdateChecker
+import com.raofflineproxy.update.AppUpdateInfo
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.combine
@@ -74,6 +77,7 @@ enum class SafGrantTarget { RetroArch, SmartCacheRetroArch, Dolphin, SmartCacheR
 
 sealed interface MainUiEvent {
     data object PromptSmartCacheAfterProxyStart : MainUiEvent
+    data class ShowAppUpdate(val update: AppUpdateInfo) : MainUiEvent
 }
 
 data class MainUiState(
@@ -103,6 +107,10 @@ data class MainUiState(
 )
 
 class MainViewModel(app: Application) : AndroidViewModel(app) {
+    private companion object {
+        const val APP_UPDATE_CHECK_INTERVAL_MS = 24L * 60L * 60L * 1000L
+    }
+
     private val application = app
     private val db = AppDatabase.getInstance(app)
     private val _state = MutableStateFlow(MainUiState())
@@ -120,6 +128,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private var pendingSmartCacheRomGrantPaths = emptyList<String>()
     private var pendingSmartCacheGrantTargets = emptyList<SafGrantTarget>()
     private var smartCacheAllFilesRejectedThisRun = false
+    private var pendingAppUpdateCheck = false
 
     private fun str(resId: Int): String = getApplication<Application>().getString(resId)
     private fun str(resId: Int, vararg args: Any): String = getApplication<Application>().getString(resId, *args)
@@ -386,6 +395,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 probeRetroAchievements(userAgent = userAgent, force = forceProbe)
             }
             _state.value = _state.value.copy(isOnline = reachable)
+            if (reachable && pendingAppUpdateCheck) {
+                Log.i("RAProxy/Updates", "Reachability restored; retrying pending app update check")
+                pendingAppUpdateCheck = false
+                checkForAppUpdate()
+            }
         }
     }
 
@@ -958,6 +972,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             db.cacheDao().deleteByKeyPrefix(CacheKeys.PREFIX_UNLOCKS)
             db.cacheDao().deleteByKeyPrefix(CacheKeys.PREFIX_STARTSESSION)
             clearAllCachedImages(application)
+            PrefsConstants.clearAppUpdateLastCheckedAt(application)
             _state.value = _state.value.copy(
                 scanProgress = null
             )
@@ -970,6 +985,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             db.cacheDao().deleteByKeyPrefix("")
             db.pendingAwardDao().getAll().forEach { db.pendingAwardDao().delete(it) }
             clearAllCachedImages(application)
+            PrefsConstants.clearAppUpdateLastCheckedAt(application)
             _state.value = _state.value.copy(
                 scanProgress = null
             )
@@ -1365,6 +1381,34 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         PrefsConstants.saveProxyPort(app, port)
         _state.value = _state.value.copy(proxyPort = port)
         return true
+    }
+
+    fun checkForAppUpdate(force: Boolean = false) {
+        val app = getApplication<Application>()
+        val now = System.currentTimeMillis()
+        if (!force && now - PrefsConstants.loadAppUpdateLastCheckedAt(app) < APP_UPDATE_CHECK_INTERVAL_MS) {
+            Log.d("RAProxy/Updates", "Skipping app update check; last check was too recent")
+            return
+        }
+        if (!hasValidatedInternet(connectivityManager)) {
+            Log.i("RAProxy/Updates", "Deferring app update check; validated internet not available yet")
+            pendingAppUpdateCheck = true
+            return
+        }
+
+        pendingAppUpdateCheck = false
+        PrefsConstants.saveAppUpdateLastCheckedAt(app, now)
+        Log.i("RAProxy/Updates", "Starting app update check force=$force")
+        viewModelScope.launch {
+            val currentVersionName = BuildConfig.VERSION_NAME
+            Log.i("RAProxy/Updates", "Using current version for update check: $currentVersionName")
+            val update = withContext(Dispatchers.IO) { AppUpdateChecker.fetchLatestUpdate(currentVersionName) } ?: run {
+                Log.i("RAProxy/Updates", "App update check finished without available update")
+                return@launch
+            }
+            Log.i("RAProxy/Updates", "App update available: ${update.versionName}")
+            _events.emit(MainUiEvent.ShowAppUpdate(update))
+        }
     }
 
     private fun loadAutostartPref(): Boolean =
