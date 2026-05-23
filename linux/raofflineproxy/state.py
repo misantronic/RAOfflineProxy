@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 from typing import Optional
 
-from .config import PID_FILE, STATE_FILE, STATUS_FILE, ensure_config_dir
+from .config import PID_FILE, STATE_FILE, STATUS_FILE, UPDATE_STATUS_FILE, ensure_config_dir
 
 
 def load_patch_state() -> Optional[dict]:
@@ -67,6 +67,18 @@ def save_service_status(data: dict) -> Path:
 
 def clear_service_status() -> None:
     clear_json_file(STATUS_FILE)
+
+
+def load_update_status() -> Optional[dict]:
+    return load_json_file(UPDATE_STATUS_FILE)
+
+
+def save_update_status(data: dict) -> Path:
+    return save_json_file(UPDATE_STATUS_FILE, data)
+
+
+def clear_update_status() -> None:
+    clear_json_file(UPDATE_STATUS_FILE)
 
 
 def load_pid() -> Optional[int]:
