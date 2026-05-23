@@ -507,6 +507,41 @@ class MenuLayoutTests(unittest.TestCase):
             menu_sdl.MenuSdlSession.current_achievement_preview_surface(session)
         )
 
+    def test_install_update_uses_cached_asset_url_without_refresh(self) -> None:
+        session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
+        session.main_update_asset_url = "https://example.com/installer.sh"
+        session.message = None
+        session.dismiss_update_prompt = lambda: None
+        session.storage = type("Storage", (), {"close": lambda self: None})()
+        session.input_handles = []
+        session.pygame = type("Pygame", (), {"quit": lambda self: None})()
+
+        original_download = menu_sdl.download_knulli_update_installer
+        original_update_status = menu_sdl.update_status
+        original_close_input_devices = menu_sdl.close_input_devices
+        original_execv = menu_sdl.os.execv
+        captured = {}
+        try:
+            menu_sdl.download_knulli_update_installer = (
+                lambda url: captured.setdefault("url", url) or "/tmp/installer.sh"
+            )
+            menu_sdl.update_status = lambda *args, **kwargs: (_ for _ in ()).throw(
+                AssertionError("should not refresh update status")
+            )
+            menu_sdl.close_input_devices = lambda _handles: None
+            menu_sdl.os.execv = lambda path, argv: captured.setdefault(
+                "exec", (path, argv)
+            )
+
+            menu_sdl.MenuSdlSession.install_update(session)
+
+            self.assertEqual(captured["url"], "https://example.com/installer.sh")
+        finally:
+            menu_sdl.download_knulli_update_installer = original_download
+            menu_sdl.update_status = original_update_status
+            menu_sdl.close_input_devices = original_close_input_devices
+            menu_sdl.os.execv = original_execv
+
 
 if __name__ == "__main__":
     unittest.main()

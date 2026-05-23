@@ -54,6 +54,11 @@ MAIN_PROXY_RUNNING=0
 MAIN_AUTOSTART_ENABLED=0
 MAIN_PROXY_LABEL=
 MAIN_AUTOSTART_LABEL=
+MAIN_UPDATE_TEXT=
+MAIN_UPDATE_AVAILABLE=0
+MAIN_UPDATE_VERSION=
+MAIN_UPDATE_ASSET_URL=
+DISMISSED_UPDATE_VERSION=
 BROWSER_DIR=
 BROWSER_ROOT=
 BROWSER_SELECTED_INDEX=1
@@ -92,6 +97,104 @@ pending_awards_count() {
 
 home_status() {
     run_backend_raw "$PYTHON_BIN" home-status 2>/dev/null || printf '{"cached_games_count":0,"pending_awards_count":0,"service_running":false,"service_pid":null,"autostart_enabled":false}\n'
+}
+
+update_status() {
+    run_backend_raw "$PYTHON_BIN" update-status --platform onion 2>/dev/null || printf '{"update_available":false}\n'
+}
+
+run_onion_update_install() {
+    asset_url="$1"
+    if [ -z "$asset_url" ]; then
+        printf 'Update failed: no archive URL\n'
+        return 1
+    fi
+
+    "$PYTHON_BIN" - <<'PY' "$asset_url"
+from pathlib import Path
+import sys
+
+from raofflineproxy.update import download_onion_update_archive, install_onion_update_archive
+
+asset_url = sys.argv[1]
+archive_path = download_onion_update_archive(asset_url)
+install_onion_update_archive(archive_path, Path('/mnt/SDCARD/App/RAOfflineProxy'))
+print('Update installed successfully')
+PY
+}
+
+show_update_prompt() {
+    update_selection=1
+    saved_tty="$(stty -g < /dev/tty)"
+
+    render_update_prompt() {
+        clear
+        printf 'RAOfflineProxy\n\n'
+        printf 'Version %s is available.\n\n' "$MAIN_UPDATE_VERSION"
+        if [ "$update_selection" -eq 1 ]; then
+            printf '> Download and install\n'
+            printf '  Not now\n'
+        else
+            printf '  Download and install\n'
+            printf '> Not now\n'
+        fi
+        printf '\nUse D-Pad up/down to move.\n'
+        printf 'Press START or A to select.\n'
+    }
+
+    render_update_prompt
+
+    while :; do
+        stty -echo -icanon min 1 time 0 < /dev/tty
+        key="$(read_byte_hex)"
+        choice=
+
+        case "$key" in
+            0d|0a|20|61|41|73|53)
+                choice="$update_selection"
+                ;;
+            1b)
+                sequence="$(read_escape_sequence)"
+                if [ -z "$sequence" ] || [ "$sequence" = '1b' ]; then
+                    stty "$saved_tty" < /dev/tty
+                    drain_tty "$saved_tty"
+                    return 0
+                fi
+                case "$sequence" in
+                    5b41|4f41|5b42|4f42)
+                        if [ "$update_selection" -eq 1 ]; then
+                            update_selection=2
+                        else
+                            update_selection=1
+                        fi
+                        drain_tty "$saved_tty"
+                        ;;
+                esac
+                ;;
+        esac
+
+        if [ -z "$choice" ]; then
+            render_update_prompt
+            continue
+        fi
+
+        stty "$saved_tty" < /dev/tty
+        drain_tty "$saved_tty"
+        if [ "$choice" -eq 2 ]; then
+            DISMISSED_UPDATE_VERSION="$MAIN_UPDATE_VERSION"
+            return 0
+        fi
+
+        clear
+        printf 'RAOfflineProxy\n\n'
+        printf 'Downloading and installing update...\n\n'
+        if run_onion_update_install "$MAIN_UPDATE_ASSET_URL"; then
+            pause_prompt 'Press START or A to restart the app...'
+            exec sh /mnt/SDCARD/App/RAOfflineProxy/launch.sh
+        fi
+        pause_prompt
+        return 0
+    done
 }
 
 browser_root() {
@@ -298,8 +401,9 @@ toggle_autostart() {
 }
 
 pause_prompt() {
+    prompt_text="${1:-Press START or A to continue...}"
     saved_tty="$(stty -g < /dev/tty)"
-    printf '\nPress START or A to continue...'
+    printf '\n%s' "$prompt_text"
     while :; do
         stty -echo -icanon min 1 time 0 < /dev/tty
         key="$(read_byte_hex)"
@@ -1154,13 +1258,33 @@ while :; do
     MAIN_PROXY_RUNNING="$(printf '%s' "$status_json" | sed -n 's/.*"service_running":\(true\|false\).*/\1/p' | sed 's/true/1/;s/false/0/')"
     MAIN_PROXY_PID="$(printf '%s' "$status_json" | sed -n 's/.*"service_pid":\([0-9][0-9]*\).*/\1/p')"
     MAIN_AUTOSTART_ENABLED="$(printf '%s' "$status_json" | sed -n 's/.*"autostart_enabled":\(true\|false\).*/\1/p' | sed 's/true/1/;s/false/0/')"
+    update_json="$(update_status)"
+    update_available="$(printf '%s' "$update_json" | sed -n 's/.*"update_available":\(true\|false\).*/\1/p')"
+    latest_version="$(printf '%s' "$update_json" | sed -n 's/.*"latest_version":"\([^"]*\)".*/\1/p')"
+    asset_url="$(printf '%s' "$update_json" | sed -n 's/.*"asset_url":"\([^"]*\)".*/\1/p')"
     [ -n "$MAIN_CACHED_COUNT" ] || MAIN_CACHED_COUNT=0
     [ -n "$MAIN_PENDING_COUNT" ] || MAIN_PENDING_COUNT=0
     [ -n "$MAIN_PROXY_RUNNING" ] || MAIN_PROXY_RUNNING=0
     [ -n "$MAIN_AUTOSTART_ENABLED" ] || MAIN_AUTOSTART_ENABLED=0
+    if [ "$update_available" = "true" ] && [ -n "$latest_version" ] && [ "$latest_version" != "$DISMISSED_UPDATE_VERSION" ]; then
+        MAIN_UPDATE_AVAILABLE=1
+        MAIN_UPDATE_VERSION="$latest_version"
+        MAIN_UPDATE_ASSET_URL="$asset_url"
+        MAIN_UPDATE_TEXT="New version available\n${latest_version}"
+    else
+        MAIN_UPDATE_AVAILABLE=0
+        MAIN_UPDATE_VERSION=
+        MAIN_UPDATE_ASSET_URL=
+        MAIN_UPDATE_TEXT=
+    fi
     MAIN_STATUS_TEXT="Service running: $( [ "$MAIN_PROXY_RUNNING" -eq 1 ] && printf 'yes' || printf 'no' )$( [ -n "$MAIN_PROXY_PID" ] && printf ' | PID: %s' "$MAIN_PROXY_PID" || true)"
     MAIN_PROXY_LABEL="$(proxy_menu_label | tr -d '\n')"
     MAIN_AUTOSTART_LABEL="$(autostart_menu_label | tr -d '\n')"
+
+    if [ "$MAIN_UPDATE_AVAILABLE" -eq 1 ]; then
+        show_update_prompt
+        continue
+    fi
 
     read_choice
     choice="$CHOICE"

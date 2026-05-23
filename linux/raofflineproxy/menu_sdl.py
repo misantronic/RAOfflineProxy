@@ -6,7 +6,7 @@ import time
 from pathlib import Path
 
 from .batocera_conf import patch_batocera_conf, revert_batocera_conf
-from .config import CONFIG_DIR, load_config
+from .config import APP_VERSION, CONFIG_DIR, load_config
 from .platform import (
     autostart_enabled,
     autostart_supported,
@@ -38,6 +38,7 @@ from .service import service_status, start_service_process, stop_service_process
 from .smart_cache import SMART_CACHE_LIMIT, run_smart_cache, should_offer_smart_cache
 from .state import load_patch_state, save_patch_state
 from .storage import Storage
+from .update import download_knulli_update_installer, update_status
 from .menu_input import (
     BTN_DPAD_DOWN,
     BTN_DPAD_LEFT,
@@ -206,6 +207,10 @@ class MenuSdlSession:
         self.main_logged_in = False
         self.main_autostart_supported = False
         self.main_autostart_enabled = False
+        self.main_update_available = False
+        self.main_update_version = None
+        self.main_update_asset_url = None
+        self.main_update_dialog_seen = False
         self.active_game_unlock_game_id = None
         self.active_game_unlock_count_cached = None
         self.active_game_unlock_titles_cached: list[str] = []
@@ -213,6 +218,7 @@ class MenuSdlSession:
         self.title_font = self.load_font(max(30, height // 19), bold=True)
         self.status_font = self.load_font(max(20, height // 30))
         self.item_font = self.load_font(max(22, height // 30), bold=False)
+        self.meta_font = self.load_font(max(16, height // 44), bold=False)
         self.clock = pygame.time.Clock()
 
         log_menu_sdl(
@@ -302,6 +308,13 @@ class MenuSdlSession:
                 overlay_rect = overlay.get_rect(topleft=(LEFT_MARGIN, self.height - 56))
                 self.surface.blit(overlay, overlay_rect)
 
+        if self.view == "main":
+            version = self.meta_font.render(APP_VERSION, False, SECONDARY_TEXT_COLOR)
+            version_rect = version.get_rect(
+                bottomright=(self.width - LEFT_MARGIN, self.height - 18)
+            )
+            self.surface.blit(version, version_rect)
+
         self.pygame.display.flip()
 
     def labels(self, running: bool) -> list[str]:
@@ -321,6 +334,9 @@ class MenuSdlSession:
 
         if self.view == "smart_cache_prompt":
             return ["Start Smart Cache", "Skip"]
+
+        if self.view == "update_prompt":
+            return ["Download and install", "Later"]
 
         if self.view == "game_actions":
             unlock_titles = self.game_actions_unlock_titles()
@@ -388,6 +404,8 @@ class MenuSdlSession:
             )
         if self.view == "file_browser":
             return "Add ROM"
+        if self.view == "update_prompt":
+            return "Update Available"
         return "RAOfflineProxy"
 
     def item_text_color(self, label: str) -> tuple[int, int, int]:
@@ -435,6 +453,12 @@ class MenuSdlSession:
             return f"GAME ID: {self.active_game.game_id}, UNLOCKS: {unlock_count}"
         if self.view == "file_browser":
             return str(self.browser_dir or "No ROM directory")
+        if self.view == "update_prompt":
+            return (
+                f"Version {self.main_update_version} is available."
+                if self.main_update_version is not None
+                else "A new version is available."
+            )
         self.refresh_main_menu_state()
         logged_in = bool(getattr(self, "main_logged_in", False))
         proxy_status = "RUNNING" if running else "STOPPED"
@@ -450,6 +474,8 @@ class MenuSdlSession:
         if self.view != "main":
             if self.view == "smart_cache_prompt":
                 return None
+            if self.view == "update_prompt":
+                return "Press START or A to install."
             return getattr(self, "smart_cache_progress_text", None)
 
         if (
@@ -537,6 +563,10 @@ class MenuSdlSession:
 
         if self.view == "smart_cache_prompt":
             self.activate_smart_cache_prompt_selected()
+            return
+
+        if self.view == "update_prompt":
+            self.activate_update_prompt_selected()
             return
 
         if self.view == "game_actions":
@@ -786,6 +816,10 @@ class MenuSdlSession:
 
         if self.view == "smart_cache_prompt":
             self.dismiss_smart_cache_prompt()
+            return
+
+        if self.view == "update_prompt":
+            self.dismiss_update_prompt()
             return
 
         if self.view == "pending_award_actions":
@@ -1060,6 +1094,14 @@ class MenuSdlSession:
             self.main_autostart_supported = False
         if not hasattr(self, "main_autostart_enabled"):
             self.main_autostart_enabled = False
+        if not hasattr(self, "main_update_available"):
+            self.main_update_available = False
+        if not hasattr(self, "main_update_version"):
+            self.main_update_version = None
+        if not hasattr(self, "main_update_asset_url"):
+            self.main_update_asset_url = None
+        if not hasattr(self, "main_update_dialog_seen"):
+            self.main_update_dialog_seen = False
 
         if not force and self.view != "main":
             return
@@ -1079,7 +1121,36 @@ class MenuSdlSession:
         self.main_autostart_enabled = (
             self.main_autostart_supported and autostart_enabled(self.config_data)
         )
+        try:
+            update = update_status("knulli")
+            self.main_update_available = update.update_available
+            self.main_update_version = update.latest_version
+            self.main_update_asset_url = update.asset_url
+        except Exception as exc:
+            log_menu_sdl(f"update check failed error={exc}")
+            self.main_update_available = False
+            self.main_update_version = None
+            self.main_update_asset_url = None
         self.main_state_refreshed_at = now
+        if (
+            self.view == "main"
+            and self.main_update_available
+            and not self.main_update_dialog_seen
+        ):
+            self.main_update_dialog_seen = True
+            self.save_view_position("main")
+            self.view = "update_prompt"
+            self.reset_selection()
+
+    def dismiss_update_prompt(self) -> None:
+        self.view = "main"
+        self.restore_view_position("main")
+
+    def activate_update_prompt_selected(self) -> None:
+        if self.selected_index == 0:
+            self.install_update()
+            return
+        self.dismiss_update_prompt()
 
     def clear_active_game_unlocks(self) -> None:
         self.active_game_unlock_game_id = None
@@ -1260,6 +1331,29 @@ class MenuSdlSession:
                 f"Autostart failed: {exc}",
                 time.monotonic() + ERROR_SECONDS,
             )
+
+    def install_update(self) -> None:
+        asset_url = getattr(self, "main_update_asset_url", None)
+        if not asset_url:
+            update = update_status("knulli", force=True)
+            asset_url = update.asset_url
+            self.main_update_asset_url = asset_url
+            self.main_update_version = update.latest_version
+            self.main_update_available = update.update_available
+        if not asset_url:
+            self.message = ("Update install failed: no installer URL", time.monotonic() + ERROR_SECONDS)
+            self.dismiss_update_prompt()
+            return
+
+        try:
+            installer_path = download_knulli_update_installer(asset_url)
+            self.storage.close()
+            close_input_devices(self.input_handles)
+            self.pygame.quit()
+            os.execv(str(installer_path), [str(installer_path)])
+        except Exception as exc:
+            self.message = (f"Update install failed: {exc}", time.monotonic() + ERROR_SECONDS)
+            self.dismiss_update_prompt()
 
     def uninstall(self) -> None:
         launcher = "/userdata/system/raofflineproxy/bin/raofflineproxy-uninstall"

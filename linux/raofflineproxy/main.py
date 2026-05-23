@@ -53,6 +53,7 @@ from .smart_cache import (
 from .storage import Storage
 from .state import load_patch_state, save_patch_state
 from .ui import write_status_image, write_text_image
+from .update import update_status
 
 STALE_HOOK_PATH = Path("/userdata/system/scripts/RAOfflineProxy_game_hook.sh")
 LOGGER = logging.getLogger("raofflineproxy")
@@ -127,6 +128,7 @@ def main() -> None:
             "cache-folder-listing",
             "smart-cache-status",
             "run-smart-cache",
+            "update-status",
             "service-status",
             "status",
             "run-service",
@@ -180,6 +182,11 @@ def main() -> None:
         dest="font_scale",
         type=int,
         help="Override rendered font scale",
+    )
+    parser.add_argument(
+        "--platform",
+        dest="platform",
+        help="Platform name for platform-specific commands",
     )
     args = parser.parse_args()
 
@@ -572,6 +579,17 @@ def main() -> None:
             if service.get("running") and service.get("pid"):
                 service_line += f" | PID: {service['pid']}"
             print(service_line)
+            return
+
+        if args.command == "update-status":
+            if not args.platform:
+                raise ValueError("update-status requires --platform")
+            print(
+                json.dumps(
+                    update_status(args.platform).to_dict(),
+                    separators=(",", ":"),
+                )
+            )
             return
 
         status = status_retroarch_cfg(cfg_path, config_data)
