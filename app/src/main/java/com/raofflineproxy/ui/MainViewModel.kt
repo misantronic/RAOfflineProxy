@@ -59,6 +59,7 @@ import com.raofflineproxy.proxy.SmartCacheEmulator
 import com.raofflineproxy.service.ProxyService
 import com.raofflineproxy.update.AppUpdateChecker
 import com.raofflineproxy.update.AppUpdateInfo
+import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.combine
@@ -77,6 +78,7 @@ enum class SafGrantTarget { RetroArch, SmartCacheRetroArch, Dolphin, SmartCacheR
 
 sealed interface MainUiEvent {
     data object PromptSmartCacheAfterProxyStart : MainUiEvent
+    data object PromptManualCredentials : MainUiEvent
     data class ShowAppUpdate(val update: AppUpdateInfo) : MainUiEvent
 }
 
@@ -87,6 +89,7 @@ data class MainUiState(
     val hasLoginCredentials: Boolean = false,
     val authState: AuthState = AuthState.Unknown,
     val autostartProxy: Boolean = false,
+    val manualEmulatorPatchingEnabled: Boolean = false,
     val smartCachingEnabled: Boolean = true,
     val proxyPort: Int = PrefsConstants.DEFAULT_PROXY_PORT,
     val retroArchInstalled: Boolean = false,
@@ -174,6 +177,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         )
         _state.value = _state.value.copy(
             autostartProxy = loadAutostartPref(),
+            manualEmulatorPatchingEnabled = loadManualEmulatorPatchingEnabled(),
             smartCachingEnabled = loadSmartCachingEnabled(),
             proxyPort = PrefsConstants.loadProxyPort(app),
             retroArchInstalled = emulatorSupport.retroArchInstalled,
@@ -181,6 +185,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             retroArchEnabled = emulatorSupport.retroArchEnabled,
             dolphinEnabled = emulatorSupport.dolphinEnabled
         )
+        exportManualSetupConfig()
         restoreDolphinCredentialsOnLaunch(emulatorSupport)
         validateToken()
         viewModelScope.launch {
@@ -280,6 +285,17 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private fun recoverPatchedCfgIfProxyStopped() {
         val app = getApplication<Application>()
         viewModelScope.launch {
+            if (loadManualEmulatorPatchingEnabled()) {
+                _state.value = _state.value.copy(
+                    proxyRunning = ProxyService.isRunning(app),
+                    cfgIsPatched = null,
+                    needsSafGrant = false,
+                    safGrantTarget = null,
+                    cfgCopyBackPath = null
+                )
+                return@launch
+            }
+
             val retroArchTreeUri = loadSafUri()
             val dolphinTreeUri = loadDolphinSafUri()
             val retroArchPatched = withContext(Dispatchers.IO) { checkRetroArchIsPatched(app, retroArchTreeUri) }
@@ -686,6 +702,26 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     return@launch
                 }
 
+                if (loadManualEmulatorPatchingEnabled()) {
+                    ProxyService.start(app)
+                    pendingProxyStart = false
+                    _state.value = _state.value.copy(
+                        proxyRunning = true,
+                        cfgIsPatched = null,
+                        needsSafGrant = false,
+                        safGrantTarget = null,
+                        pendingSafGrantTargets = emptyList(),
+                        authState = AuthState.Unknown
+                    )
+                    pendingSmartCachePromptAfterProxyStart = true
+                    if (!alreadyRunning) {
+                        SnackbarManager.showMessage(str(R.string.proxy_started_success))
+                    }
+                    maybePromptSmartCacheAfterProxyStart()
+                    validateToken()
+                    return@launch
+                }
+
                 val retroArchTreeUri = treeUri ?: loadSafUri()
                 val dolphinTreeUri = loadDolphinSafUri()
 
@@ -821,6 +857,20 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             _state.value = _state.value.copy(proxyToggleInProgress = true)
 
             try {
+                if (loadManualEmulatorPatchingEnabled()) {
+                    ProxyService.stop(app)
+                    _state.value = _state.value.copy(
+                        proxyRunning = false,
+                        cfgIsPatched = null,
+                        needsSafGrant = false,
+                        safGrantTarget = null,
+                        cfgCopyBackPath = null
+                    )
+                    pendingSmartCachePromptAfterProxyStart = false
+                    SnackbarManager.showMessage(str(R.string.proxy_stopped_success))
+                    return@launch
+                }
+
                 val prefs = app.getSharedPreferences(PrefsConstants.PREFS_NAME, Context.MODE_PRIVATE)
                 val retroArchTreeUri = treeUri ?: loadSafUri()
                 val dolphinTreeUri = loadDolphinSafUri()
@@ -907,6 +957,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun checkCfgPatched(treeUri: Uri? = null) {
         val app = getApplication<Application>()
         viewModelScope.launch {
+            if (loadManualEmulatorPatchingEnabled()) {
+                _state.value = _state.value.copy(cfgIsPatched = null)
+                return@launch
+            }
+
             val patched = withContext(Dispatchers.IO) {
                 checkRetroArchIsPatched(app, treeUri) || checkIsDolphinPatched(app, loadDolphinSafUri())
             }
@@ -1324,6 +1379,86 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    fun setManualEmulatorPatchingEnabled(enabled: Boolean) {
+        val app = getApplication<Application>()
+
+        if (enabled && !state.value.hasLoginCredentials) {
+            _events.tryEmit(MainUiEvent.PromptManualCredentials)
+            return
+        }
+
+        PrefsConstants.saveManualEmulatorPatchingEnabled(app, enabled)
+        _state.value = _state.value.copy(
+            manualEmulatorPatchingEnabled = enabled,
+            needsSafGrant = false,
+            safGrantTarget = null,
+            pendingSafGrantTargets = emptyList(),
+            cfgCopyBackPath = null,
+            cfgIsPatched = if (enabled) null else _state.value.cfgIsPatched
+        )
+        exportManualSetupConfig()
+
+        if (!enabled) {
+            checkCfgPatched(treeUri = loadSafUri())
+        }
+    }
+
+    fun saveManualLoginCredentials(username: String, password: String) {
+        val app = getApplication<Application>()
+        val normalizedUsername = username.trim()
+        val normalizedPassword = password.trim()
+
+        viewModelScope.launch {
+            if (normalizedUsername.isBlank() || normalizedPassword.isBlank()) {
+                SnackbarManager.showError(
+                    if (normalizedUsername.isBlank()) {
+                        str(R.string.manual_credentials_username_required)
+                    } else {
+                        str(R.string.manual_credentials_password_required)
+                    }
+                )
+                return@launch
+            }
+
+            val loginCredentials = withContext(Dispatchers.IO) {
+                loginAndCacheToken(
+                    db,
+                    PasswordCredentials(normalizedUsername, normalizedPassword),
+                    loadUserAgent(db)
+                )
+            }
+
+            if (loginCredentials == null) {
+                SnackbarManager.showError(str(R.string.manual_credentials_invalid))
+                return@launch
+            }
+
+            withContext(Dispatchers.IO) {
+                db.cacheDao().deleteByKeyPrefix(CacheKeys.PREFIX_LOGIN)
+                db.cacheDao().upsert(
+                    CacheEntry(
+                        cacheKey = CacheKeys.login(loginCredentials.user),
+                        responseBody = cacheLoginCredentialsResponse(loginCredentials.user, loginCredentials.token)
+                    )
+                )
+            }
+
+            PrefsConstants.saveManualEmulatorPatchingEnabled(app, true)
+            _state.value = _state.value.copy(
+                manualEmulatorPatchingEnabled = true,
+                hasLoginCredentials = true,
+                needsSafGrant = false,
+                safGrantTarget = null,
+                pendingSafGrantTargets = emptyList(),
+                cfgCopyBackPath = null,
+                cfgIsPatched = null,
+                authState = AuthState.Unknown
+            )
+            exportManualSetupConfig()
+            validateToken()
+        }
+    }
+
     fun setRetroArchEnabled(enabled: Boolean) {
         val app = getApplication<Application>()
         val support = loadEmulatorSupport(app)
@@ -1338,6 +1473,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             retroArchEnabled = updated.retroArchEnabled,
             dolphinEnabled = updated.dolphinEnabled
         )
+        exportManualSetupConfig()
     }
 
     fun setDolphinEnabled(enabled: Boolean) {
@@ -1370,6 +1506,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             retroArchEnabled = updated.retroArchEnabled,
             dolphinEnabled = updated.dolphinEnabled
         )
+        exportManualSetupConfig()
     }
 
     fun setProxyPort(portText: String): Boolean {
@@ -1380,7 +1517,45 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val app = getApplication<Application>()
         PrefsConstants.saveProxyPort(app, port)
         _state.value = _state.value.copy(proxyPort = port)
+        exportManualSetupConfig()
         return true
+    }
+
+    private fun exportManualSetupConfig() {
+        val app = getApplication<Application>()
+        val currentState = _state.value
+
+        viewModelScope.launch(Dispatchers.IO) {
+            val enabledEmulators = buildList {
+                if (currentState.retroArchEnabled) add("retroarch")
+                if (currentState.dolphinEnabled) add("dolphin")
+            }
+
+            val content = JSONObject()
+                .put("manualEmulatorPatchingEnabled", currentState.manualEmulatorPatchingEnabled)
+                .put("proxyPort", currentState.proxyPort)
+                .put("enabledEmulators", org.json.JSONArray(enabledEmulators))
+                .toString(2)
+
+            runCatching {
+                val externalRoot = app.getExternalFilesDir(null)
+                if (externalRoot != null) {
+                    val externalDirectory = File(externalRoot, "manual-emulator-setup")
+                    externalDirectory.mkdirs()
+                    File(externalDirectory, "adb-config.json").writeText(content)
+                }
+            }.onFailure {
+                Log.w("RAProxy/ManualSetup", "Failed to export external adb-config.json: ${it.message}", it)
+            }
+
+            runCatching {
+                val internalDirectory = File(app.filesDir, "manual-emulator-setup")
+                internalDirectory.mkdirs()
+                File(internalDirectory, "adb-config.json").writeText(content)
+            }.onFailure {
+                Log.w("RAProxy/ManualSetup", "Failed to export internal adb-config.json: ${it.message}", it)
+            }
+        }
     }
 
     fun checkForAppUpdate(force: Boolean = false) {
@@ -1418,6 +1593,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun loadSmartCachingEnabled(): Boolean =
         PrefsConstants.loadSmartCachingEnabled(getApplication())
+
+    private fun loadManualEmulatorPatchingEnabled(): Boolean =
+        PrefsConstants.loadManualEmulatorPatchingEnabled(getApplication())
 
     private fun loadSafUri(): Uri? =
         PrefsConstants.loadSafUri(getApplication())

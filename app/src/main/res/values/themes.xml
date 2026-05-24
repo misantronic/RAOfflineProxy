@@ -11,6 +11,7 @@
         <item name="materialAlertDialogTheme">@style/ThemeOverlay.RAOfflineProxy.AlertDialog</item>
         <item name="actionBarStyle">@style/Widget.RAOfflineProxy.ActionBar</item>
         <item name="snackbarTextViewStyle">@style/Widget.RAOfflineProxy.SnackbarText</item>
+        <item name="tabStyle">@style/Widget.RAOfflineProxy.TabLayout</item>
     </style>
 
     <style name="ThemeOverlay.RAOfflineProxy.AlertDialog" parent="ThemeOverlay.MaterialComponents.MaterialAlertDialog">
@@ -29,6 +30,11 @@
 
     <style name="Widget.RAOfflineProxy.ActionBar" parent="Widget.MaterialComponents.ActionBar.Solid">
         <item name="titleTextStyle">@style/TextAppearance.RAOfflineProxy.ActionBar.Title</item>
+    </style>
+
+    <style name="Widget.RAOfflineProxy.TabLayout" parent="Widget.MaterialComponents.TabLayout">
+        <item name="tabGravity">start</item>
+        <item name="tabMode">scrollable</item>
     </style>
 
     <style name="Widget.RAOfflineProxy.Button.Icon" parent="Widget.MaterialComponents.Button.TextButton">
