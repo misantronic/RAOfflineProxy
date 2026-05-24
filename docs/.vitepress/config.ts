@@ -52,6 +52,7 @@ export default defineConfig({
           { text: 'Installation', link: '/installation' },
           { text: 'Compatibility', link: '/compatibility' },
           { text: 'Emulator Patching', link: '/cfg-patching' },
+          { text: 'Manual Emulator Setup', link: '/manual-emulator-setup' },
           { text: 'Caching Games', link: '/caching-games' },
           { text: 'Pending Awards', link: '/pending-awards' },
           { text: 'Anti-Tamper Hash Chain', link: '/hash-chain' },
