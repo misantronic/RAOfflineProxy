@@ -227,11 +227,19 @@ private fun patchDolphinGameSettingsHardcoreOverrides(
     context: Context,
     treeUri: Uri?
 ): DolphinGameSettingsPatchOutcome {
+    val startedAt = System.currentTimeMillis()
+
     if (treeUri != null) {
+        Log.i(TAG, "game settings patch: starting via SAF treeUri=$treeUri")
         val safResult = patchDolphinGameSettingsViaSaf(context, treeUri)
         if (safResult != null) {
+            Log.i(
+                TAG,
+                "game settings patch: finished via SAF success=${safResult.success} changed=${safResult.overrides.size} durationMs=${System.currentTimeMillis() - startedAt}"
+            )
             return safResult
         }
+        Log.i(TAG, "game settings patch: SAF tree could not be opened, falling back to direct file access")
     }
 
     val directDirectory = DOLPHIN_GAME_SETTINGS_SOURCE_CANDIDATES
@@ -240,9 +248,16 @@ private fun patchDolphinGameSettingsHardcoreOverrides(
         .firstOrNull { it.isDirectory && it.canRead() && it.canWrite() }
 
     if (directDirectory != null) {
-        return patchDolphinGameSettingsViaFile(directDirectory)
+        Log.i(TAG, "game settings patch: starting via file path=${directDirectory.path}")
+        val fileResult = patchDolphinGameSettingsViaFile(directDirectory)
+        Log.i(
+            TAG,
+            "game settings patch: finished via file success=${fileResult.success} changed=${fileResult.overrides.size} durationMs=${System.currentTimeMillis() - startedAt}"
+        )
+        return fileResult
     }
 
+    Log.i(TAG, "game settings patch: no accessible GameSettings directory durationMs=${System.currentTimeMillis() - startedAt}")
     return DolphinGameSettingsPatchOutcome(success = true)
 }
 
@@ -254,6 +269,9 @@ private fun revertDolphinGameSettingsHardcoreOverrides(
     if (overrides.isEmpty()) {
         return DolphinGameSettingsPatchOutcome(success = true)
     }
+
+    val startedAt = System.currentTimeMillis()
+    Log.i(TAG, "game settings revert: starting tracked=${overrides.size} treeUri=$treeUri")
 
     val pendingOverrides = overrides.toMutableList()
     val failedOverrides = mutableListOf<DolphinGameSettingsOverride>()
@@ -284,12 +302,17 @@ private fun revertDolphinGameSettingsHardcoreOverrides(
 
     if (failedOverrides.isNotEmpty()) {
         persistDolphinGameSettingsOverrides(context, failedOverrides.distinctBy(DolphinGameSettingsOverride::relativePath))
+        Log.w(
+            TAG,
+            "game settings revert: failed tracked=${overrides.size} failed=${failedOverrides.size} durationMs=${System.currentTimeMillis() - startedAt}"
+        )
         return DolphinGameSettingsPatchOutcome(
             success = false,
             message = context.getString(R.string.dolphin_revert_error_file, DOLPHIN_GAME_SETTINGS_RELATIVE_PATH, "Could not restore Dolphin per-game hardcore overrides")
         )
     }
 
+    Log.i(TAG, "game settings revert: finished tracked=${overrides.size} durationMs=${System.currentTimeMillis() - startedAt}")
     PrefsConstants.clearDolphinGameSettingsHardcoreOverrides(context)
     return DolphinGameSettingsPatchOutcome(success = true)
 }
@@ -308,6 +331,8 @@ private fun patchDolphinGameSettingsViaSaf(
     val overrides = mutableListOf<DolphinGameSettingsOverride>()
     val iniFiles = directory.listFiles()
         .filter { it.isFile && (it.name?.endsWith(".ini", ignoreCase = true) == true) }
+
+    Log.i(TAG, "game settings patch SAF: directory=${directory.uri} iniFiles=${iniFiles.size}")
 
     try {
         iniFiles.forEach { document ->
@@ -349,6 +374,8 @@ private fun patchDolphinGameSettingsViaFile(directory: File): DolphinGameSetting
     val iniFiles = directory.listFiles()
         ?.filter { it.isFile && it.name.endsWith(".ini", ignoreCase = true) }
         .orEmpty()
+
+    Log.i(TAG, "game settings patch file: directory=$directoryPath iniFiles=${iniFiles.size}")
 
     try {
         iniFiles.forEach { file ->
