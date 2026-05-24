@@ -6,7 +6,7 @@ import subprocess
 import sys
 import time
 
-from .config import LOG_FILE, configure_logging
+from .config import CONFIG_DIR, LOG_FILE, configure_logging
 from .proxy_service import run_proxy_service
 from .state import (
     clear_pid,
@@ -228,6 +228,11 @@ def run_service_foreground(config_data: dict) -> None:
     signal.signal(signal.SIGINT, handle_signal)
 
     configure_logging()
+    logging.getLogger("raofflineproxy").info(
+        "Service logging initialized configDir=%s logFile=%s",
+        CONFIG_DIR,
+        LOG_FILE,
+    )
 
     stop_event = __import__("threading").Event()
 

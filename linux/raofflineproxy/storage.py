@@ -41,7 +41,7 @@ class Storage:
 
         if self._use_sqlite:
             self._connection = sqlite3.connect(
-                self._database_path, check_same_thread=False
+                self._database_path, check_same_thread=False, timeout=5.0
             )
             self._connection.row_factory = sqlite3.Row
             self._initialize_sqlite()
