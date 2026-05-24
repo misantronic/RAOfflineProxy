@@ -7,14 +7,21 @@ import android.os.Environment
 import android.util.AtomicFile
 import android.util.Log
 import androidx.documentfile.provider.DocumentFile
+import com.raofflineproxy.PrefsConstants
 import com.raofflineproxy.R
 import com.raofflineproxy.proxy.LoginCredentials
 import com.raofflineproxy.proxyValue
+import org.json.JSONArray
+import org.json.JSONObject
 import java.io.File
 
 private val DOLPHIN_EXT_STORAGE by lazy { Environment.getExternalStorageDirectory().path }
 private const val TAG = "RAProxy/DolphinCfg"
 private const val DOLPHIN_CFG_BACKUP_NAME = "RetroAchievements.raofflineproxy.ini"
+private const val DOLPHIN_GAME_SETTINGS_RELATIVE_PATH = "GameSettings"
+private const val DOLPHIN_GAME_SETTINGS_SECTION = "Achievements.Achievements"
+private const val DOLPHIN_GAME_SETTINGS_KEY = "HardcoreEnabled"
+
 internal val DOLPHIN_PACKAGE_CANDIDATES = listOf(
     "org.dolphinemu.dolphinemu",
     "org.dolphinemu.dolphinemu.beta",
@@ -42,6 +49,22 @@ private val DOLPHIN_SAF_CFG_PATHS = DOLPHIN_PACKAGE_CANDIDATES.map { packageName
     listOf("RetroAchievements.ini")
 )
 
+private val DOLPHIN_GAME_SETTINGS_SOURCE_CANDIDATES by lazy {
+    DOLPHIN_PACKAGE_CANDIDATES.flatMap { packageName ->
+        listOf(
+            "$DOLPHIN_EXT_STORAGE/Android/data/$packageName/files/$DOLPHIN_GAME_SETTINGS_RELATIVE_PATH",
+            "/storage/emulated/0/Android/data/$packageName/files/$DOLPHIN_GAME_SETTINGS_RELATIVE_PATH"
+        )
+    }
+}
+
+private val DOLPHIN_SAF_GAME_SETTINGS_PATHS = DOLPHIN_PACKAGE_CANDIDATES.map { packageName ->
+    listOf(packageName, "files", DOLPHIN_GAME_SETTINGS_RELATIVE_PATH)
+} + listOf(
+    listOf("files", DOLPHIN_GAME_SETTINGS_RELATIVE_PATH),
+    listOf(DOLPHIN_GAME_SETTINGS_RELATIVE_PATH)
+)
+
 data class DolphinPatchResult(
     val success: Boolean,
     val message: String,
@@ -51,6 +74,28 @@ data class DolphinPatchResult(
     val hardcoreWasEnabled: Boolean = false,
     val credentials: ImportedCredentials? = null,
     val skippedNotInstalled: Boolean = false
+)
+
+internal data class DolphinGameSettingsOverride(
+    val relativePath: String,
+    val originalValue: String
+)
+
+private data class DolphinIniEntry(
+    val lineIndex: Int,
+    val prefix: String,
+    val value: String
+)
+
+internal data class DolphinGameSettingsUpdate(
+    val content: String,
+    val originalValue: String
+)
+
+private data class DolphinGameSettingsPatchOutcome(
+    val success: Boolean,
+    val message: String? = null,
+    val overrides: List<DolphinGameSettingsOverride> = emptyList()
 )
 
 private data class DolphinStrings(
@@ -116,7 +161,7 @@ fun patchDolphinCfg(
             storedCredentials = storedCredentials
         )
     }
-    return applyDolphinTransform(
+    val globalResult = applyDolphinTransform(
         context = context,
         treeUri = treeUri,
         transform = transform,
@@ -124,6 +169,29 @@ fun patchDolphinCfg(
         detectHardcore = true,
         ensureBackup = true
     )
+
+    if (!globalResult.success) {
+        return globalResult
+    }
+
+    val gameSettingsResult = patchDolphinGameSettingsHardcoreOverrides(context, treeUri)
+    if (!gameSettingsResult.success) {
+        applyDolphinTransform(
+            context = context,
+            treeUri = treeUri,
+            transform = { buildRevertedDolphinContent(it, globalResult.hardcoreWasEnabled) },
+            strings = DOLPHIN_REVERT_STRINGS,
+            detectHardcore = false,
+            ensureBackup = false
+        )
+        return globalResult.copy(
+            success = false,
+            message = gameSettingsResult.message ?: globalResult.message
+        )
+    }
+
+    persistDolphinGameSettingsOverrides(context, gameSettingsResult.overrides)
+    return globalResult
 }
 
 fun revertDolphinCfg(context: Context, treeUri: Uri?, restoreHardcore: Boolean = false): DolphinPatchResult {
@@ -135,7 +203,7 @@ fun revertDolphinCfg(context: Context, treeUri: Uri?, restoreHardcore: Boolean =
     Log.i(TAG, "revert: starting treeUri=$treeUri restoreHardcore=$restoreHardcore")
 
     val transform: (String) -> String = { buildRevertedDolphinContent(it, restoreHardcore) }
-    return applyDolphinTransform(
+    val globalResult = applyDolphinTransform(
         context = context,
         treeUri = treeUri,
         transform = transform,
@@ -143,6 +211,252 @@ fun revertDolphinCfg(context: Context, treeUri: Uri?, restoreHardcore: Boolean =
         detectHardcore = false,
         ensureBackup = false
     )
+
+    val gameSettingsResult = revertDolphinGameSettingsHardcoreOverrides(context, treeUri)
+    if (!gameSettingsResult.success) {
+        return globalResult.copy(
+            success = false,
+            message = gameSettingsResult.message ?: globalResult.message
+        )
+    }
+
+    return globalResult
+}
+
+private fun patchDolphinGameSettingsHardcoreOverrides(
+    context: Context,
+    treeUri: Uri?
+): DolphinGameSettingsPatchOutcome {
+    if (treeUri != null) {
+        val safResult = patchDolphinGameSettingsViaSaf(context, treeUri)
+        if (safResult != null) {
+            return safResult
+        }
+    }
+
+    val directDirectory = DOLPHIN_GAME_SETTINGS_SOURCE_CANDIDATES
+        .asSequence()
+        .map(::File)
+        .firstOrNull { it.isDirectory && it.canRead() && it.canWrite() }
+
+    if (directDirectory != null) {
+        return patchDolphinGameSettingsViaFile(directDirectory)
+    }
+
+    return DolphinGameSettingsPatchOutcome(success = true)
+}
+
+private fun revertDolphinGameSettingsHardcoreOverrides(
+    context: Context,
+    treeUri: Uri?
+): DolphinGameSettingsPatchOutcome {
+    val overrides = loadPersistedDolphinGameSettingsOverrides(context)
+    if (overrides.isEmpty()) {
+        return DolphinGameSettingsPatchOutcome(success = true)
+    }
+
+    val pendingOverrides = overrides.toMutableList()
+    val failedOverrides = mutableListOf<DolphinGameSettingsOverride>()
+
+    if (treeUri != null) {
+        val tree = DocumentFile.fromTreeUri(context, treeUri)
+        if (tree != null) {
+            val stillPending = mutableListOf<DolphinGameSettingsOverride>()
+            pendingOverrides.forEach { trackedOverride ->
+                val resolution = resolveDolphinGameSettingsDocument(tree, trackedOverride.relativePath)
+                if (resolution == null) {
+                    stillPending += trackedOverride
+                } else if (!revertDolphinGameSettingsDocument(context, resolution, trackedOverride)) {
+                    failedOverrides += trackedOverride
+                }
+            }
+            pendingOverrides.clear()
+            pendingOverrides += stillPending
+        }
+    }
+
+    pendingOverrides.forEach { trackedOverride ->
+        val file = resolveDolphinGameSettingsFile(trackedOverride.relativePath)
+        if (file != null && !revertDolphinGameSettingsFile(file, trackedOverride)) {
+            failedOverrides += trackedOverride
+        }
+    }
+
+    if (failedOverrides.isNotEmpty()) {
+        persistDolphinGameSettingsOverrides(context, failedOverrides.distinctBy(DolphinGameSettingsOverride::relativePath))
+        return DolphinGameSettingsPatchOutcome(
+            success = false,
+            message = context.getString(R.string.dolphin_revert_error_file, DOLPHIN_GAME_SETTINGS_RELATIVE_PATH, "Could not restore Dolphin per-game hardcore overrides")
+        )
+    }
+
+    PrefsConstants.clearDolphinGameSettingsHardcoreOverrides(context)
+    return DolphinGameSettingsPatchOutcome(success = true)
+}
+
+private fun patchDolphinGameSettingsViaSaf(
+    context: Context,
+    treeUri: Uri
+): DolphinGameSettingsPatchOutcome? {
+    val tree = DocumentFile.fromTreeUri(context, treeUri) ?: return null
+    val directory = DOLPHIN_SAF_GAME_SETTINGS_PATHS.firstNotNullOfOrNull { segments ->
+        segments.fold(tree as DocumentFile?) { current, segment -> current?.findFile(segment) }
+            ?.takeIf { it.exists() && it.isDirectory }
+    } ?: return DolphinGameSettingsPatchOutcome(success = true)
+
+    val changedFiles = mutableListOf<Pair<DocumentFile, DolphinGameSettingsOverride>>()
+    val overrides = mutableListOf<DolphinGameSettingsOverride>()
+    val iniFiles = directory.listFiles()
+        .filter { it.isFile && (it.name?.endsWith(".ini", ignoreCase = true) == true) }
+
+    try {
+        iniFiles.forEach { document ->
+            val original = context.contentResolver.openInputStream(document.uri)
+                ?.bufferedReader()
+                ?.use { it.readText() }
+                ?: return DolphinGameSettingsPatchOutcome(success = false, message = context.getString(R.string.patch_could_not_read, document.name))
+            val update = buildPatchedDolphinGameSettingsContent(original) ?: return@forEach
+            context.contentResolver.openOutputStream(document.uri, "wt")
+                ?.use { it.write(update.content.toByteArray()) }
+                ?: return DolphinGameSettingsPatchOutcome(success = false, message = context.getString(R.string.patch_could_not_write, document.name))
+            val relativePath = "$DOLPHIN_GAME_SETTINGS_RELATIVE_PATH/${document.name}"
+            val trackedOverride = DolphinGameSettingsOverride(relativePath = relativePath, originalValue = update.originalValue)
+            changedFiles += document to trackedOverride
+            overrides += trackedOverride
+        }
+    } catch (e: Exception) {
+        changedFiles.forEach { (document, trackedOverride) ->
+            runCatching {
+                val current = context.contentResolver.openInputStream(document.uri)
+                    ?.bufferedReader()
+                    ?.use { it.readText() }
+                    ?: return@runCatching
+                val reverted = buildRevertedDolphinGameSettingsContent(current, trackedOverride.originalValue) ?: return@runCatching
+                context.contentResolver.openOutputStream(document.uri, "wt")
+                    ?.use { it.write(reverted.toByteArray()) }
+            }
+        }
+        return DolphinGameSettingsPatchOutcome(success = false, message = context.getString(R.string.dolphin_patch_error_saf, e.message))
+    }
+
+    return DolphinGameSettingsPatchOutcome(success = true, overrides = overrides)
+}
+
+private fun patchDolphinGameSettingsViaFile(directory: File): DolphinGameSettingsPatchOutcome {
+    val directoryPath = directory.path
+    val changedFiles = mutableListOf<Pair<File, DolphinGameSettingsOverride>>()
+    val overrides = mutableListOf<DolphinGameSettingsOverride>()
+    val iniFiles = directory.listFiles()
+        ?.filter { it.isFile && it.name.endsWith(".ini", ignoreCase = true) }
+        .orEmpty()
+
+    try {
+        iniFiles.forEach { file ->
+            val original = file.readText()
+            val update = buildPatchedDolphinGameSettingsContent(original) ?: return@forEach
+            writeDolphinFileAtomically(file, update.content)
+            val relativePath = "$DOLPHIN_GAME_SETTINGS_RELATIVE_PATH/${file.name}"
+            val trackedOverride = DolphinGameSettingsOverride(relativePath = relativePath, originalValue = update.originalValue)
+            changedFiles += file to trackedOverride
+            overrides += trackedOverride
+        }
+    } catch (e: Exception) {
+        changedFiles.forEach { (file, trackedOverride) ->
+            runCatching {
+                val current = file.readText()
+                val reverted = buildRevertedDolphinGameSettingsContent(current, trackedOverride.originalValue) ?: return@runCatching
+                writeDolphinFileAtomically(file, reverted)
+            }
+        }
+        return DolphinGameSettingsPatchOutcome(
+            success = false,
+            message = "Error patching Dolphin game settings $directoryPath: ${e.message}"
+        )
+    }
+
+    return DolphinGameSettingsPatchOutcome(success = true, overrides = overrides)
+}
+
+private fun resolveDolphinGameSettingsDocument(root: DocumentFile, relativePath: String): DocumentFile? {
+    val segments = relativePath.split('/').filter(String::isNotBlank)
+    return DOLPHIN_SAF_GAME_SETTINGS_PATHS.firstNotNullOfOrNull { baseSegments ->
+        (baseSegments + segments.drop(1)).fold(root as DocumentFile?) { current, segment -> current?.findFile(segment) }
+            ?.takeIf { it.exists() && it.isFile }
+    }
+}
+
+private fun resolveDolphinGameSettingsFile(relativePath: String): File? {
+    val fileName = relativePath.substringAfterLast('/')
+    return DOLPHIN_GAME_SETTINGS_SOURCE_CANDIDATES
+        .asSequence()
+        .map { File(it, fileName) }
+        .firstOrNull { it.isFile && it.canRead() && it.canWrite() }
+}
+
+private fun revertDolphinGameSettingsDocument(
+    context: Context,
+    document: DocumentFile,
+    trackedOverride: DolphinGameSettingsOverride
+): Boolean = runCatching {
+    val current = context.contentResolver.openInputStream(document.uri)
+        ?.bufferedReader()
+        ?.use { it.readText() }
+        ?: return false
+    val reverted = buildRevertedDolphinGameSettingsContent(current, trackedOverride.originalValue) ?: return true
+    context.contentResolver.openOutputStream(document.uri, "wt")
+        ?.use { it.write(reverted.toByteArray()) }
+        ?: return false
+    true
+}.getOrDefault(false)
+
+private fun revertDolphinGameSettingsFile(
+    file: File,
+    trackedOverride: DolphinGameSettingsOverride
+): Boolean = runCatching {
+    val current = file.readText()
+    val reverted = buildRevertedDolphinGameSettingsContent(current, trackedOverride.originalValue) ?: return true
+    writeDolphinFileAtomically(file, reverted)
+    true
+}.getOrDefault(false)
+
+private fun persistDolphinGameSettingsOverrides(
+    context: Context,
+    overrides: List<DolphinGameSettingsOverride>
+) {
+    if (overrides.isEmpty()) {
+        PrefsConstants.clearDolphinGameSettingsHardcoreOverrides(context)
+        return
+    }
+
+    val encoded = JSONArray().apply {
+        overrides.distinctBy(DolphinGameSettingsOverride::relativePath).forEach { trackedOverride ->
+            put(
+                JSONObject()
+                    .put("relativePath", trackedOverride.relativePath)
+                    .put("originalValue", trackedOverride.originalValue)
+            )
+        }
+    }.toString()
+    PrefsConstants.saveDolphinGameSettingsHardcoreOverrides(context, encoded)
+}
+
+private fun loadPersistedDolphinGameSettingsOverrides(context: Context): List<DolphinGameSettingsOverride> {
+    val encoded = PrefsConstants.loadDolphinGameSettingsHardcoreOverrides(context)
+        ?: return emptyList()
+
+    return runCatching { JSONArray(encoded) }
+        .getOrNull()
+        ?.let { array ->
+            buildList {
+                for (index in 0 until array.length()) {
+                    val item = array.optJSONObject(index) ?: continue
+                    val relativePath = item.optString("relativePath").takeIf { it.isNotBlank() } ?: continue
+                    val originalValue = item.optString("originalValue").takeIf { it.isNotBlank() } ?: continue
+                    add(DolphinGameSettingsOverride(relativePath = relativePath, originalValue = originalValue))
+                }
+            }
+        }
+        .orEmpty()
 }
 
 private fun applyDolphinTransform(
@@ -350,6 +664,29 @@ internal fun buildRevertedDolphinContent(content: String, restoreHardcore: Boole
         put("HardcoreEnabled", if (restoreHardcore) "True" else "False")
     }
 
+internal fun buildPatchedDolphinGameSettingsContent(content: String): DolphinGameSettingsUpdate? {
+    val entry = findDolphinIniEntry(content, DOLPHIN_GAME_SETTINGS_SECTION, DOLPHIN_GAME_SETTINGS_KEY)
+        ?: return null
+    if (!entry.value.equals("true", ignoreCase = true)) {
+        return null
+    }
+
+    return DolphinGameSettingsUpdate(
+        content = replaceDolphinIniEntry(content, entry, "false"),
+        originalValue = entry.value
+    )
+}
+
+internal fun buildRevertedDolphinGameSettingsContent(content: String, originalValue: String): String? {
+    val entry = findDolphinIniEntry(content, DOLPHIN_GAME_SETTINGS_SECTION, DOLPHIN_GAME_SETTINGS_KEY)
+        ?: return null
+    if (!entry.value.equals("false", ignoreCase = true)) {
+        return null
+    }
+
+    return replaceDolphinIniEntry(content, entry, originalValue)
+}
+
 internal fun isDolphinPatchedContent(content: String, proxyAddress: String): Boolean =
     extractDolphinAchievementValue(content, "HostUrl") == proxyAddress
 
@@ -511,4 +848,44 @@ private fun extractDolphinAchievementValue(content: String, key: String): String
     }
 
     return null
+}
+
+private fun findDolphinIniEntry(content: String, section: String, key: String): DolphinIniEntry? {
+    val lines = content.split('\n')
+    var inSection = false
+
+    lines.forEachIndexed { index, line ->
+        val trimmed = line.trim()
+        if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+            inSection = trimmed == "[$section]"
+            return@forEachIndexed
+        }
+        if (!inSection) {
+            return@forEachIndexed
+        }
+
+        val separator = trimmed.indexOf('=')
+        if (separator == -1) {
+            return@forEachIndexed
+        }
+
+        val currentKey = trimmed.substring(0, separator).trim()
+        if (currentKey != key) {
+            return@forEachIndexed
+        }
+
+        return DolphinIniEntry(
+            lineIndex = index,
+            prefix = line.substringBefore('='),
+            value = trimmed.substring(separator + 1).trim()
+        )
+    }
+
+    return null
+}
+
+private fun replaceDolphinIniEntry(content: String, entry: DolphinIniEntry, newValue: String): String {
+    val lines = content.split('\n').toMutableList()
+    lines[entry.lineIndex] = "${entry.prefix}= $newValue"
+    return lines.joinToString("\n")
 }

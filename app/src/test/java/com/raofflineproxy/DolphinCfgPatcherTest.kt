@@ -1,8 +1,10 @@
 package com.raofflineproxy
 
 import com.raofflineproxy.proxy.LoginCredentials
+import com.raofflineproxy.ui.buildPatchedDolphinGameSettingsContent
 import com.raofflineproxy.ui.buildDolphinCredentialsRestoredContent
 import com.raofflineproxy.ui.buildPatchedDolphinContent
+import com.raofflineproxy.ui.buildRevertedDolphinGameSettingsContent
 import com.raofflineproxy.ui.buildRevertedDolphinContent
 import com.raofflineproxy.ui.detectDolphinHardcoreEnabled
 import com.raofflineproxy.ui.dolphinBackupFileFor
@@ -324,6 +326,62 @@ class DolphinCfgPatcherTest {
         )
 
         assertFalse(isDolphinPatchedContent(reverted, proxyAddress))
+    }
+
+    @Test
+    fun buildPatchedDolphinGameSettingsContent_disablesExplicitHardcoreOverride() {
+        val cfg = """
+            [Achievements.Achievements]
+            HardcoreEnabled = true
+        """.trimIndent()
+
+        val patched = buildPatchedDolphinGameSettingsContent(cfg)
+
+        assertEquals("true", patched?.originalValue)
+        assertTrue(patched?.content?.contains("HardcoreEnabled = false") == true)
+    }
+
+    @Test
+    fun buildPatchedDolphinGameSettingsContent_ignoresMissingOverride() {
+        val cfg = """
+            [Achievements.Achievements]
+            Enabled = true
+        """.trimIndent()
+
+        assertEquals(null, buildPatchedDolphinGameSettingsContent(cfg))
+    }
+
+    @Test
+    fun buildPatchedDolphinGameSettingsContent_ignoresDisabledOverride() {
+        val cfg = """
+            [Achievements.Achievements]
+            HardcoreEnabled = false
+        """.trimIndent()
+
+        assertEquals(null, buildPatchedDolphinGameSettingsContent(cfg))
+    }
+
+    @Test
+    fun buildRevertedDolphinGameSettingsContent_restoresOriginalValue() {
+        val cfg = """
+            [Achievements.Achievements]
+            HardcoreEnabled = false
+        """.trimIndent()
+
+        val reverted = buildRevertedDolphinGameSettingsContent(cfg, originalValue = "true")
+
+        assertTrue(reverted?.contains("HardcoreEnabled = true") == true)
+    }
+
+    @Test
+    fun buildRevertedDolphinGameSettingsContent_skipsWhenSettingChangedAfterPatch() {
+        val cfg = """
+            [Achievements.Achievements]
+            HardcoreEnabled = true
+            OtherSetting = changed
+        """.trimIndent()
+
+        assertEquals(null, buildRevertedDolphinGameSettingsContent(cfg, originalValue = "true"))
     }
 
     @Test
