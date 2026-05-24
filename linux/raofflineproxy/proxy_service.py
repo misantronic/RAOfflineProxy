@@ -52,7 +52,7 @@ MAX_REQUEST_BODY_BYTES = 1_048_576
 SOCKET_TIMEOUT_SECONDS = 30
 
 AWARD_ACTIONS = {"awardachievement", "submitlbentry"}
-FAKE_OFFLINE_SUCCESS_ACTIONS = {"ping"}
+FAKE_OFFLINE_SUCCESS_ACTIONS = {"ping", "postactivity"}
 ALWAYS_TRY_UPSTREAM_ACTIONS = {"login", "login2"}
 
 
