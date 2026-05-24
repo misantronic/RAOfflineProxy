@@ -189,6 +189,9 @@ def main() -> None:
     args = parser.parse_args()
 
     try:
+        if args.command != "run-service":
+            configure_logging()
+
         config_data = load_config()
         cfg_path = (
             args.retroarch_cfg

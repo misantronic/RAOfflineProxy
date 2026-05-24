@@ -1409,6 +1409,21 @@ class LinuxRomBrowserTests(unittest.TestCase):
 
         self.assertEqual(stdout.getvalue().strip(), "Service running: yes | PID: 1234")
 
+    def test_main_initializes_logging_for_non_service_commands(self) -> None:
+        stdout = StringIO()
+        with mock.patch("sys.argv", ["raofflineproxy", "service-status"]):
+            with mock.patch.object(main, "configure_logging") as configure_logging:
+                with mock.patch.object(main, "load_config", return_value={}):
+                    with mock.patch.object(
+                        main,
+                        "service_status",
+                        return_value={"running": False, "pid": None},
+                    ):
+                        with mock.patch("sys.stdout", stdout):
+                            main.main()
+
+        configure_logging.assert_called_once_with()
+
 
 if __name__ == "__main__":
     unittest.main()
