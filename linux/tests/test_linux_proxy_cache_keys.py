@@ -623,6 +623,92 @@ class LinuxProxyCacheKeyTests(unittest.TestCase):
             finally:
                 store.close()
 
+    def test_offline_login_returns_cached_login2_response(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            store = storage.Storage(database_path=Path(temp_dir) / "test.sqlite3")
+            runtime = object.__new__(proxy_service.ProxyRuntimeServer)
+            runtime.storage = store
+            runtime.config_data = {}
+            runtime.has_internet = False
+            try:
+                store.upsert_cache(
+                    cache_keys.login("misantronic"),
+                    '{"Success":true,"User":"misantronic","Token":"abc"}',
+                )
+
+                def is_online(_self) -> bool:
+                    return False
+
+                def forward_to_upstream_result(_self, method, path, raw_body, headers):
+                    return (
+                        "network_error",
+                        503,
+                        "Service Unavailable",
+                        b'{"Success":false,"Error":"offline"}',
+                        "application/json",
+                        '{"Success":false,"Error":"offline"}',
+                    )
+
+                runtime.is_online = MethodType(is_online, runtime)
+                runtime.forward_to_upstream_result = MethodType(
+                    forward_to_upstream_result, runtime
+                )
+
+                response = runtime.process_proxy_request(
+                    "POST",
+                    "/dorequest.php",
+                    "r=login&u=misantronic&p=token",
+                    {},
+                )
+
+                self.assertIn(b'"Success":true', response)
+                self.assertIn(b'"Token":"abc"', response)
+            finally:
+                store.close()
+
+    def test_offline_login2_returns_cached_login2_response(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            store = storage.Storage(database_path=Path(temp_dir) / "test.sqlite3")
+            runtime = object.__new__(proxy_service.ProxyRuntimeServer)
+            runtime.storage = store
+            runtime.config_data = {}
+            runtime.has_internet = False
+            try:
+                store.upsert_cache(
+                    cache_keys.login("misantronic"),
+                    '{"Success":true,"User":"misantronic","Token":"abc"}',
+                )
+
+                def is_online(_self) -> bool:
+                    return False
+
+                def forward_to_upstream_result(_self, method, path, raw_body, headers):
+                    return (
+                        "network_error",
+                        503,
+                        "Service Unavailable",
+                        b'{"Success":false,"Error":"offline"}',
+                        "application/json",
+                        '{"Success":false,"Error":"offline"}',
+                    )
+
+                runtime.is_online = MethodType(is_online, runtime)
+                runtime.forward_to_upstream_result = MethodType(
+                    forward_to_upstream_result, runtime
+                )
+
+                response = runtime.process_proxy_request(
+                    "POST",
+                    "/dorequest.php",
+                    "r=login2&u=misantronic&p=token",
+                    {},
+                )
+
+                self.assertIn(b'"Success":true', response)
+                self.assertIn(b'"Token":"abc"', response)
+            finally:
+                store.close()
+
 
 if __name__ == "__main__":
     unittest.main()
