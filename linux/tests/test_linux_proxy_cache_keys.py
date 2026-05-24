@@ -260,6 +260,167 @@ class LinuxProxyCacheKeyTests(unittest.TestCase):
             finally:
                 store.close()
 
+    def test_online_softcore_award_schedules_background_refresh(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            store = storage.Storage(database_path=Path(temp_dir) / "test.sqlite3")
+            runtime = object.__new__(proxy_service.ProxyRuntimeServer)
+            runtime.storage = store
+            runtime.config_data = {}
+            original_schedule = proxy_service.ProxyRuntimeServer.schedule_post_award_refresh
+            try:
+                def forward_to_upstream_result(_self, method, path, raw_body, headers):
+                    self.assertEqual(method, "POST")
+                    self.assertIn("r=awardachievement", raw_body)
+                    return (
+                        "success",
+                        200,
+                        "OK",
+                        b'{"Success":true,"AchievementID":52114}',
+                        "application/json",
+                        '{"Success":true,"AchievementID":52114}',
+                    )
+                scheduled = {}
+
+                def fake_schedule(_self, path, raw_body, headers):
+                    scheduled["call"] = (path, raw_body, headers)
+
+                runtime.forward_to_upstream_result = MethodType(
+                    forward_to_upstream_result, runtime
+                )
+                proxy_service.ProxyRuntimeServer.schedule_post_award_refresh = (
+                    fake_schedule
+                )
+
+                response = runtime.handle_award_request(
+                    "/dorequest.php?r=awardachievement&a=52114&g=10701&u=misantronic&t=token&h=0",
+                    "r=awardachievement&a=52114&g=10701&u=misantronic&t=token&h=0",
+                    {"User-Agent": "RetroArch/1.20.0"},
+                )
+
+                self.assertIn(b'"AchievementID":52114', response)
+                self.assertEqual(
+                    scheduled["call"],
+                    (
+                        "/dorequest.php?r=awardachievement&a=52114&g=10701&u=misantronic&t=token&h=0",
+                        "r=awardachievement&a=52114&g=10701&u=misantronic&t=token&h=0",
+                        {"User-Agent": "RetroArch/1.20.0"},
+                    ),
+                )
+            finally:
+                proxy_service.ProxyRuntimeServer.schedule_post_award_refresh = (
+                    original_schedule
+                )
+                store.close()
+
+    def test_refresh_caches_after_online_award_updates_unlocks_and_startsession(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            store = storage.Storage(database_path=Path(temp_dir) / "test.sqlite3")
+            runtime = object.__new__(proxy_service.ProxyRuntimeServer)
+            runtime.storage = store
+            runtime.config_data = {}
+            original_cache_unlocks = proxy_service.cache_unlocks
+            original_cache_session = proxy_service.cache_session
+            try:
+                refreshed = {}
+
+                def fake_cache_unlocks(
+                    game_id, credentials, user_agent, config_data, storage
+                ):
+                    refreshed["unlocks"] = (
+                        game_id,
+                        credentials,
+                        user_agent,
+                        config_data,
+                        storage,
+                    )
+                    storage.upsert_cache(
+                        cache_keys.unlocks(game_id, credentials["user"]),
+                        '{"Success":true,"UserUnlocks":[52114]}',
+                    )
+
+                def fake_cache_session(game_id, credentials, storage):
+                    refreshed["startsession"] = (game_id, credentials, storage)
+                    storage.upsert_cache(
+                        cache_keys.start_session(game_id, credentials["user"]),
+                        '{"Success":true,"Unlocks":[{"ID":52114,"When":1700000000}],"HardcoreUnlocks":[],"ServerNow":1700000000}',
+                    )
+
+                proxy_service.cache_unlocks = fake_cache_unlocks
+                proxy_service.cache_session = fake_cache_session
+
+                runtime.refresh_caches_after_online_award(
+                    "/dorequest.php?r=awardachievement&a=52114&g=10701&u=misantronic&t=token&h=0",
+                    "r=awardachievement&a=52114&g=10701&u=misantronic&t=token&h=0",
+                    {"User-Agent": "RetroArch/1.20.0"},
+                )
+
+                self.assertEqual(
+                    refreshed["unlocks"][0:3],
+                    (
+                        10701,
+                        {"user": "misantronic", "token": "token"},
+                        "RetroArch/1.20.0",
+                    ),
+                )
+                self.assertEqual(
+                    refreshed["startsession"][0:2],
+                    (10701, {"user": "misantronic", "token": "token"}),
+                )
+                self.assertEqual(
+                    store.get_cache(cache_keys.unlocks(10701, "misantronic"))["responseBody"],
+                    '{"Success":true,"UserUnlocks":[52114]}',
+                )
+                self.assertIn(
+                    '"ID":52114',
+                    store.get_cache(cache_keys.start_session(10701, "misantronic"))["responseBody"],
+                )
+            finally:
+                proxy_service.cache_unlocks = original_cache_unlocks
+                proxy_service.cache_session = original_cache_session
+                store.close()
+
+    def test_refresh_caches_after_online_award_resolves_game_from_cached_patch(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            store = storage.Storage(database_path=Path(temp_dir) / "test.sqlite3")
+            runtime = object.__new__(proxy_service.ProxyRuntimeServer)
+            runtime.storage = store
+            runtime.config_data = {}
+            original_cache_unlocks = proxy_service.cache_unlocks
+            original_cache_session = proxy_service.cache_session
+            try:
+                store.upsert_cache(
+                    cache_keys.patch(10701, "misantronic"),
+                    '{"Success":true,"PatchData":{"Achievements":[{"ID":52114,"Title":"Test"}]}}',
+                )
+                refreshed = {}
+
+                def fake_cache_unlocks(
+                    game_id, credentials, user_agent, config_data, storage
+                ):
+                    refreshed["unlocks"] = game_id
+
+                def fake_cache_session(game_id, credentials, storage):
+                    refreshed["startsession"] = game_id
+
+                proxy_service.cache_unlocks = fake_cache_unlocks
+                proxy_service.cache_session = fake_cache_session
+
+                runtime.refresh_caches_after_online_award(
+                    "/dorequest.php?r=awardachievement&a=52114&u=misantronic&t=token&h=0",
+                    "r=awardachievement&a=52114&u=misantronic&t=token&h=0",
+                    {"User-Agent": "RetroArch/1.20.0"},
+                )
+
+                self.assertEqual(refreshed, {"unlocks": 10701, "startsession": 10701})
+            finally:
+                proxy_service.cache_unlocks = original_cache_unlocks
+                proxy_service.cache_session = original_cache_session
+                store.close()
+
     def test_online_startsession_is_cached_even_though_general_policy_excludes_it(
         self,
     ) -> None:

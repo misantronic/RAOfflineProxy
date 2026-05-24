@@ -27,6 +27,7 @@ from .network import (
     response_content_type,
 )
 from .rom_cache import (
+    build_achievement_game_ids,
     build_unlocks_array,
     cache_session,
     cache_unlocks,
@@ -309,6 +310,7 @@ class ProxyRuntimeServer(ThreadingTCPServer):
         if self.is_online():
             upstream = self.forward_to_upstream_result("POST", path, raw_body, headers)
             if upstream[0] == "success":
+                self.schedule_post_award_refresh(path, raw_body, headers)
                 return raw_response_bytes(
                     upstream[1], upstream[3], upstream[4], upstream[2]
                 )
@@ -318,6 +320,53 @@ class ProxyRuntimeServer(ThreadingTCPServer):
                 )
 
         return self.queue_offline_award(path, raw_body, headers)
+
+    def schedule_post_award_refresh(
+        self, path: str, raw_body: str, headers: dict[str, str]
+    ) -> None:
+        refresh_thread = threading.Thread(
+            target=self.refresh_caches_after_online_award,
+            args=(path, raw_body, headers),
+            daemon=True,
+        )
+        refresh_thread.start()
+
+    def refresh_caches_after_online_award(
+        self, path: str, raw_body: str, headers: dict[str, str]
+    ) -> None:
+        game_id = self.resolve_game_id_for_award(path, raw_body)
+        user = extract_request_param(path, raw_body, "u")
+        token = extract_request_param(path, raw_body, "t")
+        if not game_id or not user or not token:
+            return
+
+        user_agent = headers.get("User-Agent") or FALLBACK_USER_AGENT
+        credentials = {"user": user, "token": token}
+        cache_unlocks(
+            int(game_id),
+            credentials,
+            user_agent,
+            self.config_data,
+            self.storage,
+        )
+        cache_session(int(game_id), credentials, self.storage)
+
+    def resolve_game_id_for_award(self, path: str, raw_body: str) -> str | None:
+        game_id = extract_request_param(path, raw_body, "g")
+        if game_id:
+            return game_id
+
+        achievement_id = int(extract_request_param(path, raw_body, "a") or "0")
+        if achievement_id <= 0:
+            return None
+
+        achievement_game_ids = build_achievement_game_ids(
+            self.storage.get_all_cache_by_prefix(cache_keys.PREFIX_PATCH)
+        )
+        resolved_game_id = achievement_game_ids.get(achievement_id)
+        if resolved_game_id is None:
+            return None
+        return str(resolved_game_id)
 
     def handle_start_session(self, path: str, raw_body: str) -> bytes:
         game_id = extract_request_param(path, raw_body, "g")
