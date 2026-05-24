@@ -663,7 +663,7 @@ internal fun buildRevertedDolphinContent(content: String, restoreHardcore: Boole
     }
 
 internal fun buildPatchedDolphinGameSettingsContent(content: String): DolphinGameSettingsUpdate? {
-    val entry = findDolphinIniEntry(content, DOLPHIN_GAME_SETTINGS_SECTION, DOLPHIN_GAME_SETTINGS_KEY)
+    val entry = findDolphinIniEntry(content)
         ?: return null
     if (!entry.value.equals("true", ignoreCase = true)) {
         return null
@@ -676,7 +676,7 @@ internal fun buildPatchedDolphinGameSettingsContent(content: String): DolphinGam
 }
 
 internal fun buildRevertedDolphinGameSettingsContent(content: String, originalValue: String): String? {
-    val entry = findDolphinIniEntry(content, DOLPHIN_GAME_SETTINGS_SECTION, DOLPHIN_GAME_SETTINGS_KEY)
+    val entry = findDolphinIniEntry(content)
         ?: return null
     if (!entry.value.equals("false", ignoreCase = true)) {
         return null
@@ -848,14 +848,14 @@ private fun extractDolphinAchievementValue(content: String, key: String): String
     return null
 }
 
-private fun findDolphinIniEntry(content: String, section: String, key: String): DolphinIniEntry? {
+private fun findDolphinIniEntry(content: String): DolphinIniEntry? {
     val lines = content.split('\n')
     var inSection = false
 
     lines.forEachIndexed { index, line ->
         val trimmed = line.trim()
         if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
-            inSection = trimmed == "[$section]"
+            inSection = trimmed == "[$DOLPHIN_GAME_SETTINGS_SECTION]"
             return@forEachIndexed
         }
         if (!inSection) {
@@ -868,7 +868,7 @@ private fun findDolphinIniEntry(content: String, section: String, key: String): 
         }
 
         val currentKey = trimmed.substring(0, separator).trim()
-        if (currentKey != key) {
+        if (currentKey != DOLPHIN_GAME_SETTINGS_KEY) {
             return@forEachIndexed
         }
 
