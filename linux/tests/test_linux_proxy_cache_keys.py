@@ -709,6 +709,24 @@ class LinuxProxyCacheKeyTests(unittest.TestCase):
             finally:
                 store.close()
 
+    def test_offline_postactivity_returns_fake_success(self) -> None:
+        runtime = object.__new__(proxy_service.ProxyRuntimeServer)
+
+        def is_online(_self) -> bool:
+            return False
+
+        runtime.is_online = MethodType(is_online, runtime)
+
+        response = runtime.process_proxy_request(
+            "POST",
+            "/dorequest.php",
+            "r=postactivity&u=misantronic&t=token&a=3&m=10701&l=10.7",
+            {},
+        )
+
+        self.assertIn(b"HTTP/1.1 200 OK", response)
+        self.assertTrue(response.endswith(b'{"Success":true}'))
+
 
 if __name__ == "__main__":
     unittest.main()
