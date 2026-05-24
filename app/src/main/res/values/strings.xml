@@ -226,8 +226,8 @@
     <string name="btn_privacy_policy">Privacy Policy</string>
 
     <!-- Manual emulator setup -->
-    <string name="manual_patching_intro">Helpful on devices where Android restricts access to emulator config files, including some Android 14, 15, and 16 devices.</string>
-    <string name="manual_patching_warning">⚠️ After you manually patch an emulator, RetroAchievements will not work unless the RAOfflineProxy proxy is running.</string>
+    <string name="manual_patching_intro">Helpful on devices where Android restricts access to emulator config files, including some Android 14, 15, and 16 devices. Some technical knowledge is helpful for this method.</string>
+    <string name="manual_patching_warning">⚠️ When you manually patch an emulator, RetroAchievements will not work unless the RAOfflineProxy proxy is running.</string>
     <string name="manual_patching_checkbox">Activate manual emulator patching</string>
     <string name="manual_patching_tab_adb">ADB</string>
     <string name="manual_credentials_dialog_title">RetroAchievements login</string>
