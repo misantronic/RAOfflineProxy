@@ -1294,8 +1294,9 @@ while :; do
     clear
     case "$choice" in
         1)
+            proxy_was_running="$MAIN_PROXY_RUNNING"
             toggle_proxy
-            if service_is_running; then
+            if [ "$proxy_was_running" -eq 0 ]; then
                 if ! maybe_offer_smart_cache; then
                     pause_prompt
                 fi
