@@ -65,22 +65,23 @@ BROWSER_SELECTED_INDEX=1
 BROWSER_SCROLL_OFFSET=0
 BROWSER_ENTRY_COUNT=0
 BROWSER_FILE_COUNT=0
-BROWSER_ENTRIES_FILE=
+BROWSER_ENTRIES_CONTENT=
 CACHED_GAMES_COUNT=0
-CACHED_GAMES_FILE=
+CACHED_GAMES_CONTENT=
 CACHED_GAMES_SELECTED_INDEX=1
 CACHED_GAMES_SCROLL_OFFSET=0
 
 browser_cleanup() {
-    if [ -n "${BROWSER_ENTRIES_FILE:-}" ] && [ -f "$BROWSER_ENTRIES_FILE" ]; then
-        rm -f "$BROWSER_ENTRIES_FILE"
-    fi
-    if [ -n "${CACHED_GAMES_FILE:-}" ] && [ -f "$CACHED_GAMES_FILE" ]; then
-        rm -f "$CACHED_GAMES_FILE"
-    fi
+    :
+}
+
+cleanup_stale_tmp_views() {
+    :
 }
 
 trap browser_cleanup EXIT INT TERM
+
+cleanup_stale_tmp_views
 
 read_escape_sequence() {
     stty -echo -icanon min 0 time 2 < /dev/tty
@@ -96,7 +97,7 @@ pending_awards_count() {
 }
 
 home_status() {
-    run_backend_raw "$PYTHON_BIN" home-status 2>/dev/null || printf '{"cached_games_count":0,"pending_awards_count":0,"service_running":false,"service_pid":null,"autostart_enabled":false}\n'
+    run_backend_raw "$PYTHON_BIN" home-status 2>/dev/null
 }
 
 update_status() {
@@ -272,9 +273,6 @@ run_cache_progress_flow() {
     target_path="${4:-}"
     result_line=
     backend_rc=0
-    fifo_path="/tmp/raofflineproxy-smart-cache.$$"
-    rm -f "$fifo_path"
-    mkfifo "$fifo_path"
 
     clear
     printf 'RAOfflineProxy\n\n'
@@ -282,11 +280,12 @@ run_cache_progress_flow() {
     printf 'Preparing...\n'
 
     if [ -n "$target_path" ]; then
-        run_backend_raw "$PYTHON_BIN" "$command_name" --path "$target_path" > "$fifo_path" 2>&1 &
+        command_output="$(run_backend_raw "$PYTHON_BIN" "$command_name" --path "$target_path" 2>&1)"
+        backend_rc=$?
     else
-        run_backend_raw "$PYTHON_BIN" "$command_name" > "$fifo_path" 2>&1 &
+        command_output="$(run_backend_raw "$PYTHON_BIN" "$command_name" 2>&1)"
+        backend_rc=$?
     fi
-    backend_pid=$!
 
     while IFS= read -r line; do
         case "$line" in
@@ -308,12 +307,9 @@ run_cache_progress_flow() {
                 printf '%s\n' "$line"
                 ;;
         esac
-    done < "$fifo_path"
-
-    if ! wait "$backend_pid"; then
-        backend_rc=$?
-    fi
-    rm -f "$fifo_path"
+    done <<EOF
+$command_output
+EOF
 
     if [ "$backend_rc" -ne 0 ]; then
         pause_prompt
@@ -528,25 +524,24 @@ clear_cached_games() {
 }
 
 load_cached_games_entries() {
-    if [ -n "${CACHED_GAMES_FILE:-}" ] && [ -f "$CACHED_GAMES_FILE" ]; then
-        rm -f "$CACHED_GAMES_FILE"
-    fi
-
-    CACHED_GAMES_FILE="/tmp/raofflineproxy-cached-games.$$"
-    if ! run_backend_raw "$PYTHON_BIN" cached-games > "$CACHED_GAMES_FILE" 2>/dev/null; then
-        rm -f "$CACHED_GAMES_FILE"
-        CACHED_GAMES_FILE=
+    if ! CACHED_GAMES_CONTENT="$(run_backend_raw "$PYTHON_BIN" cached-games 2>/dev/null)"; then
+        CACHED_GAMES_CONTENT=
         return 1
     fi
 
-    count=$(wc -l < "$CACHED_GAMES_FILE" | tr -d ' ')
+    if [ -z "$CACHED_GAMES_CONTENT" ]; then
+        CACHED_GAMES_COUNT=0
+        return 0
+    fi
+
+    count=$(printf '%s\n' "$CACHED_GAMES_CONTENT" | wc -l | tr -d ' ')
     CACHED_GAMES_COUNT=${count:-0}
     return 0
 }
 
 cached_games_entry_line() {
     index="$1"
-    sed -n "${index}p" "$CACHED_GAMES_FILE"
+    printf '%s\n' "$CACHED_GAMES_CONTENT" | sed -n "${index}p"
 }
 
 cached_games_reload() {
@@ -761,18 +756,18 @@ cached_games_remove_selected() {
 load_browser_entries() {
     target_dir="$1"
 
-    if [ -n "${BROWSER_ENTRIES_FILE:-}" ] && [ -f "$BROWSER_ENTRIES_FILE" ]; then
-        rm -f "$BROWSER_ENTRIES_FILE"
-    fi
-
-    BROWSER_ENTRIES_FILE="/tmp/raofflineproxy-browser.$$"
-    if ! run_backend_raw "$PYTHON_BIN" browser-list-fast --path "$target_dir" > "$BROWSER_ENTRIES_FILE" 2>/dev/null; then
-        rm -f "$BROWSER_ENTRIES_FILE"
-        BROWSER_ENTRIES_FILE=
+    if ! BROWSER_ENTRIES_CONTENT="$(run_backend_raw "$PYTHON_BIN" browser-list-fast --path "$target_dir" 2>/dev/null)"; then
+        BROWSER_ENTRIES_CONTENT=
         return 1
     fi
 
-    count=$(wc -l < "$BROWSER_ENTRIES_FILE" | tr -d ' ')
+    if [ -z "$BROWSER_ENTRIES_CONTENT" ]; then
+        BROWSER_ENTRY_COUNT=0
+        BROWSER_FILE_COUNT=0
+        return 0
+    fi
+
+    count=$(printf '%s\n' "$BROWSER_ENTRIES_CONTENT" | wc -l | tr -d ' ')
     BROWSER_ENTRY_COUNT=${count:-0}
     BROWSER_FILE_COUNT=0
     if [ "$BROWSER_ENTRY_COUNT" -gt 0 ]; then
@@ -791,7 +786,7 @@ load_browser_entries() {
 
 browser_entry_line() {
     index="$1"
-    sed -n "${index}p" "$BROWSER_ENTRIES_FILE"
+    printf '%s\n' "$BROWSER_ENTRIES_CONTENT" | sed -n "${index}p"
 }
 
 parse_browser_entry_line() {
@@ -1251,7 +1246,15 @@ read_choice() {
 
 while :; do
     render_main_menu_loading
-    status_json="$(home_status)"
+    if ! status_json="$(home_status)"; then
+        clear
+        printf 'RAOfflineProxy\n\n'
+        printf 'Failed to read live app status from the database.\n\n'
+        printf 'This can happen if the proxy is still writing state.\n'
+        printf 'Please wait a moment and try again.\n'
+        pause_prompt
+        continue
+    fi
     MAIN_CACHED_COUNT="$(printf '%s' "$status_json" | sed -n 's/.*"cached_games_count":\([0-9][0-9]*\).*/\1/p')"
     MAIN_PENDING_COUNT="$(printf '%s' "$status_json" | sed -n 's/.*"pending_awards_count":\([0-9][0-9]*\).*/\1/p')"
     MAIN_PROXY_RUNNING="$(printf '%s' "$status_json" | sed -n 's/.*"service_running":\(true\|false\).*/\1/p' | sed 's/true/1/;s/false/0/')"

@@ -103,8 +103,6 @@ def safe_stop_proxy(config_data: dict, cfg_path: str | None) -> list[str]:
 
 
 def main() -> None:
-    configure_logging()
-
     parser = argparse.ArgumentParser(description="RAOfflineProxy Linux client")
     parser.add_argument(
         "command",
@@ -191,6 +189,9 @@ def main() -> None:
     args = parser.parse_args()
 
     try:
+        if args.command == "run-service":
+            configure_logging()
+
         config_data = load_config()
         cfg_path = (
             args.retroarch_cfg
