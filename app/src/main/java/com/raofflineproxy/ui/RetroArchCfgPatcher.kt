@@ -193,9 +193,7 @@ private fun transformViaSaf(
                     credentials = credentials
                 )
             } else {
-                context.contentResolver.openOutputStream(cfgFile.uri, "wt")
-                    ?.use { it.write(transformed.toByteArray()) }
-                    ?: return PatchResult(success = false, message = context.getString(R.string.patch_could_not_write, cfgFile.name))
+                writeSafTextFile(context, cfgParent, cfgFile, transformed)
                 Log.i(TAG, "saf: wrote updated config uri=${cfgFile.uri}")
                 PatchResult(
                     success = true,
