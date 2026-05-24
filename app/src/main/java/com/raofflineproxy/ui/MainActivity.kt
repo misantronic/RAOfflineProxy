@@ -10,6 +10,7 @@ import android.provider.Settings
 import android.provider.DocumentsContract
 import android.view.Menu
 import android.view.MenuItem
+import android.view.LayoutInflater
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContract
 import androidx.activity.result.contract.ActivityResultContracts
@@ -35,6 +36,8 @@ import androidx.core.net.toUri
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import com.google.android.material.textfield.TextInputEditText
+import com.google.android.material.textfield.TextInputLayout
 
 class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
@@ -220,6 +223,7 @@ class MainActivity : AppCompatActivity() {
             viewModel.events.collect { event ->
                 when (event) {
                     MainUiEvent.PromptSmartCacheAfterProxyStart -> showSmartCacheAfterProxyStartDialog()
+                    MainUiEvent.PromptManualCredentials -> showManualCredentialsDialog()
                     is MainUiEvent.ShowAppUpdate -> showAppUpdateDialog(event.update)
                 }
             }
@@ -279,6 +283,7 @@ class MainActivity : AppCompatActivity() {
             R.id.nav_pending_awards -> PendingAwardsFragment()
             R.id.nav_awards_history -> AwardsHistoryFragment()
             R.id.nav_settings -> SettingsFragment()
+            R.id.nav_manual_emulator_setup -> ManualEmulatorSetupFragment()
             else -> return
         }
         showFragment(fragment, itemId, addToBackStack = true)
@@ -308,6 +313,7 @@ class MainActivity : AppCompatActivity() {
             R.id.nav_pending_awards -> getString(R.string.title_pending_awards)
             R.id.nav_awards_history -> getString(R.string.title_awards_history)
             R.id.nav_settings -> getString(R.string.title_settings)
+            R.id.nav_manual_emulator_setup -> getString(R.string.title_manual_emulator_setup)
             else -> getString(R.string.app_name)
         }
         supportActionBar?.title = title
@@ -320,6 +326,7 @@ class MainActivity : AppCompatActivity() {
         is PendingAwardsFragment -> R.id.nav_pending_awards
         is AwardsHistoryFragment -> R.id.nav_awards_history
         is SettingsFragment -> R.id.nav_settings
+        is ManualEmulatorSetupFragment -> R.id.nav_manual_emulator_setup
         else -> null
     }
 
@@ -465,6 +472,44 @@ class MainActivity : AppCompatActivity() {
             }
             .setNegativeButton(R.string.smart_cache_prompt_not_now, null)
             .show()
+    }
+
+    private fun showManualCredentialsDialog() {
+        val dialogView = LayoutInflater.from(this)
+            .inflate(R.layout.dialog_manual_credentials, binding.fragmentContainer, false)
+        val usernameInput = dialogView.findViewById<TextInputLayout>(R.id.input_manual_credentials_username)
+        val passwordInput = dialogView.findViewById<TextInputLayout>(R.id.input_manual_credentials_password)
+        val usernameEdit = dialogView.findViewById<TextInputEditText>(R.id.et_manual_credentials_username)
+        val passwordEdit = dialogView.findViewById<TextInputEditText>(R.id.et_manual_credentials_password)
+
+        val dialog = AlertDialog.Builder(this)
+            .setTitle(R.string.manual_credentials_dialog_title)
+            .setView(dialogView)
+            .setPositiveButton(R.string.manual_credentials_save, null)
+            .setNegativeButton(android.R.string.cancel) { _, _ ->
+                viewModel.setManualEmulatorPatchingEnabled(false)
+            }
+            .create()
+
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                val username = usernameEdit.text?.toString()?.trim().orEmpty()
+                val password = passwordEdit.text?.toString()?.trim().orEmpty()
+                usernameInput.error = null
+                passwordInput.error = null
+
+                when {
+                    username.isBlank() -> usernameInput.error = getString(R.string.manual_credentials_username_required)
+                    password.isBlank() -> passwordInput.error = getString(R.string.manual_credentials_password_required)
+                    else -> {
+                        viewModel.saveManualLoginCredentials(username, password)
+                        dialog.dismiss()
+                    }
+                }
+            }
+        }
+
+        dialog.show()
     }
 
     private fun showAppUpdateDialog(update: AppUpdateInfo) {

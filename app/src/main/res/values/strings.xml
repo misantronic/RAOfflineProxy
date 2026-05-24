@@ -11,6 +11,7 @@
     <string name="title_pending_awards">Pending Awards</string>
     <string name="title_awards_history">Awards History</string>
     <string name="title_settings">Settings</string>
+    <string name="title_manual_emulator_setup">Manual Emulator Setup</string>
 
     <!-- Proxy button -->
     <string name="proxy_start">Start proxy</string>
@@ -223,4 +224,38 @@
     <!-- Legal -->
     <string name="privacy_policy_url">https://raofflineproxy.com/privacy-policy.html</string>
     <string name="btn_privacy_policy">Privacy Policy</string>
+
+    <!-- Manual emulator setup -->
+    <string name="manual_patching_intro">Helpful on devices where Android restricts access to emulator config files, including some Android 14, 15, and 16 devices.</string>
+    <string name="manual_patching_warning">⚠️ After you manually patch an emulator, RetroAchievements will not work unless the RAOfflineProxy proxy is running.</string>
+    <string name="manual_patching_checkbox">Activate manual emulator patching</string>
+    <string name="manual_patching_tab_adb">ADB</string>
+    <string name="manual_credentials_dialog_title">RetroAchievements login</string>
+    <string name="manual_credentials_message">Manual emulator patching cannot import your RetroAchievements login from emulator config files. Enter your RetroAchievements username and password so RAOfflineProxy can request the correct login token.</string>
+    <string name="manual_credentials_username_label">Username</string>
+    <string name="manual_credentials_password_label">Password</string>
+    <string name="manual_credentials_save">Save</string>
+    <string name="manual_credentials_username_required">Enter your RetroAchievements username.</string>
+    <string name="manual_credentials_password_required">Enter your RetroAchievements password.</string>
+    <string name="manual_credentials_invalid">RetroAchievements login failed. Check your username and password.</string>
+    <string name="manual_patching_adb_prerequisites_title">Prerequisites</string>
+    <string name="manual_patching_adb_prerequisites_body"><![CDATA[
+1. Install ADB on your computer. The easiest way is to install Android platform-tools from Google.<br/>
+2. On your device, open Settings &gt; About.<br/>
+3. Tap Build number 7 times to unlock Developer options.<br/>
+4. Go back to Settings &gt; System &gt; Developer options.<br/>
+5. Turn on USB debugging.<br/>
+6. Connect the device to your computer and accept the USB debugging prompt on the device.<br/>
+7. Download the helper scripts from <a href="https://github.com/misantronic/RAOfflineProxy/tree/main/manual-emulator-setup/adb">manual-emulator-setup/adb</a>.
+]]></string>
+    <string name="manual_patching_adb_actions_title">Patching / reverting</string>
+    <string name="manual_patching_adb_actions_body"><![CDATA[
+Run the setup script for your computer. You can Start the proxy before or after patching.<br/><br/>
+<b>Patch</b>:<br/>
+Windows: <tt>RAOfflineProxy-setup.bat patch</tt><br/>
+macOS or Linux: <tt>./RAOfflineProxy-setup.sh patch</tt><br/><br/>
+<b>Revert</b>:<br/>
+Windows: <tt>RAOfflineProxy-setup.bat revert</tt><br/>
+macOS or Linux: <tt>./RAOfflineProxy-setup.sh revert</tt><br/>
+]]></string>
 </resources>
