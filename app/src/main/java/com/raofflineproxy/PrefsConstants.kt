@@ -20,6 +20,7 @@ object PrefsConstants {
     const val KEY_ENABLE_DOLPHIN = "enable_dolphin"
     const val KEY_RETROARCH_HARDCORE_WAS_ENABLED = "retroarch_hardcore_was_enabled"
     const val KEY_DOLPHIN_HARDCORE_WAS_ENABLED = "dolphin_hardcore_was_enabled"
+    const val KEY_DOLPHIN_GAME_SETTINGS_HARDCORE_OVERRIDES = "dolphin_game_settings_hardcore_overrides"
     const val KEY_SKIP_NEXT_CFG_REVERT = "skip_next_cfg_revert"
     const val KEY_RETROARCH_PATCHED_THIS_RUN = "retroarch_patched_this_run"
     const val KEY_DOLPHIN_PATCHED_THIS_RUN = "dolphin_patched_this_run"
@@ -82,6 +83,20 @@ object PrefsConstants {
     fun clearDolphinSafUri(context: Context) {
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .edit { remove(KEY_DOLPHIN_SAF_TREE_URI) }
+    }
+
+    fun loadDolphinGameSettingsHardcoreOverrides(context: Context): String? =
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getString(KEY_DOLPHIN_GAME_SETTINGS_HARDCORE_OVERRIDES, null)
+
+    fun saveDolphinGameSettingsHardcoreOverrides(context: Context, value: String) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit { putString(KEY_DOLPHIN_GAME_SETTINGS_HARDCORE_OVERRIDES, value) }
+    }
+
+    fun clearDolphinGameSettingsHardcoreOverrides(context: Context) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit { remove(KEY_DOLPHIN_GAME_SETTINGS_HARDCORE_OVERRIDES) }
     }
 
     fun loadSmartCacheRomSafUri(context: Context): Uri? =
