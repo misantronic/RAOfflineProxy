@@ -295,11 +295,30 @@ class ProxyRuntimeServer(ThreadingTCPServer):
                 return raw_response_bytes(
                     status_code, response_body_bytes, content_type, reason
                 )
+            cached_login_response = self.handle_offline_login(path, raw_body, action)
+            if cached_login_response is not None:
+                return cached_login_response
 
         if self.is_online():
             return self.handle_online_request(method, path, raw_body, action, headers)
 
         return self.handle_offline_request(path, raw_body, action)
+
+    def handle_offline_login(
+        self, path: str, raw_body: str, action: str | None
+    ) -> bytes | None:
+        if action not in ALWAYS_TRY_UPSTREAM_ACTIONS:
+            return None
+
+        user = extract_request_param(path, raw_body, "u")
+        if not user:
+            return None
+
+        cached = self.storage.get_cache(cache_keys.login(user))
+        if cached is None:
+            return None
+
+        return ok_json(cached["responseBody"])
 
     def handle_award_request(
         self, path: str, raw_body: str, headers: dict[str, str]
