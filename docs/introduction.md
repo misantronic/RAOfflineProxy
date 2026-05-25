@@ -1,6 +1,6 @@
 # Introduction
 
-> Current release stage: `v1.2.0 (alpha)`. This is a public prerelease and has not gone through formal QA.
+> Current release stage: `v1.2.0-alpha1`. This is a public prerelease and has not gone through formal QA.
 
 ## What is RAOfflineProxy?
 
@@ -24,14 +24,14 @@ RAOfflineProxy (local proxy)
 
 ## What it does
 
-| Situation | Behaviour                                              |
-|---|--------------------------------------------------------|
-| **Online: normal request** (game data, unlocks, etc.) | Forwards to RA, saves the response locally             |
-| **Offline: saved data available** | Serves the saved response as if you were online        |
-| **Offline: achievement earned (softcore)** | Queues the award locally, tells the emulator it succeeded |
-| **Back online** | Automatically sends all queued awards to RA            |
-| **Start proxy** | Updates the supported emulator config automatically so it uses the local proxy |
-| **Stop proxy** | Reverts the config change so the emulator connects normally again |
+| Situation                                             | Behaviour                                                                      |
+| ----------------------------------------------------- | ------------------------------------------------------------------------------ |
+| **Online: normal request** (game data, unlocks, etc.) | Forwards to RA, saves the response locally                                     |
+| **Offline: saved data available**                     | Serves the saved response as if you were online                                |
+| **Offline: achievement earned (softcore)**            | Queues the award locally, tells the emulator it succeeded                      |
+| **Back online**                                       | Automatically sends all queued awards to RA                                    |
+| **Start proxy**                                       | Updates the supported emulator config automatically so it uses the local proxy |
+| **Stop proxy**                                        | Reverts the config change so the emulator connects normally again              |
 
 ## What it does NOT do
 
