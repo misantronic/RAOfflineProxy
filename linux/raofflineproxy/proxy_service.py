@@ -31,6 +31,7 @@ from .rom_cache import (
     build_unlocks_array,
     cache_session,
     cache_unlocks,
+    filter_warning_achievement_ids,
     merged_unlock_ids,
     refresh_game_patch,
 )
@@ -501,6 +502,8 @@ class ProxyRuntimeServer(ThreadingTCPServer):
             if isinstance(achievement_id, int) and achievement_id > 0:
                 unlock_ids.append(achievement_id)
 
+        unlock_ids = filter_warning_achievement_ids(unlock_ids)
+
         self.storage.upsert_cache(
             cache_keys.unlocks(game_id, user),
             json.dumps(
@@ -594,11 +597,11 @@ class ProxyRuntimeServer(ThreadingTCPServer):
                 }
 
         server_now = int(payload.get("ServerNow", server_now) or server_now)
-        cached_start_session_unlock_ids = [
+        cached_start_session_unlock_ids = filter_warning_achievement_ids([
             int(item.get("ID", 0))
             for item in payload.get("Unlocks", [])
             if isinstance(item, dict) and int(item.get("ID", 0) or 0) > 0
-        ]
+        ])
         payload["Success"] = True
         payload.setdefault("HardcoreUnlocks", [])
         payload["Unlocks"] = self.build_merged_start_session_unlocks(
