@@ -38,8 +38,8 @@
     <string name="emulator_dolphin">Dolphin</string>
     <string name="emulator_toggle_icon_cd">Installed emulator icon</string>
     <string name="proxy_start_requires_emulator">Enable at least one installed emulator to start the proxy.</string>
-    <string name="proxy_disabled_retroarch_saf_rejected">RetroArch was disabled because folder access was rejected.</string>
-    <string name="proxy_disabled_dolphin_saf_rejected">Dolphin was disabled because folder access was rejected.</string>
+    <string name="proxy_start_aborted_retroarch_saf_rejected">Proxy not started because RetroArch folder access was rejected.</string>
+    <string name="proxy_start_aborted_dolphin_saf_rejected">Proxy not started because Dolphin folder access was rejected.</string>
     <string name="proxy_start_aborted_all_emulators_rejected">All enabled emulators were rejected. Proxy not started.</string>
     <!-- SAF grant dialog -->
     <string name="saf_dialog_title">Folder Access Required</string>

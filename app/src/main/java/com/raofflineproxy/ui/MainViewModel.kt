@@ -475,7 +475,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun onSafRejected(target: SafGrantTarget) {
         val app = getApplication<Application>()
-        val prefs = app.getSharedPreferences(PrefsConstants.PREFS_NAME, Context.MODE_PRIVATE)
         if (!pendingProxyStart) {
             val remaining = _state.value.pendingSafGrantTargets.drop(1)
             if (pendingSmartCacheStart && target == SafGrantTarget.AllFilesAccess) {
@@ -551,20 +550,26 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             }
             return
         }
+
+        pendingProxyStart = false
+        _state.value = _state.value.copy(
+            pendingSafGrantTargets = emptyList(),
+            needsSafGrant = false,
+            safGrantTarget = null
+        )
+
         when (target) {
             SafGrantTarget.RetroArch -> {
-                prefs.edit { putBoolean(PrefsConstants.KEY_ENABLE_RETROARCH, false) }
                 PrefsConstants.clearSafUri(app)
-                SnackbarManager.showMessage(str(R.string.proxy_disabled_retroarch_saf_rejected), SnackbarDuration.Indefinite)
+                SnackbarManager.showMessage(str(R.string.proxy_start_aborted_retroarch_saf_rejected), SnackbarDuration.Indefinite)
             }
             SafGrantTarget.SmartCacheRetroArch -> {
                 PrefsConstants.clearRetroArchSmartCacheSafUri(app)
                 SnackbarManager.showMessage(str(R.string.smart_cache_requires_retroarch_access), SnackbarDuration.Indefinite)
             }
             SafGrantTarget.Dolphin -> {
-                prefs.edit { putBoolean(PrefsConstants.KEY_ENABLE_DOLPHIN, false) }
                 PrefsConstants.clearDolphinSafUri(app)
-                SnackbarManager.showMessage(str(R.string.proxy_disabled_dolphin_saf_rejected), SnackbarDuration.Indefinite)
+                SnackbarManager.showMessage(str(R.string.proxy_start_aborted_dolphin_saf_rejected), SnackbarDuration.Indefinite)
             }
             SafGrantTarget.AllFilesAccess -> {
                 pendingSmartCacheGrantTargets = emptyList()
@@ -577,26 +582,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 pendingSmartCacheRomGrantPaths = emptyList()
                 SnackbarManager.showMessage(str(R.string.smart_cache_requires_rom_access), SnackbarDuration.Indefinite)
             }
-        }
-
-        val updatedSupport = loadEmulatorSupport(app)
-        val remaining = _state.value.pendingSafGrantTargets.drop(1)
-        _state.value = _state.value.copy(
-            retroArchEnabled = updatedSupport.retroArchEnabled,
-            dolphinEnabled = updatedSupport.dolphinEnabled,
-            pendingSafGrantTargets = remaining,
-            needsSafGrant = remaining.isNotEmpty(),
-            safGrantTarget = remaining.firstOrNull()
-        )
-
-        if (!updatedSupport.hasAnyEnabled) {
-            pendingProxyStart = false
-            SnackbarManager.showError(str(R.string.proxy_start_aborted_all_emulators_rejected))
-            return
-        }
-
-        if (remaining.isEmpty() && pendingProxyStart) {
-            startProxyInternal(loadSafUri())
         }
     }
 
