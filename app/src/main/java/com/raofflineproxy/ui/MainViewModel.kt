@@ -106,7 +106,8 @@ data class MainUiState(
     val cfgIsPatched: Boolean? = null,
     val scanInProgress: Boolean = false,
     val scanProgress: String? = null,
-    val flushInProgress: Boolean = false
+    val flushInProgress: Boolean = false,
+    val availableAppUpdate: AppUpdateInfo? = null
 )
 
 class MainViewModel(app: Application) : AndroidViewModel(app) {
@@ -188,6 +189,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         exportManualSetupConfig()
         restoreDolphinCredentialsOnLaunch(emulatorSupport)
         validateToken()
+        startAppUpdateRecheckLoop()
         viewModelScope.launch {
             AwardFlusher.events.collect { event ->
                 when (event) {
@@ -1564,10 +1566,21 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             Log.i("RAProxy/Updates", "Using current version for update check: $currentVersionName")
             val update = withContext(Dispatchers.IO) { AppUpdateChecker.fetchLatestUpdate(currentVersionName) } ?: run {
                 Log.i("RAProxy/Updates", "App update check finished without available update")
+                _state.value = _state.value.copy(availableAppUpdate = null)
                 return@launch
             }
             Log.i("RAProxy/Updates", "App update available: ${update.versionName}")
+            _state.value = _state.value.copy(availableAppUpdate = update)
             _events.emit(MainUiEvent.ShowAppUpdate(update))
+        }
+    }
+
+    private fun startAppUpdateRecheckLoop() {
+        viewModelScope.launch {
+            while (true) {
+                delay(APP_UPDATE_CHECK_INTERVAL_MS)
+                checkForAppUpdate()
+            }
         }
     }
 
