@@ -19,6 +19,7 @@ import com.raofflineproxy.proxy.proxyHttpFile
 import com.raofflineproxy.proxy.proxyHttpResponse
 import com.raofflineproxy.proxy.proxyIsHardcoreRequest
 import com.raofflineproxy.proxy.readChunkedBody
+import com.raofflineproxy.proxy.filterWarningAchievementIds
 import com.raofflineproxy.proxy.normalizedCacheKey
 import com.raofflineproxy.proxy.sanitizeHttpReasonPhrase
 import com.raofflineproxy.proxy.shouldCacheResponse
@@ -217,6 +218,20 @@ class ProxyServerTest {
         )
 
         assertEquals("achievementsets:hash:player", key)
+    }
+
+    @Test
+    fun filterWarningAchievementIds_removesWarningAchievementId() {
+        val filtered = filterWarningAchievementIds(listOf(1, 101000001, 2))
+
+        assertEquals(listOf(1, 2), filtered)
+    }
+
+    @Test
+    fun filterWarningAchievementIds_excludesNonPositiveIds() {
+        val filtered = filterWarningAchievementIds(listOf(-1, 0, 101000001, 2))
+
+        assertEquals(listOf(2), filtered)
     }
 
     // ── proxyIsHardcoreRequest() ──
