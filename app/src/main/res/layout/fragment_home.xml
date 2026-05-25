@@ -56,6 +56,20 @@
         </RelativeLayout>
 
         <TextView
+            android:id="@+id/tv_manual_setup_warning"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="16dp"
+            android:background="@drawable/bg_warning_box"
+            android:lineSpacingMultiplier="1.15"
+            android:padding="16dp"
+            android:text="@string/home_manual_setup_warning"
+            android:textColor="@color/warning_text"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            android:visibility="gone" />
+
+        <TextView
             android:id="@+id/tv_emulator_label"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
@@ -102,6 +116,13 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="@string/proxy_start"
+                android:visibility="gone" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btn_manual_emulator_setup"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/title_manual_emulator_setup"
                 android:visibility="gone" />
 
             <com.google.android.material.button.MaterialButton

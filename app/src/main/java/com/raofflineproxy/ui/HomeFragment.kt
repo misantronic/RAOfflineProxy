@@ -4,6 +4,7 @@ import android.content.Intent
 import android.content.res.ColorStateList
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.Drawable
+import android.os.Build
 import android.os.Bundle
 import android.text.SpannableString
 import android.text.Spanned
@@ -40,7 +41,9 @@ class HomeFragment : Fragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         val tokenWarning = view.findViewById<TextView>(R.id.tv_token_warning)
+        val manualSetupWarning = view.findViewById<TextView>(R.id.tv_manual_setup_warning)
         val btnStartProxy = view.findViewById<MaterialButton>(R.id.btn_start_proxy)
+        val btnManualEmulatorSetup = view.findViewById<MaterialButton>(R.id.btn_manual_emulator_setup)
         val btnGoToCachedGames = view.findViewById<MaterialButton>(R.id.btn_go_to_cached_games)
         val homeDescription = view.findViewById<TextView>(R.id.tv_home_description)
         val emulatorLabel = view.findViewById<TextView>(R.id.tv_emulator_label)
@@ -76,6 +79,10 @@ class HomeFragment : Fragment() {
             viewModel.startProxy(treeUri = PrefsConstants.loadSafUri(requireContext()))
         }
 
+        btnManualEmulatorSetup.setOnClickListener {
+            (activity as? MainActivity)?.navigateTo(R.id.nav_manual_emulator_setup)
+        }
+
         btnGoToCachedGames.setOnClickListener {
             (activity as? MainActivity)?.navigateTo(R.id.nav_cached_games)
         }
@@ -97,6 +104,9 @@ class HomeFragment : Fragment() {
                 val noEmulatorInstalled = installedCount == 0
                 val onlyOneInstalled = installedCount == 1
                 val proxyStartPending = state.proxyToggleInProgress || state.needsSafGrant
+                val shouldRecommendManualSetup = installedCount > 0 &&
+                    !state.manualEmulatorPatchingEnabled &&
+                    shouldRecommendManualSetupForDevice()
                 tokenWarning.text = when {
                     noEmulatorInstalled -> getString(R.string.home_no_emulator_warning)
                     else -> getString(R.string.home_token_warning)
@@ -106,9 +116,13 @@ class HomeFragment : Fragment() {
                     state.proxyRunning && state.authState == AuthState.Invalid -> View.VISIBLE
                     else -> View.GONE
                 }
-                btnStartProxy.visibility = if (state.proxyRunning) View.GONE else View.VISIBLE
+                manualSetupWarning.text = getString(R.string.home_manual_setup_warning, androidVersionLabel())
+                manualSetupWarning.visibility = if (shouldRecommendManualSetup) View.VISIBLE else View.GONE
+
+                btnStartProxy.visibility = if (state.proxyRunning || shouldRecommendManualSetup) View.GONE else View.VISIBLE
                 btnStartProxy.isEnabled = !proxyStartPending && (state.retroArchEnabled || state.dolphinEnabled)
                 btnStartProxy.alpha = if (proxyStartPending) 0.45f else 1f
+                btnManualEmulatorSetup.visibility = if (!state.proxyRunning && shouldRecommendManualSetup) View.VISIBLE else View.GONE
                 btnGoToCachedGames.visibility = if (state.proxyRunning) View.VISIBLE else View.GONE
 
                 emulatorLabel.visibility = if (installedCount > 0) View.VISIBLE else View.GONE
@@ -186,4 +200,26 @@ class HomeFragment : Fragment() {
         toggle.icon.colorFilter = null
         toggle.icon.imageAlpha = 255
     }
+
+    private fun shouldRecommendManualSetupForDevice(): Boolean {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.VANILLA_ICE_CREAM) {
+            return true
+        }
+
+        if (Build.VERSION.SDK_INT != Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            return false
+        }
+
+        val deviceFingerprint = listOf(
+            Build.MANUFACTURER,
+            Build.BRAND,
+            Build.MODEL,
+            Build.DEVICE,
+            Build.PRODUCT
+        ).joinToString(" ").lowercase()
+
+        return "anbernic" in deviceFingerprint || "mangmi" in deviceFingerprint
+    }
+
+    private fun androidVersionLabel(): String = Build.VERSION.RELEASE?.takeIf { it.isNotBlank() } ?: Build.VERSION.SDK_INT.toString()
 }
