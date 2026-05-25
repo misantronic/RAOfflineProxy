@@ -460,10 +460,11 @@ internal suspend fun cacheUnlocks(
     )
     when (val result = httpGet(url, userAgent)) {
         is HttpGetResult.Success -> {
+            val filteredBody = filterWarningAchievementFromUnlocksResponse(result.body)
             db.cacheDao().upsert(
                 CacheEntry(
                     cacheKey = CacheKeys.unlocks(gameId, creds.user),
-                    responseBody = result.body
+                    responseBody = filteredBody
                 )
             )
             Log.i(TAG, "Cached unlocks for gameId=$gameId")
@@ -497,7 +498,7 @@ private suspend fun buildUnlocksArray(db: AppDatabase, gameId: Int, user: String
     val cachedUnlockIds = runCatching {
         val body = db.cacheDao().get(CacheKeys.unlocks(gameId, user))?.responseBody ?: return@runCatching emptyList<Int>()
         val arr = JSONObject(body).optJSONArray("UserUnlocks") ?: return@runCatching emptyList<Int>()
-        (0 until arr.length()).map { arr.getInt(it) }
+        filterWarningAchievementIds((0 until arr.length()).map { arr.getInt(it) })
     }.getOrDefault(emptyList())
 
     val pendingAwards = runCatching {
@@ -545,7 +546,7 @@ internal fun mergeStartSessionUnlockIds(
     user: String
 ): List<Int> {
     val mergedIds = linkedSetOf<Int>()
-    cachedUnlockIds.filter { it > 0 }.forEach(mergedIds::add)
+    filterWarningAchievementIds(cachedUnlockIds).forEach(mergedIds::add)
 
     pendingAwards.asSequence()
         .filter { it.status == PENDING_AWARD_STATUS_PENDING }
