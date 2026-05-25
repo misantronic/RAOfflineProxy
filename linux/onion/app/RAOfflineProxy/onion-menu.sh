@@ -104,6 +104,29 @@ update_status() {
     run_backend_raw "$PYTHON_BIN" update-status --platform onion 2>/dev/null || printf '{"update_available":false}\n'
 }
 
+onion_auto_time_sync_enabled() {
+    [ -f /mnt/SDCARD/.tmp_update/config/.ntpState ]
+}
+
+pause_clock_sync_warning() {
+    clear
+    printf 'RAOfflineProxy\n\n'
+    printf 'System clock sync appears disabled.\n\n'
+    printf 'This can cause login, cache, and update failures.\n\n'
+    printf 'Enable: Apps -> Tweaks -> System ->\n'
+    printf 'Date and time -> Set automatically via internet\n'
+    pause_prompt
+}
+
+warn_if_clock_sync_disabled() {
+    if onion_auto_time_sync_enabled; then
+        return 0
+    fi
+
+    pause_clock_sync_warning
+    return 0
+}
+
 run_onion_update_install() {
     asset_url="$1"
     if [ -z "$asset_url" ]; then
@@ -186,6 +209,10 @@ show_update_prompt() {
             return 0
         fi
 
+        clear
+        printf 'RAOfflineProxy\n\n'
+        printf 'Downloading and installing update...\n\n'
+        warn_if_clock_sync_disabled
         clear
         printf 'RAOfflineProxy\n\n'
         printf 'Downloading and installing update...\n\n'
@@ -331,6 +358,7 @@ EOF
 
 run_smart_cache_flow() {
     total_count="$1"
+    warn_if_clock_sync_disabled
     run_cache_progress_flow 'Smart Cache' 'run-smart-cache' "$total_count"
 }
 
@@ -1055,6 +1083,10 @@ browser_activate_selected() {
     clear
     printf 'RAOfflineProxy > Add ROMs\n\n'
     printf 'Caching: %s\n' "$BROWSER_ENTRY_NAME"
+    warn_if_clock_sync_disabled
+    clear
+    printf 'RAOfflineProxy > Add ROMs\n\n'
+    printf 'Caching: %s\n' "$BROWSER_ENTRY_NAME"
     if run_backend "$PYTHON_BIN" cache-rom --path "$BROWSER_ENTRY_PATH"; then
         printf '\n'
         pause_prompt
@@ -1072,6 +1104,7 @@ browser_cache_folder_listing() {
         return 0
     fi
 
+    warn_if_clock_sync_disabled
     if run_cache_progress_flow 'Folder Cache' 'cache-folder-listing' "$BROWSER_FILE_COUNT" "$BROWSER_DIR"; then
         browser_set_dir "$BROWSER_DIR"
         return 0
