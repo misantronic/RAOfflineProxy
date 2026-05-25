@@ -34,7 +34,7 @@ Current rough edges:
 
 == Onion
 
-It is currently intended for [Onion V4.4.0-beta-20260120](https://github.com/OnionUI/Onion/releases/tag/latest).
+It is currently compatible with [OnionOS v4.3.1-1](https://github.com/OnionUI/Onion/releases/tag/latest) and `Onion V4.4.0-beta-20260120`.
 
 Current rough edges:
 
