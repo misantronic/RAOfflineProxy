@@ -33,11 +33,15 @@ def start_session(game_id_value: int | str, user: str) -> str:
 
 
 def achievementsets(scope: int | str, user: str) -> str:
-    return f"achievementsets:{scope}:{normalize_user(user)}"
+    return f"achievementsets:{normalize_achievementsets_scope(scope)}:{normalize_user(user)}"
 
 
 def normalize_hash(hash_value: str) -> str:
     return hash_value.strip().lower()
+
+
+def normalize_achievementsets_scope(scope: int | str) -> str:
+    return normalize_hash(str(scope))
 
 
 def normalize_user(user: str) -> str:
