@@ -597,7 +597,7 @@ internal suspend fun runSmartCache(
         skipped = queueResult.skipped,
         limitReached = queueResult.limitReached,
         needsSafGrant = false,
-        message = strategyMessage,
+        message = null,
         requiredSafGrantTargets = requiredSafGrantTargets.toList()
     ).also {
         Log.i(
