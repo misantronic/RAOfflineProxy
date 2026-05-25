@@ -58,7 +58,7 @@ From repo root:
 This creates:
 
 - `linux/onion/dist/raofflineproxy-onion-app/`
-- `linux/onion/dist/RAOfflineProxy-Onion-v1.1.0-linux-alpha.zip`
+- `linux/onion/dist/RAOfflineProxy-Onion-v1.2.0-alpha1.zip`
 
 ## Install On Onion
 

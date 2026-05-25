@@ -1,6 +1,6 @@
 # Introduction
 
-> Current release stage: `v1.1.0 (alpha)`. This is a public prerelease and has not gone through formal QA.
+> Current release stage: `v1.2.0 (alpha)`. This is a public prerelease and has not gone through formal QA.
 
 ## What is RAOfflineProxy?
 

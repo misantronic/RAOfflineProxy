@@ -56,6 +56,7 @@ class ParsedVersion:
     minor: int
     patch: int
     stage_rank: int
+    stage_number: int
 
 
 @dataclass(frozen=True)
@@ -448,10 +449,7 @@ def atomic_write_executable(path: Path, body: bytes, executable: bool = True) ->
 
 def parse_version(raw: str) -> ParsedVersion | None:
     normalized = raw.strip().removeprefix("v")
-    parts = normalized.split("-")
-    if len(parts) < 2:
-        return None
-
+    parts = normalized.split("-", maxsplit=1)
     version_numbers = parts[0].split(".")
     if len(version_numbers) != 3:
         return None
@@ -463,12 +461,40 @@ def parse_version(raw: str) -> ParsedVersion | None:
     except ValueError:
         return None
 
-    stage = parts[-1].lower()
-    stage_rank = {"alpha": 0, "beta": 1, "stable": 2}.get(stage)
-    if stage_rank is None:
+    if len(parts) == 1:
+        return ParsedVersion(
+            major=major,
+            minor=minor,
+            patch=patch,
+            stage_rank=2,
+            stage_number=2**31 - 1,
+        )
+
+    prerelease = parts[1].lower()
+    if prerelease.startswith("alpha"):
+        stage_rank = 0
+        stage_number = prerelease.removeprefix("alpha")
+    elif prerelease.startswith("beta"):
+        stage_rank = 1
+        stage_number = prerelease.removeprefix("beta")
+    else:
         return None
 
-    return ParsedVersion(major=major, minor=minor, patch=patch, stage_rank=stage_rank)
+    if not stage_number:
+        return None
+
+    try:
+        parsed_stage_number = int(stage_number)
+    except ValueError:
+        return None
+
+    return ParsedVersion(
+        major=major,
+        minor=minor,
+        patch=patch,
+        stage_rank=stage_rank,
+        stage_number=parsed_stage_number,
+    )
 
 
 def validate_platform(platform: str) -> str:

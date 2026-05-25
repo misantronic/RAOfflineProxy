@@ -31,7 +31,7 @@ def resolve_config_dir() -> Path:
 RA_HOST = "https://retroachievements.org"
 PROXY_UA_TAG = "RAOfflineProxy/Linux/1.0.0-alpha1"
 FALLBACK_USER_AGENT = "RetroArch/1.21.0 (Linux)"
-APP_VERSION = os.environ.get("RAOFFLINEPROXY_APP_VERSION") or "1.1.0-linux-alpha"
+APP_VERSION = os.environ.get("RAOFFLINEPROXY_APP_VERSION") or "1.2.0-alpha1"
 
 DEFAULT_PROXY_PORT = 8080
 MIN_PROXY_PORT = 1024

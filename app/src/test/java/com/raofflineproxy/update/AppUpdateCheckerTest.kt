@@ -9,52 +9,52 @@ class AppUpdateCheckerTest {
 
     @Test
     fun selectLatestUpdate_returnsNull_forSameVersion() {
-        val releases = listOfNotNull(releaseInfo("1.1.0-alpha4"))
+        val releases = listOfNotNull(releaseInfo("1.2.0-alpha1"))
 
-        val result = AppUpdateChecker.selectLatestUpdate("1.1.0-alpha4", releases)
+        val result = AppUpdateChecker.selectLatestUpdate("1.2.0-alpha1", releases)
 
         assertNull(result)
     }
 
     @Test
     fun selectLatestUpdate_returnsAlphaUpgrade() {
-        val releases = listOfNotNull(releaseInfo("1.1.0-alpha5"))
+        val releases = listOfNotNull(releaseInfo("1.2.0-alpha2"))
 
-        val result = AppUpdateChecker.selectLatestUpdate("1.1.0-alpha4", releases)
+        val result = AppUpdateChecker.selectLatestUpdate("1.2.0-alpha1", releases)
 
         assertNotNull(result)
-        assertEquals("1.1.0-alpha5", result?.versionName)
+        assertEquals("1.2.0-alpha2", result?.versionName)
     }
 
     @Test
     fun selectLatestUpdate_ordersAlphaBeforeBetaBeforeStable() {
         val releases = listOfNotNull(
-            releaseInfo("1.1.0-alpha5"),
-            releaseInfo("1.1.0-beta1"),
-            releaseInfo("1.1.0")
+            releaseInfo("1.2.0-alpha2"),
+            releaseInfo("1.2.0-beta1"),
+            releaseInfo("1.2.0")
         )
 
-        val result = AppUpdateChecker.selectLatestUpdate("1.1.0-alpha4", releases)
+        val result = AppUpdateChecker.selectLatestUpdate("1.2.0-alpha1", releases)
 
         assertNotNull(result)
-        assertEquals("1.1.0", result?.versionName)
+        assertEquals("1.2.0", result?.versionName)
     }
 
     @Test
     fun selectLatestUpdate_returnsNull_whenCurrentStableIsNewest() {
         val releases = listOfNotNull(
-            releaseInfo("1.1.0-alpha5"),
-            releaseInfo("1.1.0-beta1")
+            releaseInfo("1.2.0-alpha2"),
+            releaseInfo("1.2.0-beta1")
         )
 
-        val result = AppUpdateChecker.selectLatestUpdate("1.1.0", releases)
+        val result = AppUpdateChecker.selectLatestUpdate("1.2.0", releases)
 
         assertNull(result)
     }
 
     @Test
     fun selectLatestUpdate_returnsNull_forInvalidCurrentVersion() {
-        val releases = listOfNotNull(releaseInfo("1.1.0"))
+        val releases = listOfNotNull(releaseInfo("1.2.0"))
 
         val result = AppUpdateChecker.selectLatestUpdate("not-a-version", releases)
 
@@ -64,12 +64,12 @@ class AppUpdateCheckerTest {
     @Test
     fun selectLatestUpdate_choosesNewestAndroidCompatibleRelease() {
         val releases = listOfNotNull(
-            releaseInfo("1.1.0-alpha5"),
+            releaseInfo("1.2.0-alpha2"),
             releaseInfo("1.2.0-beta1"),
             releaseInfo("1.2.0-alpha2")
         )
 
-        val result = AppUpdateChecker.selectLatestUpdate("1.1.0-alpha4", releases)
+        val result = AppUpdateChecker.selectLatestUpdate("1.2.0-alpha1", releases)
 
         assertNotNull(result)
         assertEquals("1.2.0-beta1", result?.versionName)
@@ -77,14 +77,14 @@ class AppUpdateCheckerTest {
 
     @Test
     fun isUpdateNewerThanCurrent_returnsTrue_forNewerVersion() {
-        val result = AppUpdateChecker.isUpdateNewerThanCurrent("1.1.0-alpha4", "1.1.0-alpha5")
+        val result = AppUpdateChecker.isUpdateNewerThanCurrent("1.2.0-alpha1", "1.2.0-alpha2")
 
         assertEquals(true, result)
     }
 
     @Test
     fun isUpdateNewerThanCurrent_returnsFalse_forSameOrOlderVersion() {
-        assertEquals(false, AppUpdateChecker.isUpdateNewerThanCurrent("1.1.0-alpha4", "1.1.0-alpha4"))
-        assertEquals(false, AppUpdateChecker.isUpdateNewerThanCurrent("1.1.0-alpha4", "1.0.0"))
+        assertEquals(false, AppUpdateChecker.isUpdateNewerThanCurrent("1.2.0-alpha1", "1.2.0-alpha1"))
+        assertEquals(false, AppUpdateChecker.isUpdateNewerThanCurrent("1.2.0-alpha1", "1.0.0"))
     }
 }
