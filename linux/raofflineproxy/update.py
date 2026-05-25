@@ -333,11 +333,15 @@ def install_onion_update_archive(archive_path: Path, app_dir: Path) -> None:
     parent_dir = app_dir.parent
     temp_extract_dir = parent_dir / f".{app_dir.name}.update"
     backup_dir = parent_dir / f".{app_dir.name}.backup"
+    preserved_data_dir = parent_dir / f".{app_dir.name}.data"
+    data_dir_name = "data"
 
     if temp_extract_dir.exists():
         shutil.rmtree(temp_extract_dir)
     if backup_dir.exists():
         shutil.rmtree(backup_dir)
+    if preserved_data_dir.exists():
+        shutil.rmtree(preserved_data_dir)
 
     temp_extract_dir.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(archive_path, "r") as archive:
@@ -348,12 +352,26 @@ def install_onion_update_archive(archive_path: Path, app_dir: Path) -> None:
     if not extracted_app_dir.exists():
         raise RuntimeError("update archive missing App/RAOfflineProxy")
 
+    preserve_data = should_preserve_onion_data(current_version(), extracted_app_dir)
+
     if app_dir.exists():
         os.replace(app_dir, backup_dir)
     try:
         os.replace(extracted_app_dir, app_dir)
+        backup_data_dir = backup_dir / data_dir_name
+        new_data_dir = app_dir / data_dir_name
+        if preserve_data and backup_data_dir.exists():
+            os.replace(backup_data_dir, preserved_data_dir)
+            if new_data_dir.exists():
+                shutil.rmtree(new_data_dir)
+            os.replace(preserved_data_dir, new_data_dir)
     except Exception:
-        if backup_dir.exists() and not app_dir.exists():
+        if backup_dir.exists():
+            backup_data_dir = backup_dir / data_dir_name
+            if preserved_data_dir.exists() and not backup_data_dir.exists():
+                os.replace(preserved_data_dir, backup_data_dir)
+            if app_dir.exists():
+                shutil.rmtree(app_dir, ignore_errors=True)
             os.replace(backup_dir, app_dir)
         raise
     finally:
@@ -361,6 +379,44 @@ def install_onion_update_archive(archive_path: Path, app_dir: Path) -> None:
             shutil.rmtree(temp_extract_dir, ignore_errors=True)
         if backup_dir.exists():
             shutil.rmtree(backup_dir, ignore_errors=True)
+        if preserved_data_dir.exists():
+            shutil.rmtree(preserved_data_dir, ignore_errors=True)
+
+
+def should_preserve_onion_data(current_version_name: str, extracted_app_dir: Path) -> bool:
+    current_parsed = parse_version(current_version_name)
+    next_version = read_onion_app_version(extracted_app_dir)
+    next_parsed = parse_version(next_version) if next_version is not None else None
+
+    if current_parsed is None or next_parsed is None:
+        LOGGER.info(
+            "Skipping Onion data preservation; unable to compare versions current=%s next=%s",
+            current_version_name,
+            next_version,
+        )
+        return False
+
+    preserve = current_parsed.major == next_parsed.major
+    LOGGER.info(
+        "Onion data preservation decision current=%s next=%s preserve=%s",
+        current_version_name,
+        next_version,
+        preserve,
+    )
+    return preserve
+
+
+def read_onion_app_version(extracted_app_dir: Path) -> str | None:
+    common_sh = extracted_app_dir / "common.sh"
+    if not common_sh.exists():
+        return None
+
+    for line in common_sh.read_text(encoding="utf-8").splitlines():
+        if not line.startswith("APP_VERSION="):
+            continue
+        return line.partition("=")[2].strip().removeprefix("v")
+
+    return None
 
 
 def restore_archive_permissions(archive: zipfile.ZipFile, extract_root: Path) -> None:

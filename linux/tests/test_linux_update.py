@@ -180,8 +180,8 @@ class LinuxUpdateTests(unittest.TestCase):
         update.save_cached_update_status = lambda platform, result: saved.setdefault(platform, result.to_dict())
         update.fetch_releases = lambda _platform: [
             update.ReleaseCandidate(
-                version_name="1.2.0-linux-alpha",
-                parsed_version=update.parse_version("1.2.0-linux-alpha"),
+                version_name="1.3.0-alpha",
+                parsed_version=update.parse_version("1.3.0-alpha"),
                 release_url="https://example.com/release-new",
                 asset_url="https://example.com/asset-new",
             )
@@ -191,7 +191,7 @@ class LinuxUpdateTests(unittest.TestCase):
 
         self.assertTrue(result.update_available)
         self.assertIn("knulli", saved)
-        self.assertEqual(saved["knulli"]["latest_version"], "1.2.0-linux-alpha")
+        self.assertEqual(saved["knulli"]["latest_version"], "1.3.0-alpha")
 
     def test_update_status_preserves_cached_result_when_fetch_fails(self) -> None:
         cached = {
@@ -262,19 +262,53 @@ class LinuxUpdateTests(unittest.TestCase):
             app_dir = root / "RAOfflineProxy"
             app_dir.mkdir(parents=True)
             (app_dir / "old.txt").write_text("old", encoding="utf-8")
+            data_dir = app_dir / "data"
+            data_dir.mkdir()
+            (data_dir / "proxy.sqlite3").write_text("cached-db", encoding="utf-8")
 
             archive_path = root / "update.zip"
             with zipfile.ZipFile(archive_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
                 archive.writestr("App/RAOfflineProxy/new.txt", "new")
+                archive.writestr("App/RAOfflineProxy/common.sh", "APP_VERSION=v1.2.0-alpha\n")
+                archive.writestr("App/RAOfflineProxy/data/proxy.sqlite3", "fresh-db")
                 launch_info = zipfile.ZipInfo("App/RAOfflineProxy/launch.sh")
                 launch_info.external_attr = 0o755 << 16
                 archive.writestr(launch_info, "#!/bin/sh\nexit 0\n")
 
-            update.install_onion_update_archive(archive_path, app_dir)
+            original_current_version = update.current_version
+            try:
+                update.current_version = lambda: "1.1.0-linux-alpha"
+                update.install_onion_update_archive(archive_path, app_dir)
+            finally:
+                update.current_version = original_current_version
 
             self.assertFalse((app_dir / "old.txt").exists())
             self.assertEqual((app_dir / "new.txt").read_text(encoding="utf-8"), "new")
+            self.assertEqual((app_dir / "data" / "proxy.sqlite3").read_text(encoding="utf-8"), "cached-db")
             self.assertEqual((app_dir / "launch.sh").stat().st_mode & 0o777, 0o755)
+
+    def test_install_onion_update_archive_resets_data_for_major_upgrade(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            app_dir = root / "RAOfflineProxy"
+            app_dir.mkdir(parents=True)
+            data_dir = app_dir / "data"
+            data_dir.mkdir()
+            (data_dir / "proxy.sqlite3").write_text("cached-db", encoding="utf-8")
+
+            archive_path = root / "update.zip"
+            with zipfile.ZipFile(archive_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+                archive.writestr("App/RAOfflineProxy/common.sh", "APP_VERSION=v2.0.0-alpha\n")
+                archive.writestr("App/RAOfflineProxy/data/proxy.sqlite3", "fresh-db")
+
+            original_current_version = update.current_version
+            try:
+                update.current_version = lambda: "1.2.0-alpha"
+                update.install_onion_update_archive(archive_path, app_dir)
+            finally:
+                update.current_version = original_current_version
+
+            self.assertEqual((app_dir / "data" / "proxy.sqlite3").read_text(encoding="utf-8"), "fresh-db")
 
     def test_download_onion_update_archive_writes_zip_non_executable(self) -> None:
         update.read_update_asset = lambda _asset_url: b"zip-bytes"
