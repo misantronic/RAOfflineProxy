@@ -270,6 +270,15 @@ class ProxyRuntimeServer(ThreadingTCPServer):
         if action in AWARD_ACTIONS:
             return self.handle_award_request(path, raw_body, headers)
 
+        if action == "unlocks" and not self.is_online():
+            game_id = extract_request_param(path, raw_body, "g")
+            user = extract_request_param(path, raw_body, "u")
+            if game_id and user:
+                return ok_json(self.build_offline_unlocks_response(int(game_id), user))
+
+        if action == "startsession" and not self.is_online():
+            return self.handle_start_session(path, raw_body)
+
         if is_hardcore_request(path, raw_body):
             if not self.is_online():
                 return error_json(503, "upstream unavailable")
@@ -277,9 +286,6 @@ class ProxyRuntimeServer(ThreadingTCPServer):
 
         if action in FAKE_OFFLINE_SUCCESS_ACTIONS and not self.is_online():
             return ok_json('{"Success":true}')
-
-        if action == "startsession" and not self.is_online():
-            return self.handle_start_session(path, raw_body)
 
         if action in ALWAYS_TRY_UPSTREAM_ACTIONS:
             upstream = self.forward_to_upstream_result(method, path, raw_body, headers)
@@ -426,6 +432,9 @@ class ProxyRuntimeServer(ThreadingTCPServer):
         headers: dict[str, str],
     ) -> bytes:
         upstream = self.forward_to_upstream_result(method, path, raw_body, headers)
+        if upstream[0] == "network_error":
+            return self.handle_offline_request(path, raw_body, action)
+
         if upstream[0] != "success":
             return error_json(503, "upstream unavailable")
 
@@ -533,10 +542,17 @@ class ProxyRuntimeServer(ThreadingTCPServer):
             return game_id_cache_miss()
 
         if action == "achievementsets":
+            hash_value = extract_request_param(path, raw_body, "m")
             fallback_game_id = extract_request_param(
                 path, raw_body, "g"
             ) or extract_request_param(path, raw_body, "i")
             user = extract_request_param(path, raw_body, "u") or ""
+            if hash_value and user:
+                cached = self.storage.get_cache(
+                    cache_keys.achievementsets(hash_value, user)
+                )
+                if cached is not None:
+                    return ok_json(cached["responseBody"])
             if fallback_game_id and user:
                 cached = self.storage.get_cache(
                     cache_keys.achievementsets(fallback_game_id, user)

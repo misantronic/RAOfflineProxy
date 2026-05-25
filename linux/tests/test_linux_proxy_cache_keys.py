@@ -54,6 +54,14 @@ class LinuxProxyCacheKeyTests(unittest.TestCase):
             "achievementsets:0e5f788550ca1fad8d4e5034d9964307:misantronic",
         )
 
+    def test_achievementsets_cache_key_normalizes_hash_scope(self) -> None:
+        key = proxy_service.cache_key_for_request(
+            "/dorequest.php",
+            "r=achievementsets&u=misantronic&t=token&m=ABCDEF123456",
+        )
+
+        self.assertEqual(key, "achievementsets:abcdef123456:misantronic")
+
     def test_should_cache_action_allows_login2(self) -> None:
         self.assertTrue(proxy_service.should_cache_action("login2", "/dorequest.php"))
 
@@ -124,6 +132,28 @@ class LinuxProxyCacheKeyTests(unittest.TestCase):
                 self.assertIn(b'"Title":"Tetris"', patch_response)
                 self.assertIn(b'"UserUnlocks":[52113]', unlocks_response)
                 self.assertIn(b'"GameId":10701', achievementsets_response)
+            finally:
+                store.close()
+
+    def test_offline_achievementsets_cache_hit_is_case_insensitive_for_hash(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            store = storage.Storage(database_path=Path(temp_dir) / "test.sqlite3")
+            runtime = object.__new__(proxy_service.ProxyRuntimeServer)
+            runtime.storage = store
+            try:
+                store.upsert_cache(
+                    cache_keys.achievementsets("abcdef123456", "misantronic"),
+                    '{"Success":true,"GameId":10701,"Title":"Tetris"}',
+                )
+
+                achievementsets_response = runtime.handle_offline_request(
+                    "/dorequest.php?r=achievementsets&u=misantronic&t=token&m=ABCDEF123456",
+                    "",
+                    "achievementsets",
+                )
+
+                self.assertIn(b'"GameId":10701', achievementsets_response)
+                self.assertNotIn(b'"Error":"no cached response"', achievementsets_response)
             finally:
                 store.close()
 
@@ -230,6 +260,39 @@ class LinuxProxyCacheKeyTests(unittest.TestCase):
                 )
 
                 self.assertIn(b'"UserUnlocks":[1,2]', response)
+            finally:
+                store.close()
+
+    def test_offline_hardcore_unlocks_returns_softcore_cached_response(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            store = storage.Storage(database_path=Path(temp_dir) / "test.sqlite3")
+            runtime = object.__new__(proxy_service.ProxyRuntimeServer)
+            runtime.storage = store
+            runtime.config_data = {}
+            try:
+                store.upsert_cache(
+                    cache_keys.patch(10701, "misantronic"),
+                    '{"Success":true,"PatchData":{"Title":"Tetris","Achievements":{"1":{"ID":1,"Title":"First"}}}}',
+                )
+                store.upsert_cache(
+                    cache_keys.unlocks(10701, "misantronic"),
+                    '{"Success":true,"UserUnlocks":[1]}',
+                )
+
+                def is_online(_self) -> bool:
+                    return False
+
+                runtime.is_online = MethodType(is_online, runtime)
+
+                response = runtime.process_proxy_request(
+                    "POST",
+                    "/dorequest.php",
+                    "r=unlocks&g=10701&h=1&u=misantronic&t=token",
+                    {},
+                )
+
+                self.assertIn(b'"UserUnlocks":[1]', response)
+                self.assertNotIn(b'"Error":"upstream unavailable"', response)
             finally:
                 store.close()
 
@@ -663,6 +726,172 @@ class LinuxProxyCacheKeyTests(unittest.TestCase):
 
                 self.assertIn(b'"Success":true', response)
                 self.assertIn(b'"Token":"abc"', response)
+            finally:
+                store.close()
+
+    def test_cacheable_request_falls_back_to_offline_cache_on_network_error(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            store = storage.Storage(database_path=Path(temp_dir) / "test.sqlite3")
+            runtime = object.__new__(proxy_service.ProxyRuntimeServer)
+            runtime.storage = store
+            runtime.config_data = {}
+            runtime.has_internet = True
+            try:
+                store.upsert_cache(
+                    cache_keys.game_id("46599031EF71117C587BD3666C326C07"),
+                    '{"GameID":2593}',
+                )
+
+                def is_online(_self) -> bool:
+                    return True
+
+                def forward_to_upstream_result(_self, method, path, raw_body, headers):
+                    self.assertEqual(method, "POST")
+                    self.assertIn("r=gameid", raw_body)
+                    return (
+                        "network_error",
+                        503,
+                        "Service Unavailable",
+                        b'{"Success":false,"Error":"dns"}',
+                        "application/json",
+                        '{"Success":false,"Error":"dns"}',
+                    )
+
+                runtime.is_online = MethodType(is_online, runtime)
+                runtime.forward_to_upstream_result = MethodType(
+                    forward_to_upstream_result, runtime
+                )
+
+                response = runtime.handle_online_request(
+                    "POST",
+                    "/dorequest.php",
+                    "r=gameid&m=46599031ef71117c587bd3666c326c07&u=misantronic&t=token",
+                    "gameid",
+                    {},
+                )
+
+                self.assertIn(b'"GameID":2593', response)
+                self.assertNotIn(b'"Error":"upstream unavailable"', response)
+            finally:
+                store.close()
+
+    def test_cached_offline_launch_sequence_survives_stale_online_startup(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            store = storage.Storage(database_path=Path(temp_dir) / "test.sqlite3")
+            runtime = object.__new__(proxy_service.ProxyRuntimeServer)
+            runtime.storage = store
+            runtime.config_data = {}
+            runtime.has_internet = True
+            try:
+                hash_value = "46599031ef71117c587bd3666c326c07"
+                game_id = 2593
+                user = "misantronic"
+
+                store.upsert_cache(
+                    cache_keys.login(user),
+                    '{"Success":true,"User":"misantronic","Token":"abc"}',
+                )
+                store.upsert_cache(
+                    cache_keys.game_id(hash_value),
+                    '{"GameID":2593}',
+                )
+                store.upsert_cache(
+                    cache_keys.achievementsets(hash_value.upper(), user),
+                    '{"Success":true,"GameId":2593,"Title":"Advance Wars 2","Achievements":{"1":{"ID":1,"Title":"First"}}}',
+                )
+                store.upsert_cache(
+                    cache_keys.patch(game_id, user),
+                    '{"Success":true,"PatchData":{"Title":"Advance Wars 2","Achievements":{"1":{"ID":1,"Title":"First"}}}}',
+                )
+                store.upsert_cache(
+                    cache_keys.unlocks(game_id, user),
+                    '{"Success":true,"UserUnlocks":[1]}',
+                )
+                store.upsert_cache(
+                    cache_keys.start_session(game_id, user),
+                    '{"Success":true,"ServerNow":1700000000,"Unlocks":[{"ID":1,"When":1700000000}],"HardcoreUnlocks":[]}',
+                )
+
+                online_checks = {"count": 0}
+                upstream_calls = []
+
+                def is_online(_self) -> bool:
+                    online_checks["count"] += 1
+                    return online_checks["count"] == 1
+
+                def forward_to_upstream_result(_self, method, path, raw_body, headers):
+                    action = proxy_service.extract_action(path, raw_body)
+                    upstream_calls.append(action)
+                    self.assertEqual(method, "POST")
+                    if action in {"login", "gameid"}:
+                        return (
+                            "network_error",
+                            503,
+                            "Service Unavailable",
+                            b'{"Success":false,"Error":"dns"}',
+                            "application/json",
+                            '{"Success":false,"Error":"dns"}',
+                        )
+                    self.fail(f"Unexpected upstream call for action={action}")
+
+                runtime.is_online = MethodType(is_online, runtime)
+                runtime.forward_to_upstream_result = MethodType(
+                    forward_to_upstream_result, runtime
+                )
+
+                login_response = runtime.process_proxy_request(
+                    "POST",
+                    "/dorequest.php",
+                    "r=login&u=misantronic&p=token",
+                    {},
+                )
+                gameid_response = runtime.process_proxy_request(
+                    "POST",
+                    "/dorequest.php",
+                    f"r=gameid&m={hash_value}&u={user}&t=abc",
+                    {},
+                )
+                achievementsets_response = runtime.process_proxy_request(
+                    "POST",
+                    "/dorequest.php",
+                    f"r=achievementsets&m={hash_value.upper()}&u={user}&t=abc",
+                    {},
+                )
+                patch_response = runtime.process_proxy_request(
+                    "POST",
+                    "/dorequest.php",
+                    f"r=patch&g={game_id}&u={user}&t=abc",
+                    {},
+                )
+                unlocks_response = runtime.process_proxy_request(
+                    "POST",
+                    "/dorequest.php",
+                    f"r=unlocks&g={game_id}&h=0&u={user}&t=abc",
+                    {},
+                )
+                hardcore_unlocks_response = runtime.process_proxy_request(
+                    "POST",
+                    "/dorequest.php",
+                    f"r=unlocks&g={game_id}&h=1&u={user}&t=abc",
+                    {},
+                )
+                startsession_response = runtime.process_proxy_request(
+                    "POST",
+                    "/dorequest.php",
+                    f"r=startsession&u={user}&t=abc&g={game_id}&h=0&m={hash_value}&l=12.1",
+                    {},
+                )
+
+                self.assertEqual(upstream_calls, ["login", "gameid"])
+                self.assertIn(b'"Token":"abc"', login_response)
+                self.assertIn(b'"GameID":2593', gameid_response)
+                self.assertIn(b'"GameId":2593', achievementsets_response)
+                self.assertIn(b'"Title":"Advance Wars 2"', patch_response)
+                self.assertIn(b'"UserUnlocks":[1]', unlocks_response)
+                self.assertIn(b'"UserUnlocks":[1]', hardcore_unlocks_response)
+                self.assertIn(b'"ID":1', startsession_response)
+                self.assertNotIn(b'"Error":"upstream unavailable"', gameid_response)
+                self.assertNotIn(b'"Error":"upstream unavailable"', hardcore_unlocks_response)
             finally:
                 store.close()
 
