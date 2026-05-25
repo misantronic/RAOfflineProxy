@@ -12,7 +12,7 @@ from .rom_browser import (
 )
 from .storage import Storage
 
-SMART_CACHE_LIMIT = 25
+SMART_CACHE_LIMIT = MAX_CACHED_GAMES
 SMART_CACHE_DELAY_SECONDS = 0.5
 
 
@@ -53,7 +53,11 @@ def should_offer_smart_cache(
         return SmartCacheStatus(found_history=False, total_candidates=0)
 
     paths = load_content_history_paths(config_data)
-    return SmartCacheStatus(found_history=bool(paths), total_candidates=len(paths))
+    total_candidates = min(len(paths), SMART_CACHE_LIMIT)
+    return SmartCacheStatus(
+        found_history=total_candidates > 0,
+        total_candidates=total_candidates,
+    )
 
 
 def run_smart_cache(
@@ -94,11 +98,11 @@ def run_cache_paths(
     limit: int,
     on_progress=None,
 ) -> SmartCacheResult:
-    total = len(paths)
+    total = min(len(paths), limit, MAX_CACHED_GAMES)
     cached = 0
     scanned = 0
 
-    for path in paths:
+    for path in paths[:total]:
         if len(list_cached_games(storage)) >= MAX_CACHED_GAMES or cached >= limit:
             break
 

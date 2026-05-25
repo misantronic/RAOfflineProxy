@@ -502,9 +502,10 @@ def main() -> None:
                     total_candidates = 0
                 else:
                     history_paths = load_content_history_paths(config_data)
-                    total_candidates = len(history_paths)
+                    total_candidates = min(len(history_paths), SMART_CACHE_LIMIT)
                     LOGGER.info(
-                        "Smart Cache status history candidates=%s",
+                        "Smart Cache status history candidates=%s capped=%s",
+                        len(history_paths),
                         total_candidates,
                     )
                 print(
