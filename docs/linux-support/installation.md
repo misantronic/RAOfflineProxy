@@ -14,7 +14,8 @@ Before using `RAOfflineProxy` on Linux:
 
 == Onion
 
-- Make sure the system clock is correct
+- Make sure the system clock is correct<br>
+  > Apps -> Tweaks -> System -> Date and time -> Set automatically via internet
 - Enter your RetroAchievements account details in RetroArch
 - Delete the old `/App/RAOfflineProxy` folder before copying a new version
 
