@@ -10,7 +10,6 @@ If the problem is clearly a bug and you prefer a public report, you can also ope
 
 ## Support
 
-I've worked really hard on RAOfflineProxy. If you'd like to support the project and future development, you can support it on Patreon or Ko-fi:
+I've worked really hard on RAOfflineProxy. If you'd like to support the project and future development, you can support it on Ko-fi:
 
-- [patreon.com/misantronic](https://www.patreon.com/misantronic)
 - [ko-fi.com/misantronic](https://ko-fi.com/misantronic)
