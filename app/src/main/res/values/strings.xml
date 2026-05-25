@@ -31,6 +31,7 @@
     <string name="home_description">RAOfflineProxy acts as a local proxy between the emulator and RetroAchievements. It caches game data so you can play offline and earn achievements, then syncs them when you go back online. For setup instructions and tips, visit our documentation.</string>
     <string name="home_docs_url">https://raofflineproxy.com/introduction.html</string>
     <string name="home_emulators_label">Enabled Emulators</string>
+    <string name="home_manual_setup_warning">With your Android version (%1$s), automatic emulator setup will most likely not work on this device. Please consider using Manual Emulator Setup instead. Android builds can differ, so you can still try Start proxy with automatic setup if you want.</string>
     <string name="home_no_emulator_warning">No supported emulator was found. Install RetroArch or Dolphin to use RAOfflineProxy.</string>
     <string name="home_token_warning">No RetroAchievements credentials were found in a supported emulator config, or the saved token is no longer valid. Open your emulator and log in while online, then start the proxy again.</string>
     <string name="home_go_to_cached_games">Go to Cached Games</string>
