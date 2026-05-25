@@ -118,7 +118,7 @@ pause_clock_sync_warning() {
     pause_prompt
 }
 
-warn_if_clock_sync_disabled() {
+show_startup_clock_sync_warning() {
     if onion_auto_time_sync_enabled; then
         return 0
     fi
@@ -209,10 +209,6 @@ show_update_prompt() {
             return 0
         fi
 
-        clear
-        printf 'RAOfflineProxy\n\n'
-        printf 'Downloading and installing update...\n\n'
-        warn_if_clock_sync_disabled
         clear
         printf 'RAOfflineProxy\n\n'
         printf 'Downloading and installing update...\n\n'
@@ -358,7 +354,6 @@ EOF
 
 run_smart_cache_flow() {
     total_count="$1"
-    warn_if_clock_sync_disabled
     run_cache_progress_flow 'Smart Cache' 'run-smart-cache' "$total_count"
 }
 
@@ -1083,10 +1078,6 @@ browser_activate_selected() {
     clear
     printf 'RAOfflineProxy > Add ROMs\n\n'
     printf 'Caching: %s\n' "$BROWSER_ENTRY_NAME"
-    warn_if_clock_sync_disabled
-    clear
-    printf 'RAOfflineProxy > Add ROMs\n\n'
-    printf 'Caching: %s\n' "$BROWSER_ENTRY_NAME"
     if run_backend "$PYTHON_BIN" cache-rom --path "$BROWSER_ENTRY_PATH"; then
         printf '\n'
         pause_prompt
@@ -1104,7 +1095,6 @@ browser_cache_folder_listing() {
         return 0
     fi
 
-    warn_if_clock_sync_disabled
     if run_cache_progress_flow 'Folder Cache' 'cache-folder-listing' "$BROWSER_FILE_COUNT" "$BROWSER_DIR"; then
         browser_set_dir "$BROWSER_DIR"
         return 0
@@ -1276,6 +1266,8 @@ read_choice() {
         fi
     done
 }
+
+show_startup_clock_sync_warning
 
 while :; do
     render_main_menu_loading
