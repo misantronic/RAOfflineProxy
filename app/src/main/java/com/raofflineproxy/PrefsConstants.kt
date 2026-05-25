@@ -4,7 +4,9 @@ import android.content.Context
 import android.net.Uri
 import androidx.core.net.toUri
 import androidx.core.content.edit
+import com.raofflineproxy.update.AppUpdateInfo
 import org.json.JSONArray
+import org.json.JSONObject
 
 object PrefsConstants {
     const val PREFS_NAME = "ra_proxy_prefs"
@@ -27,6 +29,7 @@ object PrefsConstants {
     const val KEY_DOLPHIN_PATCHED_THIS_RUN = "dolphin_patched_this_run"
     const val KEY_PROXY_PORT = "proxy_port"
     const val KEY_APP_UPDATE_LAST_CHECKED_AT = "app_update_last_checked_at"
+    private const val KEY_AVAILABLE_APP_UPDATE = "available_app_update"
 
     const val DEFAULT_PROXY_PORT = 8080
     private const val MIN_PROXY_PORT = 1024
@@ -199,6 +202,37 @@ object PrefsConstants {
     fun clearAppUpdateLastCheckedAt(context: Context) {
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .edit { remove(KEY_APP_UPDATE_LAST_CHECKED_AT) }
+    }
+
+    fun loadAvailableAppUpdate(context: Context): AppUpdateInfo? {
+        val raw = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getString(KEY_AVAILABLE_APP_UPDATE, null)
+            ?: return null
+
+        return runCatching {
+            val json = JSONObject(raw)
+            AppUpdateInfo(
+                versionName = json.getString("versionName"),
+                apkUrl = json.getString("apkUrl"),
+                releaseUrl = json.getString("releaseUrl")
+            )
+        }.getOrNull()
+    }
+
+    fun saveAvailableAppUpdate(context: Context, update: AppUpdateInfo) {
+        val payload = JSONObject()
+            .put("versionName", update.versionName)
+            .put("apkUrl", update.apkUrl)
+            .put("releaseUrl", update.releaseUrl)
+            .toString()
+
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit { putString(KEY_AVAILABLE_APP_UPDATE, payload) }
+    }
+
+    fun clearAvailableAppUpdate(context: Context) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit { remove(KEY_AVAILABLE_APP_UPDATE) }
     }
 
     fun isValidProxyPort(port: Int): Boolean = port in MIN_PROXY_PORT..MAX_PROXY_PORT

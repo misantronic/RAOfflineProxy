@@ -1547,9 +1547,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun checkForAppUpdate(force: Boolean = false) {
         val app = getApplication<Application>()
+        val currentVersionName = BuildConfig.VERSION_NAME
         val now = System.currentTimeMillis()
         if (!force && now - PrefsConstants.loadAppUpdateLastCheckedAt(app) < APP_UPDATE_CHECK_INTERVAL_MS) {
             Log.d("RAProxy/Updates", "Skipping app update check; last check was too recent")
+            val cachedUpdate = PrefsConstants.loadAvailableAppUpdate(app)
+                ?.takeIf { AppUpdateChecker.isUpdateNewerThanCurrent(currentVersionName, it.versionName) }
+            _state.value = _state.value.copy(availableAppUpdate = cachedUpdate)
             return
         }
         if (!hasValidatedInternet(connectivityManager)) {
@@ -1562,14 +1566,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         PrefsConstants.saveAppUpdateLastCheckedAt(app, now)
         Log.i("RAProxy/Updates", "Starting app update check force=$force")
         viewModelScope.launch {
-            val currentVersionName = BuildConfig.VERSION_NAME
             Log.i("RAProxy/Updates", "Using current version for update check: $currentVersionName")
             val update = withContext(Dispatchers.IO) { AppUpdateChecker.fetchLatestUpdate(currentVersionName) } ?: run {
                 Log.i("RAProxy/Updates", "App update check finished without available update")
+                PrefsConstants.clearAvailableAppUpdate(app)
                 _state.value = _state.value.copy(availableAppUpdate = null)
                 return@launch
             }
             Log.i("RAProxy/Updates", "App update available: ${update.versionName}")
+            PrefsConstants.saveAvailableAppUpdate(app, update)
             _state.value = _state.value.copy(availableAppUpdate = update)
             _events.emit(MainUiEvent.ShowAppUpdate(update))
         }

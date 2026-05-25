@@ -74,4 +74,17 @@ class AppUpdateCheckerTest {
         assertNotNull(result)
         assertEquals("1.2.0-beta1", result?.versionName)
     }
+
+    @Test
+    fun isUpdateNewerThanCurrent_returnsTrue_forNewerVersion() {
+        val result = AppUpdateChecker.isUpdateNewerThanCurrent("1.1.0-alpha4", "1.1.0-alpha5")
+
+        assertEquals(true, result)
+    }
+
+    @Test
+    fun isUpdateNewerThanCurrent_returnsFalse_forSameOrOlderVersion() {
+        assertEquals(false, AppUpdateChecker.isUpdateNewerThanCurrent("1.1.0-alpha4", "1.1.0-alpha4"))
+        assertEquals(false, AppUpdateChecker.isUpdateNewerThanCurrent("1.1.0-alpha4", "1.0.0"))
+    }
 }

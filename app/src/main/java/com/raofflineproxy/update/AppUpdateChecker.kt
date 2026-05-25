@@ -145,6 +145,16 @@ internal object AppUpdateChecker {
                 )
             }
     }
+
+    internal fun isUpdateNewerThanCurrent(
+        currentVersionName: String,
+        updateVersionName: String
+    ): Boolean {
+        val currentVersion = parseVersion(currentVersionName) ?: return false
+        val updateVersion = parseVersion(updateVersionName) ?: return false
+
+        return updateVersion > currentVersion
+    }
 }
 
 internal data class AppVersion(
