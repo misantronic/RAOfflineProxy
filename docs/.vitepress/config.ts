@@ -93,7 +93,7 @@ export default defineConfig({
     },
 
     footer: {
-      message: 'Approved by <a href="https://retroachievements.org/" target="_blank" rel="noreferrer">RetroAchievements.org</a><br>Support the project on <a href="https://www.patreon.com/misantronic" target="_blank" rel="noreferrer">Patreon</a> or <a href="https://ko-fi.com/misantronic" target="_blank" rel="noreferrer">Ko-fi</a>.',
+      message: 'Approved by <a href="https://retroachievements.org/" target="_blank" rel="noreferrer">RetroAchievements.org</a><br>Support the project on <a href="https://ko-fi.com/misantronic" target="_blank" rel="noreferrer">Ko-fi</a>.',
       copyright: 'Released under the GNU GENERAL PUBLIC License.'
     },
 
