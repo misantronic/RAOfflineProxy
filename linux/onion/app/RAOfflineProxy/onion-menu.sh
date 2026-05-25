@@ -296,21 +296,34 @@ run_cache_progress_flow() {
     target_path="${4:-}"
     result_line=
     backend_rc=0
+    output_fifo=
+    backend_rc_file=
+    backend_pid=
+    temp_root="${TMPDIR:-/tmp}"
 
     clear
     printf 'RAOfflineProxy\n\n'
     printf '%s: 0 / %s\n' "$title" "${total_count:-0}"
     printf 'Preparing...\n'
 
-    if [ -n "$target_path" ]; then
-        command_output="$(run_backend_raw "$PYTHON_BIN" "$command_name" --path "$target_path" 2>&1)"
-        backend_rc=$?
-    else
-        command_output="$(run_backend_raw "$PYTHON_BIN" "$command_name" 2>&1)"
-        backend_rc=$?
-    fi
+    output_fifo="$(mktemp -u "$temp_root/raofflineproxy-cache-progress.XXXXXX")"
+    backend_rc_file="$(mktemp "$temp_root/raofflineproxy-cache-progress-rc.XXXXXX")"
+    mkfifo "$output_fifo"
 
-    while IFS= read -r line; do
+    if [ -n "$target_path" ]; then
+        (
+            run_backend_raw "$PYTHON_BIN" "$command_name" --path "$target_path"
+            printf '%s\n' "$?" > "$backend_rc_file"
+        ) > "$output_fifo" 2>&1 &
+    else
+        (
+            run_backend_raw "$PYTHON_BIN" "$command_name"
+            printf '%s\n' "$?" > "$backend_rc_file"
+        ) > "$output_fifo" 2>&1 &
+    fi
+    backend_pid=$!
+
+    while IFS= read -r line || [ -n "$line" ]; do
         case "$line" in
             *'"type":"progress"'*)
                 scanned="$(printf '%s' "$line" | "$PYTHON_BIN" -c 'import json, sys; print(json.loads(sys.stdin.read()).get("scanned", 0))')"
@@ -330,9 +343,14 @@ run_cache_progress_flow() {
                 printf '%s\n' "$line"
                 ;;
         esac
-    done <<EOF
-$command_output
-EOF
+    done < "$output_fifo"
+
+    wait "$backend_pid" >/dev/null 2>&1 || true
+    if ! IFS= read -r backend_rc < "$backend_rc_file"; then
+        backend_rc=1
+    fi
+
+    rm -f "$output_fifo" "$backend_rc_file"
 
     if [ "$backend_rc" -ne 0 ]; then
         pause_prompt
