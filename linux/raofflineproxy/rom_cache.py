@@ -10,6 +10,7 @@ from .storage import PENDING_AWARD_STATUS_PENDING, Storage
 from .utils import is_hardcore_request, parse_form_params
 
 LOGGER = logging.getLogger("raofflineproxy")
+WARNING_ACHIEVEMENT_ID = 101000001
 
 
 class CacheGameError(RuntimeError):
@@ -21,6 +22,63 @@ def api_error_message(action: str, payload: dict) -> str:
     if message:
         return f"{action} failed: {message}"
     return f"{action} failed"
+
+
+def filter_warning_achievement_ids(ids: list[int]) -> list[int]:
+    return [achievement_id for achievement_id in ids if achievement_id > 0 and achievement_id != WARNING_ACHIEVEMENT_ID]
+
+
+def filter_warning_achievement_definitions(payload: dict) -> dict:
+    filtered_payload = json.loads(json.dumps(payload))
+
+    patch_data = filtered_payload.get("PatchData")
+    if isinstance(patch_data, dict):
+        achievements = patch_data.get("Achievements")
+        if isinstance(achievements, list):
+            patch_data["Achievements"] = [
+                achievement
+                for achievement in achievements
+                if isinstance(achievement, dict)
+                and achievement.get("ID") != WARNING_ACHIEVEMENT_ID
+            ]
+        elif isinstance(achievements, dict):
+            patch_data["Achievements"] = {
+                key: achievement
+                for key, achievement in achievements.items()
+                if isinstance(achievement, dict)
+                and achievement.get("ID") != WARNING_ACHIEVEMENT_ID
+            }
+
+    sets = filtered_payload.get("Sets")
+    if isinstance(sets, list):
+        for achievement_set in sets:
+            if not isinstance(achievement_set, dict):
+                continue
+
+            achievements = achievement_set.get("Achievements")
+            if not isinstance(achievements, list):
+                continue
+
+            achievement_set["Achievements"] = [
+                achievement
+                for achievement in achievements
+                if isinstance(achievement, dict)
+                and achievement.get("ID") != WARNING_ACHIEVEMENT_ID
+            ]
+
+    return filtered_payload
+
+
+def filter_warning_achievement_from_unlocks_payload(payload: dict) -> dict:
+    filtered_payload = json.loads(json.dumps(payload))
+    unlock_ids = filtered_payload.get("UserUnlocks")
+    if not isinstance(unlock_ids, list):
+        return filtered_payload
+
+    filtered_payload["UserUnlocks"] = filter_warning_achievement_ids(
+        [achievement_id for achievement_id in unlock_ids if isinstance(achievement_id, int)]
+    )
+    return filtered_payload
 
 
 def refresh_game_patch(
@@ -48,6 +106,9 @@ def refresh_game_patch(
 
     if not payload.get("Success"):
         raise CacheGameError(api_error_message("patch", payload))
+
+    payload = filter_warning_achievement_definitions(payload)
+    response_body = json.dumps(payload, separators=(",", ":"))
 
     storage.upsert_cache(cache_keys.patch(game_id, credentials["user"]), response_body)
     if image_caching_enabled(config_data):
@@ -83,6 +144,9 @@ def cache_unlocks(
     if not payload.get("Success"):
         return None
 
+    payload = filter_warning_achievement_from_unlocks_payload(payload)
+    response_body = json.dumps(payload, separators=(",", ":"))
+
     if storage is not None:
         storage.upsert_cache(
             cache_keys.unlocks(game_id, credentials["user"]),
@@ -117,6 +181,9 @@ def cache_achievementsets(
     if not payload.get("Success"):
         return None
 
+    payload = filter_warning_achievement_definitions(payload)
+    response_body = json.dumps(payload, separators=(",", ":"))
+
     if storage is not None:
         storage.upsert_cache(
             cache_keys.achievementsets(hash_value, credentials["user"]),
@@ -140,11 +207,11 @@ def merged_unlock_ids(storage: Storage, game_id: int, user: str) -> list[int]:
         try:
             payload = json.loads(entry["responseBody"])
             unlock_ids = payload.get("UserUnlocks") or []
-            cached_unlock_ids = [
+            cached_unlock_ids = filter_warning_achievement_ids([
                 achievement_id
                 for achievement_id in unlock_ids
                 if isinstance(achievement_id, int) and achievement_id > 0
-            ]
+            ])
         except Exception:
             cached_unlock_ids = []
 

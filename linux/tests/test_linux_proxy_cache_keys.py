@@ -895,6 +895,27 @@ class LinuxProxyCacheKeyTests(unittest.TestCase):
             finally:
                 store.close()
 
+    def test_refresh_unlocks_from_start_session_filters_warning_achievement(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            store = storage.Storage(database_path=Path(temp_dir) / "test.sqlite3")
+            runtime = object.__new__(proxy_service.ProxyRuntimeServer)
+            runtime.storage = store
+            try:
+                runtime.refresh_unlocks_from_start_session(
+                    42,
+                    "player",
+                    '{"Success":true,"Unlocks":[{"ID":1,"When":1},{"ID":101000001,"When":2},{"ID":2,"When":3}]}'
+                )
+
+                cached = store.get_cache(cache_keys.unlocks(42, "player"))
+                self.assertIsNotNone(cached)
+                self.assertEqual(
+                    cached["responseBody"],
+                    '{"Success":true,"UserUnlocks":[1,2]}'
+                )
+            finally:
+                store.close()
+
     def test_offline_login2_returns_cached_login2_response(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             store = storage.Storage(database_path=Path(temp_dir) / "test.sqlite3")

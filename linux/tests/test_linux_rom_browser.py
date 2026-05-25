@@ -566,6 +566,36 @@ class LinuxRomBrowserTests(unittest.TestCase):
             finally:
                 store.close()
 
+    def test_cached_unlock_count_ignores_warning_achievement(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            db_path = root / "test.sqlite3"
+            store = storage.Storage(database_path=db_path)
+            try:
+                store.upsert_cache(
+                    cache_keys.patch(10701, "misantronic"),
+                    json.dumps(
+                        {
+                            "Success": True,
+                            "PatchData": {
+                                "Achievements": [
+                                    {"ID": 1, "Title": "First Steps"},
+                                    {"ID": 101000001, "Title": "Warning: Softcore Only"},
+                                ]
+                            },
+                        }
+                    ),
+                )
+                store.upsert_cache(
+                    cache_keys.unlocks(10701, "misantronic"),
+                    '{"Success":true,"UserUnlocks":[1,101000001]}',
+                )
+
+                self.assertEqual(rom_browser.cached_unlock_count(store, 10701), 1)
+                self.assertEqual(rom_browser.cached_unlock_titles(store, 10701), ["First Steps"])
+            finally:
+                store.close()
+
     def test_cached_unlock_titles_include_pending_awards(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)

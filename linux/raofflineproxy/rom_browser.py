@@ -20,6 +20,7 @@ from .network import build_api_url, http_get
 from .rom_cache import (
     build_achievement_game_ids,
     cache_game,
+    filter_warning_achievement_ids,
     merge_start_session_unlock_ids,
     merged_unlock_ids as merged_unlock_ids_for_user,
 )
@@ -531,7 +532,9 @@ def merged_unlock_ids(storage: Storage, game_id: int) -> list[int] | None:
         if not isinstance(value, list):
             continue
 
-        cached_unlock_ids = [item for item in value if isinstance(item, int)]
+        cached_unlock_ids = filter_warning_achievement_ids(
+            [item for item in value if isinstance(item, int)]
+        )
         unlock_user = parse_user_from_unlocks_key(entry.get("cacheKey", ""))
         break
 
@@ -553,11 +556,11 @@ def merged_unlock_ids(storage: Storage, game_id: int) -> list[int] | None:
         except Exception:
             payload = {}
 
-        cached_unlock_ids = [
+        cached_unlock_ids = filter_warning_achievement_ids([
             int(item.get("ID", 0))
             for item in payload.get("Unlocks", [])
             if isinstance(item, dict) and int(item.get("ID", 0) or 0) > 0
-        ]
+        ])
 
     achievement_game_ids = build_achievement_game_ids(
         storage.get_all_cache_by_prefix(cache_keys.PREFIX_PATCH)
