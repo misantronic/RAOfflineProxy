@@ -127,7 +127,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         app.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
     private var pendingProxyStart = false
     private var pendingSmartCacheStart = false
-    private var pendingDolphinEnable = false
     private var pendingSmartCachePromptAfterProxyStart = false
     private var pendingSmartCacheRomGrantPaths = emptyList<String>()
     private var pendingSmartCacheGrantTargets = emptyList<SafGrantTarget>()
@@ -433,16 +432,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun onSafGranted(target: SafGrantTarget) {
         var remaining = _state.value.pendingSafGrantTargets.drop(1)
-        if (pendingDolphinEnable && target == SafGrantTarget.Dolphin && remaining.isEmpty()) {
-            _state.value = _state.value.copy(
-                pendingSafGrantTargets = remaining,
-                needsSafGrant = false,
-                safGrantTarget = null
-            )
-            pendingDolphinEnable = false
-            setDolphinEnabledInternal(enabled = true)
-            return
-        }
         if (target == SafGrantTarget.SmartCacheRom && pendingSmartCacheRomGrantPaths.isNotEmpty()) {
             pendingSmartCacheRomGrantPaths = pendingSmartCacheRomGrantPaths.drop(1)
         }
@@ -498,12 +487,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 needsSafGrant = remaining.isNotEmpty(),
                 safGrantTarget = remaining.firstOrNull()
             )
-            if (target == SafGrantTarget.Dolphin && pendingDolphinEnable) {
-                pendingDolphinEnable = false
-                PrefsConstants.clearDolphinSafUri(app)
-                SnackbarManager.showMessage(str(R.string.dolphin_enable_access_rejected), SnackbarDuration.Indefinite)
-                return
-            }
             if (pendingSmartCacheStart) {
                 pendingSmartCacheGrantTargets = emptyList()
                 pendingSmartCacheStart = false
@@ -1469,18 +1452,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         if (!support.dolphinInstalled || (support.installedCount == 1) || _state.value.proxyRunning) {
             return
         }
-
-        if (enabled && loadDolphinSafUri() == null && !canPatchDolphinCfgDirectly()) {
-            pendingDolphinEnable = true
-            _state.value = _state.value.copy(
-                needsSafGrant = true,
-                safGrantTarget = SafGrantTarget.Dolphin,
-                pendingSafGrantTargets = listOf(SafGrantTarget.Dolphin)
-            )
-            return
-        }
-
-        pendingDolphinEnable = false
         setDolphinEnabledInternal(enabled)
     }
 

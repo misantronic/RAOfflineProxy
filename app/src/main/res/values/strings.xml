@@ -68,8 +68,6 @@
     <string name="dolphin_patch_success">Dolphin patched successfully.</string>
     <string name="dolphin_patch_error_file">Error patching Dolphin config %1$s: %2$s</string>
     <string name="dolphin_patch_error_unavailable">Could not patch Dolphin automatically. Grant folder access if prompted and try again.</string>
-    <string name="dolphin_enable_access_rejected">Dolphin was not enabled because folder access was rejected.</string>
-
     <!-- CFG revert messages -->
     <string name="revert_already_reverted">Already reverted — no changes needed.</string>
     <string name="revert_success_saf">Reverted successfully via folder access.</string>
