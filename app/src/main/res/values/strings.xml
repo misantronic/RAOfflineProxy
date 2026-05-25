@@ -135,6 +135,7 @@
     <string name="app_update_action_download">Download update</string>
     <string name="app_update_action_release_notes">View release notes</string>
     <string name="app_update_action_later">Not now</string>
+    <string name="app_update_toolbar_action">Update available</string>
 
     <!-- Refresh messages -->
     <string name="refresh_progress">Refreshing %1$d/%2$d…</string>

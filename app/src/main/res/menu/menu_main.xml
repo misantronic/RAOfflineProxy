@@ -3,6 +3,12 @@
     xmlns:app="http://schemas.android.com/apk/res-auto">
 
     <item
+        android:id="@+id/action_show_update"
+        android:title="@string/app_update_toolbar_action"
+        app:actionLayout="@layout/action_update_button"
+        app:showAsAction="ifRoom" />
+
+    <item
         android:id="@+id/action_toggle_proxy"
         android:title="@string/proxy_menu_title"
         app:actionLayout="@layout/action_proxy_button"

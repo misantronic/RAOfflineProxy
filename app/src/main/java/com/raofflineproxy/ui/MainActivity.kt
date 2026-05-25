@@ -43,6 +43,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
     private val viewModel: MainViewModel by viewModels()
     private var proxyMenuItem: MenuItem? = null
+    private var updateMenuItem: MenuItem? = null
     private var snackbar: Snackbar? = null
     private var pendingSnackbarJob: Job? = null
     private var pendingStartTokenWarning = false
@@ -193,6 +194,7 @@ class MainActivity : AppCompatActivity() {
                     needsSafGrant = state.needsSafGrant,
                     hasEnabledEmulator = state.retroArchEnabled || state.dolphinEnabled
                 )
+                updateAppUpdateMenuItem(state.availableAppUpdate)
                 updateNavBadge(navView, R.id.nav_cached_games, state.cachedGames.size)
                 updateNavBadge(navView, R.id.nav_pending_awards, state.pendingAwards.size)
                 updateNavBadge(navView, R.id.nav_awards_history, state.awardHistory.size)
@@ -239,6 +241,11 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
         menuInflater.inflate(R.menu.menu_main, menu)
+        updateMenuItem = menu.findItem(R.id.action_show_update)
+        updateMenuItem?.actionView?.findViewById<android.view.View>(R.id.action_update_root)
+            ?.setOnClickListener {
+                viewModel.state.value.availableAppUpdate?.let(::showAppUpdateDialog)
+            }
         proxyMenuItem = menu.findItem(R.id.action_toggle_proxy)
         proxyMenuItem?.actionView?.findViewById<android.view.View>(R.id.action_proxy_root)
             ?.setOnClickListener { toggleProxy() }
@@ -250,6 +257,7 @@ class MainActivity : AppCompatActivity() {
             needsSafGrant = state.needsSafGrant,
             hasEnabledEmulator = state.retroArchEnabled || state.dolphinEnabled
         )
+        updateAppUpdateMenuItem(state.availableAppUpdate)
         return true
     }
 
@@ -265,6 +273,10 @@ class MainActivity : AppCompatActivity() {
             }
             R.id.action_toggle_proxy -> {
                 toggleProxy()
+                true
+            }
+            R.id.action_show_update -> {
+                viewModel.state.value.availableAppUpdate?.let(::showAppUpdateDialog)
                 true
             }
             else -> super.onOptionsItemSelected(item)
@@ -363,6 +375,10 @@ class MainActivity : AppCompatActivity() {
         val canToggle = !proxyToggleInProgress && !needsSafGrant && (proxyRunning || hasEnabledEmulator)
         actionView.isEnabled = canToggle
         actionView.alpha = if (canToggle) 1f else 0.45f
+    }
+
+    private fun updateAppUpdateMenuItem(update: AppUpdateInfo?) {
+        updateMenuItem?.isVisible = update != null
     }
 
     private fun toggleProxy() {
