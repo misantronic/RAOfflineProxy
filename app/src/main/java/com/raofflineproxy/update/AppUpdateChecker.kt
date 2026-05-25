@@ -20,25 +20,14 @@ data class AppUpdateInfo(
 
 internal object AppUpdateChecker {
     fun fetchLatestUpdate(currentVersionName: String = BuildConfig.VERSION_NAME): AppUpdateInfo? {
-        val currentVersion = parseVersion(currentVersionName) ?: return null
-            .also { Log.w(TAG, "Skipping update check; could not parse current version '$currentVersionName'") }
         Log.i(TAG, "Checking for updates from $RELEASES_URL using currentVersion=$currentVersionName")
         val releases = fetchReleases() ?: return null
             .also { Log.w(TAG, "Update check failed; could not fetch or parse releases") }
 
         Log.i(TAG, "Fetched ${releases.size} Android release candidates")
 
-        return releases
-            .filter { it.version > currentVersion }
-            .maxByOrNull { it.version }
-            ?.let {
-                Log.i(TAG, "Found newer update version=${it.versionName} apkUrl=${it.apkUrl}")
-                AppUpdateInfo(
-                    versionName = it.versionName,
-                    apkUrl = it.apkUrl,
-                    releaseUrl = it.releaseUrl
-                )
-            }
+        return selectLatestUpdate(currentVersionName, releases)
+            ?.also { Log.i(TAG, "Found newer update version=${it.versionName} apkUrl=${it.apkUrl}") }
             ?: run {
                 Log.i(TAG, "No newer Android update found for currentVersion=$currentVersionName")
                 null
@@ -138,9 +127,27 @@ internal object AppUpdateChecker {
 
         return null
     }
+
+    internal fun selectLatestUpdate(
+        currentVersionName: String,
+        releases: List<ReleaseInfo>
+    ): AppUpdateInfo? {
+        val currentVersion = parseVersion(currentVersionName) ?: return null
+
+        return releases
+            .filter { it.version > currentVersion }
+            .maxByOrNull { it.version }
+            ?.let {
+                AppUpdateInfo(
+                    versionName = it.versionName,
+                    apkUrl = it.apkUrl,
+                    releaseUrl = it.releaseUrl
+                )
+            }
+    }
 }
 
-private data class AppVersion(
+internal data class AppVersion(
     val major: Int,
     val minor: Int,
     val patch: Int,
@@ -151,12 +158,25 @@ private data class AppVersion(
         compareValuesBy(this, other, AppVersion::major, AppVersion::minor, AppVersion::patch, AppVersion::channelRank, AppVersion::channelNumber)
 }
 
-private data class ReleaseInfo(
+internal data class ReleaseInfo(
     val versionName: String,
     val version: AppVersion,
     val apkUrl: String,
     val releaseUrl: String
 )
+
+internal fun releaseInfo(
+    versionName: String,
+    apkUrl: String = "https://example.com/$versionName.apk",
+    releaseUrl: String = "https://example.com/releases/$versionName"
+): ReleaseInfo? = parseVersion(versionName)?.let { version ->
+    ReleaseInfo(
+        versionName = versionName,
+        version = version,
+        apkUrl = apkUrl,
+        releaseUrl = releaseUrl
+    )
+}
 
 private fun parseVersion(raw: String): AppVersion? {
     val normalized = raw.trim().removePrefix("v")
