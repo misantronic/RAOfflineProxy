@@ -1346,6 +1346,7 @@ class MenuSdlSession:
             return
 
         try:
+            stop_proxy_inline()
             installer_path = download_knulli_update_installer(asset_url)
             self.storage.close()
             close_input_devices(self.input_handles)

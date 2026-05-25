@@ -134,6 +134,8 @@ run_onion_update_install() {
         return 1
     fi
 
+    run_backend "$PYTHON_BIN" stop-proxy >/dev/null 2>&1 || true
+
     "$PYTHON_BIN" - <<'PY' "$asset_url"
 from pathlib import Path
 import sys

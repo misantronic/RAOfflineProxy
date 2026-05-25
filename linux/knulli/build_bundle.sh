@@ -6,7 +6,7 @@ LINUX_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 DIST_DIR="${SCRIPT_DIR}/dist"
 BUILD_DIR="${DIST_DIR}/raofflineproxy-knulli-bundle"
 APP_DIR="${BUILD_DIR}/app"
-INSTALLER_PATH="${DIST_DIR}/RAOfflineProxy-Knulli-v1.1.0-linux-alpha-Install.sh"
+INSTALLER_PATH="${DIST_DIR}/RAOfflineProxy-Knulli-v1.2.0-alpha1-Install.sh"
 TEMP_TARBALL="${DIST_DIR}/.raofflineproxy-knulli-bundle.tar.gz"
 
 rm -rf "${BUILD_DIR}"

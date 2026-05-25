@@ -3,7 +3,7 @@
 ## Overview
 
 ::: tip Version info
-Will be supported from **v1.2.0 (alpha)**
+Will be supported from **v1.2.0-alpha1**
 :::
 
 **Manual Emulator Setup** is a fallback for devices where RAOfflineProxy can read emulator config files but cannot reliably overwrite them through Android storage APIs.
