@@ -899,6 +899,8 @@ private fun String.toHttpBytes(): ByteArray = toByteArray(Charsets.UTF_8)
 internal fun normalizeCachedResponse(action: String?, path: String, body: String, responseBody: String): String =
     if (action == "achievementsets") {
         normalizeAchievementSetsResponse(path, body, responseBody)
+    } else if (action == "unlocks") {
+        filterWarningAchievementFromUnlocksResponse(responseBody)
     } else {
         responseBody
     }
@@ -906,9 +908,46 @@ internal fun normalizeCachedResponse(action: String?, path: String, body: String
 internal fun compactCachedRawResponse(action: String?, responseBody: String): String =
     if (action == "achievementsets") {
         compactAchievementSetsResponse(responseBody)
+    } else if (action == "unlocks") {
+        filterWarningAchievementFromUnlocksResponse(responseBody)
     } else {
         responseBody
     }
+
+internal const val WARNING_ACHIEVEMENT_ID = 101000001
+
+internal fun filterWarningAchievementIds(ids: Iterable<Int>): List<Int> =
+    ids.filter { it > 0 && it != WARNING_ACHIEVEMENT_ID }
+
+internal fun filterWarningAchievementFromUnlocksResponse(responseBody: String): String {
+    val source = try {
+        JSONObject(responseBody)
+    } catch (_: Exception) {
+        return responseBody
+    }
+
+    val unlocks = source.optJSONArray("UserUnlocks") ?: return responseBody
+    val filteredUnlocks = JSONArray().apply {
+        for (id in filterWarningAchievementIds((0 until unlocks.length()).map { unlocks.optInt(it) })) {
+            put(id)
+        }
+    }
+
+    source.put("UserUnlocks", filteredUnlocks)
+    return source.toString()
+}
+
+private fun filterWarningAchievementDefinitions(achievements: JSONArray?): JSONArray {
+    if (achievements == null) return JSONArray()
+
+    return JSONArray().apply {
+        for (index in 0 until achievements.length()) {
+            val achievement = achievements.optJSONObject(index) ?: continue
+            if (achievement.optInt("ID") == WARNING_ACHIEVEMENT_ID) continue
+            put(achievement)
+        }
+    }
+}
 
 internal fun compactAchievementSetsResponse(responseBody: String): String {
     val source = try {
@@ -962,6 +1001,7 @@ private fun compactAchievementDefinitions(achievements: JSONArray?): JSONArray {
     return JSONArray().apply {
         for (index in 0 until achievements.length()) {
             val achievement = achievements.optJSONObject(index) ?: continue
+            if (achievement.optInt("ID") == WARNING_ACHIEVEMENT_ID) continue
             put(
                 JSONObject().apply {
                     put("ID", achievement.optInt("ID"))
@@ -1009,7 +1049,7 @@ internal fun normalizeAchievementSetsResponse(path: String, body: String, respon
             put("Title", source.optString("Title"))
             put("ConsoleID", source.optInt("ConsoleId"))
             putPatchImageFields(this, source.optString("ImageIconUrl").takeIf { it.isNotEmpty() })
-            put("Achievements", coreSet.optJSONArray("Achievements") ?: JSONArray())
+            put("Achievements", filterWarningAchievementDefinitions(coreSet.optJSONArray("Achievements")))
             put("Leaderboards", JSONArray())
         })
     }.toString()

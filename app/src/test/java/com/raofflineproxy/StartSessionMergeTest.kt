@@ -25,7 +25,7 @@ class StartSessionMergeTest {
     @Test
     fun mergeStartSessionUnlockIds_keepsCachedUnlocksWhenNoPendingAwards() {
         val result = mergeStartSessionUnlockIds(
-            cachedUnlockIds = listOf(11, 22),
+            cachedUnlockIds = listOf(11, 101000001, 22),
             pendingAwards = emptyList(),
             achievementGameIds = emptyMap(),
             gameId = 42,
