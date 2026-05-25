@@ -51,7 +51,7 @@ RAOfflineProxy patches the RetroArch config it needs in order to redirect RetroA
 
 > Onion support is currently in alpha.
 >
-> Compatible with [OnionOS v4.3.1-1](https://github.com/OnionUI/Onion/releases/tag/latest) and `Onion V4.4.0-beta-20260120`.
+> Compatible with [OnionOS v4.3.1-1](https://github.com/OnionUI/Onion/releases/tag/v4.3.1-1) and [Onion V4.4.0-beta-20260120](https://github.com/OnionUI/Onion/releases/tag/latest).
 
 1. Download the latest release for Onion from [GitHub Releases](https://github.com/misantronic/RAOfflineProxy/releases)
 2. Copy the generated app folder to:
