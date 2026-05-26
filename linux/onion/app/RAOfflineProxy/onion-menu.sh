@@ -559,6 +559,15 @@ show_cached_games_view() {
                 fi
                 cached_games_redraw=full
                 ;;
+            74)
+                run_smart_cache_flow "$APP_MAX_CACHED_GAMES" || true
+                if ! cached_games_reload; then
+                    stty "$saved_tty" < /dev/tty
+                    drain_tty "$saved_tty"
+                    return 0
+                fi
+                cached_games_redraw=full
+                ;;
             08|7f)
                 open_rom_browser || true
                 if ! cached_games_reload; then
@@ -783,6 +792,7 @@ render_cached_games_help() {
     printf 'Use D-Pad up/down to move.\033[K\n'
     printf 'Press LEFT to go back.\033[K\n'
     printf 'Press START or A to remove selected game.\033[K\n'
+    printf 'Press R to start Smart Cache...\033[K\n'
     printf 'Press R2 to add ROMs.\033[K\n'
     printf 'Press L2 to clear cached games...\033[K\n'
     printf '\033[J'
