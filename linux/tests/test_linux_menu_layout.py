@@ -697,8 +697,15 @@ class MenuLayoutTests(unittest.TestCase):
 
     def test_activate_cached_games_selected_starts_smart_cache_from_second_item(self) -> None:
         session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
+        session.view = "cached_games"
         session.cached_games = []
         session.selected_index = 1
+        session.current_labels = lambda: [
+            "Add ROM",
+            "Start Smart Cache",
+            "Clear cache",
+            "Back",
+        ]
         session.start_smart_cache = lambda: setattr(session, "smart_cache_started", True)
 
         menu_sdl.MenuSdlSession.activate_cached_games_selected(session)

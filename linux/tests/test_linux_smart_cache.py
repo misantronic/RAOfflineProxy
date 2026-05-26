@@ -293,7 +293,13 @@ class LinuxSmartCacheTests(unittest.TestCase):
 
             stdout = StringIO()
 
-            def fake_run_smart_cache(_storage, _config_data, _limit, on_progress=None):
+            def fake_run_smart_cache(
+                _storage,
+                _config_data,
+                _limit,
+                should_abort=None,
+                on_progress=None,
+            ):
                 if on_progress is not None:
                     on_progress(
                         smart_cache.SmartCacheProgress(
