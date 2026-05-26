@@ -364,7 +364,7 @@ class MenuSdlSession:
                 else "Enable autostart"
             )
         if self.main_logged_in:
-            labels.append("Cached games")
+            labels.append(f"Cached games ({len(self.cached_games)})")
         if self.pending_awards:
             labels.append(f"Pending awards ({len(self.pending_awards)})")
         labels.extend(["Uninstall", "Exit Menu"])
@@ -592,7 +592,7 @@ class MenuSdlSession:
             self.toggle_autostart(config_data)
             return
 
-        if selected_label == "Cached games":
+        if selected_label.startswith("Cached games"):
             self.save_view_position("main")
             self.view = "cached_games"
             self.restore_view_position("cached_games")

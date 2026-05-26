@@ -120,7 +120,7 @@ class MenuLayoutTests(unittest.TestCase):
             ["Remove cache", "First Steps", "Commander", "Back"],
         )
 
-    def test_root_labels_hide_cached_count_and_empty_pending_awards(self) -> None:
+    def test_root_labels_show_cached_count_and_hide_empty_pending_awards(self) -> None:
         session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
         session.view = "main"
         session.cached_games = [
@@ -141,8 +141,7 @@ class MenuLayoutTests(unittest.TestCase):
 
             labels = menu_sdl.MenuSdlSession.labels(session, running=False)
 
-            self.assertIn("Cached games", labels)
-            self.assertNotIn("Cached games (1)", labels)
+            self.assertIn("Cached games (1)", labels)
             self.assertNotIn("Pending awards (0)", labels)
         finally:
             menu_sdl.load_config = original_load_config
@@ -150,7 +149,7 @@ class MenuLayoutTests(unittest.TestCase):
             menu_sdl.online_check = original_online_check
             menu_sdl.MenuSdlSession.is_logged_in = original_is_logged_in
 
-    def test_activate_selected_opens_cached_games_without_counter_label(self) -> None:
+    def test_activate_selected_opens_cached_games_with_counter_label(self) -> None:
         session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
         session.view = "main"
         session.selected_index = 1
@@ -168,7 +167,7 @@ class MenuLayoutTests(unittest.TestCase):
         try:
             menu_sdl.MenuSdlSession.current_labels = lambda self, running=None: [
                 "Start proxy",
-                "Cached games",
+                "Cached games (0)",
                 "Uninstall",
                 "Exit Menu",
             ]
