@@ -20,6 +20,8 @@ SMART_CACHE_DELAY_SECONDS = 0.5
 class SmartCacheStatus:
     found_history: bool
     total_candidates: int
+    reason: str | None = None
+    history_path: str | None = None
 
 
 @dataclass
@@ -47,16 +49,42 @@ def should_offer_smart_cache(
     has_credentials: bool,
 ) -> SmartCacheStatus:
     if not is_online or not has_credentials:
-        return SmartCacheStatus(found_history=False, total_candidates=0)
+        return SmartCacheStatus(
+            found_history=False,
+            total_candidates=0,
+            reason="offline" if not is_online else "missing_credentials",
+        )
 
     if list_cached_games(storage):
-        return SmartCacheStatus(found_history=False, total_candidates=0)
+        return SmartCacheStatus(
+            found_history=False,
+            total_candidates=0,
+            reason="cached_games_present",
+        )
+
+    history_path = find_content_history_lpl(config_data)
+    if history_path is None:
+        return SmartCacheStatus(
+            found_history=False,
+            total_candidates=0,
+            reason="content_history_missing",
+        )
 
     paths = load_content_history_paths(config_data)
     total_candidates = min(len(paths), SMART_CACHE_LIMIT)
+
+    if total_candidates == 0:
+        return SmartCacheStatus(
+            found_history=False,
+            total_candidates=0,
+            reason="no_valid_history_entries",
+            history_path=str(history_path),
+        )
+
     return SmartCacheStatus(
         found_history=total_candidates > 0,
         total_candidates=total_candidates,
+        history_path=str(history_path),
     )
 
 
@@ -79,12 +107,13 @@ def run_folder_cache(
     storage: Storage,
     config_data: dict,
     current_dir: Path,
+    paths: list[Path] | None = None,
     on_progress=None,
 ) -> SmartCacheResult:
     return run_cache_paths(
         storage,
         config_data,
-        list_browser_files_fast(current_dir),
+        list_browser_files_fast(current_dir) if paths is None else paths,
         limit=MAX_CACHED_GAMES,
         on_progress=on_progress,
     )
@@ -107,9 +136,6 @@ def run_cache_paths(
             break
 
         scanned += 1
-        result = add_rom_to_cache(path, storage, config_data)
-        if result.success:
-            cached += 1
 
         if on_progress is not None:
             on_progress(
@@ -120,6 +146,10 @@ def run_cache_paths(
                     current_label=path.name,
                 )
             )
+
+        result = add_rom_to_cache(path, storage, config_data)
+        if result.success:
+            cached += 1
 
         if scanned < total:
             time.sleep(SMART_CACHE_DELAY_SECONDS)
@@ -175,6 +205,7 @@ def find_content_history_lpl(config_data: dict) -> Path | None:
     candidates = [
         cfg_path.parent / "content_history.lpl",
         cfg_path.parent / "playlists" / "content_history.lpl",
+        cfg_path.parent / "playlists" / "builtin" / "content_history.lpl",
         cfg_path.parent.parent / "playlists" / "content_history.lpl",
         cfg_path.parent.parent.parent
         / "Saves"

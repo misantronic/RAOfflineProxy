@@ -30,12 +30,19 @@ from .rom_browser import (
     cached_unlock_titles,
     clear_cached_games,
     ensure_game_preview,
+    list_browser_files_fast,
     list_browser_entries,
     list_cached_games,
     remove_cached_game,
 )
 from .service import service_status, start_service_process, stop_service_process
-from .smart_cache import SMART_CACHE_LIMIT, run_smart_cache, should_offer_smart_cache
+from .smart_cache import (
+    SMART_CACHE_LIMIT,
+    load_content_history_paths,
+    run_folder_cache,
+    run_smart_cache,
+    should_offer_smart_cache,
+)
 from .state import load_patch_state, save_patch_state
 from .storage import Storage
 from .update import download_knulli_update_installer, update_status
@@ -195,6 +202,15 @@ class MenuSdlSession:
         self.smart_cache_progress_text: str | None = None
         self.smart_cache_result: tuple[str, float] | None = None
         self.smart_cache_thread: threading.Thread | None = None
+        self.cache_progress_text: str | None = None
+        self.cache_progress_title: str | None = None
+        self.cache_result: tuple[str, float] | None = None
+        self.cache_worker_thread: threading.Thread | None = None
+        self.cache_completed = False
+        self.cache_completion_message: str | None = None
+        self.cache_return_view = "cached_games"
+        self.cache_return_browser_dir: Path | None = None
+        self.cache_return_browser_restore = False
         self.preview_surface = None
         self.preview_game_id = None
         self.achievement_preview_surface = None
@@ -335,6 +351,9 @@ class MenuSdlSession:
         if self.view == "smart_cache_prompt":
             return ["Start Smart Cache", "Skip"]
 
+        if self.view == "cache_progress":
+            return ["Back"] if getattr(self, "cache_completed", False) else []
+
         if self.view == "update_prompt":
             return ["Download and install", "Later"]
 
@@ -347,6 +366,8 @@ class MenuSdlSession:
                 return ["Cancel"]
 
             labels = []
+            if self.browser_has_cacheable_files():
+                labels.append("Add folder")
             root = resolve_rom_root(load_config())
             if self.browser_dir.parent != self.browser_dir and self.browser_dir != root:
                 labels.append("..")
@@ -406,6 +427,8 @@ class MenuSdlSession:
             return "Add ROM"
         if self.view == "update_prompt":
             return "Update Available"
+        if self.view == "cache_progress":
+            return self.cache_progress_title or "Caching"
         return "RAOfflineProxy"
 
     def item_text_color(self, label: str) -> tuple[int, int, int]:
@@ -439,6 +462,10 @@ class MenuSdlSession:
             )
         if self.view == "smart_cache_prompt":
             return f"SMART CACHE: {self.smart_cache_prompt_count} recent games found"
+        if self.view == "cache_progress":
+            if getattr(self, "cache_completed", False):
+                return self.cache_completion_message or "Cache complete"
+            return self.cache_progress_text or "Preparing cache..."
         if self.view == "game_actions":
             if self.active_game is None:
                 return "No game selected"
@@ -474,8 +501,17 @@ class MenuSdlSession:
         if self.view != "main":
             if self.view == "smart_cache_prompt":
                 return None
+            if self.view == "cache_progress":
+                return None
             if self.view == "update_prompt":
                 return "Press START or A to install."
+            cache_result = getattr(self, "cache_result", None)
+            if cache_result is not None:
+                text, expires_at = cache_result
+                if time.monotonic() >= expires_at:
+                    self.finish_cache_progress()
+                    return None
+                return text
             return getattr(self, "smart_cache_progress_text", None)
 
         if (
@@ -575,6 +611,11 @@ class MenuSdlSession:
 
         if self.view == "file_browser":
             self.activate_file_browser_selected()
+            return
+
+        if self.view == "cache_progress":
+            if getattr(self, "cache_completed", False) and self.selected_index == 0:
+                self.finish_cache_progress()
             return
 
         labels = self.current_labels()
@@ -716,12 +757,19 @@ class MenuSdlSession:
             return
 
         root = resolve_rom_root(load_config())
+        has_add_folder = self.browser_has_cacheable_files()
         has_parent = (
             self.browser_dir.parent != self.browser_dir and self.browser_dir != root
         )
-        first_entry_index = 1 if has_parent else 0
+        first_entry_index = 1 if has_add_folder else 0
+        parent_index = first_entry_index if has_parent else None
+        if has_parent:
+            first_entry_index += 1
         cancel_index = first_entry_index + len(self.browser_entries)
-        if has_parent and self.selected_index == 0:
+        if has_add_folder and self.selected_index == 0:
+            self.start_folder_cache_for_browser_dir()
+            return
+        if parent_index is not None and self.selected_index == parent_index:
             self.save_browser_position()
             self.set_browser_dir(self.browser_dir.parent, restore=True)
             return
@@ -738,12 +786,7 @@ class MenuSdlSession:
             self.set_browser_dir(entry, restore=True)
             return
 
-        result = add_rom_to_cache(entry, self.storage, load_config())
-        self.message = (result.message, time.monotonic() + ERROR_SECONDS)
-        self.save_browser_position()
-        self.view = "cached_games"
-        self.restore_view_position("cached_games")
-        self.refresh_cached_games()
+        self.start_single_rom_cache(entry)
 
     def open_file_browser(self) -> None:
         try:
@@ -773,6 +816,132 @@ class MenuSdlSession:
 
     def refresh_pending_awards(self) -> None:
         self.pending_awards = list_pending_awards(self.storage)
+
+    def browser_has_cacheable_files(self) -> bool:
+        return any(entry.is_file() for entry in self.browser_entries)
+
+    def start_single_rom_cache(self, path: Path) -> None:
+        self.save_browser_position()
+        self.cache_progress_title = f"Caching: {path.name}"
+        self.cache_progress_text = "Preparing cache..."
+        self.cache_result = None
+        self.cache_completed = False
+        self.cache_completion_message = None
+        self.cache_return_view = "file_browser"
+        self.cache_return_browser_dir = self.browser_dir
+        self.cache_return_browser_restore = True
+        self.view = "cache_progress"
+
+        def worker() -> None:
+            try:
+                result = add_rom_to_cache(path, self.storage, load_config())
+                self.cache_result = (result.message, time.monotonic() + 1.5)
+                self.cache_completion_message = (
+                    "Scanned 1, cached 1, skipped 0"
+                    if result.success
+                    else "Scanned 1, cached 0, skipped 1"
+                )
+                self.cache_completed = True
+            except Exception as exc:
+                self.cache_result = (
+                    f"Cache failed: {exc}",
+                    time.monotonic() + ERROR_SECONDS,
+                )
+            finally:
+                if self.view == "cache_progress":
+                    self.cache_progress_text = None
+
+        self.cache_worker_thread = threading.Thread(target=worker, daemon=True)
+        self.cache_worker_thread.start()
+
+    def start_folder_cache_for_browser_dir(self) -> None:
+        if self.browser_dir is None:
+            return
+
+        current_dir = self.browser_dir
+        cache_paths = list_browser_files_fast(current_dir)
+        self.save_browser_position()
+        self.cache_progress_title = f"Caching: {current_dir.name}"
+        if cache_paths:
+            self.cache_progress_text = (
+                f"Caching 1/{len(cache_paths)}: {cache_paths[0].name}"
+            )
+        else:
+            self.cache_progress_text = "Preparing cache..."
+        self.cache_result = None
+        self.cache_completed = False
+        self.cache_completion_message = None
+        self.cache_return_view = "cached_games"
+        self.cache_return_browser_dir = current_dir
+        self.cache_return_browser_restore = False
+        self.view = "cache_progress"
+
+        def worker() -> None:
+            try:
+                result = run_folder_cache(
+                    self.storage,
+                    load_config(),
+                    current_dir,
+                    paths=cache_paths,
+                    on_progress=self.update_cache_progress,
+                )
+                if result.total <= 0:
+                    self.cache_result = (
+                        "No ROM files in this folder",
+                        time.monotonic() + ERROR_SECONDS,
+                    )
+                    self.cache_completion_message = "Scanned 0, cached 0, skipped 0"
+                    self.cache_completed = True
+                else:
+                    self.cache_result = (
+                        f"Folder cache complete: {result.cached} / {result.total}",
+                        time.monotonic() + 1.5,
+                    )
+                    self.cache_completion_message = (
+                        f"Scanned {result.scanned}, cached {result.cached}, skipped {result.skipped}"
+                    )
+                    self.cache_completed = True
+            except Exception as exc:
+                self.cache_result = (
+                    f"Folder cache failed: {exc}",
+                    time.monotonic() + ERROR_SECONDS,
+                )
+            finally:
+                if self.view == "cache_progress":
+                    self.cache_progress_text = None
+
+        self.cache_worker_thread = threading.Thread(target=worker, daemon=True)
+        self.cache_worker_thread.start()
+
+    def update_cache_progress(self, progress) -> None:
+        self.cache_progress_text = (
+            f"Caching {progress.scanned}/{progress.total}: {progress.current_label}"
+        )
+
+    def finish_cache_progress(self) -> None:
+        return_view = self.cache_return_view
+        return_browser_dir = self.cache_return_browser_dir
+        return_browser_restore = self.cache_return_browser_restore
+        self.cache_result = None
+        self.cache_progress_text = None
+        self.cache_progress_title = None
+        self.cache_completed = False
+        self.cache_completion_message = None
+        self.cache_return_view = "cached_games"
+        self.cache_return_browser_dir = None
+        self.cache_return_browser_restore = False
+        self.refresh_cached_games()
+        if return_view == "file_browser" and return_browser_dir is not None:
+            self.view = "file_browser"
+            self.set_browser_dir(return_browser_dir, restore=return_browser_restore)
+            return
+        if return_view == "main":
+            self.view = "main"
+            self.refresh_main_menu_state(force=True)
+            self.restore_view_position("main")
+            return
+        self.view = "cached_games"
+        self.restore_view_position("cached_games")
 
     def go_back(self) -> None:
         if self.view == "file_browser":
@@ -820,6 +989,9 @@ class MenuSdlSession:
 
         if self.view == "update_prompt":
             self.dismiss_update_prompt()
+            return
+
+        if self.view == "cache_progress":
             return
 
         if self.view == "pending_award_actions":
@@ -1046,10 +1218,25 @@ class MenuSdlSession:
         if self.smart_cache_in_progress:
             return
 
+        history_paths = load_content_history_paths(self.config_data)
+        total_candidates = min(len(history_paths), SMART_CACHE_LIMIT)
         self.smart_cache_in_progress = True
-        self.smart_cache_progress_text = f"Smart Cache: 0 / {SMART_CACHE_LIMIT}"
+        self.cache_progress_title = "Smart Cache"
+        if total_candidates > 0:
+            self.cache_progress_text = (
+                f"Caching 1/{total_candidates}: {history_paths[0].name}"
+            )
+        else:
+            self.cache_progress_text = "Preparing cache..."
+        self.cache_completed = False
+        self.cache_completion_message = None
+        self.cache_return_view = "main"
+        self.cache_return_browser_dir = None
+        self.cache_return_browser_restore = False
         self.smart_cache_result = None
-        self.dismiss_smart_cache_prompt()
+        self.smart_cache_progress_text = None
+        self.view = "cache_progress"
+        self.reset_selection()
 
         def worker() -> None:
             try:
@@ -1059,25 +1246,25 @@ class MenuSdlSession:
                     SMART_CACHE_LIMIT,
                     on_progress=self.update_smart_cache_progress,
                 )
-                self.refresh_cached_games()
-                self.smart_cache_result = (
-                    f"Smart Cache complete: {result.cached} games cached",
-                    time.monotonic() + 1.5,
+                self.cache_completion_message = (
+                    f"Scanned {result.scanned}, cached {result.cached}, skipped {result.skipped}"
                 )
+                self.cache_completed = True
             except Exception as exc:
-                self.smart_cache_result = (
-                    f"Smart Cache failed: {exc}",
-                    time.monotonic() + ERROR_SECONDS,
-                )
+                self.cache_completion_message = f"Smart Cache failed: {exc}"
+                self.cache_completed = True
             finally:
                 self.smart_cache_in_progress = False
-                self.smart_cache_progress_text = None
+                if self.view == "cache_progress" and not self.cache_completed:
+                    self.cache_progress_text = None
 
         self.smart_cache_thread = threading.Thread(target=worker, daemon=True)
         self.smart_cache_thread.start()
 
     def update_smart_cache_progress(self, progress) -> None:
-        self.smart_cache_progress_text = f"Smart Cache: {progress.cached} / {SMART_CACHE_LIMIT} - {progress.current_label}"
+        self.cache_progress_text = (
+            f"Caching {progress.scanned}/{progress.total}: {progress.current_label}"
+        )
 
     def refresh_main_menu_state(self, force: bool = False) -> None:
         if not hasattr(self, "main_state_refreshed_at"):
@@ -1242,6 +1429,8 @@ class MenuSdlSession:
             if self.view == "game_actions" and index == 0:
                 current_y += GROUP_GAP
             if self.view == "game_actions" and index == len(items) - 2:
+                current_y += GROUP_GAP
+            if self.view == "file_browser" and index == 0 and self.browser_has_cacheable_files():
                 current_y += GROUP_GAP
             if self.view == "pending_awards" and index % 2 == 1:
                 current_y += GROUP_GAP

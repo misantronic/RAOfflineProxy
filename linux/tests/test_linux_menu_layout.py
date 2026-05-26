@@ -1,4 +1,5 @@
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 from linux.raofflineproxy import menu_sdl
@@ -119,6 +120,30 @@ class MenuLayoutTests(unittest.TestCase):
             menu_sdl.MenuSdlSession.labels(session, running=False),
             ["Remove cache", "First Steps", "Commander", "Back"],
         )
+
+    def test_file_browser_labels_show_add_folder_at_top(self) -> None:
+        session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
+        session.view = "file_browser"
+        session.browser_dir = type("PathLike", (), {"parent": "/root"})()
+        session.browser_entries = [
+            type("Entry", (), {"name": "game1.gba", "is_file": lambda self: True})(),
+            type("Entry", (), {"name": "Subdir", "is_file": lambda self: False})(),
+        ]
+        session.browser_has_cacheable_files = lambda: True
+
+        original_resolve_rom_root = menu_sdl.resolve_rom_root
+        original_load_config = menu_sdl.load_config
+        try:
+            menu_sdl.resolve_rom_root = lambda _config: "/roms"
+            menu_sdl.load_config = lambda: {}
+
+            self.assertEqual(
+                menu_sdl.MenuSdlSession.labels(session, running=False),
+                ["Add folder", "..", "game1.gba", "Subdir", "Cancel"],
+            )
+        finally:
+            menu_sdl.resolve_rom_root = original_resolve_rom_root
+            menu_sdl.load_config = original_load_config
 
     def test_root_labels_show_cached_count_and_hide_empty_pending_awards(self) -> None:
         session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
@@ -354,6 +379,61 @@ class MenuLayoutTests(unittest.TestCase):
         finally:
             menu_sdl.start_proxy_inline = original_start_proxy_inline
 
+    def test_start_smart_cache_opens_cache_progress_view(self) -> None:
+        session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
+        session.smart_cache_in_progress = False
+        session.config_data = {}
+        session.storage = object()
+        session.view = "smart_cache_prompt"
+        session.reset_selection = lambda: setattr(session, "reset_called", True)
+
+        original_load_content_history_paths = menu_sdl.load_content_history_paths
+        original_run_smart_cache = menu_sdl.run_smart_cache
+        original_thread = menu_sdl.threading.Thread
+        try:
+            menu_sdl.load_content_history_paths = lambda _config: [
+                Path("/roms/tetris.gb"),
+                Path("/roms/zelda.gbc"),
+            ]
+            menu_sdl.run_smart_cache = lambda *_args, **_kwargs: (_ for _ in ()).throw(
+                AssertionError("worker should not run in this test")
+            )
+
+            class FakeThread:
+                def __init__(self, target, daemon):
+                    self.target = target
+                    self.daemon = daemon
+
+                def start(self):
+                    setattr(session, "thread_started", True)
+
+            menu_sdl.threading.Thread = FakeThread
+
+            menu_sdl.MenuSdlSession.start_smart_cache(session)
+
+            self.assertEqual(session.view, "cache_progress")
+            self.assertEqual(session.cache_progress_title, "Smart Cache")
+            self.assertEqual(session.cache_progress_text, "Caching 1/2: tetris.gb")
+            self.assertEqual(session.cache_return_view, "main")
+            self.assertTrue(session.thread_started)
+        finally:
+            menu_sdl.load_content_history_paths = original_load_content_history_paths
+            menu_sdl.run_smart_cache = original_run_smart_cache
+            menu_sdl.threading.Thread = original_thread
+
+    def test_update_smart_cache_progress_uses_cache_progress_status_line(self) -> None:
+        session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
+
+        progress = type(
+            "Progress",
+            (),
+            {"scanned": 2, "total": 5, "current_label": "Zelda.gbc"},
+        )()
+
+        menu_sdl.MenuSdlSession.update_smart_cache_progress(session, progress)
+
+        self.assertEqual(session.cache_progress_text, "Caching 2/5: Zelda.gbc")
+
     def test_activate_game_actions_selected_uses_back_index_after_unlock_titles(
         self,
     ) -> None:
@@ -472,6 +552,21 @@ class MenuLayoutTests(unittest.TestCase):
             ],
         )
 
+    def test_file_browser_item_positions_add_gap_after_add_folder(self) -> None:
+        session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
+        session.view = "file_browser"
+        session.cached_games = []
+        session.browser_has_cacheable_files = lambda: True
+
+        positions = menu_sdl.MenuSdlSession.item_positions(
+            session,
+            ["Add folder", "..", "game.gba", "Cancel"],
+            100,
+            30,
+        )
+
+        self.assertEqual(positions, [100, 144, 174, 204])
+
     def test_pending_awards_uses_item_font_for_game_rows(self) -> None:
         session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
         session.view = "pending_awards"
@@ -508,6 +603,180 @@ class MenuLayoutTests(unittest.TestCase):
 
         self.assertIs(session.active_pending_award, session.pending_awards[1])
         self.assertEqual(session.view, "pending_award_actions")
+
+    def test_activate_file_browser_selected_starts_folder_cache_from_top_action(
+        self,
+    ) -> None:
+        session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
+        session.browser_dir = Path("/roms/current")
+        session.browser_entries = []
+        session.selected_index = 0
+        session.browser_has_cacheable_files = lambda: True
+        session.start_folder_cache_for_browser_dir = lambda: setattr(
+            session, "started_folder_cache", True
+        )
+
+        original_resolve_rom_root = menu_sdl.resolve_rom_root
+        original_load_config = menu_sdl.load_config
+        try:
+            menu_sdl.resolve_rom_root = lambda _config: Path("/roms")
+            menu_sdl.load_config = lambda: {}
+
+            menu_sdl.MenuSdlSession.activate_file_browser_selected(session)
+
+            self.assertTrue(session.started_folder_cache)
+        finally:
+            menu_sdl.resolve_rom_root = original_resolve_rom_root
+            menu_sdl.load_config = original_load_config
+
+    def test_activate_file_browser_selected_starts_single_rom_cache(self) -> None:
+        session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
+        browser_dir = Path("/roms")
+        rom_entry = Path("/roms/game.gba")
+        session.browser_dir = browser_dir
+        session.browser_entries = [rom_entry]
+        session.selected_index = 0
+        session.browser_has_cacheable_files = lambda: False
+        session.start_single_rom_cache = lambda path: setattr(
+            session, "cached_path", path
+        )
+
+        original_resolve_rom_root = menu_sdl.resolve_rom_root
+        original_load_config = menu_sdl.load_config
+        try:
+            menu_sdl.resolve_rom_root = lambda _config: browser_dir
+            menu_sdl.load_config = lambda: {}
+
+            menu_sdl.MenuSdlSession.activate_file_browser_selected(session)
+
+            self.assertEqual(session.cached_path, rom_entry)
+        finally:
+            menu_sdl.resolve_rom_root = original_resolve_rom_root
+            menu_sdl.load_config = original_load_config
+
+    def test_finish_cache_progress_returns_to_file_browser_for_single_rom(self) -> None:
+        session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
+        session.cache_result = ("Cached game.gba", 0.0)
+        session.cache_progress_text = None
+        session.cache_progress_title = "Caching: game.gba"
+        session.cache_return_view = "file_browser"
+        session.cache_return_browser_dir = Path("/roms")
+        session.cache_return_browser_restore = True
+        session.refresh_cached_games = lambda: setattr(session, "refreshed", True)
+        session.set_browser_dir = lambda path, restore=False: setattr(
+            session, "browser_restore", (path, restore)
+        )
+
+        menu_sdl.MenuSdlSession.finish_cache_progress(session)
+
+        self.assertEqual(session.view, "file_browser")
+        self.assertEqual(session.browser_restore, (Path("/roms"), True))
+        self.assertIsNone(session.cache_progress_title)
+
+    def test_finish_cache_progress_returns_to_cached_games_for_folder_cache(self) -> None:
+        session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
+        session.cache_result = ("Folder cache complete", 0.0)
+        session.cache_progress_text = None
+        session.cache_progress_title = "Caching: current"
+        session.cache_completed = True
+        session.cache_completion_message = "Scanned 4, cached 3, skipped 1"
+        session.cache_return_view = "cached_games"
+        session.cache_return_browser_dir = Path("/roms")
+        session.cache_return_browser_restore = False
+        session.refresh_cached_games = lambda: setattr(session, "refreshed", True)
+        session.restore_view_position = lambda view: setattr(session, "restored", view)
+
+        menu_sdl.MenuSdlSession.finish_cache_progress(session)
+
+        self.assertEqual(session.view, "cached_games")
+        self.assertEqual(session.restored, "cached_games")
+        self.assertIsNone(session.cache_progress_title)
+        self.assertIsNone(session.cache_completion_message)
+
+    def test_finish_cache_progress_returns_to_main_for_smart_cache(self) -> None:
+        session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
+        session.cache_result = None
+        session.cache_progress_text = None
+        session.cache_progress_title = "Smart Cache"
+        session.cache_completed = True
+        session.cache_completion_message = "Scanned 4, cached 3, skipped 1"
+        session.cache_return_view = "main"
+        session.cache_return_browser_dir = None
+        session.cache_return_browser_restore = False
+        session.refresh_cached_games = lambda: setattr(session, "refreshed", True)
+        session.refresh_main_menu_state = lambda force=False: setattr(
+            session, "main_refreshed", force
+        )
+        session.restore_view_position = lambda view: setattr(session, "restored", view)
+
+        menu_sdl.MenuSdlSession.finish_cache_progress(session)
+
+        self.assertEqual(session.view, "main")
+        self.assertTrue(session.main_refreshed)
+        self.assertEqual(session.restored, "main")
+
+    def test_cache_progress_uses_static_title_and_preparing_status(self) -> None:
+        session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
+        session.view = "cache_progress"
+        session.cache_progress_title = "Caching: Pokemon"
+        session.cache_progress_text = "Preparing cache..."
+
+        self.assertEqual(
+            menu_sdl.MenuSdlSession.title_for_view(session),
+            "Caching: Pokemon",
+        )
+        self.assertEqual(
+            menu_sdl.MenuSdlSession.status_text(session, running=False),
+            "Preparing cache...",
+        )
+
+    def test_update_cache_progress_uses_current_item_status_line(self) -> None:
+        session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
+
+        progress = type(
+            "Progress",
+            (),
+            {"scanned": 1, "total": 3, "current_label": "Pokemon Red"},
+        )()
+
+        menu_sdl.MenuSdlSession.update_cache_progress(session, progress)
+
+        self.assertEqual(
+            session.cache_progress_text,
+            "Caching 1/3: Pokemon Red",
+        )
+
+    def test_cache_progress_labels_show_back_when_complete(self) -> None:
+        session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
+        session.view = "cache_progress"
+        session.cache_completed = True
+
+        self.assertEqual(
+            menu_sdl.MenuSdlSession.labels(session, running=False),
+            ["Back"],
+        )
+
+    def test_cache_progress_status_uses_completion_message_when_done(self) -> None:
+        session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
+        session.view = "cache_progress"
+        session.cache_completed = True
+        session.cache_completion_message = "Scanned 4, cached 3, skipped 1"
+
+        self.assertEqual(
+            menu_sdl.MenuSdlSession.status_text(session, running=False),
+            "Scanned 4, cached 3, skipped 1",
+        )
+
+    def test_activate_selected_finishes_cache_progress_when_back_selected(self) -> None:
+        session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
+        session.view = "cache_progress"
+        session.cache_completed = True
+        session.selected_index = 0
+        session.finish_cache_progress = lambda: setattr(session, "finished", True)
+
+        menu_sdl.MenuSdlSession.activate_selected(session)
+
+        self.assertTrue(session.finished)
 
     def test_is_logged_in_uses_cached_main_menu_state_without_config(self) -> None:
         session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)

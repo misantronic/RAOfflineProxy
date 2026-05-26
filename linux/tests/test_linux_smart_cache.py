@@ -152,6 +152,31 @@ class LinuxSmartCacheTests(unittest.TestCase):
 
             self.assertEqual(result, history_path)
 
+    def test_find_content_history_lpl_supports_knulli_builtin_playlists(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            cfg_path = root / "userdata" / "system" / "configs" / "retroarch" / "retroarchcustom.cfg"
+            history_path = (
+                root
+                / "userdata"
+                / "system"
+                / "configs"
+                / "retroarch"
+                / "playlists"
+                / "builtin"
+                / "content_history.lpl"
+            )
+            cfg_path.parent.mkdir(parents=True)
+            history_path.parent.mkdir(parents=True)
+            cfg_path.write_text("# cfg\n", encoding="utf-8")
+            history_path.write_text('{"items":[]}', encoding="utf-8")
+
+            result = smart_cache.find_content_history_lpl(
+                {"retroarch_cfg": str(cfg_path)}
+            )
+
+            self.assertEqual(result, history_path)
+
     def test_run_smart_cache_paces_between_candidates(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -274,7 +299,7 @@ class LinuxSmartCacheTests(unittest.TestCase):
                         smart_cache.SmartCacheProgress(
                             scanned=1,
                             total=2,
-                            cached=1,
+                            cached=0,
                             current_label="tetris.gb",
                         )
                     )
@@ -307,14 +332,14 @@ class LinuxSmartCacheTests(unittest.TestCase):
             lines = stdout.getvalue().strip().splitlines()
             self.assertEqual(
                 lines[0],
-                '{"type":"progress","scanned":1,"total":2,"cached":1,"current_label":"tetris.gb"}',
+                '{"type":"progress","scanned":1,"total":2,"cached":0,"current_label":"tetris.gb"}',
             )
             self.assertEqual(
                 lines[1],
                 '{"type":"result","scanned":2,"total":2,"cached":1,"skipped":1,"limit_reached":false}',
             )
 
-    def test_run_smart_cache_progress_reports_updated_cached_total(self) -> None:
+    def test_run_smart_cache_progress_reports_current_item_before_cache(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             db_path = root / "test.sqlite3"
@@ -345,8 +370,9 @@ class LinuxSmartCacheTests(unittest.TestCase):
                 )
 
                 self.assertEqual(len(progress_updates), 1)
-                self.assertEqual(progress_updates[0].cached, 1)
+                self.assertEqual(progress_updates[0].cached, 0)
                 self.assertEqual(progress_updates[0].scanned, 1)
+                self.assertEqual(progress_updates[0].current_label, "tetris.gb")
             finally:
                 smart_cache.add_rom_to_cache = original_add_rom_to_cache
                 store.close()
