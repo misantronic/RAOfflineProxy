@@ -152,22 +152,23 @@ def stop_proxy_inline() -> None:
     remove_stale_hook()
     service = stop_service_process()
     patch_state = load_patch_state() or {}
+    revert_cfg_path = patch_state.get("cfg_path") or cfg_path
     previous_batocera = patch_state.get("batocera_previous", {})
     revert_batocera_conf(config_data, previous_batocera)
 
     if patch_state:
-        revert_retroarch_cfg(cfg_path)
+        revert_retroarch_cfg(revert_cfg_path)
         return
 
     if not service.get("already_stopped"):
         try:
-            revert_retroarch_cfg(cfg_path)
+            revert_retroarch_cfg(revert_cfg_path)
         except Exception:
             pass
         return
 
     try:
-        revert_retroarch_cfg(cfg_path)
+        revert_retroarch_cfg(revert_cfg_path)
     except Exception:
         pass
 
