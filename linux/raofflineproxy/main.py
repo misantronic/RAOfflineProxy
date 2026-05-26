@@ -70,6 +70,7 @@ def safe_stop_proxy(config_data: dict, cfg_path: str | None) -> list[str]:
     remove_stale_hook()
     service = stop_service_process()
     patch_state = load_patch_state() or {}
+    revert_cfg_path = patch_state.get("cfg_path") or cfg_path
     previous_batocera = patch_state.get("batocera_previous", {})
     batocera = revert_batocera_conf(config_data, previous_batocera)
 
@@ -85,10 +86,10 @@ def safe_stop_proxy(config_data: dict, cfg_path: str | None) -> list[str]:
 
     revert_result = None
     if patch_state:
-        revert_result = revert_retroarch_cfg(cfg_path)
-    elif cfg_path:
+        revert_result = revert_retroarch_cfg(revert_cfg_path)
+    elif revert_cfg_path:
         try:
-            revert_result = revert_retroarch_cfg(cfg_path)
+            revert_result = revert_retroarch_cfg(revert_cfg_path)
         except Exception:
             revert_result = None
 
