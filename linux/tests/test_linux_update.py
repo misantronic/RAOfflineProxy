@@ -167,14 +167,63 @@ class LinuxUpdateTests(unittest.TestCase):
         update.fetch_releases = lambda _platform: (_ for _ in ()).throw(AssertionError("should not fetch releases"))
 
         original_time = update.time.time
+        original_current_version = update.current_version
         try:
             update.time.time = lambda: 2_000_000_100
+            update.current_version = lambda: "1.1.0-alpha1"
             result = update.update_status("onion")
         finally:
             update.time.time = original_time
+            update.current_version = original_current_version
 
         self.assertTrue(result.update_available)
         self.assertEqual(result.latest_version, "1.2.1-alpha1")
+
+    def test_update_status_recent_cache_ignores_stale_cached_current_version_after_upgrade(self) -> None:
+        cached = {
+            "current_version": "1.2.0-alpha4",
+            "update_available": True,
+            "latest_version": "1.2.1-alpha4",
+            "release_url": "https://example.com/release",
+            "asset_url": "https://example.com/asset",
+            "checked_at": 2_000_000_000,
+        }
+        update.load_cached_update_status = lambda _platform: cached
+        update.fetch_releases = lambda _platform: (_ for _ in ()).throw(AssertionError("should not fetch releases"))
+
+        original_time = update.time.time
+        original_current_version = update.current_version
+        try:
+            update.time.time = lambda: 2_000_000_100
+            update.current_version = lambda: "1.2.1-alpha4"
+            result = update.update_status("onion")
+        finally:
+            update.time.time = original_time
+            update.current_version = original_current_version
+
+        self.assertFalse(result.update_available)
+        self.assertIsNone(result.latest_version)
+
+    def test_dict_to_update_info_recomputes_cached_update_availability(self) -> None:
+        original_current_version = update.current_version
+        try:
+            update.current_version = lambda: "1.2.1-alpha4"
+            result = update.dict_to_update_info(
+                {
+                    "current_version": "1.2.0-alpha4",
+                    "update_available": True,
+                    "latest_version": "1.2.1-alpha4",
+                    "release_url": "https://example.com/release",
+                    "asset_url": "https://example.com/asset",
+                    "checked_at": 123,
+                }
+            )
+        finally:
+            update.current_version = original_current_version
+
+        self.assertEqual(result.current_version, "1.2.1-alpha4")
+        self.assertFalse(result.update_available)
+        self.assertIsNone(result.latest_version)
 
     def test_update_status_saves_platform_specific_result(self) -> None:
         saved = {}
@@ -206,8 +255,13 @@ class LinuxUpdateTests(unittest.TestCase):
         }
         update.load_cached_update_status = lambda _platform: cached
         update.fetch_releases = lambda _platform: None
+        original_current_version = update.current_version
 
-        result = update.update_status("onion", force=True)
+        try:
+            update.current_version = lambda: "1.0.0-alpha1"
+            result = update.update_status("onion", force=True)
+        finally:
+            update.current_version = original_current_version
 
         self.assertTrue(result.update_available)
         self.assertEqual(result.latest_version, "1.1.0-alpha1")
@@ -288,6 +342,38 @@ class LinuxUpdateTests(unittest.TestCase):
             self.assertEqual((app_dir / "new.txt").read_text(encoding="utf-8"), "new")
             self.assertEqual((app_dir / "data" / "proxy.sqlite3").read_text(encoding="utf-8"), "cached-db")
             self.assertEqual((app_dir / "launch.sh").stat().st_mode & 0o777, 0o755)
+
+    def test_install_onion_update_archive_clears_stale_update_status(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            app_dir = root / "RAOfflineProxy"
+            data_dir = app_dir / "data"
+            data_dir.mkdir(parents=True)
+            (data_dir / "update_status.json").write_text("stale", encoding="utf-8")
+
+            archive_path = root / "update.zip"
+            with zipfile.ZipFile(archive_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+                archive.writestr("App/RAOfflineProxy/common.sh", "APP_VERSION=v1.2.1-alpha1\n")
+                archive.writestr("App/RAOfflineProxy/data/proxy.sqlite3", "fresh-db")
+
+            original_current_version = update.current_version
+            try:
+                update.current_version = lambda: "1.2.0-alpha4"
+                update.install_onion_update_archive(archive_path, app_dir)
+            finally:
+                update.current_version = original_current_version
+
+            self.assertFalse((app_dir / "data" / "update_status.json").exists())
+
+    def test_knulli_install_script_clears_config_update_status(self) -> None:
+        install_script = Path(__file__).resolve().parents[1] / "knulli" / "scripts" / "install.sh"
+
+        contents = install_script.read_text(encoding="utf-8")
+
+        self.assertIn(
+            'UPDATE_STATUS_FILE="/userdata/system/.config/raofflineproxy/update_status.json"',
+            contents,
+        )
 
     def test_install_onion_update_archive_resets_data_for_major_upgrade(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

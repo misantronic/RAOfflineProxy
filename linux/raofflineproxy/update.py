@@ -383,6 +383,8 @@ def install_onion_update_archive(archive_path: Path, app_dir: Path) -> None:
         if preserved_data_dir.exists():
             shutil.rmtree(preserved_data_dir, ignore_errors=True)
 
+    clear_stale_update_status(app_dir)
+
 
 def should_preserve_onion_data(current_version_name: str, extracted_app_dir: Path) -> bool:
     current_parsed = parse_version(current_version_name)
@@ -431,6 +433,12 @@ def restore_archive_permissions(archive: zipfile.ZipFile, extract_root: Path) ->
             continue
 
         os.chmod(target_path, mode)
+
+
+def clear_stale_update_status(app_dir: Path) -> None:
+    update_status_path = app_dir / "data" / "update_status.json"
+    if update_status_path.exists():
+        update_status_path.unlink()
 
 
 def atomic_write_executable(path: Path, body: bytes, executable: bool = True) -> None:
@@ -517,11 +525,38 @@ def save_cached_update_status(platform: str, result: UpdateInfo) -> None:
 
 
 def dict_to_update_info(payload: dict) -> UpdateInfo:
+    current_version_name = current_version()
+    latest_version = str(payload.get("latest_version") or "") or None
+    release_url = str(payload.get("release_url") or "") or None
+    asset_url = str(payload.get("asset_url") or "") or None
+    cached_update_available = bool(payload.get("update_available"))
+    update_available = resolve_cached_update_available(
+        current_version_name,
+        latest_version,
+        cached_update_available,
+    )
+
     return UpdateInfo(
-        current_version=str(payload.get("current_version") or current_version()),
-        update_available=bool(payload.get("update_available")),
-        latest_version=str(payload.get("latest_version") or "") or None,
-        release_url=str(payload.get("release_url") or "") or None,
-        asset_url=str(payload.get("asset_url") or "") or None,
+        current_version=current_version_name,
+        update_available=update_available,
+        latest_version=latest_version if update_available else None,
+        release_url=release_url if update_available else None,
+        asset_url=asset_url if update_available else None,
         checked_at=int(payload.get("checked_at") or 0),
     )
+
+
+def resolve_cached_update_available(
+    current_version_name: str,
+    latest_version: str | None,
+    cached_update_available: bool,
+) -> bool:
+    if not latest_version:
+        return False
+
+    current_parsed = parse_version(current_version_name)
+    latest_parsed = parse_version(latest_version)
+    if current_parsed is None or latest_parsed is None:
+        return cached_update_available
+
+    return latest_parsed > current_parsed

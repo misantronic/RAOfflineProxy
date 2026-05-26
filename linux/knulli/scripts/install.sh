@@ -8,6 +8,7 @@ BIN_DIR="${BASE_DIR}/bin"
 TOOLS_DIR="/userdata/roms/tools"
 INSTALL_SCRIPT="${TOOLS_DIR}/RAOfflineProxy Install.sh"
 OLD_BIN="${BASE_DIR}/bin/raofflineproxy"
+UPDATE_STATUS_FILE="/userdata/system/.config/raofflineproxy/update_status.json"
 FB_WIDTH=0
 FB_HEIGHT=0
 WAS_RUNNING=0
@@ -32,6 +33,8 @@ cp -r "${SCRIPT_DIR}/app/"* "${APP_DIR}/"
 
 cp "${SCRIPT_DIR}/scripts/launcher-raofflineproxy" "${BIN_DIR}/raofflineproxy"
 cp "${SCRIPT_DIR}/scripts/launcher-raofflineproxy-uninstall" "${BIN_DIR}/raofflineproxy-uninstall"
+
+rm -f "${UPDATE_STATUS_FILE}"
 
 chmod +x "${BIN_DIR}/raofflineproxy"
 chmod +x "${BIN_DIR}/raofflineproxy-uninstall"
