@@ -1,4 +1,5 @@
 import unittest
+from unittest.mock import patch
 
 from linux.raofflineproxy import menu_sdl
 
@@ -189,6 +190,100 @@ class MenuLayoutTests(unittest.TestCase):
             )
             menu_sdl.MenuSdlSession.refresh_cached_games = original_refresh_cached_games
             menu_sdl.load_config = original_load_config
+
+    def test_refresh_main_menu_state_checks_update_only_on_force(self) -> None:
+        session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
+        session.view = "main"
+        session.main_state_refreshed_at = 0.0
+        session.main_update_available = False
+        session.main_update_version = None
+        session.main_update_asset_url = None
+        session.main_update_dialog_seen = False
+
+        update_calls = []
+
+        with (
+            patch.object(menu_sdl, "load_config", return_value={}),
+            patch.object(
+                menu_sdl.MenuSdlSession,
+                "read_proxy_running",
+                return_value=False,
+            ),
+            patch.object(menu_sdl, "online_check", return_value=True),
+            patch.object(
+                menu_sdl.MenuSdlSession,
+                "is_logged_in",
+                return_value=True,
+            ),
+            patch.object(menu_sdl, "autostart_supported", return_value=False),
+            patch.object(menu_sdl, "autostart_enabled", return_value=False),
+            patch.object(
+                menu_sdl,
+                "update_status",
+                side_effect=lambda platform: update_calls.append(platform)
+                or type(
+                    "Update",
+                    (),
+                    {
+                        "update_available": False,
+                        "latest_version": None,
+                        "asset_url": None,
+                    },
+                )(),
+            ),
+            patch.object(menu_sdl.time, "monotonic", side_effect=[100.0, 101.5]),
+        ):
+            menu_sdl.MenuSdlSession.refresh_main_menu_state(session, force=True)
+            menu_sdl.MenuSdlSession.refresh_main_menu_state(session, force=False)
+
+        self.assertEqual(update_calls, ["knulli"])
+
+    def test_refresh_main_menu_state_rechecks_update_when_forced_again(self) -> None:
+        session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
+        session.view = "main"
+        session.main_state_refreshed_at = 0.0
+        session.main_update_available = False
+        session.main_update_version = None
+        session.main_update_asset_url = None
+        session.main_update_dialog_seen = False
+
+        update_calls = []
+
+        with (
+            patch.object(menu_sdl, "load_config", return_value={}),
+            patch.object(
+                menu_sdl.MenuSdlSession,
+                "read_proxy_running",
+                return_value=False,
+            ),
+            patch.object(menu_sdl, "online_check", return_value=True),
+            patch.object(
+                menu_sdl.MenuSdlSession,
+                "is_logged_in",
+                return_value=True,
+            ),
+            patch.object(menu_sdl, "autostart_supported", return_value=False),
+            patch.object(menu_sdl, "autostart_enabled", return_value=False),
+            patch.object(
+                menu_sdl,
+                "update_status",
+                side_effect=lambda platform: update_calls.append(platform)
+                or type(
+                    "Update",
+                    (),
+                    {
+                        "update_available": False,
+                        "latest_version": None,
+                        "asset_url": None,
+                    },
+                )(),
+            ),
+            patch.object(menu_sdl.time, "monotonic", side_effect=[100.0, 101.5]),
+        ):
+            menu_sdl.MenuSdlSession.refresh_main_menu_state(session, force=True)
+            menu_sdl.MenuSdlSession.refresh_main_menu_state(session, force=True)
+
+        self.assertEqual(update_calls, ["knulli", "knulli"])
 
     def test_smart_cache_prompt_labels(self) -> None:
         session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
