@@ -787,6 +787,16 @@ class MenuLayoutTests(unittest.TestCase):
             ["Back"],
         )
 
+    def test_cache_progress_labels_show_abort_while_running(self) -> None:
+        session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
+        session.view = "cache_progress"
+        session.cache_completed = False
+
+        self.assertEqual(
+            menu_sdl.MenuSdlSession.labels(session, running=False),
+            ["Abort"],
+        )
+
     def test_cache_progress_status_uses_completion_message_when_done(self) -> None:
         session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
         session.view = "cache_progress"
@@ -808,6 +818,67 @@ class MenuLayoutTests(unittest.TestCase):
         menu_sdl.MenuSdlSession.activate_selected(session)
 
         self.assertTrue(session.finished)
+
+    def test_activate_selected_aborts_cache_progress_when_running(self) -> None:
+        session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
+        session.view = "cache_progress"
+        session.cache_completed = False
+        session.selected_index = 0
+        session.abort_cache_progress = lambda: setattr(session, "aborted", True)
+
+        menu_sdl.MenuSdlSession.activate_selected(session)
+
+        self.assertTrue(session.aborted)
+
+    def test_abort_cache_progress_sets_abort_state(self) -> None:
+        session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
+        session.cache_completed = False
+        session.cache_abort_requested = False
+        session.cache_progress_text = "Caching 1/4: Tetris"
+
+        menu_sdl.MenuSdlSession.abort_cache_progress(session)
+
+        self.assertTrue(session.cache_abort_requested)
+        self.assertEqual(session.cache_progress_text, "Aborting...")
+
+    def test_start_single_rom_cache_shows_abort_menu_while_running(self) -> None:
+        session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
+        session.save_browser_position = lambda: None
+        session.browser_dir = Path("/roms")
+
+        original_load_config = menu_sdl.load_config
+        original_add_rom_to_cache = menu_sdl.add_rom_to_cache
+        original_thread = menu_sdl.threading.Thread
+        try:
+            menu_sdl.load_config = lambda: {}
+            menu_sdl.add_rom_to_cache = lambda *_args, **_kwargs: (_ for _ in ()).throw(
+                AssertionError("worker should not run in this test")
+            )
+
+            class FakeThread:
+                def __init__(self, target, daemon):
+                    self.target = target
+                    self.daemon = daemon
+
+                def start(self):
+                    setattr(session, "thread_started", True)
+
+            menu_sdl.threading.Thread = FakeThread
+
+            menu_sdl.MenuSdlSession.start_single_rom_cache(
+                session,
+                Path("/roms/game.gba"),
+            )
+
+            self.assertEqual(session.view, "cache_progress")
+            self.assertEqual(
+                menu_sdl.MenuSdlSession.labels(session, running=False),
+                ["Abort"],
+            )
+        finally:
+            menu_sdl.load_config = original_load_config
+            menu_sdl.add_rom_to_cache = original_add_rom_to_cache
+            menu_sdl.threading.Thread = original_thread
 
     def test_is_logged_in_uses_cached_main_menu_state_without_config(self) -> None:
         session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)

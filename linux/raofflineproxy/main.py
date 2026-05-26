@@ -1,6 +1,7 @@
 import argparse
 import json
 import logging
+import os
 import sys
 from pathlib import Path
 
@@ -57,6 +58,11 @@ from .update import update_status
 
 STALE_HOOK_PATH = Path("/userdata/system/scripts/RAOfflineProxy_game_hook.sh")
 LOGGER = logging.getLogger("raofflineproxy")
+
+
+def should_abort_from_env() -> bool:
+    abort_file = os.environ.get("RAOFFLINEPROXY_ABORT_FILE")
+    return bool(abort_file) and Path(abort_file).exists()
 
 
 def remove_stale_hook() -> None:
@@ -468,6 +474,7 @@ def main() -> None:
                     storage,
                     config_data,
                     current_dir,
+                    should_abort=should_abort_from_env,
                     on_progress=on_progress,
                 )
             finally:
@@ -555,6 +562,7 @@ def main() -> None:
                     storage,
                     config_data,
                     SMART_CACHE_LIMIT,
+                    should_abort=should_abort_from_env,
                     on_progress=on_progress,
                 )
                 print(

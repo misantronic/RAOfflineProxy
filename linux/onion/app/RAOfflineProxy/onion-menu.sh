@@ -299,26 +299,42 @@ run_cache_progress_flow() {
     result_line=
     backend_rc=0
     output_fifo=
+    output_file=
     backend_rc_file=
+    abort_file=
     backend_pid=
+    read_pid=
+    aborted=0
+    progress_line_one="${title}: 0 / ${total_count:-0}"
+    progress_line_two='Preparing...'
     temp_root="${TMPDIR:-/tmp}"
 
-    clear
-    printf 'RAOfflineProxy\n\n'
-    printf '%s: 0 / %s\n' "$title" "${total_count:-0}"
-    printf 'Preparing...\n'
+    render_cache_progress_screen() {
+        clear
+        printf 'RAOfflineProxy\n\n'
+        printf '%s\n' "$progress_line_one"
+        printf '%s\n\n' "$progress_line_two"
+        printf 'Press A to Abort...\n'
+    }
+
+    render_cache_progress_screen
 
     output_fifo="$(mktemp -u "$temp_root/raofflineproxy-cache-progress.XXXXXX")"
+    output_file="$(mktemp "$temp_root/raofflineproxy-cache-progress-output.XXXXXX")"
     backend_rc_file="$(mktemp "$temp_root/raofflineproxy-cache-progress-rc.XXXXXX")"
+    abort_file="$(mktemp "$temp_root/raofflineproxy-cache-progress-abort.XXXXXX")"
+    rm -f "$abort_file"
     mkfifo "$output_fifo"
 
     if [ -n "$target_path" ]; then
         (
+            export RAOFFLINEPROXY_ABORT_FILE="$abort_file"
             run_backend_raw "$PYTHON_BIN" "$command_name" --path "$target_path"
             printf '%s\n' "$?" > "$backend_rc_file"
         ) > "$output_fifo" 2>&1 &
     else
         (
+            export RAOFFLINEPROXY_ABORT_FILE="$abort_file"
             run_backend_raw "$PYTHON_BIN" "$command_name"
             printf '%s\n' "$?" > "$backend_rc_file"
         ) > "$output_fifo" 2>&1 &
@@ -326,33 +342,83 @@ run_cache_progress_flow() {
     backend_pid=$!
 
     while IFS= read -r line || [ -n "$line" ]; do
-        case "$line" in
-            *'"type":"progress"'*)
-                scanned="$(printf '%s' "$line" | "$PYTHON_BIN" -c 'import json, sys; print(json.loads(sys.stdin.read()).get("scanned", 0))')"
-                total="$(printf '%s' "$line" | "$PYTHON_BIN" -c 'import json, sys; print(json.loads(sys.stdin.read()).get("total", 0))')"
-                current_label="$(printf '%s' "$line" | "$PYTHON_BIN" -c 'import json, sys; print(json.loads(sys.stdin.read()).get("current_label", "..."))')"
-                clear
-                printf 'RAOfflineProxy\n\n'
-                printf '%s: %s / %s\n' "$title" "${scanned:-0}" "${total:-0}"
-                printf 'Current: %s\n' "${current_label:-...}"
+        printf '%s\n' "$line" >> "$output_file"
+    done < "$output_fifo" &
+    read_pid=$!
+
+    saved_tty="$(stty -g < /dev/tty)"
+    while kill -0 "$backend_pid" >/dev/null 2>&1; do
+        if [ -f "$output_file" ]; then
+            while IFS= read -r line || [ -n "$line" ]; do
+                case "$line" in
+                    *'"type":"progress"'*)
+                        scanned="$(printf '%s' "$line" | "$PYTHON_BIN" -c 'import json, sys; print(json.loads(sys.stdin.read()).get("scanned", 0))')"
+                        total="$(printf '%s' "$line" | "$PYTHON_BIN" -c 'import json, sys; print(json.loads(sys.stdin.read()).get("total", 0))')"
+                        current_label="$(printf '%s' "$line" | "$PYTHON_BIN" -c 'import json, sys; print(json.loads(sys.stdin.read()).get("current_label", "..."))')"
+                        progress_line_one="${title}: ${scanned:-0} / ${total:-0}"
+                        progress_line_two="Current: ${current_label:-...}"
+                        render_cache_progress_screen
+                        ;;
+                    *'"type":"result"'*)
+                        result_line="$line"
+                        ;;
+                    *)
+                        progress_line_one='RAOfflineProxy'
+                        progress_line_two="$line"
+                        render_cache_progress_screen
+                        ;;
+                esac
+            done < "$output_file"
+            : > "$output_file"
+        fi
+
+        stty -echo -icanon min 0 time 1 < /dev/tty
+        key="$(read_byte_hex)"
+        case "$key" in
+            0d|0a|20|61|41|73|53)
+                aborted=1
+                : > "$abort_file"
+                progress_line_two='Aborting...'
+                render_cache_progress_screen
+                break
                 ;;
-            *'"type":"result"'*)
-                result_line="$line"
-                ;;
-            *)
-                clear
-                printf 'RAOfflineProxy\n\n'
-                printf '%s\n' "$line"
+            1b)
+                sequence="$(read_escape_sequence)"
+                case "$sequence" in
+                esac
                 ;;
         esac
-    done < "$output_fifo"
+    done
+    stty "$saved_tty" < /dev/tty
+    drain_tty "$saved_tty"
 
     wait "$backend_pid" >/dev/null 2>&1 || true
+    if [ -n "$read_pid" ]; then
+        wait "$read_pid" >/dev/null 2>&1 || true
+    fi
     if ! IFS= read -r backend_rc < "$backend_rc_file"; then
         backend_rc=1
     fi
 
-    rm -f "$output_fifo" "$backend_rc_file"
+    if [ -f "$output_file" ]; then
+        while IFS= read -r line || [ -n "$line" ]; do
+            case "$line" in
+                *'"type":"result"'*)
+                    result_line="$line"
+                    ;;
+            esac
+        done < "$output_file"
+    fi
+
+    rm -f "$output_fifo" "$output_file" "$backend_rc_file" "$abort_file"
+
+    if [ "$aborted" -eq 1 ]; then
+        clear
+        printf 'RAOfflineProxy\n\n'
+        printf '%s aborted\n' "$title"
+        pause_prompt
+        return 1
+    fi
 
     if [ "$backend_rc" -ne 0 ]; then
         pause_prompt
