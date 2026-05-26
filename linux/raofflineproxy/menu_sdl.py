@@ -207,6 +207,7 @@ class MenuSdlSession:
         self.cache_progress_title: str | None = None
         self.cache_result: tuple[str, float] | None = None
         self.cache_worker_thread: threading.Thread | None = None
+        self.cache_abort_requested = False
         self.cache_completed = False
         self.cache_completion_message: str | None = None
         self.cache_return_view = "cached_games"
@@ -353,7 +354,7 @@ class MenuSdlSession:
             return ["Start Smart Cache", "Skip"]
 
         if self.view == "cache_progress":
-            return ["Back"] if getattr(self, "cache_completed", False) else []
+            return ["Back"] if getattr(self, "cache_completed", False) else ["Abort"]
 
         if self.view == "update_prompt":
             return ["Download and install", "Later"]
@@ -615,8 +616,11 @@ class MenuSdlSession:
             return
 
         if self.view == "cache_progress":
-            if getattr(self, "cache_completed", False) and self.selected_index == 0:
-                self.finish_cache_progress()
+            if self.selected_index == 0:
+                if getattr(self, "cache_completed", False):
+                    self.finish_cache_progress()
+                else:
+                    self.abort_cache_progress()
             return
 
         labels = self.current_labels()
@@ -826,6 +830,7 @@ class MenuSdlSession:
         self.cache_progress_title = f"Caching: {path.name}"
         self.cache_progress_text = "Preparing cache..."
         self.cache_result = None
+        self.cache_abort_requested = False
         self.cache_completed = False
         self.cache_completion_message = None
         self.cache_return_view = "file_browser"
@@ -836,9 +841,14 @@ class MenuSdlSession:
         def worker() -> None:
             try:
                 result = add_rom_to_cache(path, self.storage, load_config())
+                aborted = self.cache_abort_requested
                 self.cache_result = (result.message, time.monotonic() + 1.5)
                 self.cache_completion_message = (
-                    "Scanned 1, cached 1, skipped 0"
+                    "Aborted: scanned 1, cached 1, skipped 0"
+                    if aborted and result.success
+                    else "Aborted: scanned 1, cached 0, skipped 1"
+                    if aborted
+                    else "Scanned 1, cached 1, skipped 0"
                     if result.success
                     else "Scanned 1, cached 0, skipped 1"
                 )
@@ -848,6 +858,8 @@ class MenuSdlSession:
                     f"Cache failed: {exc}",
                     time.monotonic() + ERROR_SECONDS,
                 )
+                self.cache_completion_message = f"Cache failed: {exc}"
+                self.cache_completed = True
             finally:
                 if self.view == "cache_progress":
                     self.cache_progress_text = None
@@ -870,6 +882,7 @@ class MenuSdlSession:
         else:
             self.cache_progress_text = "Preparing cache..."
         self.cache_result = None
+        self.cache_abort_requested = False
         self.cache_completed = False
         self.cache_completion_message = None
         self.cache_return_view = "cached_games"
@@ -884,6 +897,7 @@ class MenuSdlSession:
                     load_config(),
                     current_dir,
                     paths=cache_paths,
+                    should_abort=lambda: self.cache_abort_requested,
                     on_progress=self.update_cache_progress,
                 )
                 if result.total <= 0:
@@ -891,7 +905,11 @@ class MenuSdlSession:
                         "No ROM files in this folder",
                         time.monotonic() + ERROR_SECONDS,
                     )
-                    self.cache_completion_message = "Scanned 0, cached 0, skipped 0"
+                    self.cache_completion_message = (
+                        "Aborted: scanned 0, cached 0, skipped 0"
+                        if self.cache_abort_requested
+                        else "Scanned 0, cached 0, skipped 0"
+                    )
                     self.cache_completed = True
                 else:
                     self.cache_result = (
@@ -899,7 +917,9 @@ class MenuSdlSession:
                         time.monotonic() + 1.5,
                     )
                     self.cache_completion_message = (
-                        f"Scanned {result.scanned}, cached {result.cached}, skipped {result.skipped}"
+                        f"Aborted: scanned {result.scanned}, cached {result.cached}, skipped {result.skipped}"
+                        if self.cache_abort_requested
+                        else f"Scanned {result.scanned}, cached {result.cached}, skipped {result.skipped}"
                     )
                     self.cache_completed = True
             except Exception as exc:
@@ -907,6 +927,8 @@ class MenuSdlSession:
                     f"Folder cache failed: {exc}",
                     time.monotonic() + ERROR_SECONDS,
                 )
+                self.cache_completion_message = f"Folder cache failed: {exc}"
+                self.cache_completed = True
             finally:
                 if self.view == "cache_progress":
                     self.cache_progress_text = None
@@ -926,6 +948,7 @@ class MenuSdlSession:
         self.cache_result = None
         self.cache_progress_text = None
         self.cache_progress_title = None
+        self.cache_abort_requested = False
         self.cache_completed = False
         self.cache_completion_message = None
         self.cache_return_view = "cached_games"
@@ -943,6 +966,14 @@ class MenuSdlSession:
             return
         self.view = "cached_games"
         self.restore_view_position("cached_games")
+
+    def abort_cache_progress(self) -> None:
+        if self.cache_completed:
+            self.finish_cache_progress()
+            return
+
+        self.cache_abort_requested = True
+        self.cache_progress_text = "Aborting..."
 
     def go_back(self) -> None:
         if self.view == "file_browser":
@@ -1230,6 +1261,7 @@ class MenuSdlSession:
         else:
             self.cache_progress_text = "Preparing cache..."
         self.cache_completed = False
+        self.cache_abort_requested = False
         self.cache_completion_message = None
         self.cache_return_view = "main"
         self.cache_return_browser_dir = None
@@ -1245,10 +1277,13 @@ class MenuSdlSession:
                     self.storage,
                     self.config_data,
                     SMART_CACHE_LIMIT,
+                    should_abort=lambda: self.cache_abort_requested,
                     on_progress=self.update_smart_cache_progress,
                 )
                 self.cache_completion_message = (
-                    f"Scanned {result.scanned}, cached {result.cached}, skipped {result.skipped}"
+                    f"Aborted: scanned {result.scanned}, cached {result.cached}, skipped {result.skipped}"
+                    if self.cache_abort_requested
+                    else f"Scanned {result.scanned}, cached {result.cached}, skipped {result.skipped}"
                 )
                 self.cache_completed = True
             except Exception as exc:

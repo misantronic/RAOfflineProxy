@@ -92,6 +92,7 @@ def run_smart_cache(
     storage: Storage,
     config_data: dict,
     limit: int = SMART_CACHE_LIMIT,
+    should_abort=None,
     on_progress=None,
 ) -> SmartCacheResult:
     return run_cache_paths(
@@ -99,6 +100,7 @@ def run_smart_cache(
         config_data,
         load_content_history_paths(config_data),
         limit=limit,
+        should_abort=should_abort,
         on_progress=on_progress,
     )
 
@@ -108,6 +110,7 @@ def run_folder_cache(
     config_data: dict,
     current_dir: Path,
     paths: list[Path] | None = None,
+    should_abort=None,
     on_progress=None,
 ) -> SmartCacheResult:
     return run_cache_paths(
@@ -115,6 +118,7 @@ def run_folder_cache(
         config_data,
         list_browser_files_fast(current_dir) if paths is None else paths,
         limit=MAX_CACHED_GAMES,
+        should_abort=should_abort,
         on_progress=on_progress,
     )
 
@@ -125,6 +129,7 @@ def run_cache_paths(
     paths: list[Path],
     *,
     limit: int,
+    should_abort=None,
     on_progress=None,
 ) -> SmartCacheResult:
     total = min(len(paths), limit, MAX_CACHED_GAMES)
@@ -132,6 +137,9 @@ def run_cache_paths(
     scanned = 0
 
     for path in paths[:total]:
+        if should_abort is not None and should_abort():
+            break
+
         if len(list_cached_games(storage)) >= MAX_CACHED_GAMES or cached >= limit:
             break
 
@@ -150,6 +158,9 @@ def run_cache_paths(
         result = add_rom_to_cache(path, storage, config_data)
         if result.success:
             cached += 1
+
+        if should_abort is not None and should_abort():
+            break
 
         if scanned < total:
             time.sleep(SMART_CACHE_DELAY_SECONDS)
