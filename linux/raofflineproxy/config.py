@@ -143,23 +143,17 @@ def detect_retroarch_cfg() -> str:
     if env_override:
         return env_override
 
+    if Path("/userdata").exists():
+        return str(Path("/userdata/system/configs/retroarch/retroarchcustom.cfg"))
+
     candidates = [
         Path("/mnt/SDCARD/RetroArch/.retroarch/retroarch.cfg"),
-        Path("/mnt/SDCARD/.tmp_update/config/retroarch.cfg"),
-        Path("/userdata/system/configs/retroarch/retroarchcustom.cfg"),
-        Path("/userdata/system/configs/retroarch/retroarch.cfg"),
-        Path("/userdata/system/.config/retroarch/retroarchcustom.cfg"),
-        Path("/userdata/system/.config/retroarch/retroarch.cfg"),
-        Path("/storage/.config/retroarch/retroarch.cfg"),
         Path.home() / ".config" / "retroarch" / "retroarch.cfg",
     ]
 
     for candidate in candidates:
         if candidate.exists():
             return str(candidate)
-
-    if Path("/userdata").exists():
-        return str(Path("/userdata/system/configs/retroarch/retroarchcustom.cfg"))
 
     if Path("/storage").exists():
         return str(Path("/storage/.config/retroarch/retroarch.cfg"))
