@@ -28,12 +28,12 @@ class LinuxUpdateTests(unittest.TestCase):
         self._original_configured_ssl_context = update.configured_ssl_context
 
     def test_parse_version_accepts_alpha(self) -> None:
-        parsed = update.parse_version("1.2.0-alpha1")
+        parsed = update.parse_version("1.2.1-alpha1")
 
         self.assertIsNotNone(parsed)
         self.assertEqual(parsed.major, 1)
         self.assertEqual(parsed.minor, 2)
-        self.assertEqual(parsed.patch, 0)
+        self.assertEqual(parsed.patch, 1)
         self.assertEqual(parsed.stage_rank, 0)
         self.assertEqual(parsed.stage_number, 1)
 
@@ -48,8 +48,8 @@ class LinuxUpdateTests(unittest.TestCase):
         asset_url = update.find_platform_asset_url(
             "knulli",
             [
-                {"name": "RAOfflineProxy-Onion-v1.2.0-alpha1.zip", "browser_download_url": "https://example.com/onion.zip"},
-                {"name": "RAOfflineProxy-Knulli-v1.2.0-alpha1-Install.sh", "browser_download_url": "https://example.com/knulli.sh"},
+                {"name": "RAOfflineProxy-Onion-v1.2.1-alpha1.zip", "browser_download_url": "https://example.com/onion.zip"},
+                {"name": "RAOfflineProxy-Knulli-v1.2.1-alpha1-Install.sh", "browser_download_url": "https://example.com/knulli.sh"},
             ],
         )
 
@@ -59,8 +59,8 @@ class LinuxUpdateTests(unittest.TestCase):
         asset_url = update.find_platform_asset_url(
             "onion",
             [
-                {"name": "RAOfflineProxy-Knulli-v1.2.0-alpha1-Install.sh", "browser_download_url": "https://example.com/knulli.sh"},
-                {"name": "RAOfflineProxy-Onion-v1.2.0-alpha1.zip", "browser_download_url": "https://example.com/onion.zip"},
+                {"name": "RAOfflineProxy-Knulli-v1.2.1-alpha1-Install.sh", "browser_download_url": "https://example.com/knulli.sh"},
+                {"name": "RAOfflineProxy-Onion-v1.2.1-alpha1.zip", "browser_download_url": "https://example.com/onion.zip"},
             ],
         )
 
@@ -70,13 +70,13 @@ class LinuxUpdateTests(unittest.TestCase):
         onion_asset_url = update.find_platform_asset_url(
             "onion",
             [
-                {"name": "RAOfflineProxy-Onion-v1.2.0-alpha1.sh", "browser_download_url": "https://example.com/onion.sh"}
+                {"name": "RAOfflineProxy-Onion-v1.2.1-alpha1.sh", "browser_download_url": "https://example.com/onion.sh"}
             ],
         )
         knulli_asset_url = update.find_platform_asset_url(
             "knulli",
             [
-                {"name": "RAOfflineProxy-Knulli-v1.2.0-alpha1.zip", "browser_download_url": "https://example.com/knulli.zip"}
+                {"name": "RAOfflineProxy-Knulli-v1.2.1-alpha1.zip", "browser_download_url": "https://example.com/knulli.zip"}
             ],
         )
 
@@ -92,8 +92,8 @@ class LinuxUpdateTests(unittest.TestCase):
                 asset_url="https://example.com/asset-old",
             ),
             update.ReleaseCandidate(
-                version_name="1.2.0-alpha1",
-                parsed_version=update.parse_version("1.2.0-alpha1"),
+                version_name="1.2.1-alpha1",
+                parsed_version=update.parse_version("1.2.1-alpha1"),
                 release_url="https://example.com/release-new",
                 asset_url="https://example.com/asset-new",
             ),
@@ -103,7 +103,7 @@ class LinuxUpdateTests(unittest.TestCase):
 
         self.assertTrue(succeeded)
         self.assertIsNotNone(latest)
-        self.assertEqual(latest.version_name, "1.2.0-alpha1")
+        self.assertEqual(latest.version_name, "1.2.1-alpha1")
 
     def test_fetch_latest_release_prefers_stable_over_beta_and_alpha(self) -> None:
         update.fetch_releases = lambda _platform: [
@@ -158,7 +158,7 @@ class LinuxUpdateTests(unittest.TestCase):
         cached = {
             "current_version": "1.1.0-alpha1",
             "update_available": True,
-            "latest_version": "1.2.0-alpha1",
+            "latest_version": "1.2.1-alpha1",
             "release_url": "https://example.com/release",
             "asset_url": "https://example.com/asset",
             "checked_at": 2_000_000_000,
@@ -174,7 +174,7 @@ class LinuxUpdateTests(unittest.TestCase):
             update.time.time = original_time
 
         self.assertTrue(result.update_available)
-        self.assertEqual(result.latest_version, "1.2.0-alpha1")
+        self.assertEqual(result.latest_version, "1.2.1-alpha1")
 
     def test_update_status_saves_platform_specific_result(self) -> None:
         saved = {}
@@ -305,7 +305,7 @@ class LinuxUpdateTests(unittest.TestCase):
 
             original_current_version = update.current_version
             try:
-                update.current_version = lambda: "1.2.0-alpha1"
+                update.current_version = lambda: "1.2.1-alpha1"
                 update.install_onion_update_archive(archive_path, app_dir)
             finally:
                 update.current_version = original_current_version
@@ -341,11 +341,11 @@ class LinuxUpdateTests(unittest.TestCase):
                     [
                         {
                             "draft": False,
-                            "tag_name": "v1.2.0-alpha1",
+                            "tag_name": "v1.2.1-alpha1",
                             "html_url": "https://example.com/release",
                             "assets": [
                                 {
-                                    "name": "RAOfflineProxy-Onion-v1.2.0-alpha1.zip",
+                                    "name": "RAOfflineProxy-Onion-v1.2.1-alpha1.zip",
                                     "browser_download_url": "https://example.com/onion.zip",
                                 }
                             ],
