@@ -70,6 +70,15 @@ CACHED_GAMES_COUNT=0
 CACHED_GAMES_CONTENT=
 CACHED_GAMES_SELECTED_INDEX=1
 CACHED_GAMES_SCROLL_OFFSET=0
+CACHED_GAME_ACTIONS_TITLE=
+CACHED_GAME_ACTIONS_GAME_ID=0
+CACHED_GAME_ACTIONS_UNLOCKS_CONTENT=
+CACHED_GAME_ACTIONS_UNLOCKS_COUNT=0
+CACHED_GAME_ACTIONS_SELECTED_INDEX=1
+CACHED_GAME_ACTIONS_SCROLL_OFFSET=0
+CACHED_GAME_ACTIONS_REDRAW=full
+CACHED_GAME_ACTIONS_PREVIOUS_SELECTION_INDEX=1
+CACHED_GAME_ACTIONS_CURRENT_SELECTION_INDEX=1
 
 browser_cleanup() {
     :
@@ -551,7 +560,7 @@ show_cached_games_view() {
         key="$(read_byte_hex)"
         case "$key" in
             0d|0a|20|61|41|73|53)
-                cached_games_remove_selected
+                open_cached_game_actions_view
                 if ! cached_games_reload; then
                     stty "$saved_tty" < /dev/tty
                     drain_tty "$saved_tty"
@@ -603,6 +612,228 @@ show_cached_games_view() {
                         ;;
                     5b42|4f42)
                         cached_games_move_selection down
+                        drain_tty "$saved_tty"
+                        ;;
+                    5b44|4f44)
+                        stty "$saved_tty" < /dev/tty
+                        drain_tty "$saved_tty"
+                        return 0
+                        ;;
+                esac
+                ;;
+        esac
+    done
+}
+
+load_cached_game_actions_unlocks() {
+    game_id="$1"
+    if ! CACHED_GAME_ACTIONS_UNLOCKS_CONTENT="$(run_backend_raw "$PYTHON_BIN" cached-unlock-titles --game-id "$game_id" 2>/dev/null)"; then
+        CACHED_GAME_ACTIONS_UNLOCKS_CONTENT=
+        CACHED_GAME_ACTIONS_UNLOCKS_COUNT=0
+        return 1
+    fi
+
+    if [ -z "$CACHED_GAME_ACTIONS_UNLOCKS_CONTENT" ]; then
+        CACHED_GAME_ACTIONS_UNLOCKS_COUNT=0
+        return 0
+    fi
+
+    count=$(printf '%s\n' "$CACHED_GAME_ACTIONS_UNLOCKS_CONTENT" | wc -l | tr -d ' ')
+    CACHED_GAME_ACTIONS_UNLOCKS_COUNT=${count:-0}
+    return 0
+}
+
+cached_game_actions_unlock_line() {
+    index="$1"
+    printf '%s\n' "$CACHED_GAME_ACTIONS_UNLOCKS_CONTENT" | sed -n "${index}p"
+}
+
+render_cached_game_actions_row() {
+    index="$1"
+    screen_row=$((BROWSER_LIST_TOP_ROW + index - CACHED_GAME_ACTIONS_SCROLL_OFFSET - 1))
+
+    if [ "$screen_row" -lt "$BROWSER_LIST_TOP_ROW" ] || [ "$screen_row" -ge $((BROWSER_LIST_TOP_ROW + BROWSER_VISIBLE_COUNT)) ]; then
+        return 0
+    fi
+
+    printf '\033[%s;1H' "$screen_row"
+
+    if [ "$CACHED_GAME_ACTIONS_UNLOCKS_COUNT" -eq 0 ] && [ "$index" -eq 1 ]; then
+        marker=' '
+        if [ "$index" -eq "$CACHED_GAME_ACTIONS_SELECTED_INDEX" ]; then
+            marker='>'
+        fi
+        printf '%s No cached unlocks\033[K' "$marker"
+        return 0
+    fi
+
+    line="$(cached_game_actions_unlock_line "$index")"
+    marker=' '
+    if [ "$index" -eq "$CACHED_GAME_ACTIONS_SELECTED_INDEX" ]; then
+        marker='>'
+    fi
+    printf '%s %s\033[K' "$marker" "$(truncate_text "$line" $((BROWSER_TERM_COLUMNS - 2)))"
+}
+
+render_cached_game_actions_list() {
+    printf '\033[%s;1H' "$BROWSER_LIST_TOP_ROW"
+    line_index=1
+    printed=0
+    start_index=$((CACHED_GAME_ACTIONS_SCROLL_OFFSET + 1))
+    end_index=$((CACHED_GAME_ACTIONS_SCROLL_OFFSET + BROWSER_VISIBLE_COUNT))
+
+    if [ "$CACHED_GAME_ACTIONS_UNLOCKS_COUNT" -eq 0 ]; then
+        render_cached_game_actions_row 1
+        printf '\n'
+        printed=1
+    else
+        while [ "$line_index" -le "$CACHED_GAME_ACTIONS_UNLOCKS_COUNT" ]; do
+            if [ "$line_index" -ge "$start_index" ] && [ "$line_index" -le "$end_index" ]; then
+                render_cached_game_actions_row "$line_index"
+                printf '\n'
+                printed=$((printed + 1))
+            fi
+            line_index=$((line_index + 1))
+        done
+    fi
+
+    while [ "$printed" -lt "$BROWSER_VISIBLE_COUNT" ]; do
+        printf '\033[K\n'
+        printed=$((printed + 1))
+    done
+}
+
+render_cached_game_actions_help() {
+    printf '\033[%s;1H' "$((BROWSER_LIST_TOP_ROW + BROWSER_VISIBLE_COUNT + 1))"
+    printf '\033[K\n'
+    printf 'Use D-Pad up/down to move.\033[K\n'
+    printf 'Press LEFT to go back.\033[K\n'
+    printf 'Press L2 to remove this game from cache.\033[K\n'
+    printf '\033[J'
+}
+
+render_cached_game_actions_full() {
+    printf '\033[2J\033[H'
+    printf 'RAOfflineProxy > %s\033[K\n\n' "$CACHED_GAME_ACTIONS_TITLE"
+    render_cached_game_actions_list
+    render_cached_game_actions_help
+}
+
+render_cached_game_actions_selection_change() {
+    previous_index="$1"
+    current_index="$2"
+    render_cached_game_actions_row "$previous_index"
+    render_cached_game_actions_row "$current_index"
+}
+
+cached_game_actions_move_selection() {
+    direction="$1"
+    if [ "$CACHED_GAME_ACTIONS_UNLOCKS_COUNT" -le 1 ]; then
+        return 0
+    fi
+
+    previous_index="$CACHED_GAME_ACTIONS_SELECTED_INDEX"
+    previous_scroll="$CACHED_GAME_ACTIONS_SCROLL_OFFSET"
+
+    if [ "$direction" = "down" ]; then
+        if [ "$CACHED_GAME_ACTIONS_SELECTED_INDEX" -ge "$CACHED_GAME_ACTIONS_UNLOCKS_COUNT" ]; then
+            CACHED_GAME_ACTIONS_SELECTED_INDEX=1
+            CACHED_GAME_ACTIONS_SCROLL_OFFSET=0
+        else
+            CACHED_GAME_ACTIONS_SELECTED_INDEX=$((CACHED_GAME_ACTIONS_SELECTED_INDEX + 1))
+            if [ "$CACHED_GAME_ACTIONS_SELECTED_INDEX" -gt $((CACHED_GAME_ACTIONS_SCROLL_OFFSET + BROWSER_VISIBLE_COUNT)) ]; then
+                CACHED_GAME_ACTIONS_SCROLL_OFFSET=$((CACHED_GAME_ACTIONS_SELECTED_INDEX - BROWSER_VISIBLE_COUNT))
+            fi
+        fi
+    else
+        if [ "$CACHED_GAME_ACTIONS_SELECTED_INDEX" -le 1 ]; then
+            CACHED_GAME_ACTIONS_SELECTED_INDEX="$CACHED_GAME_ACTIONS_UNLOCKS_COUNT"
+            if [ "$CACHED_GAME_ACTIONS_UNLOCKS_COUNT" -gt "$BROWSER_VISIBLE_COUNT" ]; then
+                CACHED_GAME_ACTIONS_SCROLL_OFFSET=$((CACHED_GAME_ACTIONS_UNLOCKS_COUNT - BROWSER_VISIBLE_COUNT))
+            else
+                CACHED_GAME_ACTIONS_SCROLL_OFFSET=0
+            fi
+        else
+            CACHED_GAME_ACTIONS_SELECTED_INDEX=$((CACHED_GAME_ACTIONS_SELECTED_INDEX - 1))
+            if [ "$CACHED_GAME_ACTIONS_SELECTED_INDEX" -le "$CACHED_GAME_ACTIONS_SCROLL_OFFSET" ]; then
+                CACHED_GAME_ACTIONS_SCROLL_OFFSET=$((CACHED_GAME_ACTIONS_SELECTED_INDEX - 1))
+            fi
+        fi
+    fi
+
+    if [ "$previous_scroll" -eq "$CACHED_GAME_ACTIONS_SCROLL_OFFSET" ]; then
+        CACHED_GAME_ACTIONS_REDRAW=selection
+        CACHED_GAME_ACTIONS_PREVIOUS_SELECTION_INDEX="$previous_index"
+        CACHED_GAME_ACTIONS_CURRENT_SELECTION_INDEX="$CACHED_GAME_ACTIONS_SELECTED_INDEX"
+    else
+        CACHED_GAME_ACTIONS_REDRAW=list
+    fi
+}
+
+cached_game_actions_remove_game() {
+    if [ "$CACHED_GAME_ACTIONS_GAME_ID" -le 0 ]; then
+        return 1
+    fi
+    clear
+    printf 'RAOfflineProxy > Cached game\n\n'
+    if run_backend "$PYTHON_BIN" remove-cached-game --game-id "$CACHED_GAME_ACTIONS_GAME_ID"; then
+        printf '\n'
+        pause_prompt
+        return 0
+    fi
+
+    pause_prompt
+    return 1
+}
+
+open_cached_game_actions_view() {
+    game_id="$(cached_games_selected_game_id)" || return 0
+    selected_line="$(cached_games_entry_line "$CACHED_GAMES_SELECTED_INDEX")"
+    CACHED_GAME_ACTIONS_TITLE="$(cached_games_display_text "$selected_line")"
+    CACHED_GAME_ACTIONS_GAME_ID="$game_id"
+    CACHED_GAME_ACTIONS_SELECTED_INDEX=1
+    CACHED_GAME_ACTIONS_SCROLL_OFFSET=0
+    CACHED_GAME_ACTIONS_REDRAW=full
+    load_cached_game_actions_unlocks "$game_id" || true
+
+    saved_tty="$(stty -g < /dev/tty)"
+    while :; do
+        case "$CACHED_GAME_ACTIONS_REDRAW" in
+            full)
+                render_cached_game_actions_full
+                ;;
+            selection)
+                render_cached_game_actions_selection_change "$CACHED_GAME_ACTIONS_PREVIOUS_SELECTION_INDEX" "$CACHED_GAME_ACTIONS_CURRENT_SELECTION_INDEX"
+                ;;
+            list)
+                render_cached_game_actions_list
+                ;;
+        esac
+        CACHED_GAME_ACTIONS_REDRAW=
+
+        stty -echo -icanon min 1 time 0 < /dev/tty
+        key="$(read_byte_hex)"
+        case "$key" in
+            09)
+                cached_game_actions_remove_game || true
+                stty "$saved_tty" < /dev/tty
+                drain_tty "$saved_tty"
+                return 0
+                ;;
+            1b)
+                sequence="$(read_escape_sequence)"
+                if [ -z "$sequence" ] || [ "$sequence" = '1b' ]; then
+                    stty "$saved_tty" < /dev/tty
+                    drain_tty "$saved_tty"
+                    exit 0
+                fi
+                case "$sequence" in
+                    5b41|4f41)
+                        cached_game_actions_move_selection up
+                        drain_tty "$saved_tty"
+                        ;;
+                    5b42|4f42)
+                        cached_game_actions_move_selection down
                         drain_tty "$saved_tty"
                         ;;
                     5b44|4f44)
@@ -791,7 +1022,6 @@ render_cached_games_help() {
     printf '\033[K\n'
     printf 'Use D-Pad up/down to move.\033[K\n'
     printf 'Press LEFT to go back.\033[K\n'
-    printf 'Press START or A to remove selected game.\033[K\n'
     printf 'Press R to start Smart Cache...\033[K\n'
     printf 'Press R2 to add ROMs.\033[K\n'
     printf 'Press L2 to clear cached games...\033[K\n'
