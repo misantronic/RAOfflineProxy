@@ -685,6 +685,26 @@ class MenuLayoutTests(unittest.TestCase):
             menu_sdl.resolve_rom_root = original_resolve_rom_root
             menu_sdl.load_config = original_load_config
 
+    def test_cached_games_labels_include_start_smart_cache_after_add_rom(self) -> None:
+        session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
+        session.view = "cached_games"
+        session.cached_games = [type("Game", (), {"title": "Tetris", "game_id": 1})()]
+
+        self.assertEqual(
+            menu_sdl.MenuSdlSession.labels(session, running=False),
+            ["Add ROM", "Start Smart Cache", "Tetris", "Clear cache", "Back"],
+        )
+
+    def test_activate_cached_games_selected_starts_smart_cache_from_second_item(self) -> None:
+        session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
+        session.cached_games = []
+        session.selected_index = 1
+        session.start_smart_cache = lambda: setattr(session, "smart_cache_started", True)
+
+        menu_sdl.MenuSdlSession.activate_cached_games_selected(session)
+
+        self.assertTrue(session.smart_cache_started)
+
     def test_finish_cache_progress_returns_to_file_browser_for_single_rom(self) -> None:
         session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
         session.cache_result = ("Cached game.gba", 0.0)
