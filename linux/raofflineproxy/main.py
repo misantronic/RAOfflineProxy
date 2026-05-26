@@ -38,6 +38,7 @@ from .rom_browser import (
     add_rom_to_cache,
     cached_unlock_count,
     cached_unlock_counts,
+    cached_unlock_titles,
     clear_cached_games,
     describe_browser_entries,
     describe_browser_entries_fast,
@@ -121,6 +122,7 @@ def main() -> None:
             "autostart-status",
             "cached-games",
             "cached-games-count",
+            "cached-unlock-titles",
             "remove-cached-game",
             "clear-cached-games",
             "pending-awards",
@@ -307,6 +309,19 @@ def main() -> None:
             storage = Storage()
             try:
                 print(len(list_cached_games(storage)))
+            finally:
+                storage.close()
+            return
+
+        if args.command == "cached-unlock-titles":
+            if args.game_id is None or args.game_id <= 0:
+                raise ValueError("cached-unlock-titles requires --game-id")
+
+            storage = Storage()
+            try:
+                titles = cached_unlock_titles(storage, args.game_id)
+                for title in titles:
+                    print(title)
             finally:
                 storage.close()
             return
