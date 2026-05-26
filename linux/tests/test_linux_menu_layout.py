@@ -174,6 +174,37 @@ class MenuLayoutTests(unittest.TestCase):
             menu_sdl.online_check = original_online_check
             menu_sdl.MenuSdlSession.is_logged_in = original_is_logged_in
 
+    def test_main_labels_place_autostart_below_cached_games(self) -> None:
+        session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
+        session.view = "main"
+        session.cached_games = [
+            type("Game", (), {"title": "Tetris", "game_id": 10701})()
+        ]
+        session.pending_awards = []
+        session.storage = object()
+
+        original_load_config = menu_sdl.load_config
+        original_autostart_supported = menu_sdl.autostart_supported
+        original_online_check = menu_sdl.online_check
+        original_is_logged_in = menu_sdl.MenuSdlSession.is_logged_in
+        original_autostart_enabled = menu_sdl.autostart_enabled
+        try:
+            menu_sdl.load_config = lambda: {}
+            menu_sdl.autostart_supported = lambda _config: True
+            menu_sdl.autostart_enabled = lambda _config: False
+            menu_sdl.online_check = lambda _config: True
+            menu_sdl.MenuSdlSession.is_logged_in = lambda self, _config=None: True
+
+            labels = menu_sdl.MenuSdlSession.labels(session, running=False)
+
+            self.assertLess(labels.index("Cached games (1)"), labels.index("Enable autostart"))
+        finally:
+            menu_sdl.load_config = original_load_config
+            menu_sdl.autostart_supported = original_autostart_supported
+            menu_sdl.autostart_enabled = original_autostart_enabled
+            menu_sdl.online_check = original_online_check
+            menu_sdl.MenuSdlSession.is_logged_in = original_is_logged_in
+
     def test_activate_selected_opens_cached_games_with_counter_label(self) -> None:
         session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
         session.view = "main"
