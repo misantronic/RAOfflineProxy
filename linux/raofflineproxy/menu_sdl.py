@@ -379,14 +379,14 @@ class MenuSdlSession:
         toggle = "Stop proxy" if running else "Start proxy"
         labels = [toggle]
         self.refresh_main_menu_state()
+        if self.main_logged_in:
+            labels.append(f"Cached games ({len(self.cached_games)})")
         if self.main_autostart_supported:
             labels.append(
                 "Disable autostart"
                 if self.main_autostart_enabled
                 else "Enable autostart"
             )
-        if self.main_logged_in:
-            labels.append(f"Cached games ({len(self.cached_games)})")
         if self.pending_awards:
             labels.append(f"Pending awards ({len(self.pending_awards)})")
         labels.extend(["Uninstall", "Exit Menu"])
