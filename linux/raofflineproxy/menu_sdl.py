@@ -1121,16 +1121,17 @@ class MenuSdlSession:
         self.main_autostart_enabled = (
             self.main_autostart_supported and autostart_enabled(self.config_data)
         )
-        try:
-            update = update_status("knulli")
-            self.main_update_available = update.update_available
-            self.main_update_version = update.latest_version
-            self.main_update_asset_url = update.asset_url
-        except Exception as exc:
-            log_menu_sdl(f"update check failed error={exc}")
-            self.main_update_available = False
-            self.main_update_version = None
-            self.main_update_asset_url = None
+        if force:
+            try:
+                update = update_status("knulli")
+                self.main_update_available = update.update_available
+                self.main_update_version = update.latest_version
+                self.main_update_asset_url = update.asset_url
+            except Exception as exc:
+                log_menu_sdl(f"update check failed error={exc}")
+                self.main_update_available = False
+                self.main_update_version = None
+                self.main_update_asset_url = None
         self.main_state_refreshed_at = now
         if (
             self.view == "main"
