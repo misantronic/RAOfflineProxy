@@ -338,7 +338,7 @@ class MenuSdlSession:
     def labels(self, running: bool) -> list[str]:
         if self.view == "cached_games":
             cached = [game.title for game in self.cached_games]
-            return ["Add ROM", *cached, "Clear cache", "Back"]
+            return ["Add ROM", "Start Smart Cache", *cached, "Clear cache", "Back"]
 
         if self.view == "pending_awards":
             labels = []
@@ -659,13 +659,18 @@ class MenuSdlSession:
         self.running = False
 
     def activate_cached_games_selected(self) -> None:
-        clear_cache_index = len(self.cached_games) + 1
-        back_index = len(self.cached_games) + 2
-        if self.selected_index == 0:
+        labels = self.current_labels()
+        selected_label = labels[self.selected_index] if labels else ""
+
+        if selected_label == "Add ROM":
             self.open_file_browser()
             return
 
-        if self.selected_index == clear_cache_index:
+        if selected_label == "Start Smart Cache":
+            self.start_smart_cache()
+            return
+
+        if selected_label == "Clear cache":
             clear_cached_games(self.storage)
             self.active_game = None
             self.refresh_cached_games()
@@ -673,13 +678,13 @@ class MenuSdlSession:
             self.message = ("Cache cleared", time.monotonic() + 1.5)
             return
 
-        if self.selected_index == back_index:
+        if selected_label == "Back":
             self.save_view_position("cached_games")
             self.view = "main"
             self.restore_view_position("main")
             return
 
-        game_index = self.selected_index - 1
+        game_index = self.selected_index - 2
         if 0 <= game_index < len(self.cached_games):
             self.save_view_position("cached_games")
             self.active_game = self.cached_games[game_index]
@@ -1088,7 +1093,7 @@ class MenuSdlSession:
 
     def preview_target_game(self):
         if self.view == "cached_games":
-            game_index = self.selected_index - 1
+            game_index = self.selected_index - 2
             if 0 <= game_index < len(self.cached_games):
                 return self.cached_games[game_index]
             return None
@@ -1451,16 +1456,17 @@ class MenuSdlSession:
     def item_positions(self, items: list[str], start_y: int, gap: int) -> list[int]:
         positions: list[int] = []
         current_y = start_y
-        clear_cache_index = len(self.cached_games) + 1
-        last_game_index = len(self.cached_games)
+        clear_cache_index = len(self.cached_games) + 2
+        first_game_index = 2 if self.view == "cached_games" else 1
+        last_game_index = len(self.cached_games) + 1 if self.view == "cached_games" else len(self.cached_games)
         for index, _label in enumerate(items):
             positions.append(current_y)
             current_y += gap
-            if self.view == "cached_games" and index == 0:
+            if self.view == "cached_games" and index == 1:
                 current_y += GROUP_GAP
-            if self.view == "cached_games" and index == last_game_index:
+            if self.view == "cached_games" and index == last_game_index and index >= first_game_index:
                 current_y += GROUP_GAP
-            if self.view == "cached_games" and clear_cache_index == 1 and index == 0:
+            if self.view == "cached_games" and clear_cache_index == first_game_index and index == 1:
                 current_y -= GROUP_GAP
             if self.view == "game_actions" and index == 0:
                 current_y += GROUP_GAP
