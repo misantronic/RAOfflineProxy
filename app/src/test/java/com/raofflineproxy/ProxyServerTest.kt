@@ -3,6 +3,7 @@ package com.raofflineproxy
 import com.raofflineproxy.proxy.awaitPendingAwardWrite
 import com.raofflineproxy.proxy.buildPendingAward
 import com.raofflineproxy.proxy.contentTypeForFile
+import com.raofflineproxy.proxy.compactAchievementSetsResponse
 import com.raofflineproxy.proxy.isChunkedTransferEncoding
 import com.raofflineproxy.proxy.isStaticAssetRequest
 import com.raofflineproxy.proxy.parseContentLength
