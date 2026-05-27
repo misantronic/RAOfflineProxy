@@ -18,12 +18,19 @@ interface CacheDao {
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertIgnore(entry: CacheEntry)
 
-    @Query("UPDATE api_cache SET responseBody = :responseBody, cachedAt = :cachedAt WHERE cacheKey = :cacheKey")
-    suspend fun updateBody(cacheKey: String, responseBody: String, cachedAt: Long)
+    @Query(
+        "UPDATE api_cache SET responseBody = :responseBody, sourceRomPath = COALESCE(:sourceRomPath, sourceRomPath), cachedAt = :cachedAt WHERE cacheKey = :cacheKey"
+    )
+    suspend fun updateBody(
+        cacheKey: String,
+        responseBody: String,
+        sourceRomPath: String?,
+        cachedAt: Long
+    )
 
     suspend fun upsert(entry: CacheEntry) {
         insertIgnore(entry)
-        updateBody(entry.cacheKey, entry.responseBody, entry.cachedAt)
+        updateBody(entry.cacheKey, entry.responseBody, entry.sourceRomPath, entry.cachedAt)
     }
 
     @Query("DELETE FROM api_cache WHERE cachedAt < :before AND cacheKey NOT LIKE 'login2::%' AND cacheKey != 'ua::last'")
