@@ -1384,6 +1384,41 @@ class LinuxRomBrowserTests(unittest.TestCase):
             finally:
                 store.close()
 
+    def test_run_folder_cache_does_not_skip_files_already_cached_by_source_rom_path(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            db_path = root / "test.sqlite3"
+            rom_path = root / "gb" / "tetris.gb"
+            rom_path.parent.mkdir(parents=True)
+            rom_path.write_bytes(b"gb")
+            store = storage.Storage(database_path=db_path)
+            original_add_rom_to_cache = smart_cache.add_rom_to_cache
+            try:
+                store.upsert_cache(
+                    cache_keys.patch(10701, "misantronic"),
+                    '{"Success":true,"PatchData":{"Title":"Tetris"}}',
+                    source_rom_path="/gb/tetris.gb",
+                )
+                cached_paths = []
+
+                def fake_add_rom_to_cache(path, _storage, _config_data):
+                    cached_paths.append(path)
+                    return rom_browser.AddRomResult(True, f"Cached {path.name}")
+
+                smart_cache.add_rom_to_cache = fake_add_rom_to_cache
+
+                result = smart_cache.run_folder_cache(store, {}, rom_path.parent)
+
+                self.assertEqual(result.total, 1)
+                self.assertEqual(result.scanned, 1)
+                self.assertEqual(result.cached, 1)
+                self.assertEqual(cached_paths, [rom_path])
+            finally:
+                smart_cache.add_rom_to_cache = original_add_rom_to_cache
+                store.close()
+
     def test_main_cache_rom_prints_result_message(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
