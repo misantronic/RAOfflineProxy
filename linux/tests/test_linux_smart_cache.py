@@ -345,6 +345,49 @@ class LinuxSmartCacheTests(unittest.TestCase):
                 ),
             )
 
+    def test_main_smart_cache_status_excludes_history_entries_already_cached_by_path(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            db_path = root / "test.sqlite3"
+            cfg_path = root / "retroarch.cfg"
+            rom_one = root / "roms" / "gb" / "tetris.gb"
+            rom_two = root / "roms" / "gbc" / "zelda.gbc"
+            history_path = root / "playlists" / "content_history.lpl"
+            cfg_path.write_text("# cfg\n", encoding="utf-8")
+            rom_one.parent.mkdir(parents=True)
+            rom_two.parent.mkdir(parents=True)
+            history_path.parent.mkdir(parents=True)
+            rom_one.write_bytes(b"one")
+            rom_two.write_bytes(b"two")
+            history_path.write_text(
+                json.dumps({"items": [{"path": str(rom_one)}, {"path": str(rom_two)}]}),
+                encoding="utf-8",
+            )
+            store = storage.Storage(database_path=db_path)
+            try:
+                store.upsert_cache(
+                    "patch:10701:misantronic",
+                    '{"Success":true,"PatchData":{"Title":"Tetris"}}',
+                    source_rom_path="/gb/tetris.gb",
+                )
+                stdout = StringIO()
+                with mock.patch("sys.argv", ["raofflineproxy", "smart-cache-status"]):
+                    with mock.patch.object(
+                        main, "load_config", return_value={"retroarch_cfg": str(cfg_path)}
+                    ):
+                        with mock.patch.object(main, "Storage", return_value=store):
+                            with mock.patch("sys.stdout", stdout):
+                                main.main()
+
+                self.assertEqual(
+                    stdout.getvalue().strip(),
+                    '{"found_history":true,"total_candidates":1}',
+                )
+            finally:
+                store.close()
+
     def test_main_run_smart_cache_outputs_progress_and_result_json(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)

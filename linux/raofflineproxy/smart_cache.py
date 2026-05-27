@@ -100,10 +100,15 @@ def run_smart_cache(
     should_abort=None,
     on_progress=None,
 ) -> SmartCacheResult:
+    cached_rom_paths = load_cached_rom_paths(storage)
     return run_cache_paths(
         storage,
         config_data,
-        load_content_history_paths(config_data),
+        [
+            path
+            for path in load_content_history_paths(config_data)
+            if normalize_cached_rom_path(path) not in cached_rom_paths
+        ],
         limit=limit,
         should_abort=should_abort,
         on_progress=on_progress,
@@ -137,17 +142,11 @@ def run_cache_paths(
     should_abort=None,
     on_progress=None,
 ) -> SmartCacheResult:
-    cached_rom_paths = load_cached_rom_paths(storage)
-    uncached_paths = [
-        path
-        for path in paths
-        if normalize_cached_rom_path(path) not in cached_rom_paths
-    ]
-    total = min(len(uncached_paths), limit, MAX_CACHED_GAMES)
+    total = min(len(paths), limit, MAX_CACHED_GAMES)
     cached = 0
     scanned = 0
 
-    for path in uncached_paths[:total]:
+    for path in paths[:total]:
         if should_abort is not None and should_abort():
             break
 

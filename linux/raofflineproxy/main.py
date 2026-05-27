@@ -43,6 +43,8 @@ from .rom_browser import (
     describe_browser_entries,
     describe_browser_entries_fast,
     list_cached_games,
+    load_cached_rom_paths,
+    normalize_cached_rom_path,
     remove_cached_game,
 )
 from .smart_cache import (
@@ -516,21 +518,18 @@ def main() -> None:
         if args.command == "smart-cache-status":
             storage = Storage()
             try:
-                cached_games = list_cached_games(storage)
-                if cached_games:
-                    LOGGER.info(
-                        "Smart Cache status skipped: cached games already present count=%s",
-                        len(cached_games),
-                    )
-                    total_candidates = 0
-                else:
-                    history_paths = load_content_history_paths(config_data)
-                    total_candidates = min(len(history_paths), SMART_CACHE_LIMIT)
-                    LOGGER.info(
-                        "Smart Cache status history candidates=%s capped=%s",
-                        len(history_paths),
-                        total_candidates,
-                    )
+                cached_rom_paths = load_cached_rom_paths(storage)
+                history_paths = [
+                    path
+                    for path in load_content_history_paths(config_data)
+                    if normalize_cached_rom_path(path) not in cached_rom_paths
+                ]
+                total_candidates = min(len(history_paths), SMART_CACHE_LIMIT)
+                LOGGER.info(
+                    "Smart Cache status path-aware candidates=%s capped=%s",
+                    len(history_paths),
+                    total_candidates,
+                )
                 print(
                     json.dumps(
                         {

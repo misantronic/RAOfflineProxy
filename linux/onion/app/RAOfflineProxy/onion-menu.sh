@@ -306,6 +306,7 @@ run_cache_progress_flow() {
     total_count="$3"
     target_path="${4:-}"
     result_line=
+    last_error_line=
     backend_rc=0
     output_fifo=
     output_file=
@@ -372,6 +373,7 @@ run_cache_progress_flow() {
                         result_line="$line"
                         ;;
                     *)
+                        last_error_line="$line"
                         progress_line_one='RAOfflineProxy'
                         progress_line_two="$line"
                         render_cache_progress_screen
@@ -415,6 +417,9 @@ run_cache_progress_flow() {
                 *'"type":"result"'*)
                     result_line="$line"
                     ;;
+                *)
+                    last_error_line="$line"
+                    ;;
             esac
         done < "$output_file"
     fi
@@ -430,6 +435,11 @@ run_cache_progress_flow() {
     fi
 
     if [ "$backend_rc" -ne 0 ]; then
+        if [ -n "$last_error_line" ]; then
+            clear
+            printf 'RAOfflineProxy\n\n'
+            printf '%s\n' "$last_error_line"
+        fi
         pause_prompt
         return 1
     fi
