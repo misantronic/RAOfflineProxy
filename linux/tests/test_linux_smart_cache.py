@@ -43,17 +43,76 @@ class LinuxSmartCacheTests(unittest.TestCase):
 
             self.assertEqual(paths, [rom_one, rom_two])
 
-    def test_should_offer_smart_cache_false_when_cached_games_exist(self) -> None:
+    def test_should_offer_smart_cache_still_offers_when_uncached_history_entries_exist(
+        self,
+    ) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             db_path = root / "test.sqlite3"
             cfg_path = root / "retroarch.cfg"
+            history_path = root / "playlists" / "content_history.lpl"
+            cached_rom = root / "roms" / "gb" / "tetris.gb"
+            uncached_rom = root / "roms" / "gbc" / "zelda.gbc"
+            cached_rom.parent.mkdir(parents=True)
+            uncached_rom.parent.mkdir(parents=True)
+            history_path.parent.mkdir(parents=True)
             store = storage.Storage(database_path=db_path)
             try:
                 cfg_path.write_text("# cfg\n", encoding="utf-8")
+                cached_rom.write_bytes(b"one")
+                uncached_rom.write_bytes(b"two")
+                history_path.write_text(
+                    json.dumps(
+                        {
+                            "items": [
+                                {"path": str(cached_rom)},
+                                {"path": str(uncached_rom)},
+                            ]
+                        }
+                    ),
+                    encoding="utf-8",
+                )
                 store.upsert_cache(
                     "patch:10701:misantronic",
                     '{"Success":true,"PatchData":{"Title":"Tetris"}}',
+                    source_rom_path="/gb/tetris.gb",
+                )
+
+                status = smart_cache.should_offer_smart_cache(
+                    store,
+                    {"retroarch_cfg": str(cfg_path)},
+                    is_online=True,
+                    has_credentials=True,
+                )
+
+                self.assertTrue(status.found_history)
+                self.assertEqual(status.total_candidates, 1)
+            finally:
+                store.close()
+
+    def test_should_offer_smart_cache_returns_all_cached_when_history_is_covered(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            db_path = root / "test.sqlite3"
+            cfg_path = root / "retroarch.cfg"
+            history_path = root / "playlists" / "content_history.lpl"
+            rom_path = root / "roms" / "gb" / "tetris.gb"
+            rom_path.parent.mkdir(parents=True)
+            history_path.parent.mkdir(parents=True)
+            cfg_path.write_text("# cfg\n", encoding="utf-8")
+            rom_path.write_bytes(b"one")
+            history_path.write_text(
+                json.dumps({"items": [{"path": str(rom_path)}]}),
+                encoding="utf-8",
+            )
+            store = storage.Storage(database_path=db_path)
+            try:
+                store.upsert_cache(
+                    "patch:10701:misantronic",
+                    '{"Success":true,"PatchData":{"Title":"Tetris"}}',
+                    source_rom_path="/gb/tetris.gb",
                 )
 
                 status = smart_cache.should_offer_smart_cache(
@@ -65,6 +124,7 @@ class LinuxSmartCacheTests(unittest.TestCase):
 
                 self.assertFalse(status.found_history)
                 self.assertEqual(status.total_candidates, 0)
+                self.assertEqual(status.reason, "all_history_entries_cached")
             finally:
                 store.close()
 
@@ -379,6 +439,53 @@ class LinuxSmartCacheTests(unittest.TestCase):
                 self.assertEqual(progress_updates[0].cached, 0)
                 self.assertEqual(progress_updates[0].scanned, 1)
                 self.assertEqual(progress_updates[0].current_label, "tetris.gb")
+            finally:
+                smart_cache.add_rom_to_cache = original_add_rom_to_cache
+                store.close()
+
+    def test_run_smart_cache_skips_paths_already_cached_by_source_rom_path(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            db_path = root / "test.sqlite3"
+            cfg_path = root / "retroarch.cfg"
+            history_path = root / "playlists" / "content_history.lpl"
+            cached_rom = root / "roms" / "gb" / "tetris.gb"
+            uncached_rom = root / "roms" / "gbc" / "zelda.gbc"
+            cached_rom.parent.mkdir(parents=True)
+            uncached_rom.parent.mkdir(parents=True)
+            history_path.parent.mkdir(parents=True)
+            cfg_path.write_text("# cfg\n", encoding="utf-8")
+            cached_rom.write_bytes(b"one")
+            uncached_rom.write_bytes(b"two")
+            history_path.write_text(
+                json.dumps(
+                    {"items": [{"path": str(cached_rom)}, {"path": str(uncached_rom)}]}
+                ),
+                encoding="utf-8",
+            )
+            store = storage.Storage(database_path=db_path)
+            original_add_rom_to_cache = smart_cache.add_rom_to_cache
+            scanned_paths = []
+            try:
+                store.upsert_cache(
+                    "patch:10701:misantronic",
+                    '{"Success":true,"PatchData":{"Title":"Tetris"}}',
+                    source_rom_path="/gb/tetris.gb",
+                )
+                smart_cache.add_rom_to_cache = lambda path, _store, _config: (
+                    scanned_paths.append(path),
+                    type("Result", (), {"success": True})(),
+                )[1]
+
+                result = smart_cache.run_smart_cache(
+                    store,
+                    {"retroarch_cfg": str(cfg_path)},
+                    limit=25,
+                )
+
+                self.assertEqual(result.scanned, 1)
+                self.assertEqual(result.cached, 1)
+                self.assertEqual(scanned_paths, [uncached_rom])
             finally:
                 smart_cache.add_rom_to_cache = original_add_rom_to_cache
                 store.close()

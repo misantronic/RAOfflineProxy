@@ -9,6 +9,8 @@ from .rom_browser import (
     add_rom_to_cache,
     list_browser_files_fast,
     list_cached_games,
+    load_cached_rom_paths,
+    normalize_cached_rom_path,
 )
 from .storage import Storage
 
@@ -55,13 +57,6 @@ def should_offer_smart_cache(
             reason="offline" if not is_online else "missing_credentials",
         )
 
-    if list_cached_games(storage):
-        return SmartCacheStatus(
-            found_history=False,
-            total_candidates=0,
-            reason="cached_games_present",
-        )
-
     history_path = find_content_history_lpl(config_data)
     if history_path is None:
         return SmartCacheStatus(
@@ -70,14 +65,24 @@ def should_offer_smart_cache(
             reason="content_history_missing",
         )
 
-    paths = load_content_history_paths(config_data)
+    cached_rom_paths = load_cached_rom_paths(storage)
+    all_paths = load_content_history_paths(config_data)
+    paths = [
+        path
+        for path in all_paths
+        if normalize_cached_rom_path(path) not in cached_rom_paths
+    ]
     total_candidates = min(len(paths), SMART_CACHE_LIMIT)
 
     if total_candidates == 0:
         return SmartCacheStatus(
             found_history=False,
             total_candidates=0,
-            reason="no_valid_history_entries",
+            reason=(
+                "all_history_entries_cached"
+                if all_paths and len(paths) == 0
+                else "no_valid_history_entries"
+            ),
             history_path=str(history_path),
         )
 
@@ -132,11 +137,17 @@ def run_cache_paths(
     should_abort=None,
     on_progress=None,
 ) -> SmartCacheResult:
-    total = min(len(paths), limit, MAX_CACHED_GAMES)
+    cached_rom_paths = load_cached_rom_paths(storage)
+    uncached_paths = [
+        path
+        for path in paths
+        if normalize_cached_rom_path(path) not in cached_rom_paths
+    ]
+    total = min(len(uncached_paths), limit, MAX_CACHED_GAMES)
     cached = 0
     scanned = 0
 
-    for path in paths[:total]:
+    for path in uncached_paths[:total]:
         if should_abort is not None and should_abort():
             break
 

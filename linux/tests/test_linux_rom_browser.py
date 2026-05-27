@@ -308,13 +308,32 @@ class LinuxRomBrowserTests(unittest.TestCase):
                 )
 
                 self.assertTrue(result.success)
-                self.assertIsNotNone(store.get_cache("patch:10701:misantronic"))
+                cached_patch = store.get_cache("patch:10701:misantronic")
+                self.assertIsNotNone(cached_patch)
+                self.assertEqual(
+                    cached_patch["sourceRomPath"],
+                    f"/{root.name}/tetris.gb",
+                )
             finally:
                 rom_browser.hash_rom_candidates = original_hash_rom_candidates
                 rom_browser.resolve_credentials = original_resolve_credentials
                 rom_browser.fetch_game_id = original_fetch_game_id
                 rom_browser.cache_game = original_cache_game
                 store.close()
+
+    def test_normalize_cached_rom_path_keeps_last_two_segments(self) -> None:
+        self.assertEqual(
+            rom_browser.normalize_cached_rom_path("/mnt/roms/gb/Tetris.gb"),
+            "/gb/Tetris.gb",
+        )
+        self.assertEqual(
+            rom_browser.normalize_cached_rom_path(r"C:\ROMs\GBA\Metroid Fusion.gba"),
+            "/GBA/Metroid Fusion.gba",
+        )
+        self.assertEqual(
+            rom_browser.normalize_cached_rom_path("Tetris.gb"),
+            "/Tetris.gb",
+        )
 
     def test_add_rom_to_cache_fails_when_patch_entry_is_missing(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
