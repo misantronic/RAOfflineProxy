@@ -11,6 +11,29 @@ from linux.raofflineproxy import storage
 
 
 class LinuxProxyCacheKeyTests(unittest.TestCase):
+    def test_storage_upsert_cache_preserves_source_rom_path(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            store = storage.Storage(database_path=Path(temp_dir) / "test.sqlite3")
+            try:
+                cache_key = cache_keys.patch(10701, "misantronic")
+                store.upsert_cache(
+                    cache_key,
+                    '{"Success":true,"PatchData":{"Title":"Tetris"}}',
+                    source_rom_path="/gb/tetris.gb",
+                )
+                store.upsert_cache(
+                    cache_key,
+                    '{"Success":true,"PatchData":{"Title":"Tetris DX"}}',
+                )
+
+                cached = store.get_cache(cache_key)
+
+                self.assertIsNotNone(cached)
+                self.assertEqual(cached["sourceRomPath"], "/gb/tetris.gb")
+                self.assertIn("Tetris DX", cached["responseBody"])
+            finally:
+                store.close()
+
     def test_login2_uses_user_cache_key(self) -> None:
         key = proxy_service.cache_key_for_request(
             "/dorequest.php",

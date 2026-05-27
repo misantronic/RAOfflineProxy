@@ -63,6 +63,7 @@ class Storage:
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     cacheKey TEXT NOT NULL UNIQUE,
                     responseBody TEXT NOT NULL,
+                    sourceRomPath TEXT,
                     cachedAt INTEGER NOT NULL,
                     firstCachedAt INTEGER NOT NULL
                 );
@@ -83,6 +84,17 @@ class Storage:
                 );
                 """
             )
+            cache_columns = {
+                row["name"]
+                for row in self._connection.execute(
+                    "PRAGMA table_info(api_cache)"
+                ).fetchall()
+            }
+            if "sourceRomPath" not in cache_columns:
+                self._connection.execute(
+                    "ALTER TABLE api_cache ADD COLUMN sourceRomPath TEXT"
+                )
+
             columns = {
                 row["name"]
                 for row in self._connection.execute(
@@ -138,37 +150,63 @@ class Storage:
         temp_path.replace(self._json_path)
 
     def upsert_cache(
-        self, cache_key: str, response_body: str, cached_at: int | None = None
+        self,
+        cache_key: str,
+        response_body: str,
+        cached_at: int | None = None,
+        source_rom_path: str | None = None,
     ) -> None:
         now = cached_at or current_millis()
         if self._use_sqlite:
-            self._upsert_cache_sqlite(cache_key, response_body, now)
+            self._upsert_cache_sqlite(cache_key, response_body, source_rom_path, now)
             return
-        self._upsert_cache_json(cache_key, response_body, now)
+        self._upsert_cache_json(cache_key, response_body, source_rom_path, now)
 
     def _upsert_cache_sqlite(
-        self, cache_key: str, response_body: str, now: int
+        self,
+        cache_key: str,
+        response_body: str,
+        source_rom_path: str | None,
+        now: int,
     ) -> None:
         assert self._connection is not None
         with self._lock:
             row = self._connection.execute(
-                "SELECT firstCachedAt FROM api_cache WHERE cacheKey = ? LIMIT 1",
+                "SELECT firstCachedAt, sourceRomPath FROM api_cache WHERE cacheKey = ? LIMIT 1",
                 (cache_key,),
             ).fetchone()
             first_cached_at = int(row["firstCachedAt"]) if row is not None else now
+            existing_source_rom_path = (
+                str(row["sourceRomPath"])
+                if row is not None and row["sourceRomPath"] is not None
+                else None
+            )
             self._connection.execute(
                 """
-                INSERT INTO api_cache(cacheKey, responseBody, cachedAt, firstCachedAt)
-                VALUES(?, ?, ?, ?)
+                INSERT INTO api_cache(cacheKey, responseBody, sourceRomPath, cachedAt, firstCachedAt)
+                VALUES(?, ?, ?, ?, ?)
                 ON CONFLICT(cacheKey) DO UPDATE SET
                     responseBody = excluded.responseBody,
+                    sourceRomPath = COALESCE(excluded.sourceRomPath, api_cache.sourceRomPath),
                     cachedAt = excluded.cachedAt
                 """,
-                (cache_key, response_body, now, first_cached_at),
+                (
+                    cache_key,
+                    response_body,
+                    source_rom_path or existing_source_rom_path,
+                    now,
+                    first_cached_at,
+                ),
             )
             self._connection.commit()
 
-    def _upsert_cache_json(self, cache_key: str, response_body: str, now: int) -> None:
+    def _upsert_cache_json(
+        self,
+        cache_key: str,
+        response_body: str,
+        source_rom_path: str | None,
+        now: int,
+    ) -> None:
         with self._lock:
             with self._json_file_lock(exclusive=True):
                 self._reload_json_state_unlocked()
@@ -187,12 +225,15 @@ class Storage:
                             "id": next_json_id(self._json_state["api_cache"]),
                             "cacheKey": cache_key,
                             "responseBody": response_body,
+                            "sourceRomPath": source_rom_path,
                             "cachedAt": now,
                             "firstCachedAt": now,
                         }
                     )
                 else:
                     existing["responseBody"] = response_body
+                    if source_rom_path is not None:
+                        existing["sourceRomPath"] = source_rom_path
                     existing["cachedAt"] = now
                 self._write_json_state_unlocked()
 

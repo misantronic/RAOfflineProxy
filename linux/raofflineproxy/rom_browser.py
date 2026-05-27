@@ -57,6 +57,25 @@ class BrowserEntry:
     is_cached: bool
 
 
+def normalize_cached_rom_path(path: str | Path) -> str:
+    normalized = str(path).replace("\\", "/").strip()
+    parts = [part for part in normalized.split("/") if part]
+    if not parts:
+        return "/"
+    if len(parts) == 1:
+        return f"/{parts[0]}"
+    return f"/{parts[-2]}/{parts[-1]}"
+
+
+def load_cached_rom_paths(storage: Storage) -> set[str]:
+    return {
+        normalize_cached_rom_path(entry["sourceRomPath"])
+        for entry in storage.get_all_cache_by_prefix(cache_keys.PREFIX_PATCH)
+        if isinstance(entry.get("sourceRomPath"), str)
+        and entry["sourceRomPath"].strip()
+    }
+
+
 def list_cached_games(storage: Storage) -> list[CachedGameEntry]:
     games: dict[int, CachedGameEntry] = {}
     for entry in storage.get_all_cache_by_prefix(cache_keys.PREFIX_PATCH):
@@ -367,6 +386,14 @@ def add_rom_to_cache(path: Path, storage: Storage, config_data: dict) -> AddRomR
         )
     except Exception as exc:
         return AddRomResult(False, f"Caching failed: {exc}")
+
+    patch_entry = storage.get_cache(cache_keys.patch(game_id, credentials["user"]))
+    if patch_entry is not None:
+        storage.upsert_cache(
+            cache_keys.patch(game_id, credentials["user"]),
+            patch_entry["responseBody"],
+            source_rom_path=normalize_cached_rom_path(path),
+        )
 
     game = next(
         (entry for entry in list_cached_games(storage) if entry.game_id == game_id),
