@@ -66,6 +66,7 @@ export default defineConfig({
         items: [
           { text: 'Overview', link: '/linux-support/' },
           { text: 'Installation', link: '/linux-support/installation' },
+          { text: 'Compatibility', link: '/linux-support/compatibility' },
           { text: 'Emulator Patching', link: '/linux-support/cfg-patching' },
           { text: 'Caching Games', link: '/linux-support/caching-games' },
           { text: 'Pending Awards', link: '/linux-support/pending-awards' },
@@ -85,11 +86,6 @@ export default defineConfig({
 
     search: {
       provider: 'local',
-    },
-
-    editLink: {
-      pattern: 'https://github.com/misantronic/RAOfflineProxy/edit/main/docs/:path',
-      text: 'Edit this page on GitHub',
     },
 
     footer: {
