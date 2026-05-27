@@ -896,6 +896,22 @@ internal fun proxyHttpFile(file: File): ByteArray {
 
 private fun String.toHttpBytes(): ByteArray = toByteArray(Charsets.UTF_8)
 
+private fun JSONObject.intOrNull(name: String): Int? = runCatching { getInt(name) }.getOrNull()
+
+private fun JSONObject.intOrDefault(name: String, default: Int): Int = intOrNull(name) ?: default
+
+private fun JSONObject.longOrDefault(name: String, default: Long): Long = runCatching { getLong(name) }.getOrDefault(default)
+
+private fun JSONObject.doubleOrNull(name: String): Double? = runCatching { getDouble(name) }.getOrNull()
+
+private fun JSONObject.stringOrNull(name: String): String? = runCatching { getString(name) }.getOrNull()
+
+private fun JSONObject.stringOrDefault(name: String, default: String): String = stringOrNull(name) ?: default
+
+private fun JSONObject.arrayOrNull(name: String): JSONArray? = runCatching { getJSONArray(name) }.getOrNull()
+
+private fun JSONObject.valueOrNull(name: String): Any? = runCatching { get(name) }.getOrNull()
+
 internal fun normalizeCachedResponse(action: String?, path: String, body: String, responseBody: String): String =
     if (action == "achievementsets") {
         normalizeAchievementSetsResponse(path, body, responseBody)
@@ -956,43 +972,43 @@ internal fun compactAchievementSetsResponse(responseBody: String): String {
         return responseBody
     }
 
-    if (!source.optBoolean("Success", false)) {
+    if (!shouldCacheResponse(responseBody)) {
         return responseBody
     }
 
-    val gameId = source.optInt("GameId").takeIf { it > 0 } ?: return responseBody
-    val sets = source.optJSONArray("Sets") ?: return responseBody
-    val coreSet = findCoreAchievementSet(sets, gameId) ?: return responseBody
+    val gameId = source.intOrNull("GameId")?.takeIf { it > 0 } ?: return responseBody
+    val sets = source.arrayOrNull("Sets") ?: return responseBody
 
     val compact = JSONObject().apply {
         put("Success", true)
 
-        put("GameId", source.optInt("GameId", gameId))
-        put("Title", source.optString("Title"))
-        put("ConsoleId", source.optInt("ConsoleId"))
-        put("ImageIconUrl", source.optString("ImageIconUrl"))
-        source.opt("RichPresenceGameId")?.let { put("RichPresenceGameId", it) }
-        source.opt("RichPresencePatch")?.let { put("RichPresencePatch", it) }
-
-        put(
-            "Sets",
-            JSONArray().apply {
-                put(
-                    JSONObject().apply {
-                        put("AchievementSetId", coreSet.optInt("AchievementSetId"))
-                        put("GameId", coreSet.optInt("GameId", gameId))
-                        put("Title", coreSet.optString("Title", source.optString("Title")))
-                        put("Type", coreSet.optString("Type", "core"))
-                        put("ImageIconUrl", coreSet.optString("ImageIconUrl", source.optString("ImageIconUrl")))
-                        put("Achievements", compactAchievementDefinitions(coreSet.optJSONArray("Achievements")))
-                        put("Leaderboards", JSONArray())
-                    }
-                )
-            }
-        )
+        put("GameId", source.intOrDefault("GameId", gameId))
+        put("Title", source.stringOrDefault("Title", ""))
+        put("ConsoleId", source.intOrDefault("ConsoleId", 0))
+        put("ImageIconUrl", source.stringOrDefault("ImageIconUrl", ""))
+        source.valueOrNull("RichPresenceGameId")?.let { put("RichPresenceGameId", it) }
+        source.valueOrNull("RichPresencePatch")?.let { put("RichPresencePatch", it) }
+        put("Sets", compactAchievementSets(sets, gameId, source))
     }
 
     return compact.toString()
+}
+
+private fun compactAchievementSets(sets: JSONArray, gameId: Int, source: JSONObject): JSONArray = JSONArray().apply {
+    for (index in 0 until sets.length()) {
+        val set = runCatching { sets.getJSONObject(index) }.getOrNull() ?: continue
+        put(
+            JSONObject().apply {
+                put("AchievementSetId", set.intOrDefault("AchievementSetId", 0))
+                put("GameId", set.intOrDefault("GameId", gameId))
+                put("Title", set.stringOrDefault("Title", source.stringOrDefault("Title", "")))
+                put("Type", set.stringOrDefault("Type", "core"))
+                put("ImageIconUrl", set.stringOrDefault("ImageIconUrl", source.stringOrDefault("ImageIconUrl", "")))
+                put("Achievements", compactAchievementDefinitions(set.arrayOrNull("Achievements")))
+                put("Leaderboards", compactLeaderboardDefinitions(set.arrayOrNull("Leaderboards")))
+            }
+        )
+    }
 }
 
 private fun compactAchievementDefinitions(achievements: JSONArray?): JSONArray {
@@ -1000,24 +1016,47 @@ private fun compactAchievementDefinitions(achievements: JSONArray?): JSONArray {
 
     return JSONArray().apply {
         for (index in 0 until achievements.length()) {
-            val achievement = achievements.optJSONObject(index) ?: continue
-            if (achievement.optInt("ID") == WARNING_ACHIEVEMENT_ID) continue
+            val achievement = runCatching { achievements.getJSONObject(index) }.getOrNull() ?: continue
+            if (achievement.intOrDefault("ID", 0) == WARNING_ACHIEVEMENT_ID) continue
             put(
                 JSONObject().apply {
-                    put("ID", achievement.optInt("ID"))
-                    put("Title", achievement.optString("Title"))
-                    put("Description", achievement.optString("Description"))
-                    put("Flags", achievement.optInt("Flags"))
-                    put("Points", achievement.optInt("Points"))
-                    put("MemAddr", achievement.optString("MemAddr"))
-                    put("Author", achievement.optString("Author"))
-                    put("BadgeName", achievement.optString("BadgeName"))
-                    put("Created", achievement.optLong("Created"))
-                    put("Modified", achievement.optLong("Modified"))
+                    put("ID", achievement.intOrDefault("ID", 0))
+                    put("Title", achievement.stringOrDefault("Title", ""))
+                    put("Description", achievement.stringOrDefault("Description", ""))
+                    put("Flags", achievement.intOrDefault("Flags", 0))
+                    put("Points", achievement.intOrDefault("Points", 0))
+                    put("MemAddr", achievement.stringOrDefault("MemAddr", ""))
+                    put("Author", achievement.stringOrDefault("Author", ""))
+                    put("BadgeName", achievement.stringOrDefault("BadgeName", ""))
+                    put("Created", achievement.longOrDefault("Created", 0L))
+                    put("Modified", achievement.longOrDefault("Modified", 0L))
 
-                    achievement.optString("Type").takeIf { it.isNotEmpty() }?.let { put("Type", it) }
-                    if (achievement.has("Rarity")) put("Rarity", achievement.optDouble("Rarity"))
-                    if (achievement.has("RarityHardcore")) put("RarityHardcore", achievement.optDouble("RarityHardcore"))
+                    achievement.stringOrNull("Type")?.takeIf { it.isNotEmpty() }?.let { put("Type", it) }
+                    achievement.doubleOrNull("Rarity")?.let { put("Rarity", it) }
+                    achievement.doubleOrNull("RarityHardcore")?.let { put("RarityHardcore", it) }
+                    achievement.stringOrNull("BadgeURL")?.takeIf { it.isNotEmpty() }?.let { put("BadgeURL", it) }
+                    achievement.stringOrNull("BadgeLockedURL")?.takeIf { it.isNotEmpty() }?.let { put("BadgeLockedURL", it) }
+                }
+            )
+        }
+    }
+}
+
+private fun compactLeaderboardDefinitions(leaderboards: JSONArray?): JSONArray {
+    if (leaderboards == null) return JSONArray()
+
+    return JSONArray().apply {
+        for (index in 0 until leaderboards.length()) {
+            val leaderboard = runCatching { leaderboards.getJSONObject(index) }.getOrNull() ?: continue
+            put(
+                JSONObject().apply {
+                    put("ID", leaderboard.intOrDefault("ID", 0))
+                    put("Title", leaderboard.stringOrDefault("Title", ""))
+                    put("Description", leaderboard.stringOrDefault("Description", ""))
+                    put("Mem", leaderboard.stringOrDefault("Mem", ""))
+                    put("Format", leaderboard.stringOrDefault("Format", ""))
+                    leaderboard.valueOrNull("LowerIsBetter")?.let { put("LowerIsBetter", it) }
+                    leaderboard.valueOrNull("Hidden")?.let { put("Hidden", it) }
                 }
             )
         }
@@ -1031,25 +1070,25 @@ internal fun normalizeAchievementSetsResponse(path: String, body: String, respon
         return responseBody
     }
 
-    if (!source.optBoolean("Success", false)) {
+    if (!shouldCacheResponse(responseBody)) {
         return responseBody
     }
 
-    val gameId = source.optInt("GameId").takeIf { it > 0 }
+    val gameId = source.intOrNull("GameId")?.takeIf { it > 0 }
         ?: proxyExtractParam("g", path, body)?.toIntOrNull()
         ?: return responseBody
 
-    val sets = source.optJSONArray("Sets") ?: return responseBody
+    val sets = source.arrayOrNull("Sets") ?: return responseBody
     val coreSet = findCoreAchievementSet(sets, gameId) ?: return responseBody
 
     val normalized = JSONObject().apply {
         put("Success", true)
         put("PatchData", JSONObject().apply {
-            put("ID", source.optInt("GameId", gameId))
-            put("Title", source.optString("Title"))
-            put("ConsoleID", source.optInt("ConsoleId"))
-            putPatchImageFields(this, source.optString("ImageIconUrl").takeIf { it.isNotEmpty() })
-            put("Achievements", filterWarningAchievementDefinitions(coreSet.optJSONArray("Achievements")))
+            put("ID", source.intOrDefault("GameId", gameId))
+            put("Title", source.stringOrDefault("Title", ""))
+            put("ConsoleID", source.intOrDefault("ConsoleId", 0))
+            putPatchImageFields(this, source.stringOrNull("ImageIconUrl")?.takeIf { it.isNotEmpty() })
+            put("Achievements", filterWarningAchievementDefinitions(coreSet.arrayOrNull("Achievements")))
             put("Leaderboards", JSONArray())
         })
     }.toString()
@@ -1089,13 +1128,13 @@ private fun findCoreAchievementSet(sets: JSONArray, gameId: Int): JSONObject? {
     var fallback: JSONObject? = null
 
     for (index in 0 until sets.length()) {
-        val set = sets.optJSONObject(index) ?: continue
+        val set = runCatching { sets.getJSONObject(index) }.getOrNull() ?: continue
         if (fallback == null) {
             fallback = set
         }
 
-        val setGameId = set.optInt("GameId")
-        val setType = set.optString("Type")
+        val setGameId = set.intOrDefault("GameId", 0)
+        val setType = set.stringOrDefault("Type", "")
         if (setGameId == gameId && setType.equals("core", ignoreCase = true)) {
             return set
         }
