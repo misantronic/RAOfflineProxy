@@ -129,7 +129,6 @@
                 android:id="@+id/btn_go_to_cached_games"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginStart="8dp"
                 android:text="@string/home_go_to_cached_games"
                 android:visibility="gone" />
 
