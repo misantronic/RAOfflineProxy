@@ -22,6 +22,7 @@ import kotlinx.coroutines.launch
 
 class SettingsFragment : Fragment() {
     private val viewModel: MainViewModel by activityViewModels()
+    private var syncingState = false
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View =
         inflater.inflate(R.layout.fragment_settings, container, false)
@@ -29,6 +30,7 @@ class SettingsFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         val cbAutostart = view.findViewById<CheckBox>(R.id.cb_autostart_proxy)
         val cbSmartCaching = view.findViewById<CheckBox>(R.id.cb_smart_caching)
+        val cbAppUpdateCheck = view.findViewById<CheckBox>(R.id.cb_app_update_check)
         val inputProxyPort = view.findViewById<TextInputLayout>(R.id.input_proxy_port)
         val etProxyPort = view.findViewById<TextInputEditText>(R.id.et_proxy_port)
         val tvProxyPortHint = view.findViewById<TextView>(R.id.tv_proxy_port_hint)
@@ -38,10 +40,16 @@ class SettingsFragment : Fragment() {
         etProxyPort.filters = arrayOf(InputFilter.LengthFilter(5))
 
         cbAutostart.setOnCheckedChangeListener { _, isChecked ->
+            if (syncingState) return@setOnCheckedChangeListener
             viewModel.setAutostartProxy(isChecked)
         }
         cbSmartCaching.setOnCheckedChangeListener { _, isChecked ->
+            if (syncingState) return@setOnCheckedChangeListener
             viewModel.setSmartCachingEnabled(isChecked)
+        }
+        cbAppUpdateCheck.setOnCheckedChangeListener { _, isChecked ->
+            if (syncingState) return@setOnCheckedChangeListener
+            viewModel.setAppUpdateCheckEnabled(isChecked)
         }
 
         fun submitProxyPort(): Boolean {
@@ -105,11 +113,15 @@ class SettingsFragment : Fragment() {
 
         viewLifecycleOwner.lifecycleScope.launch {
             viewModel.state.collect { state ->
+                syncingState = true
                 if (cbAutostart.isChecked != state.autostartProxy) {
                     cbAutostart.isChecked = state.autostartProxy
                 }
                 if (cbSmartCaching.isChecked != state.smartCachingEnabled) {
                     cbSmartCaching.isChecked = state.smartCachingEnabled
+                }
+                if (cbAppUpdateCheck.isChecked != state.appUpdateCheckEnabled) {
+                    cbAppUpdateCheck.isChecked = state.appUpdateCheckEnabled
                 }
                 val proxyPortText = state.proxyPort.toString()
                 if (etProxyPort.text?.toString() != proxyPortText && !etProxyPort.hasFocus()) {
@@ -123,6 +135,7 @@ class SettingsFragment : Fragment() {
                 if (!state.proxyRunning) {
                     inputProxyPort.error = null
                 }
+                syncingState = false
             }
         }
     }
