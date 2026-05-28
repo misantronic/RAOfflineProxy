@@ -1230,6 +1230,12 @@ class MenuSdlSession:
 
     def maybe_offer_smart_cache(self) -> None:
         self.refresh_main_menu_state(force=True)
+        self.refresh_cached_games()
+        if self.cached_games:
+            self.smart_cache_prompt_available = False
+            self.smart_cache_prompt_count = 0
+            return
+
         status = should_offer_smart_cache(
             self.storage,
             self.config_data,

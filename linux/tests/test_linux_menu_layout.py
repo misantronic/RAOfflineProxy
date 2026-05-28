@@ -359,6 +359,7 @@ class MenuLayoutTests(unittest.TestCase):
         session.save_view_position = lambda _view=None: None
         session.reset_selection = lambda: None
         session.refresh_main_menu_state = lambda force=False: None
+        session.refresh_cached_games = lambda: setattr(session, "cached_games", [])
         session.main_online = True
         session.main_logged_in = True
 
@@ -395,6 +396,7 @@ class MenuLayoutTests(unittest.TestCase):
         session.view = "main"
         session.message = None
         session.refresh_main_menu_state = lambda force=False: None
+        session.refresh_cached_games = lambda: setattr(session, "cached_games", [])
         session.maybe_offer_smart_cache = lambda: setattr(
             session, "view", "smart_cache_prompt"
         )
@@ -409,6 +411,32 @@ class MenuLayoutTests(unittest.TestCase):
             self.assertIsNone(session.message)
         finally:
             menu_sdl.start_proxy_inline = original_start_proxy_inline
+
+    def test_maybe_offer_smart_cache_skips_auto_prompt_when_cached_games_exist(
+        self,
+    ) -> None:
+        session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
+        session.view = "main"
+        session.smart_cache_prompt_available = True
+        session.smart_cache_prompt_count = 7
+        session.storage = object()
+        session.config_data = {}
+        session.refresh_main_menu_state = lambda force=False: None
+        session.refresh_cached_games = lambda: setattr(session, "cached_games", [object()])
+
+        original_should_offer_smart_cache = menu_sdl.should_offer_smart_cache
+        try:
+            menu_sdl.should_offer_smart_cache = lambda *_args, **_kwargs: (_ for _ in ()).throw(
+                AssertionError("should_offer_smart_cache should not be called when cache is non-empty")
+            )
+
+            menu_sdl.MenuSdlSession.maybe_offer_smart_cache(session)
+
+            self.assertEqual(session.view, "main")
+            self.assertFalse(session.smart_cache_prompt_available)
+            self.assertEqual(session.smart_cache_prompt_count, 0)
+        finally:
+            menu_sdl.should_offer_smart_cache = original_should_offer_smart_cache
 
     def test_start_smart_cache_opens_cache_progress_view(self) -> None:
         session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)

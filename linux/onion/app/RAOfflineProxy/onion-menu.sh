@@ -1658,7 +1658,9 @@ while :; do
             proxy_was_running="$MAIN_PROXY_RUNNING"
             toggle_proxy
             if [ "$proxy_was_running" -eq 0 ]; then
-                if ! maybe_offer_smart_cache; then
+                if [ "$MAIN_CACHED_COUNT" -eq 0 ] && ! maybe_offer_smart_cache; then
+                    pause_prompt
+                elif [ "$MAIN_CACHED_COUNT" -ne 0 ]; then
                     pause_prompt
                 fi
             else
