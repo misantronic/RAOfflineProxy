@@ -18,14 +18,21 @@
             android:title="@string/title_awards_history"
             app:actionLayout="@layout/nav_item_count" />
     </group>
-    <group
-        android:id="@+id/group_bottom"
-        android:menuCategory="secondary">
+    <group android:id="@+id/group_bottom">
         <item
             android:id="@+id/nav_settings"
             android:title="@string/title_settings" />
         <item
             android:id="@+id/nav_manual_emulator_setup"
             android:title="@string/title_manual_emulator_setup" />
+        <item
+            android:id="@+id/nav_quit"
+            android:title="@string/title_quit" />
+    </group>
+    <group android:id="@+id/group_footer">
+        <item
+            android:id="@+id/nav_version"
+            android:enabled="false"
+            android:title="@string/nav_version_placeholder" />
     </group>
 </menu>

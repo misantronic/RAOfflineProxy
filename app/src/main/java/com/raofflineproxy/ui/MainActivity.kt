@@ -54,6 +54,7 @@ class MainActivity : AppCompatActivity() {
     private var suppressNextDismissCallback = false
     private var activeSafGrantTarget: SafGrantTarget? = null
     private var attemptedGenericAllFilesAccess = false
+    private var pendingQuit = false
 
     private val safLauncher = registerForActivityResult(OpenAndroidDataTree()) { uri ->
         if (uri == null) {
@@ -145,8 +146,8 @@ class MainActivity : AppCompatActivity() {
 
         val drawerLayout = binding.drawerLayout
         val navView = binding.navView
-        val navVersion = binding.navView.findViewById<android.widget.TextView>(R.id.tv_nav_version)
-        navVersion.text = getString(R.string.nav_version_format, BuildConfig.VERSION_NAME)
+        navView.menu.findItem(R.id.nav_version)
+            ?.title = getString(R.string.nav_version_format, BuildConfig.VERSION_NAME)
 
         val toggle = ActionBarDrawerToggle(
             this, drawerLayout, R.string.nav_open, R.string.nav_close
@@ -207,6 +208,11 @@ class MainActivity : AppCompatActivity() {
                     }
                 } else {
                     activeSafGrantTarget = null
+                }
+
+                if (pendingQuit && !state.proxyRunning && !state.proxyToggleInProgress) {
+                    pendingQuit = false
+                    finishAndRemoveTask()
                 }
             }
         }
@@ -296,6 +302,11 @@ class MainActivity : AppCompatActivity() {
             R.id.nav_awards_history -> AwardsHistoryFragment()
             R.id.nav_settings -> SettingsFragment()
             R.id.nav_manual_emulator_setup -> ManualEmulatorSetupFragment()
+            R.id.nav_version -> return
+            R.id.nav_quit -> {
+                quitApp()
+                return
+            }
             else -> return
         }
         showFragment(fragment, itemId, addToBackStack = true)
@@ -391,6 +402,19 @@ class MainActivity : AppCompatActivity() {
             pendingStartTokenWarning = true
             viewModel.startProxy(treeUri = PrefsConstants.loadSafUri(this))
         }
+    }
+
+    private fun quitApp() {
+        val state = viewModel.state.value
+        if (state.proxyToggleInProgress || state.needsSafGrant) return
+
+        if (!state.proxyRunning) {
+            finishAndRemoveTask()
+            return
+        }
+
+        pendingQuit = true
+        viewModel.stopProxy(treeUri = PrefsConstants.loadSafUri(this))
     }
 
     private fun maybeShowStartTokenWarning(state: MainUiState) {

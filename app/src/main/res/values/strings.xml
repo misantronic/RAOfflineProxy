@@ -12,6 +12,7 @@
     <string name="title_awards_history">Awards History</string>
     <string name="title_settings">Settings</string>
     <string name="title_manual_emulator_setup">Manual Emulator Setup</string>
+    <string name="title_quit">Quit</string>
 
     <!-- Proxy button -->
     <string name="proxy_start">Start proxy</string>
@@ -25,7 +26,8 @@
 
     <!-- Nav badge -->
     <string name="nav_badge_count">(%d)</string>
-    <string name="nav_version_format">Version %s</string>
+    <string name="nav_version_format">v%s</string>
+    <string name="nav_version_placeholder">Version</string>
 
     <!-- Home fragment -->
     <string name="home_description">RAOfflineProxy acts as a local proxy between the emulator and RetroAchievements. It caches game data so you can play offline and earn achievements, then syncs them when you go back online. For setup instructions and tips, visit our documentation.</string>
