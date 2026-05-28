@@ -28,6 +28,7 @@ object PrefsConstants {
     const val KEY_RETROARCH_PATCHED_THIS_RUN = "retroarch_patched_this_run"
     const val KEY_DOLPHIN_PATCHED_THIS_RUN = "dolphin_patched_this_run"
     const val KEY_PROXY_PORT = "proxy_port"
+    const val KEY_APP_UPDATE_CHECK_ENABLED = "app_update_check_enabled"
     const val KEY_APP_UPDATE_LAST_CHECKED_AT = "app_update_last_checked_at"
     private const val KEY_AVAILABLE_APP_UPDATE = "available_app_update"
 
@@ -193,6 +194,15 @@ object PrefsConstants {
     fun loadAppUpdateLastCheckedAt(context: Context): Long =
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .getLong(KEY_APP_UPDATE_LAST_CHECKED_AT, 0L)
+
+    fun loadAppUpdateCheckEnabled(context: Context): Boolean =
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getBoolean(KEY_APP_UPDATE_CHECK_ENABLED, true)
+
+    fun saveAppUpdateCheckEnabled(context: Context, enabled: Boolean) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit { putBoolean(KEY_APP_UPDATE_CHECK_ENABLED, enabled) }
+    }
 
     fun saveAppUpdateLastCheckedAt(context: Context, checkedAt: Long) {
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)

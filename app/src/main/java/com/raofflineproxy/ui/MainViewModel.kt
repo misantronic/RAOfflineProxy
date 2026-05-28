@@ -91,6 +91,7 @@ data class MainUiState(
     val autostartProxy: Boolean = false,
     val manualEmulatorPatchingEnabled: Boolean = false,
     val smartCachingEnabled: Boolean = true,
+    val appUpdateCheckEnabled: Boolean = true,
     val proxyPort: Int = PrefsConstants.DEFAULT_PROXY_PORT,
     val retroArchInstalled: Boolean = false,
     val dolphinInstalled: Boolean = false,
@@ -131,8 +132,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private var pendingSmartCacheRomGrantPaths = emptyList<String>()
     private var pendingSmartCacheGrantTargets = emptyList<SafGrantTarget>()
     private var smartCacheAllFilesRejectedThisRun = false
-    private var pendingAppUpdateCheck = false
-
     private fun str(resId: Int): String = getApplication<Application>().getString(resId)
     private fun str(resId: Int, vararg args: Any): String = getApplication<Application>().getString(resId, *args)
 
@@ -179,6 +178,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             autostartProxy = loadAutostartPref(),
             manualEmulatorPatchingEnabled = loadManualEmulatorPatchingEnabled(),
             smartCachingEnabled = loadSmartCachingEnabled(),
+            appUpdateCheckEnabled = loadAppUpdateCheckEnabled(),
             proxyPort = PrefsConstants.loadProxyPort(app),
             retroArchInstalled = emulatorSupport.retroArchInstalled,
             dolphinInstalled = emulatorSupport.dolphinInstalled,
@@ -188,7 +188,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         exportManualSetupConfig()
         restoreDolphinCredentialsOnLaunch(emulatorSupport)
         validateToken()
-        startAppUpdateRecheckLoop()
         viewModelScope.launch {
             AwardFlusher.events.collect { event ->
                 when (event) {
@@ -412,11 +411,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 probeRetroAchievements(userAgent = userAgent, force = forceProbe)
             }
             _state.value = _state.value.copy(isOnline = reachable)
-            if (reachable && pendingAppUpdateCheck) {
-                Log.i("RAProxy/Updates", "Reachability restored; retrying pending app update check")
-                pendingAppUpdateCheck = false
-                checkForAppUpdate()
-            }
         }
     }
 
@@ -1349,6 +1343,20 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    fun setAppUpdateCheckEnabled(enabled: Boolean) {
+        val app = getApplication<Application>()
+        PrefsConstants.saveAppUpdateCheckEnabled(app, enabled)
+        if (!enabled) {
+            _state.value = _state.value.copy(
+                appUpdateCheckEnabled = false,
+                availableAppUpdate = null
+            )
+            return
+        }
+
+        _state.value = _state.value.copy(appUpdateCheckEnabled = true)
+    }
+
     fun setManualEmulatorPatchingEnabled(enabled: Boolean) {
         val app = getApplication<Application>()
 
@@ -1518,6 +1526,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun checkForAppUpdate(force: Boolean = false) {
         val app = getApplication<Application>()
+        if (!PrefsConstants.loadAppUpdateCheckEnabled(app)) {
+            _state.value = _state.value.copy(availableAppUpdate = null)
+            return
+        }
         val currentVersionName = BuildConfig.VERSION_NAME
         val now = System.currentTimeMillis()
         if (!force && now - PrefsConstants.loadAppUpdateLastCheckedAt(app) < APP_UPDATE_CHECK_INTERVAL_MS) {
@@ -1528,12 +1540,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             return
         }
         if (!hasValidatedInternet(connectivityManager)) {
-            Log.i("RAProxy/Updates", "Deferring app update check; validated internet not available yet")
-            pendingAppUpdateCheck = true
+            Log.i("RAProxy/Updates", "Skipping app update check; validated internet not available")
             return
         }
 
-        pendingAppUpdateCheck = false
         PrefsConstants.saveAppUpdateLastCheckedAt(app, now)
         Log.i("RAProxy/Updates", "Starting app update check force=$force")
         viewModelScope.launch {
@@ -1551,15 +1561,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    private fun startAppUpdateRecheckLoop() {
-        viewModelScope.launch {
-            while (true) {
-                delay(APP_UPDATE_CHECK_INTERVAL_MS)
-                checkForAppUpdate()
-            }
-        }
-    }
-
     private fun loadAutostartPref(): Boolean =
         getApplication<Application>()
             .getSharedPreferences(PrefsConstants.PREFS_NAME, Context.MODE_PRIVATE)
@@ -1567,6 +1568,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun loadSmartCachingEnabled(): Boolean =
         PrefsConstants.loadSmartCachingEnabled(getApplication())
+
+    private fun loadAppUpdateCheckEnabled(): Boolean =
+        PrefsConstants.loadAppUpdateCheckEnabled(getApplication())
 
     private fun loadManualEmulatorPatchingEnabled(): Boolean =
         PrefsConstants.loadManualEmulatorPatchingEnabled(getApplication())
