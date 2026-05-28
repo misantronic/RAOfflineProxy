@@ -396,8 +396,7 @@ class MainActivity : AppCompatActivity() {
         if (viewModel.state.value.proxyToggleInProgress || viewModel.state.value.needsSafGrant) return
 
         if (viewModel.state.value.proxyRunning) {
-            pendingStartTokenWarning = false
-            viewModel.stopProxy(treeUri = PrefsConstants.loadSafUri(this))
+            requestStopProxy()
         } else {
             pendingStartTokenWarning = true
             requestStartProxy()
@@ -406,6 +405,11 @@ class MainActivity : AppCompatActivity() {
 
     fun requestStartProxy() {
         viewModel.startProxy(treeUri = PrefsConstants.loadSafUri(this))
+    }
+
+    fun requestStopProxy() {
+        pendingStartTokenWarning = false
+        viewModel.stopProxy(treeUri = PrefsConstants.loadSafUri(this))
     }
 
     private fun quitApp() {
@@ -418,7 +422,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         pendingQuit = true
-        viewModel.stopProxy(treeUri = PrefsConstants.loadSafUri(this))
+        requestStopProxy()
     }
 
     private fun maybeShowStartTokenWarning(state: MainUiState) {

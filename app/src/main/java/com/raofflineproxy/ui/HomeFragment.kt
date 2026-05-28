@@ -21,6 +21,7 @@ import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.lifecycleScope
 import androidx.core.net.toUri
+import com.raofflineproxy.PrefsConstants
 import com.google.android.material.button.MaterialButton
 import com.raofflineproxy.R
 import kotlinx.coroutines.launch
@@ -75,7 +76,11 @@ class HomeFragment : Fragment() {
         }
 
         btnStartProxy.setOnClickListener {
-            (activity as? MainActivity)?.requestStartProxy()
+            if (viewModel.state.value.proxyRunning) {
+                (activity as? MainActivity)?.requestStopProxy()
+            } else {
+                (activity as? MainActivity)?.requestStartProxy()
+            }
         }
 
         btnManualEmulatorSetup.setOnClickListener {
@@ -118,8 +123,9 @@ class HomeFragment : Fragment() {
                 manualSetupWarning.text = getString(R.string.home_manual_setup_warning, androidVersionLabel())
                 manualSetupWarning.visibility = if (shouldRecommendManualSetup) View.VISIBLE else View.GONE
 
-                btnStartProxy.visibility = if (state.proxyRunning || shouldRecommendManualSetup) View.GONE else View.VISIBLE
-                btnStartProxy.isEnabled = !proxyStartPending && (state.retroArchEnabled || state.dolphinEnabled)
+                btnStartProxy.visibility = if (!state.proxyRunning && shouldRecommendManualSetup) View.GONE else View.VISIBLE
+                btnStartProxy.text = getString(if (state.proxyRunning) R.string.proxy_stop else R.string.proxy_start)
+                btnStartProxy.isEnabled = if (state.proxyRunning) !proxyStartPending else !proxyStartPending && (state.retroArchEnabled || state.dolphinEnabled)
                 btnStartProxy.alpha = if (proxyStartPending) 0.45f else 1f
                 btnManualEmulatorSetup.visibility = if (!state.proxyRunning && shouldRecommendManualSetup) View.VISIBLE else View.GONE
                 btnGoToCachedGames.visibility = if (state.proxyRunning) View.VISIBLE else View.GONE
