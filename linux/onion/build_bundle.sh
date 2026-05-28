@@ -9,7 +9,7 @@ APP_DIR="${BUILD_DIR}/App/RAOfflineProxy"
 RUNTIME_CACHE_DIR="${SCRIPT_DIR}/runtime-cache"
 RUNTIME_ARCHIVE_NAME="cpython-3.10.20+20260510-armv7-unknown-linux-gnueabihf-install_only_stripped.tar.gz"
 RUNTIME_ARCHIVE_PATH="${RUNTIME_CACHE_DIR}/${RUNTIME_ARCHIVE_NAME}"
-ZIP_NAME="RAOfflineProxy-Onion-v1.2.1-alpha1.zip"
+ZIP_NAME="RAOfflineProxy-Onion-v1.2.2-alpha1.zip"
 
 rm -rf "${BUILD_DIR}"
 rm -f "${DIST_DIR}/${ZIP_NAME}"
@@ -51,7 +51,7 @@ import zipfile
 
 dist_dir = Path(r"/Users/dschkalee/src/RAOfflineProxy/linux/onion/dist")
 build_dir = dist_dir / "raofflineproxy-onion-app"
-zip_path = dist_dir / "RAOfflineProxy-Onion-v1.2.1-alpha1.zip"
+zip_path = dist_dir / "RAOfflineProxy-Onion-v1.2.2-alpha1.zip"
 
 with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
     for path in sorted(build_dir.rglob("*")):
