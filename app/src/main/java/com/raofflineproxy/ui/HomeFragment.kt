@@ -22,7 +22,6 @@ import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.lifecycleScope
 import androidx.core.net.toUri
 import com.google.android.material.button.MaterialButton
-import com.raofflineproxy.PrefsConstants
 import com.raofflineproxy.R
 import kotlinx.coroutines.launch
 
@@ -76,7 +75,7 @@ class HomeFragment : Fragment() {
         }
 
         btnStartProxy.setOnClickListener {
-            viewModel.startProxy(treeUri = PrefsConstants.loadSafUri(requireContext()))
+            (activity as? MainActivity)?.requestStartProxy()
         }
 
         btnManualEmulatorSetup.setOnClickListener {

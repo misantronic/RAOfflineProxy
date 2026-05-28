@@ -179,7 +179,7 @@ class MainActivity : AppCompatActivity() {
         if (savedInstanceState == null) {
             showFragment(HomeFragment(), R.id.nav_home, addToBackStack = false)
             if (viewModel.state.value.autostartProxy && !ProxyService.isRunning(this)) {
-                viewModel.startProxy(treeUri = PrefsConstants.loadSafUri(this@MainActivity))
+                requestStartProxy()
             }
             viewModel.checkForAppUpdate()
         } else {
@@ -400,8 +400,12 @@ class MainActivity : AppCompatActivity() {
             viewModel.stopProxy(treeUri = PrefsConstants.loadSafUri(this))
         } else {
             pendingStartTokenWarning = true
-            viewModel.startProxy(treeUri = PrefsConstants.loadSafUri(this))
+            requestStartProxy()
         }
+    }
+
+    fun requestStartProxy() {
+        viewModel.startProxy(treeUri = PrefsConstants.loadSafUri(this))
     }
 
     private fun quitApp() {
