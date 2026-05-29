@@ -511,6 +511,38 @@ class LinuxRomBrowserTests(unittest.TestCase):
                 rom_browser.resolve_credentials = original_resolve_credentials
                 store.close()
 
+    def test_add_chd_rom_to_cache_surfaces_missing_libchdr(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            db_path = root / "test.sqlite3"
+            rom_path = root / "metal-slug-x.chd"
+            rom_path.write_bytes(b"not-a-real-chd")
+            store = storage.Storage(database_path=db_path)
+            original_resolve_credentials = rom_browser.resolve_credentials
+            try:
+                rom_browser.resolve_credentials = lambda _store, _config, _ua: {
+                    "user": "misantronic",
+                    "token": "token",
+                }
+
+                with mock.patch(
+                    "linux.raofflineproxy.rom_browser.hash_rom_candidates_result",
+                    return_value=mock.Mock(
+                        candidates=[],
+                        error="libchdr shared library not found",
+                    ),
+                ):
+                    result = rom_browser.add_rom_to_cache(rom_path, store, {})
+
+                self.assertFalse(result.success)
+                self.assertEqual(
+                    result.message,
+                    "Hash failed: libchdr shared library not found",
+                )
+            finally:
+                rom_browser.resolve_credentials = original_resolve_credentials
+                store.close()
+
     def test_cached_unlock_count_includes_pending_awards(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)

@@ -1,5 +1,9 @@
+import ctypes
+import ctypes.util
 import hashlib
+import logging
 import math
+import os
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -24,6 +28,43 @@ PSP_PARAM_PATH = "PSP_GAME\\PARAM.SFO"
 PSP_EBOOT_PATH = "PSP_GAME\\SYSDIR\\EBOOT.BIN"
 N64_HASH_LIMIT_BYTES = 64 * 1024 * 1024
 N64_BUFFER_SIZE = 65536
+CHD_OPEN_READ = 1
+CHDERR_NONE = 0
+CDROM_TRACK_METADATA_TAG = 0x43485452
+CDROM_TRACK_METADATA2_TAG = 0x43485432
+CD_FRAME_SIZE = 2448
+
+LOGGER = logging.getLogger("raofflineproxy")
+_LIBCHDR: ctypes.CDLL | None = None
+_LIBCHDR_ERROR: str | None = None
+
+
+class ChdHeader(ctypes.Structure):
+    _fields_ = [
+        ("length", ctypes.c_uint32),
+        ("version", ctypes.c_uint32),
+        ("flags", ctypes.c_uint32),
+        ("compression", ctypes.c_uint32 * 4),
+        ("hunkbytes", ctypes.c_uint32),
+        ("totalhunks", ctypes.c_uint32),
+        ("logicalbytes", ctypes.c_uint64),
+        ("metaoffset", ctypes.c_uint64),
+        ("mapoffset", ctypes.c_uint64),
+        ("md5", ctypes.c_uint8 * 16),
+        ("parentmd5", ctypes.c_uint8 * 16),
+        ("sha1", ctypes.c_uint8 * 20),
+        ("rawsha1", ctypes.c_uint8 * 20),
+        ("parentsha1", ctypes.c_uint8 * 20),
+        ("unitbytes", ctypes.c_uint32),
+        ("unitcount", ctypes.c_uint64),
+        ("hunkcount", ctypes.c_uint32),
+        ("mapentrybytes", ctypes.c_uint32),
+        ("rawmap", ctypes.c_void_p),
+        ("obsolete_cylinders", ctypes.c_uint32),
+        ("obsolete_sectors", ctypes.c_uint32),
+        ("obsolete_heads", ctypes.c_uint32),
+        ("obsolete_hunksize", ctypes.c_uint32),
+    ]
 
 
 @dataclass
@@ -53,6 +94,130 @@ class PsxExecutable:
     path: str
     sector: int
     size: int
+
+
+@dataclass
+class RomHashResult:
+    candidates: list[str]
+    error: str | None = None
+
+
+@dataclass
+class ChdOpenResult:
+    handle: object | None
+    error: str | None = None
+
+
+@dataclass
+class ChdTrackInfo:
+    number: int
+    type: str
+    frames: int
+    pregap: int = 0
+    postgap: int = 0
+
+
+class DirectChdReader:
+    def __init__(self, disc_handle) -> None:
+        self._disc_handle = disc_handle
+        self._position = 0
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, _exc_type, _exc, _traceback) -> None:
+        self.close()
+
+    def close(self) -> None:
+        if self._disc_handle is not None:
+            self._disc_handle.close()
+            self._disc_handle = None
+
+    def seek(self, offset: int, whence: int = 0) -> int:
+        if self._disc_handle is None:
+            raise ValueError("reader is closed")
+
+        if whence == 0:
+            target = offset
+        elif whence == 1:
+            target = self._position + offset
+        elif whence == 2:
+            target = self._disc_handle.logical_length + offset
+        else:
+            raise ValueError(f"invalid whence: {whence}")
+
+        self._position = max(0, target)
+        return self._position
+
+    def read(self, length: int = -1) -> bytes:
+        if self._disc_handle is None:
+            raise ValueError("reader is closed")
+
+        remaining = max(0, self._disc_handle.logical_length - self._position)
+        if length < 0 or length > remaining:
+            length = remaining
+
+        data = self._disc_handle.read(self._position, length)
+        self._position += len(data)
+        return data
+
+
+class LibChdrDiscHandle:
+    def __init__(
+        self,
+        library: ctypes.CDLL,
+        chd_handle: ctypes.c_void_p,
+        hunk_bytes: int,
+        first_track_start_frame: int,
+        first_track_frames: int,
+    ) -> None:
+        self._library = library
+        self._chd_handle = chd_handle
+        self._hunk_bytes = hunk_bytes
+        self._first_track_start_frame = first_track_start_frame
+        self._first_track_frames = first_track_frames
+        self._cached_hunk = -1
+        self._hunk_buffer = ctypes.create_string_buffer(hunk_bytes)
+        self.logical_length = first_track_frames * RAW_2352_SECTOR
+
+    def close(self) -> None:
+        if self._chd_handle:
+            self._library.chd_close(self._chd_handle)
+            self._chd_handle = ctypes.c_void_p()
+
+    def read(self, offset: int, requested_length: int) -> bytes:
+        if offset >= self.logical_length or requested_length <= 0:
+            return b""
+
+        target_length = min(requested_length, self.logical_length - offset)
+        output = bytearray()
+        while len(output) < target_length:
+            projected_offset = offset + len(output)
+            absolute_frame = self._first_track_start_frame + (
+                projected_offset // RAW_2352_SECTOR
+            )
+            sector_offset = projected_offset % RAW_2352_SECTOR
+            absolute_offset = absolute_frame * CD_FRAME_SIZE
+            hunk = absolute_offset // self._hunk_bytes
+            hunk_offset = (absolute_offset % self._hunk_bytes) + sector_offset
+
+            if self._cached_hunk != hunk:
+                result = self._library.chd_read(
+                    self._chd_handle, ctypes.c_uint32(hunk), self._hunk_buffer
+                )
+                if result != CHDERR_NONE:
+                    raise OSError(chd_error_string(self._library, result))
+                self._cached_hunk = hunk
+
+            bytes_until_sector_end = RAW_2352_SECTOR - sector_offset
+            bytes_until_hunk_end = self._hunk_bytes - hunk_offset
+            chunk = min(
+                target_length - len(output),
+                min(bytes_until_sector_end, bytes_until_hunk_end),
+            )
+            output.extend(self._hunk_buffer.raw[hunk_offset : hunk_offset + chunk])
+
+        return bytes(output)
 
 
 class RomHashStrategy:
@@ -306,9 +471,26 @@ class NintendoDsRomHashStrategy(RomHashStrategy):
 
 class PsxRomHashStrategy(RomHashStrategy):
     def matches(self, file_name: str) -> bool:
-        return has_extension(file_name, "bin", "iso")
+        return has_extension(file_name, "bin", "iso", "chd")
 
     def hash(self, rom_input: RomHashInput) -> str | None:
+        if has_extension(rom_input.file_name, "chd"):
+            direct_result = open_direct_chd_reader(rom_input.path)
+            if direct_result.handle is not None:
+                try:
+                    layout = detect_iso_sector_layout(direct_result.handle)
+                    if layout is None:
+                        return None
+
+                    executable = find_psx_executable(direct_result.handle, layout)
+                    if executable is None:
+                        return None
+
+                    return hash_psx_executable(direct_result.handle, layout, executable)
+                finally:
+                    direct_result.handle.close()
+            return None
+
         try:
             with rom_input.path.open("rb") as handle:
                 layout = detect_iso_sector_layout(handle)
@@ -384,6 +566,10 @@ def hash_rom(path: Path) -> str | None:
 
 
 def hash_rom_candidates(path: Path) -> list[str]:
+    return hash_rom_candidates_result(path).candidates
+
+
+def hash_rom_candidates_result(path: Path) -> RomHashResult:
     rom_input = RomHashInput(
         file_name=path.name,
         file_size=path.stat().st_size,
@@ -399,13 +585,18 @@ def hash_rom_candidates(path: Path) -> list[str]:
             if normalized and normalized not in candidates:
                 candidates.append(normalized)
 
+    if has_extension(rom_input.file_name, "chd"):
+        if candidates:
+            return RomHashResult(candidates)
+        return RomHashResult(candidates, describe_chd_hash_failure(path))
+
     fallback = GenericMd5RomHashStrategy().hash(rom_input)
     if fallback is not None:
         normalized = fallback.strip().lower()
         if normalized and normalized not in candidates:
             candidates.append(normalized)
 
-    return candidates
+    return RomHashResult(candidates)
 
 
 def supported_rom_extensions() -> set[str]:
@@ -430,8 +621,212 @@ def supported_rom_extensions() -> set[str]:
         ".nds",
         ".iso",
         ".bin",
+        ".chd",
         ".pbp",
     }
+
+
+def load_libchdr() -> ctypes.CDLL | None:
+    global _LIBCHDR, _LIBCHDR_ERROR
+    if _LIBCHDR is not None:
+        return _LIBCHDR
+    if _LIBCHDR_ERROR is not None:
+        return None
+
+    candidates = [
+        ctypes.util.find_library("chdr"),
+        "/usr/lib/libchdr.so",
+        "/usr/local/lib/libchdr.so",
+        "/lib/libchdr.so",
+        "/userdata/system/lib/libchdr.so",
+        "/userdata/system/raofflineproxy/lib/libchdr.so",
+    ]
+    for candidate in candidates:
+        if not candidate:
+            continue
+        try:
+            library = ctypes.CDLL(candidate)
+            configure_libchdr_api(library)
+            _LIBCHDR = library
+            return library
+        except OSError as exc:
+            _LIBCHDR_ERROR = f"libchdr load failed: {exc}"
+        except AttributeError as exc:
+            _LIBCHDR_ERROR = f"libchdr API mismatch: {exc}"
+
+    if _LIBCHDR_ERROR is None:
+        _LIBCHDR_ERROR = "libchdr shared library not found"
+    return None
+
+
+def configure_libchdr_api(library: ctypes.CDLL) -> None:
+    library.chd_open.argtypes = [
+        ctypes.c_char_p,
+        ctypes.c_int,
+        ctypes.c_void_p,
+        ctypes.POINTER(ctypes.c_void_p),
+    ]
+    library.chd_open.restype = ctypes.c_int
+    library.chd_close.argtypes = [ctypes.c_void_p]
+    library.chd_close.restype = None
+    library.chd_get_header.argtypes = [ctypes.c_void_p]
+    library.chd_get_header.restype = ctypes.POINTER(ChdHeader)
+    library.chd_read.argtypes = [ctypes.c_void_p, ctypes.c_uint32, ctypes.c_void_p]
+    library.chd_read.restype = ctypes.c_int
+    library.chd_get_metadata.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_uint32,
+        ctypes.c_uint32,
+        ctypes.c_void_p,
+        ctypes.c_uint32,
+        ctypes.POINTER(ctypes.c_uint32),
+        ctypes.POINTER(ctypes.c_uint32),
+        ctypes.c_void_p,
+    ]
+    library.chd_get_metadata.restype = ctypes.c_int
+    library.chd_error_string.argtypes = [ctypes.c_int]
+    library.chd_error_string.restype = ctypes.c_char_p
+
+
+def libchdr_error_message() -> str:
+    return _LIBCHDR_ERROR or "libchdr shared library not found"
+
+
+def chd_error_string(library: ctypes.CDLL, error_code: int) -> str:
+    raw = library.chd_error_string(error_code)
+    if raw is None:
+        return f"CHD error {error_code}"
+    return raw.decode("utf-8", errors="replace")
+
+
+def load_chd_track_info(
+    library: ctypes.CDLL, chd_handle: ctypes.c_void_p, index: int
+) -> ChdTrackInfo | None:
+    metadata = ctypes.create_string_buffer(256)
+    metadata_length = ctypes.c_uint32()
+    metadata_tag = ctypes.c_uint32()
+
+    result = library.chd_get_metadata(
+        chd_handle,
+        CDROM_TRACK_METADATA2_TAG,
+        index,
+        metadata,
+        len(metadata),
+        ctypes.byref(metadata_length),
+        ctypes.byref(metadata_tag),
+        None,
+    )
+    if result == CHDERR_NONE:
+        return parse_chd_track_metadata(metadata.value.decode("utf-8", errors="replace"))
+
+    result = library.chd_get_metadata(
+        chd_handle,
+        CDROM_TRACK_METADATA_TAG,
+        index,
+        metadata,
+        len(metadata),
+        ctypes.byref(metadata_length),
+        ctypes.byref(metadata_tag),
+        None,
+    )
+    if result == CHDERR_NONE:
+        return parse_chd_track_metadata(metadata.value.decode("utf-8", errors="replace"))
+
+    return None
+
+
+def parse_chd_track_metadata(metadata: str) -> ChdTrackInfo | None:
+    values: dict[str, str] = {}
+    for part in metadata.strip().split():
+        if ":" not in part:
+            continue
+        key, value = part.split(":", 1)
+        values[key] = value
+
+    try:
+        track = int(values.get("TRACK", "0"))
+        track_type = values.get("TYPE", "")
+        frames = int(values.get("FRAMES", "0"))
+        pregap = int(values.get("PREGAP", "0"))
+        postgap = int(values.get("POSTGAP", "0"))
+    except ValueError:
+        return None
+
+    if track <= 0 or not track_type or frames <= 0:
+        return None
+
+    return ChdTrackInfo(track, track_type, frames, pregap, postgap)
+
+
+def pad_track_frames(frames: int) -> int:
+    return (frames + 3) & ~3
+
+
+def open_direct_chd_reader(path: Path) -> ChdOpenResult:
+    library = load_libchdr()
+    if library is None:
+        return ChdOpenResult(None, libchdr_error_message())
+
+    chd_handle = ctypes.c_void_p()
+    result = library.chd_open(
+        os.fsencode(str(path)),
+        CHD_OPEN_READ,
+        ctypes.c_void_p(),
+        ctypes.byref(chd_handle),
+    )
+    if result != CHDERR_NONE:
+        error = chd_error_string(library, result)
+        return ChdOpenResult(None, f"libchdr open failed: {error}")
+
+    try:
+        header = library.chd_get_header(chd_handle)
+        if not header:
+            return ChdOpenResult(None, "libchdr missing CHD header")
+
+        hunk_bytes = header.contents.hunkbytes
+        if hunk_bytes <= 0:
+            return ChdOpenResult(None, "libchdr reported invalid CHD hunk size")
+
+        track_index = 0
+        accumulated_frames = 0
+        while True:
+            track = load_chd_track_info(library, chd_handle, track_index)
+            if track is None:
+                break
+            if track.type != "AUDIO":
+                return ChdOpenResult(
+                    DirectChdReader(
+                        LibChdrDiscHandle(
+                            library,
+                            chd_handle,
+                            hunk_bytes,
+                            accumulated_frames,
+                            track.frames,
+                        )
+                    )
+                )
+            accumulated_frames += pad_track_frames(track.frames)
+            track_index += 1
+
+        return ChdOpenResult(None, "libchdr found no data track")
+    except Exception as exc:
+        return ChdOpenResult(None, f"libchdr open failed: {exc}")
+    finally:
+        if not isinstance(locals().get("track", None), ChdTrackInfo) or (
+            locals().get("track") is not None and locals().get("track").type == "AUDIO"
+        ):
+            if chd_handle:
+                library.chd_close(chd_handle)
+
+
+def describe_chd_hash_failure(path: Path) -> str:
+    direct_result = open_direct_chd_reader(path)
+    if direct_result.handle is not None:
+        direct_result.handle.close()
+        return "CHD hash failed after direct libchdr read"
+    if direct_result.error is not None:
+        return direct_result.error
+    return "libchdr shared library not found"
 
 
 def has_extension(file_name: str, *extensions: str) -> bool:
