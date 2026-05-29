@@ -52,6 +52,8 @@ class AwardsHistoryFragment : Fragment() {
                 .setTitle(R.string.awards_history_clear_blocked_title)
                 .setMessage(R.string.awards_history_clear_blocked_message)
                 .setPositiveButton(R.string.action_ok, null)
+                .create()
+                .also { it.setCanceledOnTouchOutside(false) }
                 .show()
             return
         }
@@ -63,6 +65,8 @@ class AwardsHistoryFragment : Fragment() {
                 viewModel.clearAwardHistory()
             }
             .setNegativeButton(android.R.string.cancel, null)
+            .create()
+            .also { it.setCanceledOnTouchOutside(false) }
             .show()
     }
 }

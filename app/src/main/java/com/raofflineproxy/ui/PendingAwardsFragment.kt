@@ -54,6 +54,8 @@ class PendingAwardsFragment : Fragment() {
                 viewModel.deletePendingAward(award)
             }
             .setNegativeButton(android.R.string.cancel, null)
+            .create()
+            .also { it.setCanceledOnTouchOutside(false) }
             .show()
     }
 }

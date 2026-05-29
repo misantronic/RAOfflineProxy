@@ -86,6 +86,8 @@ class SettingsFragment : Fragment() {
                     viewModel.clearCache()
                 }
                 .setNegativeButton(android.R.string.cancel, null)
+                .create()
+                .also { it.setCanceledOnTouchOutside(false) }
                 .show()
         }
 
@@ -97,6 +99,8 @@ class SettingsFragment : Fragment() {
                     viewModel.clearDatabase()
                 }
                 .setNegativeButton(android.R.string.cancel, null)
+                .create()
+                .also { it.setCanceledOnTouchOutside(false) }
                 .show()
         }
 
