@@ -25,7 +25,7 @@ Dolphin stores its RetroAchievements configuration in `Config/RetroAchievements.
 
 :::
 
-RetroArch and Dolphin are patched and reverted independently depending on which emulator toggles are enabled in the app.
+RetroArch, Dolphin, and PPSSPP are patched and reverted independently depending on which emulator toggles are enabled in the app.
 
 Patching and reverting happen **automatically** when you start and stop the proxy: there is no separate setup step.
 
