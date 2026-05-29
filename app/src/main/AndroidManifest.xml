@@ -18,8 +18,7 @@
         <package android:name="com.retroarch.aarch64" />
         <package android:name="com.retroarch" />
         <package android:name="org.dolphinemu.dolphinemu" />
-        <package android:name="org.dolphinemu.dolphinemu.beta" />
-        <package android:name="org.dolphinemu.dolphinemu.debug" />
+        <package android:name="org.ppsspp.ppsspp" />
     </queries>
 
     <application

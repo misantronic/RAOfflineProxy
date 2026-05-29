@@ -74,7 +74,7 @@ import org.json.JSONObject
 
 enum class AuthState { Unknown, Valid, Invalid }
 
-enum class SafGrantTarget { RetroArch, SmartCacheRetroArch, Dolphin, SmartCacheRom, AllFilesAccess }
+enum class SafGrantTarget { RetroArch, SmartCacheRetroArch, Dolphin, Ppsspp, SmartCacheRom, AllFilesAccess }
 
 sealed interface MainUiEvent {
     data object PromptSmartCacheAfterProxyStart : MainUiEvent
@@ -95,8 +95,10 @@ data class MainUiState(
     val proxyPort: Int = PrefsConstants.DEFAULT_PROXY_PORT,
     val retroArchInstalled: Boolean = false,
     val dolphinInstalled: Boolean = false,
+    val ppssppInstalled: Boolean = false,
     val retroArchEnabled: Boolean = false,
     val dolphinEnabled: Boolean = false,
+    val ppssppEnabled: Boolean = false,
     val pendingAwards: List<PendingAwardUi> = emptyList(),
     val awardHistory: List<PendingAwardUi> = emptyList(),
     val cachedGames: List<CachedGame> = emptyList(),
@@ -172,7 +174,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val emulatorSupport = loadEmulatorSupport(app)
         Log.i(
             "RAProxy/Emulators",
-            "init support retroArchInstalled=${emulatorSupport.retroArchInstalled} dolphinInstalled=${emulatorSupport.dolphinInstalled} retroArchEnabled=${emulatorSupport.retroArchEnabled} dolphinEnabled=${emulatorSupport.dolphinEnabled}"
+            "init support retroArchInstalled=${emulatorSupport.retroArchInstalled} dolphinInstalled=${emulatorSupport.dolphinInstalled} ppssppInstalled=${emulatorSupport.ppssppInstalled} retroArchEnabled=${emulatorSupport.retroArchEnabled} dolphinEnabled=${emulatorSupport.dolphinEnabled} ppssppEnabled=${emulatorSupport.ppssppEnabled}"
         )
         _state.value = _state.value.copy(
             autostartProxy = loadAutostartPref(),
@@ -182,8 +184,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             proxyPort = PrefsConstants.loadProxyPort(app),
             retroArchInstalled = emulatorSupport.retroArchInstalled,
             dolphinInstalled = emulatorSupport.dolphinInstalled,
+            ppssppInstalled = emulatorSupport.ppssppInstalled,
             retroArchEnabled = emulatorSupport.retroArchEnabled,
-            dolphinEnabled = emulatorSupport.dolphinEnabled
+            dolphinEnabled = emulatorSupport.dolphinEnabled,
+            ppssppEnabled = emulatorSupport.ppssppEnabled
         )
         exportManualSetupConfig()
         restoreDolphinCredentialsOnLaunch(emulatorSupport)
@@ -298,15 +302,18 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
             val retroArchTreeUri = loadSafUri()
             val dolphinTreeUri = loadDolphinSafUri()
+            val ppssppTreeUri = loadPpssppSafUri()
             val retroArchPatched = withContext(Dispatchers.IO) { checkRetroArchIsPatched(app, retroArchTreeUri) }
             val dolphinPatched = withContext(Dispatchers.IO) { checkIsDolphinPatched(app, dolphinTreeUri) }
-            val anyPatched = retroArchPatched || dolphinPatched
+            val ppssppPatched = withContext(Dispatchers.IO) { checkIsPpssppPatched(app, ppssppTreeUri) }
+            val anyPatched = retroArchPatched || dolphinPatched || ppssppPatched
             val proxyRunning = ProxyService.isRunning(app)
             val prefs = app.getSharedPreferences(PrefsConstants.PREFS_NAME, Context.MODE_PRIVATE)
             val retroArchPatchedThisRun = prefs.getBoolean(PrefsConstants.KEY_RETROARCH_PATCHED_THIS_RUN, false)
             val dolphinPatchedThisRun = prefs.getBoolean(PrefsConstants.KEY_DOLPHIN_PATCHED_THIS_RUN, false)
+            val ppssppPatchedThisRun = prefs.getBoolean(PrefsConstants.KEY_PPSSPP_PATCHED_THIS_RUN, false)
 
-            if ((!anyPatched && !retroArchPatchedThisRun && !dolphinPatchedThisRun) || proxyRunning) {
+            if ((!anyPatched && !retroArchPatchedThisRun && !dolphinPatchedThisRun && !ppssppPatchedThisRun) || proxyRunning) {
                 _state.value = _state.value.copy(
                     proxyRunning = proxyRunning,
                     cfgIsPatched = anyPatched
@@ -334,6 +341,16 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             }
             val dolphinRevertedTarget = dolphinResult.success && dolphinResult.copyBackPath == null
 
+            val ppssppResult = if (ppssppPatchedThisRun || ppssppPatched) {
+                val restorePpssppHardcore = prefs.getBoolean(PrefsConstants.KEY_PPSSPP_HARDCORE_WAS_ENABLED, false)
+                withContext(Dispatchers.IO) {
+                    revertPpssppCfg(app, ppssppTreeUri, restorePpssppHardcore)
+                }
+            } else {
+                PpssppPatchResult(success = true, message = "PPSSPP not patched this run.", skippedNotInstalled = true)
+            }
+            val ppssppRevertedTarget = ppssppResult.success && ppssppResult.copyBackPath == null
+
             if (retroArchRevertedTarget) {
                 prefs.edit {
                     remove(PrefsConstants.KEY_RETROARCH_HARDCORE_WAS_ENABLED)
@@ -348,17 +365,25 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 }
             }
 
-            val needsSafGrant = retroArchResult.needsSafGrant || dolphinResult.needsSafGrant
+            if (ppssppRevertedTarget) {
+                prefs.edit {
+                    remove(PrefsConstants.KEY_PPSSPP_HARDCORE_WAS_ENABLED)
+                    remove(PrefsConstants.KEY_PPSSPP_PATCHED_THIS_RUN)
+                }
+            }
+
+            val needsSafGrant = retroArchResult.needsSafGrant || dolphinResult.needsSafGrant || ppssppResult.needsSafGrant
             val safGrantTarget = when {
                 retroArchResult.needsSafGrant -> SafGrantTarget.RetroArch
                 dolphinResult.needsSafGrant -> SafGrantTarget.Dolphin
+                ppssppResult.needsSafGrant -> SafGrantTarget.Ppsspp
                 else -> null
             }
-            val cfgCopyBackPath = retroArchResult.copyBackPath ?: dolphinResult.copyBackPath
+            val cfgCopyBackPath = retroArchResult.copyBackPath ?: dolphinResult.copyBackPath ?: ppssppResult.copyBackPath
 
             _state.value = _state.value.copy(
                 proxyRunning = false,
-                cfgIsPatched = !(retroArchRevertedTarget && dolphinRevertedTarget),
+                cfgIsPatched = !(retroArchRevertedTarget && dolphinRevertedTarget && ppssppRevertedTarget),
                 needsSafGrant = needsSafGrant,
                 safGrantTarget = safGrantTarget,
                 cfgCopyBackPath = cfgCopyBackPath
@@ -368,6 +393,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 SnackbarManager.showError(retroArchResult.message)
             } else if (!dolphinRevertedTarget && !dolphinResult.needsSafGrant) {
                 SnackbarManager.showError(dolphinResult.message)
+            } else if (!ppssppRevertedTarget && !ppssppResult.needsSafGrant) {
+                SnackbarManager.showError(ppssppResult.message)
             }
         }
     }
@@ -497,6 +524,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         PrefsConstants.clearDolphinSafUri(app)
                         SnackbarManager.showMessage(str(R.string.smart_cache_requires_dolphin_access), SnackbarDuration.Indefinite)
                     }
+                    SafGrantTarget.Ppsspp -> {
+                        PrefsConstants.clearPpssppSafUri(app)
+                    }
                     SafGrantTarget.AllFilesAccess -> {
                         SnackbarManager.showMessage(str(R.string.smart_cache_requires_all_files_access), SnackbarDuration.Indefinite)
                     }
@@ -549,6 +579,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             SafGrantTarget.Dolphin -> {
                 PrefsConstants.clearDolphinSafUri(app)
                 SnackbarManager.showMessage(str(R.string.proxy_start_aborted_dolphin_saf_rejected), SnackbarDuration.Indefinite)
+            }
+            SafGrantTarget.Ppsspp -> {
+                PrefsConstants.clearPpssppSafUri(app)
+                setPpssppEnabledInternal(false)
+                SnackbarManager.showMessage(str(R.string.proxy_start_aborted_ppsspp_saf_rejected), SnackbarDuration.Indefinite)
             }
             SafGrantTarget.AllFilesAccess -> {
                 pendingSmartCacheGrantTargets = emptyList()
@@ -688,6 +723,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
                 val retroArchTreeUri = treeUri ?: loadSafUri()
                 val dolphinTreeUri = loadDolphinSafUri()
+                val ppssppTreeUri = loadPpssppSafUri()
 
                 val result = if (emulatorSupport.retroArchEnabled) {
                     withContext(Dispatchers.IO) { patchRetroArchCfg(app, retroArchTreeUri) }
@@ -767,9 +803,45 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     prefs.edit { remove(PrefsConstants.KEY_DOLPHIN_PATCHED_THIS_RUN) }
                 }
 
+                val ppssppResult = if (emulatorSupport.ppssppEnabled) {
+                    withContext(Dispatchers.IO) {
+                        patchPpssppCfg(app, ppssppTreeUri)
+                    }
+                } else {
+                    PpssppPatchResult(success = true, message = "PPSSPP disabled.", skippedNotInstalled = true)
+                }
+                if (emulatorSupport.ppssppEnabled) {
+                    if (ppssppResult.needsSafGrant) {
+                        PrefsConstants.clearPpssppSafUri(app)
+                        _state.value = _state.value.copy(
+                            needsSafGrant = true,
+                            safGrantTarget = SafGrantTarget.Ppsspp,
+                            pendingSafGrantTargets = listOf(SafGrantTarget.Ppsspp)
+                        )
+                        return@launch
+                    } else if (ppssppResult.invalidSafGrant) {
+                        PrefsConstants.clearPpssppSafUri(app)
+                        SnackbarManager.showError(ppssppResult.message)
+                        pendingProxyStart = false
+                        return@launch
+                    } else if (!ppssppResult.success && !ppssppResult.skippedNotInstalled) {
+                        SnackbarManager.showError(ppssppResult.message)
+                        pendingProxyStart = false
+                        return@launch
+                    } else if (ppssppResult.success && !ppssppResult.skippedNotInstalled) {
+                        prefs.edit {
+                            putBoolean(PrefsConstants.KEY_PPSSPP_HARDCORE_WAS_ENABLED, ppssppResult.hardcoreWasEnabled)
+                            putBoolean(PrefsConstants.KEY_PPSSPP_PATCHED_THIS_RUN, true)
+                        }
+                    }
+                } else {
+                    prefs.edit { remove(PrefsConstants.KEY_PPSSPP_PATCHED_THIS_RUN) }
+                }
+
                 val credentialsToCache = selectImportedCredentials(
                     retroArch = result.credentials,
-                    dolphin = dolphinResult.credentials
+                    dolphin = dolphinResult.credentials,
+                    ppsspp = ppssppResult.credentials
                 )
                 credentialsToCache?.let { credentials ->
                     withContext(Dispatchers.IO) { cacheImportedCredentials(credentials) }
@@ -838,6 +910,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 val prefs = app.getSharedPreferences(PrefsConstants.PREFS_NAME, Context.MODE_PRIVATE)
                 val retroArchTreeUri = treeUri ?: loadSafUri()
                 val dolphinTreeUri = loadDolphinSafUri()
+                val ppssppTreeUri = loadPpssppSafUri()
                 val retroArchPatchedThisRun = prefs.getBoolean(PrefsConstants.KEY_RETROARCH_PATCHED_THIS_RUN, false)
                 val result = if (retroArchPatchedThisRun) {
                     val restoreHardcore = prefs.getBoolean(PrefsConstants.KEY_RETROARCH_HARDCORE_WAS_ENABLED, false)
@@ -857,6 +930,16 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     DolphinPatchResult(success = true, message = "Dolphin not patched this run.", skippedNotInstalled = true)
                 }
 
+                val ppssppPatchedThisRun = prefs.getBoolean(PrefsConstants.KEY_PPSSPP_PATCHED_THIS_RUN, false)
+                val ppssppResult = if (ppssppPatchedThisRun) {
+                    val restorePpssppHardcore = prefs.getBoolean(PrefsConstants.KEY_PPSSPP_HARDCORE_WAS_ENABLED, false)
+                    withContext(Dispatchers.IO) {
+                        revertPpssppCfg(app, ppssppTreeUri, restorePpssppHardcore)
+                    }
+                } else {
+                    PpssppPatchResult(success = true, message = "PPSSPP not patched this run.", skippedNotInstalled = true)
+                }
+
                 if (revertedTarget) {
                     prefs.edit {
                         remove(PrefsConstants.KEY_RETROARCH_HARDCORE_WAS_ENABLED)
@@ -868,6 +951,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     prefs.edit {
                         remove(PrefsConstants.KEY_DOLPHIN_HARDCORE_WAS_ENABLED)
                         remove(PrefsConstants.KEY_DOLPHIN_PATCHED_THIS_RUN)
+                    }
+                }
+                if (ppssppResult.success && ppssppResult.copyBackPath == null) {
+                    prefs.edit {
+                        remove(PrefsConstants.KEY_PPSSPP_HARDCORE_WAS_ENABLED)
+                        remove(PrefsConstants.KEY_PPSSPP_PATCHED_THIS_RUN)
                     }
                 }
 
@@ -906,6 +995,19 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 } else if (!dolphinResult.success && !dolphinResult.skippedNotInstalled) {
                     SnackbarManager.showError(dolphinResult.message)
                 }
+
+                if (ppssppResult.needsSafGrant) {
+                    PrefsConstants.clearPpssppSafUri(app)
+                    _state.value = _state.value.copy(
+                        needsSafGrant = true,
+                        safGrantTarget = SafGrantTarget.Ppsspp
+                    )
+                } else if (ppssppResult.invalidSafGrant) {
+                    PrefsConstants.clearPpssppSafUri(app)
+                    SnackbarManager.showError(ppssppResult.message)
+                } else if (!ppssppResult.success && !ppssppResult.skippedNotInstalled) {
+                    SnackbarManager.showError(ppssppResult.message)
+                }
             } finally {
                 delay(250)
                 _state.value = _state.value.copy(proxyToggleInProgress = false)
@@ -927,7 +1029,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             }
 
             val patched = withContext(Dispatchers.IO) {
-                checkRetroArchIsPatched(app, treeUri) || checkIsDolphinPatched(app, loadDolphinSafUri())
+                checkRetroArchIsPatched(app, treeUri) ||
+                    checkIsDolphinPatched(app, loadDolphinSafUri()) ||
+                    checkIsPpssppPatched(app, loadPpssppSafUri())
             }
             _state.value = _state.value.copy(cfgIsPatched = patched)
         }
@@ -1449,7 +1553,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val updated = loadEmulatorSupport(app)
         _state.value = _state.value.copy(
             retroArchEnabled = updated.retroArchEnabled,
-            dolphinEnabled = updated.dolphinEnabled
+            dolphinEnabled = updated.dolphinEnabled,
+            ppssppEnabled = updated.ppssppEnabled
         )
         exportManualSetupConfig()
     }
@@ -1470,7 +1575,30 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val updated = loadEmulatorSupport(app)
         _state.value = _state.value.copy(
             retroArchEnabled = updated.retroArchEnabled,
-            dolphinEnabled = updated.dolphinEnabled
+            dolphinEnabled = updated.dolphinEnabled,
+            ppssppEnabled = updated.ppssppEnabled
+        )
+        exportManualSetupConfig()
+    }
+
+    fun setPpssppEnabled(enabled: Boolean) {
+        val app = getApplication<Application>()
+        val support = loadEmulatorSupport(app)
+        if (!support.ppssppInstalled || (support.installedCount == 1) || _state.value.proxyRunning) {
+            return
+        }
+        setPpssppEnabledInternal(enabled)
+    }
+
+    private fun setPpssppEnabledInternal(enabled: Boolean) {
+        val app = getApplication<Application>()
+        app.getSharedPreferences(PrefsConstants.PREFS_NAME, Context.MODE_PRIVATE)
+            .edit { putBoolean(PrefsConstants.KEY_ENABLE_PPSSPP, enabled) }
+        val updated = loadEmulatorSupport(app)
+        _state.value = _state.value.copy(
+            retroArchEnabled = updated.retroArchEnabled,
+            dolphinEnabled = updated.dolphinEnabled,
+            ppssppEnabled = updated.ppssppEnabled
         )
         exportManualSetupConfig()
     }
@@ -1495,6 +1623,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             val enabledEmulators = buildList {
                 if (currentState.retroArchEnabled) add("retroarch")
                 if (currentState.dolphinEnabled) add("dolphin")
+                if (currentState.ppssppEnabled) add("ppsspp")
             }
 
             val content = JSONObject()
@@ -1581,6 +1710,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private fun loadDolphinSafUri(): Uri? =
         PrefsConstants.loadDolphinSafUri(getApplication())
 
+    private fun loadPpssppSafUri(): Uri? =
+        PrefsConstants.loadPpssppSafUri(getApplication())
+
     internal fun consumePendingSmartCacheRomGrantPath(): String? =
         pendingSmartCacheRomGrantPaths.firstOrNull()
 
@@ -1646,10 +1778,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
 internal fun selectImportedCredentials(
     retroArch: ImportedCredentials?,
-    dolphin: ImportedCredentials?
+    dolphin: ImportedCredentials?,
+    ppsspp: ImportedCredentials?
 ): ImportedCredentials? = when {
     retroArch is ImportedCredentials.Token -> retroArch
     dolphin is ImportedCredentials.Token -> dolphin
+    ppsspp is ImportedCredentials.Token -> ppsspp
     retroArch is ImportedCredentials.Password -> retroArch
     else -> null
 }

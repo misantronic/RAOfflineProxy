@@ -95,6 +95,23 @@ class MainActivity : AppCompatActivity() {
         viewModel.onSafGranted(SafGrantTarget.Dolphin)
     }
 
+    private val ppssppSafLauncher = registerForActivityResult(OpenPpssppRootTree()) { uri ->
+        if (uri == null) {
+            viewModel.onSafRejected(SafGrantTarget.Ppsspp)
+            return@registerForActivityResult
+        }
+        contentResolver.takePersistableUriPermission(
+            uri,
+            Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+        )
+        if (!validatePpssppRoot(this, uri)) {
+            showInvalidPpssppFolderDialog()
+            return@registerForActivityResult
+        }
+        PrefsConstants.savePpssppSafUri(this, uri)
+        viewModel.onSafGranted(SafGrantTarget.Ppsspp)
+    }
+
     private val smartCacheRomSafLauncher = registerForActivityResult(OpenSmartCacheRomTree()) { uri ->
         if (uri == null) {
             viewModel.onSafRejected(SafGrantTarget.SmartCacheRom)
@@ -193,7 +210,7 @@ class MainActivity : AppCompatActivity() {
                     isOnline = state.isOnline,
                     proxyToggleInProgress = state.proxyToggleInProgress,
                     needsSafGrant = state.needsSafGrant,
-                    hasEnabledEmulator = state.retroArchEnabled || state.dolphinEnabled
+                    hasEnabledEmulator = state.retroArchEnabled || state.dolphinEnabled || state.ppssppEnabled
                 )
                 updateAppUpdateMenuItem(state.availableAppUpdate)
                 updateNavBadge(navView, R.id.nav_cached_games, state.cachedGames.size)
@@ -261,7 +278,7 @@ class MainActivity : AppCompatActivity() {
             isOnline = state.isOnline,
             proxyToggleInProgress = state.proxyToggleInProgress,
             needsSafGrant = state.needsSafGrant,
-            hasEnabledEmulator = state.retroArchEnabled || state.dolphinEnabled
+            hasEnabledEmulator = state.retroArchEnabled || state.dolphinEnabled || state.ppssppEnabled
         )
         updateAppUpdateMenuItem(state.availableAppUpdate)
         return true
@@ -443,6 +460,8 @@ class MainActivity : AppCompatActivity() {
             .setTitle(R.string.proxy_started_dialog_title)
             .setMessage(R.string.home_token_warning)
             .setPositiveButton(R.string.action_ok, null)
+            .create()
+            .also { it.setCanceledOnTouchOutside(false) }
             .show()
     }
 
@@ -453,6 +472,7 @@ class MainActivity : AppCompatActivity() {
             SafGrantTarget.RetroArch -> R.string.saf_dialog_message
             SafGrantTarget.SmartCacheRetroArch -> R.string.smart_cache_retroarch_access_message
             SafGrantTarget.Dolphin -> R.string.dolphin_saf_dialog_message
+            SafGrantTarget.Ppsspp -> R.string.ppsspp_saf_dialog_message
             SafGrantTarget.AllFilesAccess -> R.string.smart_cache_all_files_access_message
             SafGrantTarget.SmartCacheRom -> R.string.smart_cache_rom_saf_dialog_message
         }
@@ -465,6 +485,7 @@ class MainActivity : AppCompatActivity() {
                     SafGrantTarget.RetroArch -> safLauncher.launch(Unit)
                     SafGrantTarget.SmartCacheRetroArch -> smartCacheRetroArchSafLauncher.launch(Unit)
                     SafGrantTarget.Dolphin -> dolphinSafLauncher.launch(Unit)
+                    SafGrantTarget.Ppsspp -> ppssppSafLauncher.launch(Unit)
                     SafGrantTarget.AllFilesAccess -> launchAllFilesAccessSettings()
                     SafGrantTarget.SmartCacheRom -> smartCacheRomSafLauncher.launch(viewModel.consumePendingSmartCacheRomGrantPath())
                 }
@@ -475,10 +496,28 @@ class MainActivity : AppCompatActivity() {
                     SafGrantTarget.RetroArch -> viewModel.onSafRejected(SafGrantTarget.RetroArch)
                     SafGrantTarget.SmartCacheRetroArch -> viewModel.onSafRejected(SafGrantTarget.SmartCacheRetroArch)
                     SafGrantTarget.Dolphin -> viewModel.onSafRejected(SafGrantTarget.Dolphin)
+                    SafGrantTarget.Ppsspp -> viewModel.onSafRejected(SafGrantTarget.Ppsspp)
                     SafGrantTarget.AllFilesAccess -> viewModel.onSafRejected(SafGrantTarget.AllFilesAccess)
                     SafGrantTarget.SmartCacheRom -> viewModel.onSafRejected(SafGrantTarget.SmartCacheRom)
                 }
             }
+            .create()
+            .also { it.setCanceledOnTouchOutside(false) }
+            .show()
+    }
+
+    private fun showInvalidPpssppFolderDialog() {
+        AlertDialog.Builder(this)
+            .setTitle(R.string.saf_dialog_title)
+            .setMessage(R.string.ppsspp_invalid_root_message)
+            .setPositiveButton(R.string.saf_dialog_grant) { _, _ ->
+                ppssppSafLauncher.launch(Unit)
+            }
+            .setNegativeButton(android.R.string.cancel) { _, _ ->
+                viewModel.onSafRejected(SafGrantTarget.Ppsspp)
+            }
+            .create()
+            .also { it.setCanceledOnTouchOutside(false) }
             .show()
     }
 
@@ -519,6 +558,8 @@ class MainActivity : AppCompatActivity() {
                 viewModel.startSmartCache()
             }
             .setNegativeButton(R.string.smart_cache_prompt_not_now, null)
+            .create()
+            .also { it.setCanceledOnTouchOutside(false) }
             .show()
     }
 
@@ -557,6 +598,7 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+        dialog.setCanceledOnTouchOutside(false)
         dialog.show()
     }
 
@@ -571,6 +613,8 @@ class MainActivity : AppCompatActivity() {
                 openUrl(update.releaseUrl)
             }
             .setNegativeButton(R.string.app_update_action_later, null)
+            .create()
+            .also { it.setCanceledOnTouchOutside(false) }
             .show()
     }
 
@@ -775,6 +819,23 @@ private class OpenDolphinConfigTree : ActivityResultContract<Unit, Uri?>() {
             runCatching { context.packageManager.getPackageInfo(packageName, 0) }
                 .isSuccess
         } ?: DOLPHIN_PACKAGE_CANDIDATES.first()
+}
+
+private class OpenPpssppRootTree : ActivityResultContract<Unit, Uri?>() {
+    override fun createIntent(context: Context, input: Unit): Intent =
+        Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).apply {
+            initialTreeUriForPath("/storage/emulated/0/Android/data/$UI_PPSSPP_PACKAGE/files")
+                ?.let { putExtra(DocumentsContract.EXTRA_INITIAL_URI, it) }
+            addFlags(
+                Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                    Intent.FLAG_GRANT_WRITE_URI_PERMISSION or
+                    Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION or
+                    Intent.FLAG_GRANT_PREFIX_URI_PERMISSION
+            )
+        }
+
+    override fun parseResult(resultCode: Int, intent: Intent?): Uri? =
+        if (resultCode == android.app.Activity.RESULT_OK) intent?.data else null
 }
 
 private class OpenRetroArchHistoryTree : ActivityResultContract<Unit, Uri?>() {

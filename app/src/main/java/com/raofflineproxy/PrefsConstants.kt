@@ -14,6 +14,7 @@ object PrefsConstants {
     const val KEY_RETROARCH_SAF_TREE_URI = "retroarch_saf_tree_uri"
     const val KEY_RETROARCH_SMART_CACHE_SAF_TREE_URI = "retroarch_smart_cache_saf_tree_uri"
     const val KEY_DOLPHIN_SAF_TREE_URI = "dolphin_saf_tree_uri"
+    const val KEY_PPSSPP_SAF_TREE_URI = "ppsspp_saf_tree_uri"
     const val KEY_SMART_CACHE_ROM_SAF_TREE_URI = "smart_cache_rom_saf_tree_uri"
     const val KEY_SMART_CACHE_ROM_SAF_TREE_URIS = "smart_cache_rom_saf_tree_uris"
     const val KEY_AUTOSTART_PROXY = "autostart_proxy"
@@ -21,12 +22,15 @@ object PrefsConstants {
     const val KEY_ENABLE_SMART_CACHING = "enable_smart_caching"
     const val KEY_ENABLE_RETROARCH = "enable_retroarch"
     const val KEY_ENABLE_DOLPHIN = "enable_dolphin"
+    const val KEY_ENABLE_PPSSPP = "enable_ppsspp"
     const val KEY_RETROARCH_HARDCORE_WAS_ENABLED = "retroarch_hardcore_was_enabled"
     const val KEY_DOLPHIN_HARDCORE_WAS_ENABLED = "dolphin_hardcore_was_enabled"
+    const val KEY_PPSSPP_HARDCORE_WAS_ENABLED = "ppsspp_hardcore_was_enabled"
     const val KEY_DOLPHIN_GAME_SETTINGS_HARDCORE_OVERRIDES = "dolphin_game_settings_hardcore_overrides"
     const val KEY_SKIP_NEXT_CFG_REVERT = "skip_next_cfg_revert"
     const val KEY_RETROARCH_PATCHED_THIS_RUN = "retroarch_patched_this_run"
     const val KEY_DOLPHIN_PATCHED_THIS_RUN = "dolphin_patched_this_run"
+    const val KEY_PPSSPP_PATCHED_THIS_RUN = "ppsspp_patched_this_run"
     const val KEY_PROXY_PORT = "proxy_port"
     const val KEY_APP_UPDATE_CHECK_ENABLED = "app_update_check_enabled"
     const val KEY_APP_UPDATE_LAST_CHECKED_AT = "app_update_last_checked_at"
@@ -88,6 +92,21 @@ object PrefsConstants {
     fun clearDolphinSafUri(context: Context) {
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .edit { remove(KEY_DOLPHIN_SAF_TREE_URI) }
+    }
+
+    fun loadPpssppSafUri(context: Context): Uri? =
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getString(KEY_PPSSPP_SAF_TREE_URI, null)
+            ?.toUri()
+
+    fun savePpssppSafUri(context: Context, uri: Uri) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit { putString(KEY_PPSSPP_SAF_TREE_URI, uri.toString()) }
+    }
+
+    fun clearPpssppSafUri(context: Context) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit { remove(KEY_PPSSPP_SAF_TREE_URI) }
     }
 
     fun loadDolphinGameSettingsHardcoreOverrides(context: Context): String? =
