@@ -97,7 +97,31 @@ internal fun hashRom(
             fileName = fileName,
             fileSize = file.length(),
             openStream = { context.contentResolver.openInputStream(file.uri) },
-            openDataSource = {
+            openDataSource = openDataSource@{
+                if (hasExtension(fileName, "chd")) {
+                    val tempFile = File.createTempFile("romhash_", ".chd", context.cacheDir)
+                    val copied = runCatching {
+                        context.contentResolver.openInputStream(file.uri)?.use { input ->
+                            tempFile.outputStream().use(input::copyTo)
+                        }
+                    }.getOrNull()
+                    if (copied == null) {
+                        tempFile.delete()
+                        return@openDataSource null
+                    }
+
+                    ChdRomDataSource.open(tempFile)?.let { dataSource ->
+                        return@openDataSource object : RomDataSource by dataSource {
+                            override fun close() {
+                                dataSource.close()
+                                tempFile.delete()
+                            }
+                        }
+                    }
+                    tempFile.delete()
+                    return@openDataSource null
+                }
+
                 context.contentResolver.openFileDescriptor(file.uri, "r")?.let(::ParcelFileDescriptorRomDataSource)
             }
         )
@@ -115,6 +139,11 @@ internal fun hashRom(input: RomHashInput): String? {
             return hash
         }
         logInfo(TAG, "${strategy.javaClass.simpleName} could not hash $fileName")
+    }
+
+    if (hasExtension(fileName, "chd")) {
+        logWarn(TAG, "Refusing generic MD5 fallback for $fileName because CHD needs disc-aware hashing")
+        return null
     }
 
     val detectedNintendoFormat = detectNintendoDiscFormat(input)
