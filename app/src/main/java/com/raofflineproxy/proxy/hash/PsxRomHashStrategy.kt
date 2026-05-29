@@ -9,7 +9,7 @@ private const val PSX_EXE_BODY_SIZE_OFFSET = 0x1C
 private val PSX_EXE_MAGIC = "PS-X EXE".toByteArray(Charsets.US_ASCII)
 
 internal object PsxRomHashStrategy : RomHashStrategy {
-    override fun matches(fileName: String): Boolean = hasExtension(fileName, "bin", "iso")
+    override fun matches(fileName: String): Boolean = hasExtension(fileName, "bin", "iso", "chd")
 
     override fun hash(input: RomHashInput): String? {
         val openDataSource = input.openDataSource ?: return null

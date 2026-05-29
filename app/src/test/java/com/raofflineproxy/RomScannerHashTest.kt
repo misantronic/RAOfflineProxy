@@ -744,6 +744,27 @@ class RomScannerHashTest {
     }
 
     @Test
+    fun psxStrategy_matchesChd() {
+        assertTrue(PsxRomHashStrategy.matches("game.chd"))
+    }
+
+    @Test
+    fun hashRom_chdWithoutNativeBridgeDoesNotFallBackToGenericMd5() {
+        val bytes = "plain-chd".toByteArray(Charsets.US_ASCII)
+
+        assertNull(
+            hashRom(
+                RomHashInput(
+                    fileName = "game.chd",
+                    fileSize = bytes.size.toLong(),
+                    openStream = { bytes.inputStream() },
+                    openDataSource = { null }
+                )
+            )
+        )
+    }
+
+    @Test
     fun hashZipRom_singleSupportedEntryHashesExtractedRom() {
         val zipBytes = createZip(
             ".DS_Store" to "ignored".toByteArray(Charsets.US_ASCII),
