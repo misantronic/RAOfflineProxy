@@ -34,7 +34,7 @@ You can cache games in either of these ways:
 
 2. **Cache them automatically by launching them in a supported emulator**
    - Keep the proxy running while you are online
-   - Open the game once in RetroArch or Dolphin
+   - Open the game once in RetroArch, Dolphin, or PPSSPP
    - RAOfflineProxy will save the game data in the background
 
 The app will identify each ROM, look it up on RetroAchievements, and save all the achievement data for that game.
@@ -46,7 +46,7 @@ See [Caching Games](./caching-games) for full details.
 ## Step 4: Play Offline
 
 1. Start the proxy service (press **Start proxy** in the action bar, or enable auto-start)
-2. Launch RetroArch or Dolphin and load a cached game
+2. Launch RetroArch, Dolphin, or PPSSPP and load a cached game
 3. Earn achievements - they will queue locally when offline
 4. When you reconnect, the proxy automatically sends queued awards to RA
 
@@ -58,7 +58,7 @@ The [SNES Burn-in Test Cartridge Test Kit](https://retroachievements.org/game/10
 
 ```
 1. Install APK
-2. Enter RA credentials in RetroArch or Dolphin
+2. Enter RA credentials in RetroArch, Dolphin, or PPSSPP
 3. Open RAOfflineProxy → Start proxy while online
 4. Cache your games from **Cached Games** or just start them while online to cache them automatically
 5. Play!
