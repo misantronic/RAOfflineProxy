@@ -1,6 +1,7 @@
 .idea/
 .gradle/
 build/
+app/.cxx/
 local.properties
 app/release/
 *.apk

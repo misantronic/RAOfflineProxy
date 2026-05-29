@@ -50,6 +50,20 @@ android {
         viewBinding = true
         buildConfig = true
     }
+
+    externalNativeBuild {
+        cmake {
+            path = file("src/main/cpp/CMakeLists.txt")
+        }
+    }
+
+    ndkVersion = "28.0.13004108"
+
+    packaging {
+        jniLibs {
+            useLegacyPackaging = false
+        }
+    }
 }
 
 kotlin {
