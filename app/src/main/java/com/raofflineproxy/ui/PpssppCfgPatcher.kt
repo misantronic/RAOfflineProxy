@@ -9,7 +9,6 @@ import com.raofflineproxy.proxyValue
 private const val PPSSPP_SYSTEM_DIR = "SYSTEM"
 private const val PPSSPP_INI_FILE = "ppsspp.ini"
 private const val PPSSPP_PACKAGE_NAME = "org.ppsspp.ppsspp"
-private const val PPSSPP_RELATIVE_PATH = "$PPSSPP_SYSTEM_DIR/$PPSSPP_INI_FILE"
 
 private val PPSSPP_SAF_ROOT_PATHS = listOf(
     listOf(PPSSPP_PACKAGE_NAME, "files"),
