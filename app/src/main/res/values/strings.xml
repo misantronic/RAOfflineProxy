@@ -136,6 +136,7 @@
     <string name="smart_cache_no_strategies">No enabled Smart Cache strategy is available.</string>
     <string name="smart_cache_requires_retroarch_access">Smart Cache needs access to RetroArch files to read recent history.</string>
     <string name="smart_cache_requires_dolphin_access">Smart Cache needs access to Dolphin\'s package folder to read recent games.</string>
+    <string name="smart_cache_requires_ppsspp_access">Smart Cache needs access to the PPSSPP root folder to read recent games.</string>
     <string name="smart_cache_requires_all_files_access">Smart Cache needs All Files Access or ROM-folder access to read ROMs.</string>
     <string name="smart_cache_requires_rom_access">Smart Cache needs access to your ROM folder to read the recent ROM files.</string>
     <string name="smart_cache_history_missing">RetroArch recent history was not found.</string>

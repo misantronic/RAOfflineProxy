@@ -14,11 +14,13 @@ import com.raofflineproxy.proxy.hash.RomHashInput
 import com.raofflineproxy.proxy.hash.hashRom
 import com.raofflineproxy.ui.DOLPHIN_PACKAGE_CANDIDATES
 import com.raofflineproxy.ui.EmulatorSupport
+import com.raofflineproxy.ui.UI_PPSSPP_PACKAGE
 import com.raofflineproxy.ui.RETROARCH_PACKAGE_CANDIDATES
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.io.FileInputStream
+import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
 import androidx.core.net.toUri
 
@@ -122,7 +124,13 @@ private val DOLPHIN_WII_DISC_TITLE_SOURCE_CANDIDATES by lazy {
     )
 }
 
-private const val MAX_SMART_CACHE_FILES = 50
+private val PPSSPP_RECENTS_PATHS = listOf(
+    listOf(UI_PPSSPP_PACKAGE, "files", "SYSTEM", "ppsspp.ini"),
+    listOf("files", "SYSTEM", "ppsspp.ini"),
+    listOf("SYSTEM", "ppsspp.ini")
+)
+
+private const val MAX_SMART_CACHE_FILES = 75
 private const val SMART_CACHE_EMULATOR_BUDGET = 25
 private val DOLPHIN_GAME_CODE_REGEX = Regex("(?<![A-Z0-9])[A-Z0-9]{6}(?![A-Z0-9])")
 private val DOLPHIN_GCI_CODE_REGEX = Regex("^\\d{2}-([A-Z0-9]{4})-.*\\.gci$", RegexOption.IGNORE_CASE)
@@ -137,7 +145,8 @@ private val DOLPHIN_ROM_SUFFIXES = listOf(
 
 internal enum class SmartCacheEmulator {
     RetroArch,
-    Dolphin
+    Dolphin,
+    Ppsspp
 }
 
 internal data class SmartCacheCandidate(
@@ -190,6 +199,46 @@ private interface SmartCacheStrategy {
     fun isEnabled(context: Context, emulatorSupport: EmulatorSupport): Boolean
 
     fun discoverCandidates(context: Context, treeUri: Uri?): SmartCacheStrategyResult
+}
+
+private object PpssppSmartCacheStrategy : SmartCacheStrategy {
+    override val emulator: SmartCacheEmulator = SmartCacheEmulator.Ppsspp
+
+    override fun isEnabled(context: Context, emulatorSupport: EmulatorSupport): Boolean =
+        emulatorSupport.ppssppInstalled &&
+            emulatorSupport.ppssppEnabled
+
+    override fun discoverCandidates(context: Context, treeUri: Uri?): SmartCacheStrategyResult {
+        if (treeUri == null) {
+            Log.i(TAG, "PPSSPP strategy needs SAF grant for recent games")
+            return SmartCacheStrategyResult(message = "needs_ppsspp_saf_grant", needsSafGrant = true)
+        }
+
+        val tree = DocumentFile.fromTreeUri(context, treeUri)
+            ?: run {
+                Log.w(TAG, "PPSSPP strategy could not open treeUri=$treeUri")
+                return SmartCacheStrategyResult(message = "needs_ppsspp_saf_grant", needsSafGrant = true)
+            }
+        val iniFile = findDocument(tree, PPSSPP_RECENTS_PATHS)
+            ?: run {
+                Log.i(TAG, "PPSSPP strategy did not find SYSTEM/ppsspp.ini in granted tree")
+                return SmartCacheStrategyResult(message = "no_recent_games")
+            }
+        val content = context.contentResolver.openInputStream(iniFile.uri)
+            ?.bufferedReader()
+            ?.use { it.readText() }
+            ?: run {
+                Log.w(TAG, "PPSSPP strategy could not read ppsspp.ini uri=${iniFile.uri}")
+                return SmartCacheStrategyResult(message = "no_recent_games")
+            }
+        val candidates = parsePpssppRecentCandidates(content)
+        Log.i(TAG, "PPSSPP strategy discovered ${candidates.size} recent candidates from ${iniFile.uri}")
+        return if (candidates.isEmpty()) {
+            SmartCacheStrategyResult(message = "no_recent_games")
+        } else {
+            SmartCacheStrategyResult(candidates = candidates)
+        }
+    }
 }
 
 private object RetroArchSmartCacheStrategy : SmartCacheStrategy {
@@ -422,12 +471,13 @@ internal suspend fun runSmartCache(
     emulatorSupport: EmulatorSupport,
     retroArchTreeUri: Uri?,
     dolphinTreeUri: Uri?,
+    ppssppTreeUri: Uri?,
     romTreeUris: List<Uri>,
     onProgress: (current: Int, total: Int, label: String) -> Unit
 ): SmartCacheRunResult {
     Log.i(
         TAG,
-        "runSmartCache start retroArchTreeUri=$retroArchTreeUri dolphinTreeUri=$dolphinTreeUri romTreeUris=${romTreeUris.size} retroArchEnabled=${emulatorSupport.retroArchEnabled} dolphinEnabled=${emulatorSupport.dolphinEnabled}"
+        "runSmartCache start retroArchTreeUri=$retroArchTreeUri dolphinTreeUri=$dolphinTreeUri romTreeUris=${romTreeUris.size} retroArchEnabled=${emulatorSupport.retroArchEnabled} dolphinEnabled=${emulatorSupport.dolphinEnabled} ppssppEnabled=${emulatorSupport.ppssppEnabled}"
     )
     val cachedGameIds = loadCachedGameIds(db)
     val cachedRomPaths = loadCachedRomPaths(db)
@@ -442,7 +492,7 @@ internal suspend fun runSmartCache(
         )
     }
 
-    val activeStrategies = listOf(RetroArchSmartCacheStrategy, DolphinSmartCacheStrategy)
+    val activeStrategies = listOf(RetroArchSmartCacheStrategy, DolphinSmartCacheStrategy, PpssppSmartCacheStrategy)
         .filter { strategy -> strategy.isEnabled(context, emulatorSupport) }
     if (activeStrategies.isEmpty()) {
         Log.i(TAG, "runSmartCache found no active strategies")
@@ -464,6 +514,7 @@ internal suspend fun runSmartCache(
         val treeUri = when (strategy.emulator) {
             SmartCacheEmulator.RetroArch -> retroArchTreeUri
             SmartCacheEmulator.Dolphin -> dolphinTreeUri
+            SmartCacheEmulator.Ppsspp -> ppssppTreeUri
         }
         val result = strategy.discoverCandidates(context, treeUri)
         Log.i(
@@ -493,7 +544,11 @@ internal suspend fun runSmartCache(
             skipped = 0,
             limitReached = false,
             needsSafGrant = true,
-            message = strategyMessage ?: if (SmartCacheEmulator.RetroArch in requiredSafGrantTargets) "needs_saf_grant" else "needs_dolphin_saf_grant",
+            message = strategyMessage ?: when {
+                SmartCacheEmulator.RetroArch in requiredSafGrantTargets -> "needs_saf_grant"
+                SmartCacheEmulator.Dolphin in requiredSafGrantTargets -> "needs_dolphin_saf_grant"
+                else -> "needs_ppsspp_saf_grant"
+            },
             requiredSafGrantTargets = requiredSafGrantTargets.toList()
         )
     }
@@ -564,9 +619,15 @@ internal suspend fun runSmartCache(
             "RetroArch candidate selected title=${resolvedCandidate.candidate.title} path=${resolvedCandidate.candidate.path} lastModifiedAt=${resolvedCandidate.candidate.lastModifiedAt} lastModifiedText=${resolvedCandidate.candidate.lastModifiedAt?.let(::formatSmartCacheTimestamp)}"
         )
     }
+    resolvedCandidates.filter { it.candidate.emulator == SmartCacheEmulator.Ppsspp }.forEach { resolvedCandidate ->
+        Log.i(
+            TAG,
+            "PPSSPP candidate selected title=${resolvedCandidate.candidate.title} path=${resolvedCandidate.candidate.path} lastModifiedAt=${resolvedCandidate.candidate.lastModifiedAt}"
+        )
+    }
     Log.i(
         TAG,
-        "runSmartCache readable cap=$candidateCap resolved=${preflight.resolved.size} capped=${resolvedCandidates.size} remainingSlots=$remainingSlots retroArchSelected=${resolvedCandidates.count { it.candidate.emulator == SmartCacheEmulator.RetroArch }} dolphinSelected=${resolvedCandidates.count { it.candidate.emulator == SmartCacheEmulator.Dolphin }}"
+        "runSmartCache readable cap=$candidateCap resolved=${preflight.resolved.size} capped=${resolvedCandidates.size} remainingSlots=$remainingSlots retroArchSelected=${resolvedCandidates.count { it.candidate.emulator == SmartCacheEmulator.RetroArch }} dolphinSelected=${resolvedCandidates.count { it.candidate.emulator == SmartCacheEmulator.Dolphin }} ppssppSelected=${resolvedCandidates.count { it.candidate.emulator == SmartCacheEmulator.Ppsspp }}"
     )
 
     val relevantTotal = resolvedCandidates.size
@@ -643,6 +704,40 @@ private fun parseRetroArchHistory(content: String): List<SmartCacheCandidate> {
     }
 }
 
+internal fun parsePpssppRecentCandidates(content: String): List<SmartCacheCandidate> {
+    val lines = content.lines()
+    var inRecent = false
+    val seenPaths = linkedSetOf<String>()
+    val candidates = mutableListOf<SmartCacheCandidate>()
+
+    lines.forEach { line ->
+        val trimmed = line.trim()
+        if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+            inRecent = trimmed == "[Recent]"
+            return@forEach
+        }
+        if (!inRecent) return@forEach
+
+        val separator = trimmed.indexOf('=')
+        if (separator == -1) return@forEach
+        val key = trimmed.substring(0, separator).trim()
+        if (!key.startsWith("FileName")) return@forEach
+        val index = key.removePrefix("FileName").toIntOrNull() ?: return@forEach
+        val path = trimmed.substring(separator + 1).trim().takeIf { it.isNotBlank() } ?: return@forEach
+        if (!seenPaths.add(path)) return@forEach
+
+        candidates += SmartCacheCandidate(
+            emulator = SmartCacheEmulator.Ppsspp,
+            sourceLabel = "PPSSPP Recent",
+            path = path,
+            title = deriveSmartCacheTitle(path),
+            priority = index
+        )
+    }
+
+    return candidates.sortedBy { it.priority }
+}
+
 private fun parsePlaylistItems(content: String): List<JSONObject> {
     val root = runCatching { JSONObject(content) }.getOrNull()
     val items = root?.optJSONArray("items")
@@ -695,7 +790,11 @@ private fun sanitizeDolphinRomLocator(locator: String): String? {
 }
 
 private fun deriveSmartCacheTitle(path: String): String? =
-    Uri.decode(path.substringAfterLast('/')).takeIf { it.isNotBlank() }
+    decodePathSegment(path.substringAfterLast('/')).takeIf { it.isNotBlank() }
+
+private fun decodePathSegment(segment: String): String =
+    runCatching { URLDecoder.decode(segment, StandardCharsets.UTF_8.name()) }
+        .getOrDefault(segment)
 
 private fun retroArchRuntimeLogBasename(path: String): String =
     Uri.decode(path.substringAfterLast('/')).substringBeforeLast('.')
