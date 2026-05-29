@@ -37,6 +37,7 @@ import com.raofflineproxy.proxy.loadLoginCredentials
 import com.raofflineproxy.proxy.loadUserAgent
 import com.raofflineproxy.ui.MainActivity
 import com.raofflineproxy.ui.revertDolphinCfg
+import com.raofflineproxy.ui.revertPpssppCfg
 import com.raofflineproxy.ui.revertRetroArchCfg
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -405,6 +406,15 @@ class ProxyService : Service() {
         }
         val revertedDolphinTarget = dolphinResult.success && dolphinResult.copyBackPath == null
 
+        val ppssppPatchedThisRun = prefs.getBoolean(PrefsConstants.KEY_PPSSPP_PATCHED_THIS_RUN, false)
+        val ppssppResult = if (ppssppPatchedThisRun) {
+            val restorePpssppHardcore = prefs.getBoolean(PrefsConstants.KEY_PPSSPP_HARDCORE_WAS_ENABLED, false)
+            revertPpssppCfg(this, PrefsConstants.loadPpssppSafUri(this), restorePpssppHardcore)
+        } else {
+            com.raofflineproxy.ui.PpssppPatchResult(success = true, message = "PPSSPP not patched this run.", skippedNotInstalled = true)
+        }
+        val revertedPpssppTarget = ppssppResult.success && ppssppResult.copyBackPath == null
+
         if (revertedTarget) {
             prefs.edit {
                 remove(PrefsConstants.KEY_RETROARCH_HARDCORE_WAS_ENABLED)
@@ -418,6 +428,13 @@ class ProxyService : Service() {
                 remove(PrefsConstants.KEY_DOLPHIN_PATCHED_THIS_RUN)
             }
             Log.i(TAG, "Dolphin RetroAchievements.ini reverted during service shutdown")
+        }
+        if (revertedPpssppTarget) {
+            prefs.edit {
+                remove(PrefsConstants.KEY_PPSSPP_HARDCORE_WAS_ENABLED)
+                remove(PrefsConstants.KEY_PPSSPP_PATCHED_THIS_RUN)
+            }
+            Log.i(TAG, "PPSSPP ppsspp.ini reverted during service shutdown")
         }
         if (revertedTarget) {
             return

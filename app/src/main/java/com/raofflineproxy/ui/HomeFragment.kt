@@ -50,8 +50,10 @@ class HomeFragment : Fragment() {
         val emulatorToggles = view.findViewById<LinearLayout>(R.id.layout_emulator_toggles)
         val retroArchToggle = bindToggle(view.findViewById(R.id.layout_retroarch_toggle), R.string.emulator_retroarch)
         val dolphinToggle = bindToggle(view.findViewById(R.id.layout_dolphin_toggle), R.string.emulator_dolphin)
+        val ppssppToggle = bindToggle(view.findViewById(R.id.layout_ppsspp_toggle), R.string.emulator_ppsspp)
         val retroArchAppIcon = loadInstalledAppIcon(RETROARCH_PACKAGE_CANDIDATES)
         val dolphinAppIcon = loadInstalledAppIcon(DOLPHIN_PACKAGE_CANDIDATES)
+        val ppssppAppIcon = loadInstalledAppIcon(listOf(UI_PPSSPP_PACKAGE))
         val activeBorderColor = requireContext().getColor(R.color.emulator_toggle_border_active)
         val activeBackgroundColor = requireContext().getColor(R.color.emulator_toggle_background_active)
         val defaultBorderColor = requireContext().getColor(R.color.emulator_toggle_border_default)
@@ -101,10 +103,15 @@ class HomeFragment : Fragment() {
                 viewModel.setDolphinEnabled(!viewModel.state.value.dolphinEnabled)
             }
         }
+        ppssppToggle.row.setOnClickListener {
+            if (ppssppToggle.row.isEnabled) {
+                viewModel.setPpssppEnabled(!viewModel.state.value.ppssppEnabled)
+            }
+        }
 
         viewLifecycleOwner.lifecycleScope.launch {
             viewModel.state.collect { state ->
-                val installedCount = listOf(state.retroArchInstalled, state.dolphinInstalled).count { it }
+                val installedCount = listOf(state.retroArchInstalled, state.dolphinInstalled, state.ppssppInstalled).count { it }
                 val noEmulatorInstalled = installedCount == 0
                 val onlyOneInstalled = installedCount == 1
                 val proxyStartPending = state.proxyToggleInProgress || state.needsSafGrant
@@ -125,7 +132,7 @@ class HomeFragment : Fragment() {
 
                 btnStartProxy.visibility = if (!state.proxyRunning && shouldRecommendManualSetup) View.GONE else View.VISIBLE
                 btnStartProxy.text = getString(if (state.proxyRunning) R.string.proxy_stop else R.string.proxy_start)
-                btnStartProxy.isEnabled = if (state.proxyRunning) !proxyStartPending else !proxyStartPending && (state.retroArchEnabled || state.dolphinEnabled)
+                btnStartProxy.isEnabled = if (state.proxyRunning) !proxyStartPending else !proxyStartPending && (state.retroArchEnabled || state.dolphinEnabled || state.ppssppEnabled)
                 btnStartProxy.alpha = if (proxyStartPending) 0.45f else 1f
                 btnManualEmulatorSetup.visibility = if (!state.proxyRunning && shouldRecommendManualSetup) View.VISIBLE else View.GONE
                 btnGoToCachedGames.visibility = if (state.proxyRunning) View.VISIBLE else View.GONE
@@ -134,12 +141,15 @@ class HomeFragment : Fragment() {
                 emulatorToggles.visibility = if (installedCount > 0) View.VISIBLE else View.GONE
                 retroArchToggle.row.visibility = if (state.retroArchInstalled) View.VISIBLE else View.GONE
                 dolphinToggle.row.visibility = if (state.dolphinInstalled) View.VISIBLE else View.GONE
+                ppssppToggle.row.visibility = if (state.ppssppInstalled) View.VISIBLE else View.GONE
 
                 retroArchToggle.row.isEnabled = state.retroArchInstalled && !state.proxyRunning && !onlyOneInstalled
                 dolphinToggle.row.isEnabled = state.dolphinInstalled && !state.proxyRunning && !onlyOneInstalled
+                ppssppToggle.row.isEnabled = state.ppssppInstalled && !state.proxyRunning && !onlyOneInstalled
 
                 retroArchToggle.icon.setImageDrawable(retroArchAppIcon)
                 dolphinToggle.icon.setImageDrawable(dolphinAppIcon)
+                ppssppToggle.icon.setImageDrawable(ppssppAppIcon)
 
                 applyToggleRowStyle(
                     toggle = retroArchToggle,
@@ -153,6 +163,15 @@ class HomeFragment : Fragment() {
                 applyToggleRowStyle(
                     toggle = dolphinToggle,
                     isSelected = state.dolphinEnabled,
+                    activeBorderColor = activeBorderColor,
+                    activeBackgroundColor = activeBackgroundColor,
+                    defaultBorderColor = defaultBorderColor,
+                    activeTextColor = activeTextColor,
+                    defaultTextColor = defaultTextColor
+                )
+                applyToggleRowStyle(
+                    toggle = ppssppToggle,
+                    isSelected = state.ppssppEnabled,
                     activeBorderColor = activeBorderColor,
                     activeBackgroundColor = activeBackgroundColor,
                     defaultBorderColor = defaultBorderColor,

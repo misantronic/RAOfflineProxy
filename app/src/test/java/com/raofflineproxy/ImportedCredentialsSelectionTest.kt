@@ -11,7 +11,7 @@ class ImportedCredentialsSelectionTest {
         val retroArch = ImportedCredentials.Token("retro", "retro-token")
         val dolphin = ImportedCredentials.Token("dolphin", "dolphin-token")
 
-        assertEquals(retroArch, selectImportedCredentials(retroArch, dolphin))
+        assertEquals(retroArch, selectImportedCredentials(retroArch, dolphin, null))
     }
 
     @Test
@@ -19,13 +19,13 @@ class ImportedCredentialsSelectionTest {
         val retroArch = ImportedCredentials.Password("retro", "password")
         val dolphin = ImportedCredentials.Token("dolphin", "dolphin-token")
 
-        assertEquals(dolphin, selectImportedCredentials(retroArch, dolphin))
+        assertEquals(dolphin, selectImportedCredentials(retroArch, dolphin, null))
     }
 
     @Test
     fun selectImportedCredentials_usesRetroArchPasswordAsLastFallback() {
         val retroArch = ImportedCredentials.Password("retro", "password")
 
-        assertEquals(retroArch, selectImportedCredentials(retroArch, null))
+        assertEquals(retroArch, selectImportedCredentials(retroArch, null, null))
     }
 }

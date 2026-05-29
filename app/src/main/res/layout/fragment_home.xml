@@ -101,6 +101,15 @@
                 android:id="@+id/layout_dolphin_toggle"
                 android:visibility="gone"
                 layout="@layout/view_emulator_toggle" />
+
+            <Space
+                android:layout_width="8dp"
+                android:layout_height="0dp" />
+
+            <include
+                android:id="@+id/layout_ppsspp_toggle"
+                android:visibility="gone"
+                layout="@layout/view_emulator_toggle" />
         </LinearLayout>
 
         <LinearLayout

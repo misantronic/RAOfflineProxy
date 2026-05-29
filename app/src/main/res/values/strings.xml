@@ -39,16 +39,20 @@
     <string name="home_go_to_cached_games">Go to Cached Games</string>
     <string name="emulator_retroarch">RetroArch</string>
     <string name="emulator_dolphin">Dolphin</string>
+    <string name="emulator_ppsspp">PPSSPP</string>
     <string name="emulator_toggle_icon_cd">Installed emulator icon</string>
     <string name="proxy_start_requires_emulator">Enable at least one installed emulator to start the proxy.</string>
     <string name="proxy_start_aborted_retroarch_saf_rejected">Proxy not started because RetroArch folder access was rejected.</string>
     <string name="proxy_start_aborted_dolphin_saf_rejected">Proxy not started because Dolphin folder access was rejected.</string>
+    <string name="proxy_start_aborted_ppsspp_saf_rejected">Proxy not started because PPSSPP root folder selection was canceled. PPSSPP was disabled.</string>
     <string name="proxy_start_aborted_all_emulators_rejected">All enabled emulators were rejected. Proxy not started.</string>
     <!-- SAF grant dialog -->
     <string name="saf_dialog_title">Folder Access Required</string>
     <string name="saf_dialog_message">This app needs access to RetroArch\'s files folder to patch retroarch.cfg. Grant access to the suggested Android/data/RetroArch package/files folder.</string>
     <string name="smart_cache_retroarch_access_message">Smart Cache needs access to RetroArch\'s shared RetroArch folder to read recent history. Grant access to /storage/emulated/0/RetroArch.</string>
     <string name="dolphin_saf_dialog_message">This app needs access to Dolphin\'s package folder so it can patch RetroAchievements.ini and read Dolphin cache/save data for Smart Cache. Grant access to Android/data/org.dolphinemu.dolphinemu.</string>
+    <string name="ppsspp_saf_dialog_message">This app needs access to the PPSSPP root folder so it can patch SYSTEM/ppsspp.ini. Start in Android/data/org.ppsspp.ppsspp/files, then pick the real PPSSPP root if you use a custom location.</string>
+    <string name="ppsspp_invalid_root_message">That folder is not a valid PPSSPP root. Choose a folder that contains a SYSTEM folder with SYSTEM/ppsspp.ini inside.</string>
     <string name="smart_cache_all_files_access_message">Smart Cache can use broad file access to read ROMs directly from internal storage and SD cards. Grant All Files Access if you want to avoid ROM-folder prompts.</string>
     <string name="smart_cache_rom_saf_dialog_message">Smart Cache needs access to your ROM folder so it can read the recent game paths from RetroArch history and hash those ROM files.</string>
     <string name="saf_dialog_grant">Grant Access</string>
@@ -70,6 +74,13 @@
     <string name="dolphin_patch_success">Dolphin patched successfully.</string>
     <string name="dolphin_patch_error_file">Error patching Dolphin config %1$s: %2$s</string>
     <string name="dolphin_patch_error_unavailable">Could not patch Dolphin automatically. Grant folder access if prompted and try again.</string>
+    <string name="ppsspp_patch_already_configured">PPSSPP already configured — no changes needed.</string>
+    <string name="ppsspp_patch_success_saf">PPSSPP patched successfully via folder access.</string>
+    <string name="ppsspp_patch_error_saf">Error patching PPSSPP via folder access: %s</string>
+    <string name="ppsspp_patch_cfg_not_in_folder">SYSTEM/ppsspp.ini was not found in the granted folder. Please choose the PPSSPP root folder that contains SYSTEM/ppsspp.ini.</string>
+    <string name="ppsspp_patch_success">PPSSPP patched successfully.</string>
+    <string name="ppsspp_patch_error_file">Error patching PPSSPP config %1$s: %2$s</string>
+    <string name="ppsspp_patch_error_unavailable">Could not patch PPSSPP automatically. Grant the PPSSPP root folder and try again.</string>
     <!-- CFG revert messages -->
     <string name="revert_already_reverted">Already reverted — no changes needed.</string>
     <string name="revert_success_saf">Reverted successfully via folder access.</string>
@@ -83,6 +94,12 @@
     <string name="dolphin_revert_success">Dolphin reverted successfully.</string>
     <string name="dolphin_revert_error_file">Error reverting Dolphin config %1$s: %2$s</string>
     <string name="dolphin_revert_error_unavailable">Could not revert Dolphin automatically. Reopen the app, grant folder access if prompted, and try again.</string>
+    <string name="ppsspp_revert_already_reverted">PPSSPP already reverted — no changes needed.</string>
+    <string name="ppsspp_revert_success_saf">PPSSPP reverted successfully via folder access.</string>
+    <string name="ppsspp_revert_error_saf">Error reverting PPSSPP via folder access: %s</string>
+    <string name="ppsspp_revert_success">PPSSPP reverted successfully.</string>
+    <string name="ppsspp_revert_error_file">Error reverting PPSSPP config %1$s: %2$s</string>
+    <string name="ppsspp_revert_error_unavailable">Could not revert PPSSPP automatically. Reopen the app, grant the PPSSPP root folder if prompted, and try again.</string>
 
     <!-- Flush messages -->
     <string name="flush_started">Flushing awards…</string>

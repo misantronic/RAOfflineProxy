@@ -9,6 +9,7 @@ import com.raofflineproxy.data.AppDatabase
 import com.raofflineproxy.proxy.loadLoginCredentials
 import com.raofflineproxy.ui.loadEmulatorSupport
 import com.raofflineproxy.ui.patchDolphinCfg
+import com.raofflineproxy.ui.patchPpssppCfg
 import com.raofflineproxy.ui.patchRetroArchCfg
 import kotlinx.coroutines.runBlocking
 
@@ -30,6 +31,7 @@ class BootReceiver : BroadcastReceiver() {
 
         val treeUri = PrefsConstants.loadSafUri(context)
         val dolphinTreeUri = PrefsConstants.loadDolphinSafUri(context)
+        val ppssppTreeUri = PrefsConstants.loadPpssppSafUri(context)
         prefs.edit { remove(PrefsConstants.KEY_SKIP_NEXT_CFG_REVERT) }
 
         val result = if (emulatorSupport.retroArchEnabled) patchRetroArchCfg(context, treeUri)
@@ -65,6 +67,21 @@ class BootReceiver : BroadcastReceiver() {
                 }
             } else if (!emulatorSupport.dolphinEnabled) {
                 prefs.edit { remove(PrefsConstants.KEY_DOLPHIN_PATCHED_THIS_RUN) }
+            }
+
+            val ppssppResult = if (emulatorSupport.ppssppEnabled) {
+                patchPpssppCfg(context, ppssppTreeUri)
+            } else {
+                com.raofflineproxy.ui.PpssppPatchResult(success = true, message = "PPSSPP disabled.", skippedNotInstalled = true)
+            }
+
+            if (ppssppResult.success && !ppssppResult.skippedNotInstalled) {
+                prefs.edit {
+                    putBoolean(PrefsConstants.KEY_PPSSPP_HARDCORE_WAS_ENABLED, ppssppResult.hardcoreWasEnabled)
+                    putBoolean(PrefsConstants.KEY_PPSSPP_PATCHED_THIS_RUN, true)
+                }
+            } else if (!emulatorSupport.ppssppEnabled) {
+                prefs.edit { remove(PrefsConstants.KEY_PPSSPP_PATCHED_THIS_RUN) }
             }
             ProxyService.start(context)
         }
