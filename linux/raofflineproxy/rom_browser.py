@@ -24,7 +24,12 @@ from .rom_cache import (
     merge_start_session_unlock_ids,
     merged_unlock_ids as merged_unlock_ids_for_user,
 )
-from .rom_hashing import hash_rom, hash_rom_candidates, supported_rom_extensions
+from .rom_hashing import (
+    hash_rom,
+    hash_rom_candidates,
+    hash_rom_candidates_result,
+    supported_rom_extensions,
+)
 from .storage import Storage
 from .utils import proxy_user_agent
 
@@ -279,6 +284,11 @@ def list_archive_rom_entries(path: Path) -> list[zipfile.ZipInfo]:
 
 def hash_candidates_for_manual_cache(path: Path) -> list[str]:
     if path.suffix.lower() not in SUPPORTED_ARCHIVE_EXTENSIONS:
+        if path.suffix.lower() == ".chd":
+            result = hash_rom_candidates_result(path)
+            if result.error is not None:
+                raise ValueError(result.error)
+            return result.candidates
         return hash_rom_candidates(path)
 
     rom_entries = list_archive_rom_entries(path)
@@ -298,6 +308,11 @@ def hash_candidates_for_manual_cache(path: Path) -> list[str]:
         temp_name = entry_name if suffix else Path(rom_entry.filename).name
         temp_path = Path(temp_dir) / f"{temp_name}{suffix}"
         temp_path.write_bytes(rom_bytes)
+        if temp_path.suffix.lower() == ".chd":
+            result = hash_rom_candidates_result(temp_path)
+            if result.error is not None:
+                raise ValueError(result.error)
+            return result.candidates
         return hash_rom_candidates(temp_path)
 
 
@@ -337,11 +352,6 @@ def add_rom_to_cache(path: Path, storage: Storage, config_data: dict) -> AddRomR
         hash_candidates = hash_candidates_for_manual_cache(path)
         if not hash_candidates:
             return AddRomResult(False, "Hash failed: unsupported or unreadable ROM")
-        LOGGER.info(
-            "Manual cache hash candidates path=%s candidates=%s",
-            path,
-            hash_candidates,
-        )
     except Exception as exc:
         return AddRomResult(False, f"Hash failed: {exc}")
 

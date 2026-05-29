@@ -851,6 +851,8 @@ class MenuSdlSession:
                 self.cache_completion_message = (
                     "Aborted: scanned 1, cached 1, skipped 0"
                     if aborted and result.success
+                    else result.message
+                    if not result.success
                     else "Aborted: scanned 1, cached 0, skipped 1"
                     if aborted
                     else "Scanned 1, cached 1, skipped 0"
