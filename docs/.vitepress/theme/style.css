@@ -40,3 +40,68 @@
   letter-spacing: 0.06em;
   color: var(--vp-c-text-3);
 }
+
+.supported-platforms {
+  margin: 2.5rem 0;
+}
+
+.supported-platforms h2 {
+  margin: 0 0 1.5rem;
+  text-align: center;
+}
+
+.supported-platforms__groups {
+  display: grid;
+  gap: 1.25rem;
+}
+
+.supported-platforms__group {
+  padding: 1.25rem;
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 20px;
+  background: var(--vp-c-bg-soft);
+}
+
+.supported-platforms__label {
+  margin: 0 0 1rem;
+  font-size: 0.85rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--vp-c-text-2);
+}
+
+.supported-platforms__logos {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 1rem;
+}
+
+.supported-platforms__item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  min-height: 152px;
+  padding: 1rem;
+  border-radius: 16px;
+  background: var(--vp-c-bg);
+  text-align: center;
+}
+
+.supported-platforms__item img {
+  max-width: 100%;
+  height: 56px;
+  object-fit: contain;
+}
+
+.supported-platforms__item span {
+  font-weight: 600;
+}
+
+@media (min-width: 768px) {
+  .supported-platforms__groups {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
