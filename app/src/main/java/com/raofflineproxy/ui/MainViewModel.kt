@@ -526,6 +526,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     }
                     SafGrantTarget.Ppsspp -> {
                         PrefsConstants.clearPpssppSafUri(app)
+                        SnackbarManager.showMessage(str(R.string.smart_cache_requires_ppsspp_access), SnackbarDuration.Indefinite)
                     }
                     SafGrantTarget.AllFilesAccess -> {
                         SnackbarManager.showMessage(str(R.string.smart_cache_requires_all_files_access), SnackbarDuration.Indefinite)
@@ -1217,6 +1218,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         emulatorSupport = loadEmulatorSupport(app),
                         retroArchTreeUri = loadSafUri(),
                         dolphinTreeUri = loadDolphinSafUri(),
+                        ppssppTreeUri = loadPpssppSafUri(),
                         romTreeUris = romTreeUris
                     ) { current, total, label ->
                         val progressMessage = str(R.string.smart_cache_progress, current, total, label)
@@ -1235,6 +1237,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                             when (emulator) {
                                 SmartCacheEmulator.RetroArch -> add(SafGrantTarget.RetroArch)
                                 SmartCacheEmulator.Dolphin -> add(SafGrantTarget.Dolphin)
+                                SmartCacheEmulator.Ppsspp -> add(SafGrantTarget.Ppsspp)
                             }
                         }
                         if (result.message == "needs_retroarch_shared_access") {
@@ -1261,6 +1264,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                                 "needs_saf_grant" -> SafGrantTarget.RetroArch
                                 "needs_retroarch_shared_access" -> if (hasAllFilesAccess() || smartCacheAllFilesRejectedThisRun) SafGrantTarget.SmartCacheRetroArch else SafGrantTarget.AllFilesAccess
                                 "needs_dolphin_saf_grant" -> SafGrantTarget.Dolphin
+                                "needs_ppsspp_saf_grant" -> SafGrantTarget.Ppsspp
                                 "needs_rom_saf_grant" -> if (hasAllFilesAccess()) SafGrantTarget.SmartCacheRom else SafGrantTarget.AllFilesAccess
                                 else -> SafGrantTarget.SmartCacheRom
                             }
@@ -1280,6 +1284,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     "needs_saf_grant" -> str(R.string.smart_cache_requires_retroarch_access)
                     "needs_retroarch_shared_access" -> str(R.string.smart_cache_requires_retroarch_access)
                     "needs_dolphin_saf_grant" -> str(R.string.smart_cache_requires_dolphin_access)
+                    "needs_ppsspp_saf_grant" -> str(R.string.smart_cache_requires_ppsspp_access)
                     "needs_rom_saf_grant" -> str(R.string.smart_cache_requires_rom_access)
                     "history_missing" -> str(R.string.smart_cache_history_missing)
                     "history_empty" -> str(R.string.smart_cache_history_empty)
