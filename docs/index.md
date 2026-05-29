@@ -34,6 +34,42 @@ features:
     details: Optionally starts in the background when your device boots, so you never have to think about it.
 ---
 
+<section class="supported-platforms">
+  <h2>Supported Platforms</h2>
+  <div class="supported-platforms__groups">
+    <div class="supported-platforms__group">
+      <p class="supported-platforms__label">Android</p>
+      <div class="supported-platforms__logos">
+        <div class="supported-platforms__item">
+          <img src="/retroarch.png" alt="RetroArch logo">
+          <span>RetroArch</span>
+        </div>
+        <div class="supported-platforms__item">
+          <img src="/dolphin.png" alt="Dolphin logo">
+          <span>Dolphin</span>
+        </div>
+        <div class="supported-platforms__item">
+          <img src="/ppsspp.png" alt="PPSSPP logo">
+          <span>PPSSPP</span>
+        </div>
+      </div>
+    </div>
+    <div class="supported-platforms__group">
+      <p class="supported-platforms__label">Linux</p>
+      <div class="supported-platforms__logos">
+        <div class="supported-platforms__item">
+          <img src="/knulli.png" alt="KNULLI logo">
+          <span>KNULLI</span>
+        </div>
+        <div class="supported-platforms__item">
+          <img src="/onion.svg" alt="Onion logo">
+          <span>Onion</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
 <br>
 
 ::: warning Alpha Release
