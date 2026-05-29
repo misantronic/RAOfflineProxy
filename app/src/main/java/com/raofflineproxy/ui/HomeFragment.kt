@@ -21,7 +21,6 @@ import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.lifecycleScope
 import androidx.core.net.toUri
-import com.raofflineproxy.PrefsConstants
 import com.google.android.material.button.MaterialButton
 import com.raofflineproxy.R
 import kotlinx.coroutines.launch

@@ -89,6 +89,8 @@ class CachedGamesFragment : Fragment() {
                         viewModel.clearCache()
                     }
                     .setNegativeButton(android.R.string.cancel, null)
+                    .create()
+                    .also { it.setCanceledOnTouchOutside(false) }
                     .show()
             }
         )
