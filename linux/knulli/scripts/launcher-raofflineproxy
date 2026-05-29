@@ -7,6 +7,7 @@ PYTHONPATH_ENTRIES="${BASE_DIR}/app"
 
 export HOME="/userdata/system"
 export XDG_CONFIG_HOME="/userdata/system/.config"
+export PATH="/usr/local/bin:/usr/bin:/bin:/userdata/system/bin:${PATH:-}"
 
 if [ -d "${PYGAME_DIR}" ]; then
   PYTHONPATH_ENTRIES="${PYTHONPATH_ENTRIES}:${PYGAME_DIR}"

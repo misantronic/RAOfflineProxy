@@ -5,6 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BASE_DIR="/userdata/system/raofflineproxy"
 APP_DIR="${BASE_DIR}/app"
 BIN_DIR="${BASE_DIR}/bin"
+LIB_DIR="${BASE_DIR}/lib"
 TOOLS_DIR="/userdata/roms/tools"
 INSTALL_SCRIPT="${TOOLS_DIR}/RAOfflineProxy Install.sh"
 OLD_BIN="${BASE_DIR}/bin/raofflineproxy"
@@ -20,6 +21,7 @@ fi
 
 mkdir -p "${APP_DIR}"
 mkdir -p "${BIN_DIR}"
+mkdir -p "${LIB_DIR}"
 mkdir -p "${TOOLS_DIR}"
 
 if [ -x "${OLD_BIN}" ]; then
@@ -30,6 +32,7 @@ if [ -x "${OLD_BIN}" ]; then
 fi
 
 cp -r "${SCRIPT_DIR}/app/"* "${APP_DIR}/"
+cp -r "${SCRIPT_DIR}/lib/"* "${LIB_DIR}/"
 
 cp "${SCRIPT_DIR}/scripts/launcher-raofflineproxy" "${BIN_DIR}/raofflineproxy"
 cp "${SCRIPT_DIR}/scripts/launcher-raofflineproxy-uninstall" "${BIN_DIR}/raofflineproxy-uninstall"

@@ -19,4 +19,5 @@ keystore.properties
 AGENTS.md
 .agents/
 linux/knulli/dist/
+linux/knulli/native/
 **/__pycache__
