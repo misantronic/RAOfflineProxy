@@ -6,6 +6,7 @@ APP_MAX_CACHED_GAMES=100
 APP_DATA_DIR="$APP_DIR/data"
 APP_RUNTIME_DIR="$APP_DIR/runtime"
 APP_PACKAGE_DIR="$APP_DIR/app"
+APP_LIB_DIR="$APP_DIR/lib"
 APP_RETROARCH_CFG=
 APP_LOG_PANEL=/mnt/SDCARD/.tmp_update/bin/infoPanel
 APP_CERT_FILE="$APP_RUNTIME_DIR/lib/python3.10/site-packages/pip/_vendor/certifi/cacert.pem"
@@ -50,6 +51,7 @@ prepare_env() {
     export RAOFFLINEPROXY_APP_VERSION="${APP_VERSION#v}"
     export RAOFFLINEPROXY_CACHE_IMAGES=0
     export PYTHONPATH="$APP_PACKAGE_DIR${PYTHONPATH:+:$PYTHONPATH}"
+    export LD_LIBRARY_PATH="$APP_LIB_DIR${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
     if [ -f "$APP_CERT_FILE" ]; then
         export SSL_CERT_FILE="$APP_CERT_FILE"
         export RAOFFLINEPROXY_CA_FILE="$APP_CERT_FILE"
@@ -61,7 +63,7 @@ activate_runtime_env() {
     APP_ACTIVE_RUNTIME_ROOT="$runtime_root"
 
     export PYTHONHOME="$runtime_root"
-    export LD_LIBRARY_PATH="$runtime_root/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+    export LD_LIBRARY_PATH="$APP_LIB_DIR:$runtime_root/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
     export PATH="$runtime_root/bin${PATH:+:$PATH}"
     if [ -f "$runtime_root/lib/python3.10/site-packages/pip/_vendor/certifi/cacert.pem" ]; then
         export SSL_CERT_FILE="$runtime_root/lib/python3.10/site-packages/pip/_vendor/certifi/cacert.pem"

@@ -7,7 +7,7 @@ LIBCHDR_ROOT="${REPO_DIR}/third_party/libchdr"
 OUT_DIR="${SCRIPT_DIR}/native"
 OUT_PATH="${OUT_DIR}/libchdr.so"
 ZIG_BIN="${ZIG_BIN:-/opt/homebrew/bin/zig}"
-TARGET="${TARGET:-aarch64-linux-gnu.2.17}"
+TARGET="${TARGET:-arm-linux-gnueabihf.2.17}"
 
 mkdir -p "${OUT_DIR}"
 
