@@ -228,6 +228,7 @@ class ProxyRuntimeServer(ThreadingTCPServer):
         self.running = True
         self.has_internet = False
         self.flush_lock = threading.Lock()
+        self.pending_award_lock = threading.Lock()
         host = proxy_host(self.config_data)
         port = proxy_port(self.config_data)
         super().__init__((host, port), ProxyRequestHandler)
@@ -723,51 +724,57 @@ class ProxyRuntimeServer(ThreadingTCPServer):
 
     def queue_award(self, path: str, raw_body: str, headers: dict[str, str]) -> bool:
         achievement_id = int(extract_request_param(path, raw_body, "a") or "0")
-        if achievement_id > 0 and self.storage.pending_award_exists(achievement_id):
+        pending_award_lock = getattr(self, "pending_award_lock", None)
+        if pending_award_lock is None:
+            pending_award_lock = threading.Lock()
+            self.pending_award_lock = pending_award_lock
+
+        with pending_award_lock:
+            if achievement_id > 0 and self.storage.pending_award_exists(achievement_id):
+                LOGGER.info(
+                    "Offline award already queued: achievementId=%s",
+                    achievement_id,
+                )
+                return True
+
+            if achievement_id > 0 and self.is_already_unlocked_award(path, raw_body):
+                LOGGER.info(
+                    "Offline award already unlocked: achievementId=%s",
+                    achievement_id,
+                )
+                return True
+
+            prev_hash = (self.storage.get_latest_pending_award() or {}).get(
+                "payloadHash"
+            ) or "genesis"
+            queued_at = current_millis()
+            payload_hash = sha256_hex(f"{achievement_id}|{path}|{raw_body}|{queued_at}")
+            sign_input = f"{payload_hash}:{prev_hash}".encode("utf-8")
+            signature = sign_award(sign_input)
+
+            award = {
+                "achievementId": achievement_id,
+                "queryString": path,
+                "requestBody": raw_body,
+                "userAgent": headers.get("User-Agent")
+                or headers.get("user-agent")
+                or FALLBACK_USER_AGENT,
+                "queuedAt": queued_at,
+                "retryCount": 0,
+                "lastError": None,
+                "status": "pending",
+                "payloadHash": payload_hash,
+                "prevHash": prev_hash,
+                "signature": signature,
+                "signedAt": current_millis(),
+            }
+            self.storage.upsert_pending_award(award)
             LOGGER.info(
-                "Offline award already queued: achievementId=%s",
+                "Queued offline award: achievementId=%s queuedAt=%s",
                 achievement_id,
+                queued_at,
             )
             return True
-
-        if achievement_id > 0 and self.is_already_unlocked_award(path, raw_body):
-            LOGGER.info(
-                "Offline award already unlocked: achievementId=%s",
-                achievement_id,
-            )
-            return True
-
-        prev_hash = (self.storage.get_latest_pending_award() or {}).get(
-            "payloadHash"
-        ) or "genesis"
-        queued_at = current_millis()
-        payload_hash = sha256_hex(f"{achievement_id}|{path}|{raw_body}|{queued_at}")
-        sign_input = f"{payload_hash}:{prev_hash}".encode("utf-8")
-        signature = sign_award(sign_input)
-
-        award = {
-            "achievementId": achievement_id,
-            "queryString": path,
-            "requestBody": raw_body,
-            "userAgent": headers.get("User-Agent")
-            or headers.get("user-agent")
-            or FALLBACK_USER_AGENT,
-            "queuedAt": queued_at,
-            "retryCount": 0,
-            "lastError": None,
-            "status": "pending",
-            "payloadHash": payload_hash,
-            "prevHash": prev_hash,
-            "signature": signature,
-            "signedAt": current_millis(),
-        }
-        self.storage.upsert_pending_award(award)
-        LOGGER.info(
-            "Queued offline award: achievementId=%s queuedAt=%s",
-            achievement_id,
-            queued_at,
-        )
-        return True
 
     def is_already_unlocked_award(self, path: str, raw_body: str) -> bool:
         achievement_id = int(extract_request_param(path, raw_body, "a") or "0")

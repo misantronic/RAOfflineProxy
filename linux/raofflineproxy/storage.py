@@ -419,7 +419,7 @@ class Storage:
             assert self._connection is not None
             with self._lock:
                 rows = self._connection.execute(
-                    "SELECT * FROM pending_awards ORDER BY queuedAt ASC"
+                    "SELECT * FROM pending_awards ORDER BY queuedAt ASC, id ASC"
                 ).fetchall()
             return [row_to_dict(row) for row in rows]
 
@@ -428,7 +428,10 @@ class Storage:
                 self._reload_json_state_unlocked()
                 assert self._json_state is not None
                 awards = [dict(item) for item in self._json_state["pending_awards"]]
-        return sorted(awards, key=lambda item: item.get("queuedAt", 0))
+        return sorted(
+            awards,
+            key=lambda item: (item.get("queuedAt", 0), item.get("id", 0)),
+        )
 
     def get_latest_pending_award(self) -> dict | None:
         awards = self.get_pending_awards()
