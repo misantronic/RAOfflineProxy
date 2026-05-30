@@ -5,7 +5,7 @@ from dataclasses import dataclass
 
 from . import cache_keys
 from .auth import resolve_credentials
-from .award_signing import public_key_base64, verify_award
+from .award_signing import public_key_base64, sign_award, verify_award
 from .config import FALLBACK_USER_AGENT, MAX_PROXY_PORT, upstream_host
 from .network import build_api_url, http_post
 from .rom_cache import cache_session, cache_unlocks, refresh_game_patch
@@ -137,6 +137,35 @@ def verify_chain(
     return True, None, None
 
 
+def repair_pending_chain(awards: list[dict]) -> list[dict] | None:
+    if not awards:
+        return []
+
+    repaired: list[dict] = []
+    for index, award in enumerate(awards):
+        if not award.get("payloadHash"):
+            repaired.append(dict(award))
+            continue
+
+        expected_payload_hash = sha256_hex(canonical_payload(award))
+        if award["payloadHash"] != expected_payload_hash:
+            return None
+
+        prev_hash = (
+            GENESIS_HASH
+            if index == 0
+            else (repaired[index - 1].get("payloadHash") or GENESIS_HASH)
+        )
+        sign_input = f"{award['payloadHash']}:{prev_hash}".encode("utf-8")
+        repaired_award = dict(award)
+        repaired_award["prevHash"] = prev_hash
+        repaired_award["signature"] = sign_award(sign_input)
+        repaired_award["signedAt"] = int(time.time() * 1000)
+        repaired.append(repaired_award)
+
+    return repaired
+
+
 def refresh_and_load_achievement_ids(
     storage: Storage,
     credentials: dict,
@@ -248,16 +277,36 @@ def flush_pending_awards(storage: Storage, config_data: dict) -> FlushOutcome:
 
     valid, reason, index = verify_chain(pending)
     if not valid:
-        LOGGER.warning(
-            "Flush aborted: chain broken at index=%s reason=%s", index, reason
-        )
-        return FlushOutcome(
-            flushed=0,
-            total=len(pending),
-            skipped_stale=0,
-            pending_remaining=len(pending),
-            last_error=f"chain broken at {index}: {reason}",
-        )
+        repaired_pending = repair_pending_chain(pending) if reason == "chain link broken" else None
+        if repaired_pending is not None:
+            repaired_valid, _, _ = verify_chain(repaired_pending)
+            if repaired_valid:
+                for award in repaired_pending:
+                    storage.update_pending_award(award)
+                pending = storage.get_pending_awards()
+                LOGGER.info("Repaired pending award chain before flush")
+            else:
+                LOGGER.warning(
+                    "Flush aborted: chain broken at index=%s reason=%s", index, reason
+                )
+                return FlushOutcome(
+                    flushed=0,
+                    total=len(pending),
+                    skipped_stale=0,
+                    pending_remaining=len(pending),
+                    last_error=f"chain broken at {index}: {reason}",
+                )
+        else:
+            LOGGER.warning(
+                "Flush aborted: chain broken at index=%s reason=%s", index, reason
+            )
+            return FlushOutcome(
+                flushed=0,
+                total=len(pending),
+                skipped_stale=0,
+                pending_remaining=len(pending),
+                last_error=f"chain broken at {index}: {reason}",
+            )
 
     if not any(
         award.get("status", PENDING_AWARD_STATUS_PENDING)
