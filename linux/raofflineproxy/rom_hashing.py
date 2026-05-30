@@ -640,9 +640,12 @@ def load_libchdr() -> ctypes.CDLL | None:
         "/lib/libchdr.so",
         "/userdata/system/lib/libchdr.so",
         "/userdata/system/raofflineproxy/lib/libchdr.so",
+        "/mnt/SDCARD/App/RAOfflineProxy/lib/libchdr.so",
     ]
     for candidate in candidates:
         if not candidate:
+            continue
+        if "/" in candidate and not os.path.isfile(candidate):
             continue
         try:
             library = ctypes.CDLL(candidate)
@@ -650,9 +653,11 @@ def load_libchdr() -> ctypes.CDLL | None:
             _LIBCHDR = library
             return library
         except OSError as exc:
-            _LIBCHDR_ERROR = f"libchdr load failed: {exc}"
+            if _LIBCHDR_ERROR is None:
+                _LIBCHDR_ERROR = f"libchdr load failed: {exc}"
         except AttributeError as exc:
-            _LIBCHDR_ERROR = f"libchdr API mismatch: {exc}"
+            if _LIBCHDR_ERROR is None:
+                _LIBCHDR_ERROR = f"libchdr API mismatch: {exc}"
 
     if _LIBCHDR_ERROR is None:
         _LIBCHDR_ERROR = "libchdr shared library not found"

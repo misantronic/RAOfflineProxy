@@ -145,6 +145,37 @@ class LinuxRomHashingTests(unittest.TestCase):
             finally:
                 rom_hashing.open_direct_chd_reader = original_open
 
+    def test_load_libchdr_keeps_first_real_error(self) -> None:
+        original_cdll = rom_hashing.ctypes.CDLL
+        original_find_library = rom_hashing.ctypes.util.find_library
+        original_isfile = rom_hashing.os.path.isfile
+        original_lib = rom_hashing._LIBCHDR
+        original_error = rom_hashing._LIBCHDR_ERROR
+        try:
+            rom_hashing._LIBCHDR = None
+            rom_hashing._LIBCHDR_ERROR = None
+            rom_hashing.ctypes.util.find_library = lambda _name: None
+            rom_hashing.os.path.isfile = lambda path: path == "/mnt/SDCARD/App/RAOfflineProxy/lib/libchdr.so"
+
+            def fake_cdll(candidate):
+                raise OSError(f"bad elf for {candidate}")
+
+            rom_hashing.ctypes.CDLL = fake_cdll
+
+            library = rom_hashing.load_libchdr()
+
+            self.assertIsNone(library)
+            self.assertEqual(
+                rom_hashing._LIBCHDR_ERROR,
+                "libchdr load failed: bad elf for /mnt/SDCARD/App/RAOfflineProxy/lib/libchdr.so",
+            )
+        finally:
+            rom_hashing.ctypes.CDLL = original_cdll
+            rom_hashing.ctypes.util.find_library = original_find_library
+            rom_hashing.os.path.isfile = original_isfile
+            rom_hashing._LIBCHDR = original_lib
+            rom_hashing._LIBCHDR_ERROR = original_error
+
     def test_has_supercard_header_detects_known_pattern(self) -> None:
         header = bytearray(512)
         header[0] = 0x2E
