@@ -1,6 +1,7 @@
 import base64
 import json
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 
@@ -146,6 +147,101 @@ class LinuxAwardParityTests(unittest.TestCase):
         self.assertTrue(valid)
         self.assertIsNone(reason)
         self.assertIsNone(index)
+
+    def test_repair_pending_chain_rebases_forked_links(self) -> None:
+        awards = []
+        prev_hash = flusher.GENESIS_HASH
+        for achievement_id in (1, 2, 3):
+            award = {
+                "id": achievement_id,
+                "achievementId": achievement_id,
+                "queryString": "/dorequest.php?r=awardachievement",
+                "requestBody": f"a={achievement_id}&u=testuser&h=0",
+                "userAgent": "RetroArch/1.21.0 (Linux)",
+                "queuedAt": achievement_id * 1_000,
+                "status": storage.PENDING_AWARD_STATUS_PENDING,
+                "signedAt": achievement_id * 1_000,
+            }
+            payload_hash = flusher.sha256_hex(flusher.canonical_payload(award))
+            award["payloadHash"] = payload_hash
+            award["prevHash"] = prev_hash
+            award["signature"] = flusher.sign_award(
+                f"{payload_hash}:{prev_hash}".encode("utf-8")
+            )
+            awards.append(award)
+            prev_hash = payload_hash
+
+        awards[2]["prevHash"] = awards[0]["payloadHash"]
+        awards[2]["signature"] = flusher.sign_award(
+            f"{awards[2]['payloadHash']}:{awards[2]['prevHash']}".encode("utf-8")
+        )
+
+        repaired = flusher.repair_pending_chain(awards)
+
+        self.assertIsNotNone(repaired)
+        repaired = repaired or []
+        self.assertEqual(repaired[2]["prevHash"], awards[1]["payloadHash"])
+        valid, reason, index = flusher.verify_chain(repaired)
+        self.assertTrue(valid)
+        self.assertIsNone(reason)
+        self.assertIsNone(index)
+
+    def test_flush_pending_awards_repairs_forked_chain_before_flushing(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            store = storage.Storage(database_path=Path(temp_dir) / "test.sqlite3")
+            original_resolve_credentials = flusher.resolve_credentials
+            original_refresh = flusher.refresh_and_load_achievement_ids
+            original_send_award = flusher.send_award
+            try:
+                awards = []
+                prev_hash = flusher.GENESIS_HASH
+                for achievement_id in (12684, 12609):
+                    award = {
+                        "achievementId": achievement_id,
+                        "queryString": "/dorequest.php?r=awardachievement",
+                        "requestBody": f"a={achievement_id}&u=testuser&h=0",
+                        "userAgent": "RetroArch/1.21.0 (Linux)",
+                        "queuedAt": 1_700_000_000_000 + len(awards),
+                        "status": storage.PENDING_AWARD_STATUS_PENDING,
+                    }
+                    award["payloadHash"] = flusher.sha256_hex(
+                        flusher.canonical_payload(award)
+                    )
+                    award["prevHash"] = prev_hash
+                    award["signature"] = flusher.sign_award(
+                        f"{award['payloadHash']}:{award['prevHash']}".encode("utf-8")
+                    )
+                    award["signedAt"] = award["queuedAt"]
+                    awards.append(award)
+                    prev_hash = award["payloadHash"]
+
+                awards[1]["prevHash"] = flusher.GENESIS_HASH
+                awards[1]["signature"] = flusher.sign_award(
+                    f"{awards[1]['payloadHash']}:{awards[1]['prevHash']}".encode("utf-8")
+                )
+
+                for award in awards:
+                    store.upsert_pending_award(award)
+
+                flusher.resolve_credentials = lambda *_args, **_kwargs: {
+                    "user": "testuser",
+                    "token": "token",
+                }
+                flusher.refresh_and_load_achievement_ids = (
+                    lambda *_args, **_kwargs: ({12684, 12609}, [])
+                )
+                flusher.send_award = lambda *_args, **_kwargs: ("success", "")
+
+                outcome = flusher.flush_pending_awards(store, {})
+
+                self.assertEqual(outcome.flushed, 2)
+                self.assertEqual(outcome.pending_remaining, 0)
+                self.assertEqual(store.get_pending_awards(), [])
+            finally:
+                flusher.resolve_credentials = original_resolve_credentials
+                flusher.refresh_and_load_achievement_ids = original_refresh
+                flusher.send_award = original_send_award
+                store.close()
 
     def test_merge_start_session_unlock_ids_adds_pending_awards_for_same_game_and_user(
         self,
@@ -356,6 +452,42 @@ class LinuxAwardParityTests(unittest.TestCase):
                 self.assertTrue(queued)
                 self.assertEqual(store.get_pending_awards(), [])
             finally:
+                server.server_close()
+                store.close()
+
+    def test_queue_award_serializes_near_simultaneous_appends(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            store = storage.Storage(database_path=Path(temp_dir) / "test.sqlite3")
+            server = proxy_service.ProxyRuntimeServer({"proxy_port": 8080}, store)
+            try:
+                barrier = threading.Barrier(2)
+                original_is_already_unlocked_award = server.is_already_unlocked_award
+
+                def queue(achievement_id: int) -> None:
+                    barrier.wait()
+                    server.queue_award(
+                        f"/dorequest.php?r=awardachievement&a={achievement_id}&u=testuser&h=0",
+                        f"a={achievement_id}&u=testuser&h=0",
+                        {},
+                    )
+
+                server.is_already_unlocked_award = lambda *_args, **_kwargs: False
+
+                t1 = threading.Thread(target=queue, args=(1001,))
+                t2 = threading.Thread(target=queue, args=(1002,))
+                t1.start()
+                t2.start()
+                t1.join()
+                t2.join()
+
+                awards = store.get_pending_awards()
+                self.assertEqual(len(awards), 2)
+                valid, reason, index = flusher.verify_chain(awards)
+                self.assertTrue(valid)
+                self.assertIsNone(reason)
+                self.assertIsNone(index)
+            finally:
+                server.is_already_unlocked_award = original_is_already_unlocked_award
                 server.server_close()
                 store.close()
 
