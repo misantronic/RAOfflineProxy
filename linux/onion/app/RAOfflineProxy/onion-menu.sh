@@ -480,11 +480,28 @@ proxy_menu_label() {
 
 toggle_proxy() {
     if [ "${MAIN_PROXY_RUNNING:-0}" -eq 1 ]; then
-        run_backend "$PYTHON_BIN" stop-proxy || true
+        if run_backend "$PYTHON_BIN" stop-proxy >/dev/null 2>&1; then
+            return 0
+        fi
+
+        clear
+        printf 'RAOfflineProxy\n\n'
+        if ! run_backend "$PYTHON_BIN" stop-proxy; then
+            pause_prompt
+        fi
+        return 1
+    fi
+
+    if run_backend "$PYTHON_BIN" start-proxy >/dev/null 2>&1; then
         return 0
     fi
 
-    run_backend "$PYTHON_BIN" start-proxy || true
+    clear
+    printf 'RAOfflineProxy\n\n'
+    if ! run_backend "$PYTHON_BIN" start-proxy; then
+        pause_prompt
+    fi
+    return 1
 }
 
 maybe_offer_smart_cache() {
@@ -1656,16 +1673,14 @@ while :; do
     case "$choice" in
         1)
             proxy_was_running="$MAIN_PROXY_RUNNING"
-            toggle_proxy
-            if [ "$proxy_was_running" -eq 0 ]; then
-                if [ "$MAIN_CACHED_COUNT" -eq 0 ] && ! maybe_offer_smart_cache; then
-                    pause_prompt
-                elif [ "$MAIN_CACHED_COUNT" -ne 0 ]; then
-                    pause_prompt
-                fi
-            else
-                pause_prompt
+            if ! toggle_proxy; then
+                continue
             fi
+
+            if [ "$proxy_was_running" -eq 0 ] && [ "$MAIN_CACHED_COUNT" -eq 0 ]; then
+                maybe_offer_smart_cache || true
+            fi
+            continue
             ;;
         2)
             show_cached_games_view || true
