@@ -1,6 +1,6 @@
 import json
 import logging
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from pathlib import Path
 import socket
 import socketserver
@@ -730,6 +730,13 @@ class ProxyRuntimeServer(ThreadingTCPServer):
             )
             return True
 
+        if achievement_id > 0 and self.is_already_unlocked_award(path, raw_body):
+            LOGGER.info(
+                "Offline award already unlocked: achievementId=%s",
+                achievement_id,
+            )
+            return True
+
         prev_hash = (self.storage.get_latest_pending_award() or {}).get(
             "payloadHash"
         ) or "genesis"
@@ -761,6 +768,92 @@ class ProxyRuntimeServer(ThreadingTCPServer):
             queued_at,
         )
         return True
+
+    def is_already_unlocked_award(self, path: str, raw_body: str) -> bool:
+        achievement_id = int(extract_request_param(path, raw_body, "a") or "0")
+        user = extract_request_param(path, raw_body, "u")
+        if achievement_id <= 0 or not user:
+            return False
+
+        achievement_game_ids = self.build_cached_achievement_game_ids()
+        game_id = achievement_game_ids.get(achievement_id)
+        if game_id is None:
+            return False
+
+        cached_unlocks = self.storage.get_cache(cache_keys.unlocks(game_id, user))
+        if cached_unlocks is None:
+            return False
+
+        try:
+            payload = json.loads(cached_unlocks["responseBody"])
+        except Exception:
+            return False
+
+        unlock_ids = payload.get("UserUnlocks")
+        if not isinstance(unlock_ids, list):
+            return False
+
+        return achievement_id in filter_warning_achievement_ids(
+            [item for item in unlock_ids if isinstance(item, int)]
+        )
+
+    def build_cached_achievement_game_ids(self) -> dict[int, int]:
+        achievement_game_ids = build_achievement_game_ids(
+            self.storage.get_all_cache_by_prefix(cache_keys.PREFIX_PATCH)
+        )
+
+        for entry in self.storage.get_all_cache_by_prefix(cache_keys.PREFIX_ACHIEVEMENTSETS):
+            try:
+                payload = json.loads(entry["responseBody"])
+            except Exception:
+                continue
+
+            game_id = payload.get("GameId")
+            if not isinstance(game_id, int) or game_id <= 0:
+                continue
+
+            for achievement in self.achievementsets_payload_achievements(payload):
+                achievement_id = achievement.get("ID")
+                if isinstance(achievement_id, int) and achievement_id > 0:
+                    achievement_game_ids.setdefault(achievement_id, game_id)
+
+        return achievement_game_ids
+
+    def achievementsets_payload_achievements(self, payload: dict) -> list[dict]:
+        direct_achievements = payload.get("Achievements")
+        if isinstance(direct_achievements, dict):
+            values: Iterable = direct_achievements.values()
+        elif isinstance(direct_achievements, list):
+            values = direct_achievements
+        else:
+            values = []
+
+        achievements = [achievement for achievement in values if isinstance(achievement, dict)]
+        if achievements:
+            return achievements
+
+        sets = payload.get("Sets")
+        if not isinstance(sets, list):
+            return []
+
+        nested_achievements: list[dict] = []
+        for achievement_set in sets:
+            if not isinstance(achievement_set, dict):
+                continue
+
+            set_achievements = achievement_set.get("Achievements")
+            if isinstance(set_achievements, dict):
+                set_values: Iterable = set_achievements.values()
+            elif isinstance(set_achievements, list):
+                set_values = set_achievements
+            else:
+                continue
+
+            nested_achievements.extend(
+                achievement for achievement in set_values if isinstance(achievement, dict)
+            )
+
+        return nested_achievements
 
     def fetch_cached_score(self, path: str, raw_body: str) -> int:
         user = extract_request_param(path, raw_body, "u")
