@@ -6,21 +6,26 @@ LINUX_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 DIST_DIR="${SCRIPT_DIR}/dist"
 BUILD_DIR="${DIST_DIR}/raofflineproxy-onion-app"
 APP_DIR="${BUILD_DIR}/App/RAOfflineProxy"
+LIB_DIR="${APP_DIR}/lib"
 RUNTIME_CACHE_DIR="${SCRIPT_DIR}/runtime-cache"
 RUNTIME_ARCHIVE_NAME="cpython-3.10.20+20260510-armv7-unknown-linux-gnueabihf-install_only_stripped.tar.gz"
 RUNTIME_ARCHIVE_PATH="${RUNTIME_CACHE_DIR}/${RUNTIME_ARCHIVE_NAME}"
 ZIP_NAME="RAOfflineProxy-Onion-v1.2.2-alpha1.zip"
 
+"${SCRIPT_DIR}/build_libchdr.sh"
+
 rm -rf "${BUILD_DIR}"
 rm -f "${DIST_DIR}/${ZIP_NAME}"
 
 mkdir -p "${APP_DIR}"
+mkdir -p "${LIB_DIR}"
 
 export COPYFILE_DISABLE=1
 
 cp -R "${SCRIPT_DIR}/app/RAOfflineProxy/." "${APP_DIR}/"
 mkdir -p "${APP_DIR}/app"
 cp -R "${LINUX_DIR}/raofflineproxy" "${APP_DIR}/app/raofflineproxy"
+cp "${SCRIPT_DIR}/native/libchdr.so" "${LIB_DIR}/libchdr.so"
 cp "${LINUX_DIR}/requirements.txt" "${APP_DIR}/app/requirements.txt"
 sips -z 74 74 "${LINUX_DIR}/../docs/public/logo.png" --out "${APP_DIR}/icon.png" >/dev/null
 mkdir -p "${APP_DIR}/data"

@@ -20,4 +20,5 @@ AGENTS.md
 .agents/
 linux/knulli/dist/
 linux/knulli/native/
+linux/onion/native/
 **/__pycache__
