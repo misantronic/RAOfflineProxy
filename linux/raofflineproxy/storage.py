@@ -24,6 +24,7 @@ PENDING_AWARD_STATUS_PENDING = "pending"
 PENDING_AWARD_STATUS_DELETED = "deleted"
 PENDING_AWARD_STATUS_STALE = "stale"
 PENDING_AWARD_STATUS_FLUSHED = "flushed"
+WARNING_ACHIEVEMENT_ID = 101000001
 
 
 class Storage:
@@ -453,6 +454,9 @@ class Storage:
                 )
 
     def upsert_pending_award(self, award: dict) -> None:
+        if int(award.get("achievementId", 0) or 0) == WARNING_ACHIEVEMENT_ID:
+            return
+
         if self._use_sqlite:
             self._upsert_pending_award_sqlite(award)
             return
