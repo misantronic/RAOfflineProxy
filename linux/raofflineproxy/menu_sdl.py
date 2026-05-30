@@ -229,6 +229,7 @@ class MenuSdlSession:
         self.main_update_version = None
         self.main_update_asset_url = None
         self.main_update_dialog_seen = False
+        self.clear_cache_return_view = "cached_games"
         self.active_game_unlock_game_id = None
         self.active_game_unlock_count_cached = None
         self.active_game_unlock_titles_cached: list[str] = []
@@ -353,6 +354,9 @@ class MenuSdlSession:
         if self.view == "smart_cache_prompt":
             return ["Start Smart Cache", "Skip"]
 
+        if self.view == "clear_cache_confirm":
+            return ["YES", "NO"]
+
         if self.view == "cache_progress":
             return ["Back"] if getattr(self, "cache_completed", False) else ["Abort"]
 
@@ -429,6 +433,8 @@ class MenuSdlSession:
             return "Add ROM"
         if self.view == "update_prompt":
             return "Update Available"
+        if self.view == "clear_cache_confirm":
+            return "Clear Cache?"
         if self.view == "cache_progress":
             return self.cache_progress_title or "Caching"
         return "RAOfflineProxy"
@@ -503,6 +509,8 @@ class MenuSdlSession:
         if self.view != "main":
             if self.view == "smart_cache_prompt":
                 return None
+            if self.view == "clear_cache_confirm":
+                return "Press A or START to confirm. B to cancel."
             if self.view == "cache_progress":
                 return None
             if self.view == "update_prompt":
@@ -603,6 +611,10 @@ class MenuSdlSession:
             self.activate_smart_cache_prompt_selected()
             return
 
+        if self.view == "clear_cache_confirm":
+            self.activate_clear_cache_confirm_selected()
+            return
+
         if self.view == "update_prompt":
             self.activate_update_prompt_selected()
             return
@@ -671,11 +683,13 @@ class MenuSdlSession:
             return
 
         if selected_label == "Clear cache":
-            clear_cached_games(self.storage)
-            self.active_game = None
-            self.refresh_cached_games()
-            self.restore_view_position("cached_games")
-            self.message = ("Cache cleared", time.monotonic() + 1.5)
+            if self.is_knulli_platform():
+                self.save_view_position("cached_games")
+                self.clear_cache_return_view = "cached_games"
+                self.view = "clear_cache_confirm"
+                self.reset_selection()
+            else:
+                self.clear_cache_and_return()
             return
 
         if selected_label == "Back":
@@ -735,6 +749,27 @@ class MenuSdlSession:
             return
 
         self.dismiss_smart_cache_prompt()
+
+    def activate_clear_cache_confirm_selected(self) -> None:
+        if self.selected_index == 0:
+            self.clear_cache_and_return()
+            return
+
+        self.view = self.clear_cache_return_view
+        self.restore_view_position(self.clear_cache_return_view)
+        if self.view == "cached_games":
+            self.refresh_cached_games()
+
+    def clear_cache_and_return(self) -> None:
+        clear_cached_games(self.storage)
+        self.active_game = None
+        self.refresh_cached_games()
+        self.view = self.clear_cache_return_view
+        self.restore_view_position(self.clear_cache_return_view)
+        self.message = ("Cache cleared", time.monotonic() + 1.5)
+
+    def is_knulli_platform(self) -> bool:
+        return Path("/userdata/system").exists()
 
     def activate_game_actions_selected(self) -> None:
         if self.active_game is None:
@@ -1024,6 +1059,13 @@ class MenuSdlSession:
 
         if self.view == "smart_cache_prompt":
             self.dismiss_smart_cache_prompt()
+            return
+
+        if self.view == "clear_cache_confirm":
+            self.view = self.clear_cache_return_view
+            self.restore_view_position(self.clear_cache_return_view)
+            if self.view == "cached_games":
+                self.refresh_cached_games()
             return
 
         if self.view == "update_prompt":
