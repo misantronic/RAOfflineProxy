@@ -14,6 +14,15 @@ class DummyFont:
 
 
 class MenuLayoutTests(unittest.TestCase):
+    def test_clear_cache_confirm_labels_show_yes_no(self) -> None:
+        session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
+        session.view = "clear_cache_confirm"
+
+        self.assertEqual(
+            menu_sdl.MenuSdlSession.labels(session, running=False),
+            ["YES", "NO"],
+        )
+
     def test_ensure_selection_visible_uses_item_list_signature(self) -> None:
         session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
         session.view = "cached_games"
@@ -55,6 +64,15 @@ class MenuLayoutTests(unittest.TestCase):
         self.assertEqual(
             menu_sdl.MenuSdlSession.bottom_hint_text(session),
             "Login to RetroAchievements in system settings.",
+        )
+
+    def test_bottom_hint_for_clear_cache_confirm(self) -> None:
+        session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
+        session.view = "clear_cache_confirm"
+
+        self.assertEqual(
+            menu_sdl.MenuSdlSession.bottom_hint_text(session),
+            "Press A or START to confirm. B to cancel.",
         )
 
     def test_status_reports_proxy_and_connectivity_when_credentials_exist(self) -> None:
@@ -245,6 +263,91 @@ class MenuLayoutTests(unittest.TestCase):
             )
             menu_sdl.MenuSdlSession.refresh_cached_games = original_refresh_cached_games
             menu_sdl.load_config = original_load_config
+
+    def test_activate_cached_games_selected_opens_clear_cache_confirm_on_knulli(self) -> None:
+        session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
+        session.view = "cached_games"
+        session.selected_index = 2
+        session.cached_games = []
+        session.clear_cache_return_view = "cached_games"
+
+        original_current_labels = menu_sdl.MenuSdlSession.current_labels
+        original_save_view_position = menu_sdl.MenuSdlSession.save_view_position
+        original_reset_selection = menu_sdl.MenuSdlSession.reset_selection
+        original_is_knulli_platform = menu_sdl.MenuSdlSession.is_knulli_platform
+        try:
+            menu_sdl.MenuSdlSession.current_labels = lambda self: [
+                "Add ROM",
+                "Start Smart Cache",
+                "Clear cache",
+                "Back",
+            ]
+            menu_sdl.MenuSdlSession.save_view_position = lambda self, _view: None
+            menu_sdl.MenuSdlSession.reset_selection = lambda self: setattr(self, "selected_index", 0)
+            menu_sdl.MenuSdlSession.is_knulli_platform = lambda self: True
+
+            menu_sdl.MenuSdlSession.activate_cached_games_selected(session)
+
+            self.assertEqual(session.view, "clear_cache_confirm")
+            self.assertEqual(session.selected_index, 0)
+        finally:
+            menu_sdl.MenuSdlSession.current_labels = original_current_labels
+            menu_sdl.MenuSdlSession.save_view_position = original_save_view_position
+            menu_sdl.MenuSdlSession.reset_selection = original_reset_selection
+            menu_sdl.MenuSdlSession.is_knulli_platform = original_is_knulli_platform
+
+    def test_activate_clear_cache_confirm_yes_clears_cache(self) -> None:
+        session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
+        session.view = "clear_cache_confirm"
+        session.selected_index = 0
+        session.clear_cache_return_view = "cached_games"
+        session.active_game = object()
+        session.storage = object()
+        session.message = None
+
+        original_clear_cached_games = menu_sdl.clear_cached_games
+        original_refresh_cached_games = menu_sdl.MenuSdlSession.refresh_cached_games
+        original_restore_view_position = menu_sdl.MenuSdlSession.restore_view_position
+        try:
+            called = {"cleared": False, "refreshed": False, "restored": None}
+            menu_sdl.clear_cached_games = lambda _storage: called.__setitem__("cleared", True)
+            menu_sdl.MenuSdlSession.refresh_cached_games = lambda self: called.__setitem__("refreshed", True)
+            menu_sdl.MenuSdlSession.restore_view_position = lambda self, view: called.__setitem__("restored", view)
+
+            menu_sdl.MenuSdlSession.activate_clear_cache_confirm_selected(session)
+
+            self.assertTrue(called["cleared"])
+            self.assertTrue(called["refreshed"])
+            self.assertEqual(called["restored"], "cached_games")
+            self.assertEqual(session.view, "cached_games")
+            self.assertIsNone(session.active_game)
+            self.assertIsNotNone(session.message)
+        finally:
+            menu_sdl.clear_cached_games = original_clear_cached_games
+            menu_sdl.MenuSdlSession.refresh_cached_games = original_refresh_cached_games
+            menu_sdl.MenuSdlSession.restore_view_position = original_restore_view_position
+
+    def test_activate_clear_cache_confirm_no_cancels(self) -> None:
+        session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
+        session.view = "clear_cache_confirm"
+        session.selected_index = 1
+        session.clear_cache_return_view = "cached_games"
+
+        original_restore_view_position = menu_sdl.MenuSdlSession.restore_view_position
+        original_refresh_cached_games = menu_sdl.MenuSdlSession.refresh_cached_games
+        try:
+            called = {"restored": None, "refreshed": False}
+            menu_sdl.MenuSdlSession.restore_view_position = lambda self, view: called.__setitem__("restored", view)
+            menu_sdl.MenuSdlSession.refresh_cached_games = lambda self: called.__setitem__("refreshed", True)
+
+            menu_sdl.MenuSdlSession.activate_clear_cache_confirm_selected(session)
+
+            self.assertEqual(session.view, "cached_games")
+            self.assertEqual(called["restored"], "cached_games")
+            self.assertTrue(called["refreshed"])
+        finally:
+            menu_sdl.MenuSdlSession.restore_view_position = original_restore_view_position
+            menu_sdl.MenuSdlSession.refresh_cached_games = original_refresh_cached_games
 
     def test_refresh_main_menu_state_checks_update_only_on_force(self) -> None:
         session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
