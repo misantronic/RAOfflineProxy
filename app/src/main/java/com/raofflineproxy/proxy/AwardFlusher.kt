@@ -57,6 +57,7 @@ sealed interface FlushEvent {
 
 private sealed interface FlushResult {
     data object Success : FlushResult
+    data class AlreadyUnlocked(val message: String) : FlushResult
     data class AuthError(val message: String) : FlushResult
     data class NetworkError(val message: String) : FlushResult
 }
@@ -399,6 +400,18 @@ class AwardFlusher(
 
             val awardGameId = pendingAwardGameTargets.awardGameIds[award.id]
 
+            if (award.achievementId == WARNING_ACHIEVEMENT_ID) {
+                Log.i(TAG, "Skipping softcore warning award ${award.id}")
+                db.pendingAwardDao().update(
+                    award.copy(
+                        status = PENDING_AWARD_STATUS_FLUSHED,
+                        lastError = "Softcore warning achievement is local-only and is not flushed"
+                    )
+                )
+                flushed++
+                return@forEachIndexed
+            }
+
             if (isHardcoreAward(award)) {
                 Log.w(TAG, "Marking stale hardcore award ${award.id} — hardcore mode is not supported")
                 db.pendingAwardDao().update(
@@ -436,6 +449,19 @@ class AwardFlusher(
                         successfulGameIds.add(awardGameId)
                     }
                     Log.i(TAG, "Award flushed: ${award.id}")
+                }
+                is FlushResult.AlreadyUnlocked -> {
+                    Log.i(TAG, "Award ${award.id} already unlocked on server — marking flushed")
+                    db.pendingAwardDao().update(
+                        award.copy(
+                            status = PENDING_AWARD_STATUS_FLUSHED,
+                            lastError = result.message
+                        )
+                    )
+                    flushed++
+                    if (awardGameId != null) {
+                        successfulGameIds.add(awardGameId)
+                    }
                 }
                 is FlushResult.AuthError -> {
                     Log.w(TAG, "Award ${award.id} auth error — not retrying: ${result.message}")
@@ -517,6 +543,7 @@ class AwardFlusher(
                 val responseBody = resp.body.string()
 
                 Log.d(TAG, "← RA ${resp.code} for ${redactTokens(award.queryString)} (${responseBody.length} bytes)")
+                Log.d(TAG, "← RA awardachievement body: $responseBody")
 
                 if (resp.code == 401 || resp.code == 403) {
                     val errorMessage = "Token rejected by server (HTTP ${resp.code})"
@@ -539,6 +566,9 @@ class AwardFlusher(
                 if (!success) {
                     val error = json?.optString("Error")?.takeIf { it.isNotEmpty() }
                         ?: "Server returned Success:false"
+                    if (isAlreadyUnlockedError(error)) {
+                        return FlushResult.AlreadyUnlocked(error)
+                    }
                     RequestFailureNotifier.report(
                         context.getString(R.string.request_failed_award_sync, award.achievementId, error),
                         "award sync failed url=${redactTokens(url)} success=false body=${responseBody.take(512)}"
@@ -561,5 +591,8 @@ class AwardFlusher(
             FlushResult.NetworkError(errorMessage)
         }
     }
+
+    private fun isAlreadyUnlockedError(error: String): Boolean =
+        error.contains("already has this achievement unlocked", ignoreCase = true)
 
 }

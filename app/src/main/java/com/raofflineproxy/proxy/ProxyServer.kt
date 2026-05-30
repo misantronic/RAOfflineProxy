@@ -477,6 +477,9 @@ class ProxyServer(
             sharedHttpClient.newCall(request).execute().use { resp ->
                 val body = resp.body.string()
                 Log.d(TAG, "← RA ${resp.code} for ${redactTokens(path)} (${body.length} bytes)")
+                if (action == "awardachievement") {
+                    Log.d(TAG, "← RA awardachievement body: $body")
+                }
                 val message = sanitizeHttpReasonPhrase(resp.message, resp.code)
 
                 if (resp.isSuccessful) {
@@ -509,15 +512,27 @@ class ProxyServer(
     private fun queueAward(path: String, rawBody: String, headers: Map<String, String>): QueueAwardResult {
         val achievementId = extractParam("a", path, rawBody)?.toIntOrNull() ?: 0
         if (achievementId > 0) {
+            if (achievementId == WARNING_ACHIEVEMENT_ID) {
+                Log.i(TAG, "Skipping softcore warning award: achievementId=$achievementId")
+                return QueueAwardResult.Queued
+            }
+
             val latch = CountDownLatch(1)
             var alreadyQueued = false
+            var alreadyUnlocked = false
+            val user = extractParam("u", path, rawBody)
             scope.launch(Dispatchers.IO) {
                 alreadyQueued = db.pendingAwardDao().existsByAchievementIdAndStatus(achievementId)
+                alreadyUnlocked = isAchievementAlreadyUnlocked(achievementId, user)
                 latch.countDown()
             }
             latch.await(DB_OPERATION_TIMEOUT_SECONDS, TimeUnit.SECONDS)
             if (alreadyQueued) {
                 Log.i(TAG, "Award already queued: achievementId=$achievementId, skipping duplicate")
+                return QueueAwardResult.Queued
+            }
+            if (alreadyUnlocked) {
+                Log.i(TAG, "Award already unlocked in cache: achievementId=$achievementId, skipping offline queue")
                 return QueueAwardResult.Queued
             }
         }
@@ -553,6 +568,20 @@ class ProxyServer(
                 result
             }
         }
+    }
+
+    private suspend fun isAchievementAlreadyUnlocked(achievementId: Int, user: String?): Boolean {
+        if (achievementId <= 0 || user.isNullOrEmpty()) return false
+
+        val gameId = buildAchievementGameIds(db.cacheDao().getAllByPrefix(CacheKeys.PREFIX_PATCH))[achievementId]
+            ?: return false
+        val unlocksBody = db.cacheDao().get(CacheKeys.unlocks(gameId, user))?.responseBody ?: return false
+        val unlocks = runCatching {
+            JSONObject(unlocksBody).optJSONArray("UserUnlocks")
+        }.getOrNull() ?: return false
+
+        return filterWarningAchievementIds((0 until unlocks.length()).map { unlocks.optInt(it) })
+            .contains(achievementId)
     }
 
     private fun fetchCachedScore(path: String, rawBody: String): Int {
@@ -951,6 +980,23 @@ internal fun filterWarningAchievementFromUnlocksResponse(responseBody: String): 
 
     source.put("UserUnlocks", filteredUnlocks)
     return source.toString()
+}
+
+private fun buildAchievementGameIds(patchEntries: List<CacheEntry>): Map<Int, Int> = buildMap {
+    patchEntries.forEach { entry ->
+        val gameId = CacheKeys.parseGameIdFromPatchKey(entry.cacheKey) ?: return@forEach
+        val patchData = runCatching {
+            JSONObject(entry.responseBody).getJSONObject("PatchData")
+        }.getOrNull() ?: return@forEach
+        val achievements = patchData.optJSONArray("Achievements") ?: return@forEach
+        for (index in 0 until achievements.length()) {
+            val achievement = achievements.optJSONObject(index) ?: continue
+            val achievementId = achievement.optInt("ID")
+            if (achievementId > 0) {
+                putIfAbsent(achievementId, gameId)
+            }
+        }
+    }
 }
 
 private fun filterWarningAchievementDefinitions(achievements: JSONArray?): JSONArray {
