@@ -27,4 +27,4 @@ Current manual hashing coverage includes:
 - Nintendo 64
 - Nintendo DS
 - PSP
-- PSX
+- PlayStation
