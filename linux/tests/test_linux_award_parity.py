@@ -6,6 +6,7 @@ from pathlib import Path
 
 from linux.raofflineproxy import config
 from linux.raofflineproxy import flusher
+from linux.raofflineproxy import proxy_service
 from linux.raofflineproxy import rom_cache
 from linux.raofflineproxy import storage
 from linux.raofflineproxy import utils
@@ -280,6 +281,82 @@ class LinuxAwardParityTests(unittest.TestCase):
             finally:
                 flusher.resolve_credentials = original_resolve_credentials
                 flusher.refresh_and_load_achievement_ids = original_refresh
+                store.close()
+
+    def test_queue_award_skips_cached_already_unlocked_achievement(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            store = storage.Storage(database_path=Path(temp_dir) / "test.sqlite3")
+            server = proxy_service.ProxyRuntimeServer({"proxy_port": 8080}, store)
+            try:
+                store.upsert_cache(
+                    "patch:42:testuser",
+                    json.dumps(
+                        {
+                            "PatchData": {
+                                "Achievements": [
+                                    {"ID": 22, "Title": "Encore"},
+                                ]
+                            }
+                        },
+                        separators=(",", ":"),
+                    ),
+                )
+                store.upsert_cache(
+                    "unlocks:42:testuser:0",
+                    '{"Success":true,"UserUnlocks":[22]}',
+                )
+
+                queued = server.queue_award(
+                    "/dorequest.php?r=awardachievement&a=22&u=testuser&h=0",
+                    "a=22&u=testuser&h=0",
+                    {},
+                )
+
+                self.assertTrue(queued)
+                self.assertEqual(store.get_pending_awards(), [])
+            finally:
+                server.server_close()
+                store.close()
+
+    def test_queue_award_skips_cached_already_unlocked_from_achievementsets(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            store = storage.Storage(database_path=Path(temp_dir) / "test.sqlite3")
+            server = proxy_service.ProxyRuntimeServer({"proxy_port": 8080}, store)
+            try:
+                store.upsert_cache(
+                    "achievementsets:testhash:testuser",
+                    json.dumps(
+                        {
+                            "Success": True,
+                            "GameId": 42,
+                            "Sets": [
+                                {
+                                    "Type": "core",
+                                    "GameId": 42,
+                                    "Achievements": [
+                                        {"ID": 22, "Title": "Encore"},
+                                    ],
+                                }
+                            ],
+                        },
+                        separators=(",", ":"),
+                    ),
+                )
+                store.upsert_cache(
+                    "unlocks:42:testuser:0",
+                    '{"Success":true,"UserUnlocks":[22]}',
+                )
+
+                queued = server.queue_award(
+                    "/dorequest.php?r=awardachievement&a=22&u=testuser&h=0",
+                    "a=22&u=testuser&h=0",
+                    {},
+                )
+
+                self.assertTrue(queued)
+                self.assertEqual(store.get_pending_awards(), [])
+            finally:
+                server.server_close()
                 store.close()
 
 

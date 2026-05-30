@@ -115,6 +115,25 @@ class LinuxStorageTests(unittest.TestCase):
                     first.close()
                     second.close()
 
+    def test_upsert_pending_award_skips_warning_achievement(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "test.sqlite3"
+            store = storage.Storage(database_path=db_path)
+            try:
+                store.upsert_pending_award(
+                    {
+                        "achievementId": 101000001,
+                        "queryString": "/dorequest.php?r=awardachievement",
+                        "requestBody": "a=101000001&u=misantronic&h=0",
+                        "userAgent": "RetroArch/1.21.0 (Linux)",
+                        "queuedAt": 1700000000000,
+                    }
+                )
+
+                self.assertEqual(store.get_pending_awards(), [])
+            finally:
+                store.close()
+
 
 if __name__ == "__main__":
     unittest.main()
