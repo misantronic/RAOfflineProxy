@@ -40,6 +40,8 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.ThreadPoolExecutor
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.locks.ReentrantLock
+import kotlin.concurrent.withLock
 
 private const val TAG = "RAProxy"
 private const val MAX_WORKER_THREADS = 8
@@ -113,6 +115,7 @@ class ProxyServer(
     private val onGameActivity: (GameActivity) -> Unit = {}
 ) {
     @Volatile private var executor = newExecutor()
+    private val pendingAwardLock = ReentrantLock()
 
     @Volatile private var serverSocket: ServerSocket? = null
     @Volatile private var lastCachedUserAgent: String? = null
@@ -510,62 +513,64 @@ class ProxyServer(
     }
 
     private fun queueAward(path: String, rawBody: String, headers: Map<String, String>): QueueAwardResult {
-        val achievementId = extractParam("a", path, rawBody)?.toIntOrNull() ?: 0
-        if (achievementId > 0) {
-            if (achievementId == WARNING_ACHIEVEMENT_ID) {
-                Log.i(TAG, "Skipping softcore warning award: achievementId=$achievementId")
-                return QueueAwardResult.Queued
-            }
+        return pendingAwardLock.withLock {
+            val achievementId = extractParam("a", path, rawBody)?.toIntOrNull() ?: 0
+            if (achievementId > 0) {
+                if (achievementId == WARNING_ACHIEVEMENT_ID) {
+                    Log.i(TAG, "Skipping softcore warning award: achievementId=$achievementId")
+                    return@withLock QueueAwardResult.Queued
+                }
 
-            val latch = CountDownLatch(1)
-            var alreadyQueued = false
-            var alreadyUnlocked = false
-            val user = extractParam("u", path, rawBody)
-            scope.launch(Dispatchers.IO) {
-                alreadyQueued = db.pendingAwardDao().existsByAchievementIdAndStatus(achievementId)
-                alreadyUnlocked = isAchievementAlreadyUnlocked(achievementId, user)
-                latch.countDown()
-            }
-            latch.await(DB_OPERATION_TIMEOUT_SECONDS, TimeUnit.SECONDS)
-            if (alreadyQueued) {
-                Log.i(TAG, "Award already queued: achievementId=$achievementId, skipping duplicate")
-                return QueueAwardResult.Queued
-            }
-            if (alreadyUnlocked) {
-                Log.i(TAG, "Award already unlocked in cache: achievementId=$achievementId, skipping offline queue")
-                return QueueAwardResult.Queued
-            }
-        }
-
-        val signedAward = buildPendingAward(
-            path = path,
-            rawBody = rawBody,
-            headers = headers,
-            loadPrevHash = {
                 val latch = CountDownLatch(1)
-                var prevHash = "genesis"
+                var alreadyQueued = false
+                var alreadyUnlocked = false
+                val user = extractParam("u", path, rawBody)
                 scope.launch(Dispatchers.IO) {
-                    prevHash = db.pendingAwardDao().getLatestByStatus()?.payloadHash ?: "genesis"
+                    alreadyQueued = db.pendingAwardDao().existsByAchievementIdAndStatus(achievementId)
+                    alreadyUnlocked = isAchievementAlreadyUnlocked(achievementId, user)
                     latch.countDown()
                 }
-                latch.await(3, TimeUnit.SECONDS)
-                prevHash
-            },
-            signBytes = AwardKeyManager::sign
-        )
-            ?: run {
-                Log.e(TAG, "Award signing failed")
-                return QueueAwardResult.Error("signing_failed")
+                latch.await(DB_OPERATION_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+                if (alreadyQueued) {
+                    Log.i(TAG, "Award already queued: achievementId=$achievementId, skipping duplicate")
+                    return@withLock QueueAwardResult.Queued
+                }
+                if (alreadyUnlocked) {
+                    Log.i(TAG, "Award already unlocked in cache: achievementId=$achievementId, skipping offline queue")
+                    return@withLock QueueAwardResult.Queued
+                }
             }
 
-        return when (val result = awaitPendingAwardWrite(scope, signedAward, db.pendingAwardDao()::upsert)) {
-            QueueAwardResult.Queued -> {
-                Log.i(TAG, "Award queued and signed: achievementId=${signedAward.achievementId}")
-                QueueAwardResult.Queued
-            }
-            is QueueAwardResult.Error -> {
-                Log.e(TAG, "Award queue write failed: ${result.message}")
-                result
+            val signedAward = buildPendingAward(
+                path = path,
+                rawBody = rawBody,
+                headers = headers,
+                loadPrevHash = {
+                    val latch = CountDownLatch(1)
+                    var prevHash = "genesis"
+                    scope.launch(Dispatchers.IO) {
+                        prevHash = db.pendingAwardDao().getLatestByStatus()?.payloadHash ?: "genesis"
+                        latch.countDown()
+                    }
+                    latch.await(3, TimeUnit.SECONDS)
+                    prevHash
+                },
+                signBytes = AwardKeyManager::sign
+            )
+                ?: run {
+                    Log.e(TAG, "Award signing failed")
+                    return@withLock QueueAwardResult.Error("signing_failed")
+                }
+
+            when (val result = awaitPendingAwardWrite(scope, signedAward, db.pendingAwardDao()::upsert)) {
+                QueueAwardResult.Queued -> {
+                    Log.i(TAG, "Award queued and signed: achievementId=${signedAward.achievementId}")
+                    QueueAwardResult.Queued
+                }
+                is QueueAwardResult.Error -> {
+                    Log.e(TAG, "Award queue write failed: ${result.message}")
+                    result
+                }
             }
         }
     }
