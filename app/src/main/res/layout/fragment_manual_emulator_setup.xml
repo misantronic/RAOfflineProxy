@@ -32,44 +32,57 @@
             android:orientation="vertical"
             android:visibility="gone">
 
-            <LinearLayout
-                android:id="@+id/layout_manual_patching_shizuku"
+            <TextView
+                android:id="@+id/tv_manual_shizuku_status"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="16dp"
-                android:orientation="vertical"
-                android:visibility="gone">
+                android:textAppearance="@style/TextAppearance.MaterialComponents.Subtitle1"
+                android:textStyle="bold"
+                android:visibility="gone" />
 
-                <TextView
-                    android:id="@+id/tv_manual_shizuku_status"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:textAppearance="@style/TextAppearance.MaterialComponents.Subtitle1"
-                    android:textStyle="bold" />
+            <TextView
+                android:id="@+id/tv_manual_shizuku_body"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:lineSpacingMultiplier="1.4"
+                android:textSize="14sp"
+                android:visibility="gone" />
 
-                <TextView
-                    android:id="@+id/tv_manual_shizuku_body"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
-                    android:lineSpacingMultiplier="1.4"
-                    android:textSize="14sp" />
+            <Button
+                android:id="@+id/btn_manual_shizuku_permission"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:text="@string/manual_patching_shizuku_permission"
+                android:visibility="gone" />
 
-                <Button
-                    android:id="@+id/btn_manual_shizuku_permission"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="16dp"
-                    android:text="@string/manual_patching_shizuku_permission" />
+            <Button
+                android:id="@+id/btn_manual_shizuku_toggle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:text="@string/manual_patching_shizuku_enable"
+                android:visibility="gone" />
 
-                <Button
-                    android:id="@+id/btn_manual_shizuku_toggle"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="12dp"
-                    android:text="@string/manual_patching_shizuku_enable"
-                    android:visibility="gone" />
-            </LinearLayout>
+            <TextView
+                android:id="@+id/tv_manual_ppsspp_reset_label"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:lineSpacingMultiplier="1.4"
+                android:text="@string/ppsspp_shizuku_root_mode_reset_label"
+                android:textSize="14sp"
+                android:visibility="gone" />
+
+            <Button
+                android:id="@+id/btn_manual_ppsspp_reset_location"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:text="@string/ppsspp_shizuku_root_mode_reset_action"
+                android:visibility="gone" />
         </LinearLayout>
     </LinearLayout>
 </androidx.core.widget.NestedScrollView>

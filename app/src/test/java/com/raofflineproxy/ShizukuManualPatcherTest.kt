@@ -6,6 +6,8 @@ import com.raofflineproxy.ui.buildPatchedPpssppContent
 import com.raofflineproxy.ui.buildRevertedContent
 import com.raofflineproxy.ui.buildRevertedDolphinContent
 import com.raofflineproxy.ui.buildRevertedPpssppContent
+import com.raofflineproxy.ui.ppssppIniPathCandidates
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -46,5 +48,70 @@ class ShizukuManualPatcherTest {
         assertTrue(patched.contains("AchievementsHost = $proxyAddress"))
         assertTrue(patched.contains("AchievementsChallengeMode = False"))
         assertTrue(reverted.contains("AchievementsHost = "))
+    }
+
+    @Test
+    fun ppssppIniPathCandidates_usesDefaultPackagePathWhenConfigured() {
+        assertEquals(
+            listOf("/storage/emulated/0/Android/data/org.ppsspp.ppsspp/files/PSP/SYSTEM/ppsspp.ini"),
+            ppssppIniPathCandidates(
+                rootPath = "/storage/emulated/0/PPSSPP/PSP",
+                rootMode = PrefsConstants.PpssppRootMode.DefaultPackagePath
+            )
+        )
+    }
+
+    @Test
+    fun ppssppIniPathCandidates_prefersCustomRootWhenConfigured() {
+        assertEquals(
+            listOf(
+                "/storage/emulated/0/PPSSPP/PSP/SYSTEM/ppsspp.ini",
+                "/storage/emulated/0/PPSSPP/PSP/PSP/SYSTEM/ppsspp.ini"
+            ),
+            ppssppIniPathCandidates(
+            rootPath = "/storage/emulated/0/PPSSPP/PSP",
+                rootMode = PrefsConstants.PpssppRootMode.CustomRoot
+            )
+        )
+    }
+
+    @Test
+    fun ppssppIniPathCandidates_supportsParentFolderCustomRoot() {
+        assertEquals(
+            listOf(
+                "/storage/emulated/0/PPSSPP/SYSTEM/ppsspp.ini",
+                "/storage/emulated/0/PPSSPP/PSP/SYSTEM/ppsspp.ini"
+            ),
+            ppssppIniPathCandidates(
+            rootPath = "/storage/emulated/0/PPSSPP",
+                rootMode = PrefsConstants.PpssppRootMode.CustomRoot
+            )
+        )
+    }
+
+    @Test
+    fun ppssppIniPathCandidates_returnsEmptyWhenCustomRootMissing() {
+        assertTrue(
+            ppssppIniPathCandidates(
+                rootPath = null,
+                rootMode = PrefsConstants.PpssppRootMode.CustomRoot
+            ).isEmpty()
+        )
+    }
+
+    @Test
+    fun ppssppIniPathCandidates_customRootSupportsPspFolderAndParentFolder() {
+        val candidates = ppssppIniPathCandidates(
+            rootPath = "/storage/emulated/0/PPSSPP",
+            rootMode = PrefsConstants.PpssppRootMode.CustomRoot
+        )
+
+        assertEquals(
+            listOf(
+                "/storage/emulated/0/PPSSPP/SYSTEM/ppsspp.ini",
+                "/storage/emulated/0/PPSSPP/PSP/SYSTEM/ppsspp.ini"
+            ),
+            candidates
+        )
     }
 }

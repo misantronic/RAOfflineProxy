@@ -9,12 +9,19 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 object PrefsConstants {
+    enum class PpssppRootMode {
+        Unknown,
+        DefaultPackagePath,
+        CustomRoot
+    }
+
     const val PREFS_NAME = "ra_proxy_prefs"
     const val KEY_SAF_TREE_URI = "saf_tree_uri"
     const val KEY_RETROARCH_SAF_TREE_URI = "retroarch_saf_tree_uri"
     const val KEY_RETROARCH_SMART_CACHE_SAF_TREE_URI = "retroarch_smart_cache_saf_tree_uri"
     const val KEY_DOLPHIN_SAF_TREE_URI = "dolphin_saf_tree_uri"
     const val KEY_PPSSPP_SAF_TREE_URI = "ppsspp_saf_tree_uri"
+    const val KEY_PPSSPP_ROOT_MODE = "ppsspp_root_mode"
     const val KEY_SMART_CACHE_ROM_SAF_TREE_URI = "smart_cache_rom_saf_tree_uri"
     const val KEY_SMART_CACHE_ROM_SAF_TREE_URIS = "smart_cache_rom_saf_tree_uris"
     const val KEY_AUTOSTART_PROXY = "autostart_proxy"
@@ -100,9 +107,22 @@ object PrefsConstants {
             .getString(KEY_PPSSPP_SAF_TREE_URI, null)
             ?.toUri()
 
+    fun loadPpssppRootMode(context: Context): PpssppRootMode =
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getString(KEY_PPSSPP_ROOT_MODE, PpssppRootMode.Unknown.name)
+            ?.let { stored ->
+                PpssppRootMode.entries.firstOrNull { it.name == stored }
+            }
+            ?: PpssppRootMode.Unknown
+
     fun savePpssppSafUri(context: Context, uri: Uri) {
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .edit { putString(KEY_PPSSPP_SAF_TREE_URI, uri.toString()) }
+    }
+
+    fun savePpssppRootMode(context: Context, mode: PpssppRootMode) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit { putString(KEY_PPSSPP_ROOT_MODE, mode.name) }
     }
 
     fun clearPpssppSafUri(context: Context) {

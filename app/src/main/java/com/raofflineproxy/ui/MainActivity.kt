@@ -118,6 +118,7 @@ class MainActivity : AppCompatActivity() {
             showInvalidPpssppFolderDialog()
             return@registerForActivityResult
         }
+        PrefsConstants.savePpssppRootMode(this, PrefsConstants.PpssppRootMode.CustomRoot)
         PrefsConstants.savePpssppSafUri(this, uri)
         viewModel.onSafGranted(SafGrantTarget.Ppsspp)
     }
@@ -260,6 +261,7 @@ class MainActivity : AppCompatActivity() {
                 when (event) {
                     MainUiEvent.PromptSmartCacheAfterProxyStart -> showSmartCacheAfterProxyStartDialog()
                     MainUiEvent.PromptManualCredentials -> showManualCredentialsDialog()
+                    MainUiEvent.PromptPpssppShizukuRootMode -> showPpssppShizukuRootModeDialog()
                     MainUiEvent.OpenShizukuGuide -> openUrl(getString(R.string.manual_patching_shizuku_guide_url))
                     MainUiEvent.RequestShizukuPermission -> Shizuku.requestPermission(SHIZUKU_PERMISSION_REQUEST_CODE)
                     is MainUiEvent.ShowAppUpdate -> showAppUpdateDialog(event.update)
@@ -534,6 +536,21 @@ class MainActivity : AppCompatActivity() {
             }
             .setNegativeButton(android.R.string.cancel) { _, _ ->
                 viewModel.onSafRejected(SafGrantTarget.Ppsspp)
+            }
+            .create()
+            .also { it.setCanceledOnTouchOutside(false) }
+            .show()
+    }
+
+    private fun showPpssppShizukuRootModeDialog() {
+        AlertDialog.Builder(this)
+            .setTitle(R.string.ppsspp_shizuku_root_mode_title)
+            .setMessage(R.string.ppsspp_shizuku_root_mode_message)
+            .setPositiveButton(R.string.ppsspp_shizuku_root_mode_custom) { _, _ ->
+                viewModel.onPpssppShizukuRootModeSelected(true)
+            }
+            .setNegativeButton(R.string.ppsspp_shizuku_root_mode_default) { _, _ ->
+                viewModel.onPpssppShizukuRootModeSelected(false)
             }
             .create()
             .also { it.setCanceledOnTouchOutside(false) }

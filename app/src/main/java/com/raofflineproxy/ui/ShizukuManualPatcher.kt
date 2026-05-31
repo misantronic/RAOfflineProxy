@@ -19,7 +19,6 @@ import rikka.shizuku.Shizuku
 import kotlin.coroutines.resume
 
 private const val SHIZUKU_ACTION_PATCH = "patch"
-private const val SHIZUKU_ACTION_REVERT = "revert"
 private const val SHIZUKU_SERVICE_TAG = "manual_emulator_patcher"
 private const val TAG = "RAProxy/ShizukuManual"
 
@@ -36,6 +35,7 @@ internal suspend fun executeShizukuManualPatch(
         return ManualPatchExecutionResult(success = false, message = context.getString(R.string.proxy_start_requires_emulator))
     }
 
+    val ppssppRootMode = PrefsConstants.loadPpssppRootMode(context)
     val ppssppIniPath = if (support.ppssppEnabled) {
         resolvePpssppIniPathForShizuku(context)
     } else {
@@ -45,6 +45,7 @@ internal suspend fun executeShizukuManualPatch(
     val requestJson = JSONObject()
         .put("action", action)
         .put("proxyAddress", proxyValue(context))
+        .put("ppssppRootMode", ppssppRootMode.name)
         .put("ppssppIniPath", ppssppIniPath)
         .put("enabledEmulators", JSONArray().apply {
             if (support.retroArchEnabled) put("retroarch")
@@ -89,6 +90,7 @@ internal suspend fun executeShizukuManualPatch(
                         val response = JSONObject(rawResponse)
                         ManualPatchExecutionResult(
                             success = response.optBoolean("success", false),
+                            needsPpssppSafGrant = response.optBoolean("needsPpssppSafGrant", false),
                             message = response.optString("message").takeIf { it.isNotBlank() }
                                 ?: context.getString(R.string.manual_patching_shizuku_service_no_response)
                         )
@@ -135,6 +137,7 @@ class ShizukuManualPatcherService() : IShizukuManualPatcher.Stub() {
     private var context: Context? = null
 
     @Keep
+    @Suppress("unused")
     constructor(context: Context) : this() {
         this.context = context.applicationContext
     }
@@ -150,6 +153,10 @@ class ShizukuManualPatcherService() : IShizukuManualPatcher.Stub() {
             val request = JSONObject(requestJson)
             val action = request.getString("action")
             val proxyAddress = request.getString("proxyAddress")
+            val ppssppRootMode = request.optString("ppssppRootMode")
+                .takeIf { it.isNotBlank() }
+                ?.let { stored -> PrefsConstants.PpssppRootMode.entries.firstOrNull { it.name == stored } }
+                ?: PrefsConstants.PpssppRootMode.Unknown
             val ppssppIniPath = request.optString("ppssppIniPath").takeIf { it.isNotBlank() }
             val enabledEmulators = request.getJSONArray("enabledEmulators")
             val messages = mutableListOf<String>()
@@ -232,12 +239,17 @@ class ShizukuManualPatcherService() : IShizukuManualPatcher.Stub() {
 
                     "ppsspp" -> {
                         forceStopPackages(listOf(UI_PPSSPP_PACKAGE))
-                        val resolvedPpssppPath = resolvePpssppIniPathForService(ppssppIniPath)
+                        val resolvedPpssppPath = resolvePpssppIniPathForService(ppssppIniPath, ppssppRootMode)
+                        if (action == SHIZUKU_ACTION_PATCH && resolvedPpssppPath == null) {
+                            return JSONObject()
+                                .put("success", false)
+                                .put("needsPpssppSafGrant", true)
+                                .put("message", "Could not patch PPSSPP automatically.")
+                                .toString()
+                        }
                         Log.i(TAG, "PPSSPP resolved path=$resolvedPpssppPath requestPath=$ppssppIniPath")
                         transformFile(
                             path = resolvedPpssppPath,
-                            patchMessage = "PPSSPP patched successfully.",
-                            revertMessage = "PPSSPP reverted successfully.",
                             unavailableMessage = if (action == SHIZUKU_ACTION_PATCH) {
                                 "Could not patch PPSSPP automatically."
                             } else {
@@ -314,8 +326,6 @@ private fun transformFirstExistingFile(
 
 private fun transformFile(
     path: String?,
-    patchMessage: String,
-    revertMessage: String,
     unavailableMessage: String,
     action: String,
     transform: (String) -> String
@@ -332,7 +342,11 @@ private fun transformFile(
 
         ServiceFileResult(
             success = true,
-            message = if (action == SHIZUKU_ACTION_PATCH) patchMessage else revertMessage
+            message = if (action == SHIZUKU_ACTION_PATCH) {
+                "PPSSPP patched successfully."
+            } else {
+                "PPSSPP reverted successfully."
+            }
         )
     }.getOrElse {
         ServiceFileResult(success = false, message = it.message ?: unavailableMessage)
@@ -345,20 +359,36 @@ private fun resolvePpssppIniPathForShizuku(context: Context): String? {
     return treeUriToAbsoluteStoragePath(PrefsConstants.loadPpssppSafUri(context) ?: return null)
 }
 
-private fun resolvePpssppIniPathForService(rootPath: String?): String {
-    val defaultPath = "/storage/emulated/0/Android/data/$UI_PPSSPP_PACKAGE/files/$PPSSPP_PSP_DIR/$PPSSPP_SYSTEM_DIR/$PPSSPP_INI_FILE"
-    val rootCandidates = listOfNotNull(rootPath)
-    val candidates = buildList {
-        add(defaultPath)
-        rootCandidates.forEach { candidateRoot ->
-            add("$candidateRoot/$PPSSPP_SYSTEM_DIR/$PPSSPP_INI_FILE")
-            add("$candidateRoot/$PPSSPP_PSP_DIR/$PPSSPP_SYSTEM_DIR/$PPSSPP_INI_FILE")
-        }
-    }
+internal fun resolvePpssppIniPathForService(
+    rootPath: String?,
+    rootMode: PrefsConstants.PpssppRootMode,
+    fileExists: (String) -> Boolean = ::shellFileExists
+): String? {
+    val candidates = ppssppIniPathCandidates(rootPath, rootMode)
 
-    val resolved = candidates.firstOrNull { shellFileExists(it) } ?: defaultPath
+    val resolved = candidates.firstOrNull(fileExists)
     Log.i(TAG, "PPSSPP candidate paths=${candidates.joinToString()} resolved=$resolved")
     return resolved
+}
+
+internal fun ppssppIniPathCandidates(
+    rootPath: String?,
+    rootMode: PrefsConstants.PpssppRootMode
+): List<String> {
+    val defaultPath = "/storage/emulated/0/Android/data/$UI_PPSSPP_PACKAGE/files/$PPSSPP_PSP_DIR/$PPSSPP_SYSTEM_DIR/$PPSSPP_INI_FILE"
+    return buildList {
+        when (rootMode) {
+            PrefsConstants.PpssppRootMode.CustomRoot -> {
+                listOfNotNull(rootPath).forEach { candidateRoot ->
+                    add("$candidateRoot/$PPSSPP_SYSTEM_DIR/$PPSSPP_INI_FILE")
+                    add("$candidateRoot/$PPSSPP_PSP_DIR/$PPSSPP_SYSTEM_DIR/$PPSSPP_INI_FILE")
+                }
+            }
+
+            PrefsConstants.PpssppRootMode.DefaultPackagePath,
+            PrefsConstants.PpssppRootMode.Unknown -> add(defaultPath)
+        }
+    }
 }
 
 private fun shellFileExists(path: String): Boolean =
