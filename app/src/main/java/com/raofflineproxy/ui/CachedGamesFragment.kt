@@ -114,7 +114,9 @@ class CachedGamesFragment : Fragment() {
                 val actionsEnabled = state.hasLoginCredentials
                     && state.isOnline
                     && !state.scanInProgress
+                val showSmartCache = !viewModel.isSmartCacheDisabledForShizuku(state)
                 val smartCacheEnabled = actionsEnabled
+                    && showSmartCache
                     && state.cachedGames.size < MAX_CACHED_GAMES
                 val scanEnabled = state.hasLoginCredentials
                     && state.isOnline
@@ -128,6 +130,7 @@ class CachedGamesFragment : Fragment() {
                 headerAdapter.update(
                     CachedGamesHeaderAdapter.HeaderState(
                         smartCacheEnabled = smartCacheEnabled,
+                        showSmartCache = showSmartCache,
                         scanEnabled = scanEnabled,
                         refreshEnabled = actionsEnabled && state.cachedGames.isNotEmpty(),
                         clearEnabled = state.cachedGames.isNotEmpty() && !state.scanInProgress,

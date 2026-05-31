@@ -6,13 +6,17 @@ import androidx.documentfile.provider.DocumentFile
 import com.raofflineproxy.R
 import com.raofflineproxy.proxyValue
 
-private const val PPSSPP_SYSTEM_DIR = "SYSTEM"
-private const val PPSSPP_INI_FILE = "ppsspp.ini"
+internal const val PPSSPP_PSP_DIR = "PSP"
+internal const val PPSSPP_SYSTEM_DIR = "SYSTEM"
+internal const val PPSSPP_INI_FILE = "ppsspp.ini"
 private const val PPSSPP_PACKAGE_NAME = "org.ppsspp.ppsspp"
 
 private val PPSSPP_SAF_ROOT_PATHS = listOf(
     listOf(PPSSPP_PACKAGE_NAME, "files"),
+    listOf(PPSSPP_PACKAGE_NAME, "files", PPSSPP_PSP_DIR),
     listOf("files"),
+    listOf("files", PPSSPP_PSP_DIR),
+    listOf(PPSSPP_PSP_DIR),
     emptyList()
 )
 

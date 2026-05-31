@@ -41,6 +41,7 @@ class HomeFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         val tokenWarning = view.findViewById<TextView>(R.id.tv_token_warning)
         val manualSetupWarning = view.findViewById<TextView>(R.id.tv_manual_setup_warning)
+        val shizukuInfo = view.findViewById<TextView>(R.id.tv_shizuku_info)
         val btnStartProxy = view.findViewById<MaterialButton>(R.id.btn_start_proxy)
         val btnManualEmulatorSetup = view.findViewById<MaterialButton>(R.id.btn_manual_emulator_setup)
         val btnGoToCachedGames = view.findViewById<MaterialButton>(R.id.btn_go_to_cached_games)
@@ -117,6 +118,10 @@ class HomeFragment : Fragment() {
                 val shouldRecommendManualSetup = installedCount > 0 &&
                     !state.manualEmulatorPatchingEnabled &&
                     shouldRecommendManualSetupForDevice()
+                val manualSetupNeedsShizuku = state.manualEmulatorPatchingEnabled &&
+                    !state.shizukuManualPatchingEnabled
+                val shouldShowManualSetupButton = !state.proxyRunning &&
+                    (shouldRecommendManualSetup || manualSetupNeedsShizuku)
                 tokenWarning.text = when {
                     noEmulatorInstalled -> getString(R.string.home_no_emulator_warning)
                     else -> getString(R.string.home_token_warning)
@@ -128,12 +133,17 @@ class HomeFragment : Fragment() {
                 }
                 manualSetupWarning.text = getString(R.string.home_manual_setup_warning, androidVersionLabel())
                 manualSetupWarning.visibility = if (shouldRecommendManualSetup) View.VISIBLE else View.GONE
+                shizukuInfo.visibility = if (state.manualEmulatorPatchingEnabled && state.shizukuManualPatchingEnabled) {
+                    View.VISIBLE
+                } else {
+                    View.GONE
+                }
 
-                btnStartProxy.visibility = if (!state.proxyRunning && shouldRecommendManualSetup) View.GONE else View.VISIBLE
+                btnStartProxy.visibility = if (shouldShowManualSetupButton) View.GONE else View.VISIBLE
                 btnStartProxy.text = getString(if (state.proxyRunning) R.string.proxy_stop else R.string.proxy_start)
                 btnStartProxy.isEnabled = if (state.proxyRunning) !proxyStartPending else !proxyStartPending && (state.retroArchEnabled || state.dolphinEnabled || state.ppssppEnabled)
                 btnStartProxy.alpha = if (proxyStartPending) 0.45f else 1f
-                btnManualEmulatorSetup.visibility = if (!state.proxyRunning && shouldRecommendManualSetup) View.VISIBLE else View.GONE
+                btnManualEmulatorSetup.visibility = if (shouldShowManualSetupButton) View.VISIBLE else View.GONE
                 btnGoToCachedGames.visibility = if (state.proxyRunning) View.VISIBLE else View.GONE
 
                 emulatorLabel.visibility = if (installedCount > 0) View.VISIBLE else View.GONE

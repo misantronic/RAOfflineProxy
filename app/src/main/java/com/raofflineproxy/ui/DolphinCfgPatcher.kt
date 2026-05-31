@@ -3,7 +3,6 @@ package com.raofflineproxy.ui
 import android.content.Context
 import android.net.Uri
 import android.os.Build
-import android.os.Environment
 import android.util.AtomicFile
 import android.util.Log
 import androidx.documentfile.provider.DocumentFile
@@ -15,10 +14,9 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 
-private val DOLPHIN_EXT_STORAGE by lazy { Environment.getExternalStorageDirectory().path }
 private const val TAG = "RAProxy/DolphinCfg"
 private const val DOLPHIN_CFG_BACKUP_NAME = "RetroAchievements.raofflineproxy.ini"
-private const val DOLPHIN_GAME_SETTINGS_RELATIVE_PATH = "GameSettings"
+internal const val DOLPHIN_GAME_SETTINGS_RELATIVE_PATH = "GameSettings"
 private const val DOLPHIN_GAME_SETTINGS_SECTION = "Achievements.Achievements"
 private const val DOLPHIN_GAME_SETTINGS_KEY = "HardcoreEnabled"
 
@@ -32,14 +30,14 @@ private const val DOLPHIN_CFG_RELATIVE_PATH = "Config/RetroAchievements.ini"
 private val DOLPHIN_SOURCE_CANDIDATES by lazy {
     DOLPHIN_PACKAGE_CANDIDATES.flatMap { packageName ->
         listOf(
-            "$DOLPHIN_EXT_STORAGE/Android/data/$packageName/files/$DOLPHIN_CFG_RELATIVE_PATH",
             "/storage/emulated/0/Android/data/$packageName/files/$DOLPHIN_CFG_RELATIVE_PATH"
         )
     } + listOf(
-        "$DOLPHIN_EXT_STORAGE/dolphin-emu/$DOLPHIN_CFG_RELATIVE_PATH",
         "/storage/emulated/0/dolphin-emu/$DOLPHIN_CFG_RELATIVE_PATH"
     )
 }
+
+internal val DOLPHIN_SHIZUKU_SOURCE_CANDIDATES = DOLPHIN_SOURCE_CANDIDATES
 
 private val DOLPHIN_SAF_CFG_PATHS = DOLPHIN_PACKAGE_CANDIDATES.map { packageName ->
     listOf(packageName, "files", "Config", "RetroAchievements.ini")
@@ -49,10 +47,9 @@ private val DOLPHIN_SAF_CFG_PATHS = DOLPHIN_PACKAGE_CANDIDATES.map { packageName
     listOf("RetroAchievements.ini")
 )
 
-private val DOLPHIN_GAME_SETTINGS_SOURCE_CANDIDATES by lazy {
+internal val DOLPHIN_GAME_SETTINGS_SOURCE_CANDIDATES by lazy {
     DOLPHIN_PACKAGE_CANDIDATES.flatMap { packageName ->
         listOf(
-            "$DOLPHIN_EXT_STORAGE/Android/data/$packageName/files/$DOLPHIN_GAME_SETTINGS_RELATIVE_PATH",
             "/storage/emulated/0/Android/data/$packageName/files/$DOLPHIN_GAME_SETTINGS_RELATIVE_PATH"
         )
     }
@@ -92,7 +89,7 @@ internal data class DolphinGameSettingsUpdate(
     val originalValue: String
 )
 
-private data class DolphinGameSettingsPatchOutcome(
+internal data class DolphinGameSettingsPatchOutcome(
     val success: Boolean,
     val message: String? = null,
     val overrides: List<DolphinGameSettingsOverride> = emptyList()
@@ -261,7 +258,7 @@ private fun patchDolphinGameSettingsHardcoreOverrides(
     return DolphinGameSettingsPatchOutcome(success = true)
 }
 
-private fun revertDolphinGameSettingsHardcoreOverrides(
+internal fun revertDolphinGameSettingsHardcoreOverrides(
     context: Context,
     treeUri: Uri?
 ): DolphinGameSettingsPatchOutcome {
@@ -367,7 +364,7 @@ private fun patchDolphinGameSettingsViaSaf(
     return DolphinGameSettingsPatchOutcome(success = true, overrides = overrides)
 }
 
-private fun patchDolphinGameSettingsViaFile(directory: File): DolphinGameSettingsPatchOutcome {
+internal fun patchDolphinGameSettingsViaFile(directory: File): DolphinGameSettingsPatchOutcome {
     val directoryPath = directory.path
     val changedFiles = mutableListOf<Pair<File, DolphinGameSettingsOverride>>()
     val overrides = mutableListOf<DolphinGameSettingsOverride>()
@@ -446,7 +443,7 @@ private fun revertDolphinGameSettingsFile(
     true
 }.getOrDefault(false)
 
-private fun persistDolphinGameSettingsOverrides(
+internal fun persistDolphinGameSettingsOverrides(
     context: Context,
     overrides: List<DolphinGameSettingsOverride>
 ) {

@@ -20,6 +20,7 @@ class CachedGamesHeaderAdapter(
 
     data class HeaderState(
         val smartCacheEnabled: Boolean = false,
+        val showSmartCache: Boolean = true,
         val scanEnabled: Boolean = false,
         val refreshEnabled: Boolean = false,
         val clearEnabled: Boolean = true,
@@ -45,6 +46,7 @@ class CachedGamesHeaderAdapter(
         }
 
         fun bind(s: HeaderState) {
+            btnSmartCache.visibility = if (s.showSmartCache) View.VISIBLE else View.GONE
             btnSmartCache.isEnabled = s.smartCacheEnabled
             btnSmartCache.alpha = if (s.smartCacheEnabled) 1f else 0.38f
 

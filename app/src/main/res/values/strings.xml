@@ -34,6 +34,7 @@
     <string name="home_docs_url">https://raofflineproxy.com/introduction.html</string>
     <string name="home_emulators_label">Enabled Emulators</string>
     <string name="home_manual_setup_warning">With your Android version (%1$s), automatic emulator setup will most likely not work on this device. Please consider using Manual Emulator Setup instead. Android builds can differ, so you can still try Start proxy with automatic setup if you want.</string>
+    <string name="home_shizuku_info">You are running the proxy through Shizuku.</string>
     <string name="home_no_emulator_warning">No supported emulator was found. Install RetroArch or Dolphin to use RAOfflineProxy.</string>
     <string name="home_token_warning">No RetroAchievements credentials were found in a supported emulator config, or the saved token is no longer valid. Open your emulator and log in while online, then start the proxy again.</string>
     <string name="home_go_to_cached_games">Go to Cached Games</string>
@@ -51,8 +52,8 @@
     <string name="saf_dialog_message">This app needs access to RetroArch\'s files folder to patch retroarch.cfg. Grant access to the suggested Android/data/RetroArch package/files folder.</string>
     <string name="smart_cache_retroarch_access_message">Smart Cache needs access to RetroArch\'s shared RetroArch folder to read recent history. Grant access to /storage/emulated/0/RetroArch.</string>
     <string name="dolphin_saf_dialog_message">This app needs access to Dolphin\'s package folder so it can patch RetroAchievements.ini and read Dolphin cache/save data for Smart Cache. Grant access to Android/data/org.dolphinemu.dolphinemu.</string>
-    <string name="ppsspp_saf_dialog_message">This app needs access to the PPSSPP root folder so it can patch SYSTEM/ppsspp.ini.</string>
-    <string name="ppsspp_invalid_root_message">That folder is not a valid PPSSPP root. Choose a folder that contains a SYSTEM folder with SYSTEM/ppsspp.ini inside.</string>
+    <string name="ppsspp_saf_dialog_message">This app needs access to the PPSSPP root folder so it can patch SYSTEM/ppsspp.ini. Choose your PPSSPP PSP folder if you use a custom location.</string>
+    <string name="ppsspp_invalid_root_message">That folder is not a valid PPSSPP root. Choose a folder that contains SYSTEM/ppsspp.ini, such as your PPSSPP PSP folder.</string>
     <string name="smart_cache_all_files_access_message">Smart Cache can use broad file access to read ROMs directly from internal storage and SD cards. Grant All Files Access if you want to avoid ROM-folder prompts.</string>
     <string name="smart_cache_rom_saf_dialog_message">Smart Cache needs access to your ROM folder so it can read the recent game paths from RetroArch history and hash those ROM files.</string>
     <string name="saf_dialog_grant">Grant Access</string>
@@ -77,7 +78,7 @@
     <string name="ppsspp_patch_already_configured">PPSSPP already configured — no changes needed.</string>
     <string name="ppsspp_patch_success_saf">PPSSPP patched successfully via folder access.</string>
     <string name="ppsspp_patch_error_saf">Error patching PPSSPP via folder access: %s</string>
-    <string name="ppsspp_patch_cfg_not_in_folder">SYSTEM/ppsspp.ini was not found in the granted folder. Please choose the PPSSPP root folder that contains SYSTEM/ppsspp.ini.</string>
+    <string name="ppsspp_patch_cfg_not_in_folder">SYSTEM/ppsspp.ini was not found in the granted folder. Please choose the PPSSPP root folder that contains SYSTEM/ppsspp.ini, such as your PPSSPP PSP folder.</string>
     <string name="ppsspp_patch_success">PPSSPP patched successfully.</string>
     <string name="ppsspp_patch_error_file">Error patching PPSSPP config %1$s: %2$s</string>
     <string name="ppsspp_patch_error_unavailable">Could not patch PPSSPP automatically. Grant the PPSSPP root folder and try again.</string>
@@ -247,10 +248,8 @@
     <string name="btn_privacy_policy">Privacy Policy</string>
 
     <!-- Manual emulator setup -->
-    <string name="manual_patching_intro">Helpful on devices where Android restricts access to emulator config files, including some Android 14, 15, and 16 devices. Some technical knowledge is helpful for this method.</string>
-    <string name="manual_patching_warning">⚠️ When you manually patch an emulator, RetroAchievements will not work unless the RAOfflineProxy proxy is running.</string>
+    <string name="manual_patching_intro">Helpful on Android 14+ devices where Android restricts access to emulator config files. Shizuku lets RAOfflineProxy patch and revert emulator configs without a computer.</string>
     <string name="manual_patching_checkbox">Activate manual emulator patching</string>
-    <string name="manual_patching_tab_adb">ADB</string>
     <string name="manual_credentials_dialog_title">RetroAchievements login</string>
     <string name="manual_credentials_message">Manual emulator patching cannot import your RetroAchievements login from emulator config files. Enter your RetroAchievements username and password so RAOfflineProxy can request the correct login token.</string>
     <string name="manual_credentials_username_label">Username</string>
@@ -259,24 +258,26 @@
     <string name="manual_credentials_username_required">Enter your RetroAchievements username.</string>
     <string name="manual_credentials_password_required">Enter your RetroAchievements password.</string>
     <string name="manual_credentials_invalid">RetroAchievements login failed. Check your username and password.</string>
-    <string name="manual_patching_adb_prerequisites_title">Prerequisites</string>
-    <string name="manual_patching_adb_prerequisites_body"><![CDATA[
-1. Install ADB on your computer. The easiest way is to install Android platform-tools from Google.<br/>
-2. On your device, open Settings &gt; About.<br/>
-3. Tap Build number 7 times to unlock Developer options.<br/>
-4. Go back to Settings &gt; System &gt; Developer options.<br/>
-5. Turn on USB debugging.<br/>
-6. Connect the device to your computer and accept the USB debugging prompt on the device.<br/>
-7. Download the helper scripts from <a href="https://github.com/misantronic/RAOfflineProxy/tree/main/manual-emulator-setup/adb">manual-emulator-setup/adb</a>.
-]]></string>
-    <string name="manual_patching_adb_actions_title">Patching / reverting</string>
-    <string name="manual_patching_adb_actions_body"><![CDATA[
-Run the setup script for your computer. You can Start the proxy before or after patching.<br/><br/>
-<b>Patch</b>:<br/>
-Windows: <tt>RAOfflineProxy-setup.bat patch</tt><br/>
-macOS or Linux: <tt>./RAOfflineProxy-setup.sh patch</tt><br/><br/>
-<b>Revert</b>:<br/>
-Windows: <tt>RAOfflineProxy-setup.bat revert</tt><br/>
-macOS or Linux: <tt>./RAOfflineProxy-setup.sh revert</tt><br/>
-]]></string>
+    <string name="manual_patching_shizuku_status">Status: %1$s</string>
+    <string name="manual_patching_shizuku_status_unsupported">Only available on Android 14+</string>
+    <string name="manual_patching_shizuku_status_not_installed">Shizuku app not installed</string>
+    <string name="manual_patching_shizuku_status_not_running">Install or start Shizuku first</string>
+    <string name="manual_patching_shizuku_status_permission_denied">Permission required</string>
+    <string name="manual_patching_shizuku_status_ready">Ready</string>
+    <string name="manual_patching_shizuku_body"><![CDATA[
+    Install, configure, and start Shizuku. Then grant access permissions here; Shizuku will then be activated automatically.<br/>
+    After that, Start proxy and Stop proxy will patch and revert automatically through Shizuku while Manual Emulator Setup stays enabled.
+    ]]></string>
+    <string name="manual_patching_shizuku_guide_url">https://github.com/RikkaApps/Shizuku/releases</string>
+    <string name="manual_patching_shizuku_install">Install Shizuku</string>
+    <string name="manual_patching_shizuku_start">How to start Shizuku</string>
+    <string name="manual_patching_shizuku_permission">Grant Shizuku access</string>
+    <string name="manual_patching_shizuku_enable">Enable Shizuku</string>
+    <string name="manual_patching_shizuku_disable">Disable Shizuku</string>
+    <string name="manual_patching_shizuku_enabled">Shizuku is enabled for Start proxy and Stop proxy.</string>
+    <string name="manual_patching_shizuku_disabled">Shizuku is disabled.</string>
+    <string name="manual_patching_shizuku_permission_denied_message">Shizuku permission was denied.</string>
+    <string name="manual_patching_shizuku_service_no_response">Shizuku service returned no response. Retry once and check logcat if it keeps failing.</string>
+    <string name="manual_patching_shizuku_service_error">Shizuku operation failed: %1$s</string>
+    <string name="manual_patching_shizuku_service_disconnected">Shizuku disconnected before the operation finished.</string>
 </resources>

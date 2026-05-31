@@ -38,6 +38,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import com.google.android.material.textfield.TextInputEditText
 import com.google.android.material.textfield.TextInputLayout
+import rikka.shizuku.Shizuku
 
 class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
@@ -55,6 +56,15 @@ class MainActivity : AppCompatActivity() {
     private var activeSafGrantTarget: SafGrantTarget? = null
     private var attemptedGenericAllFilesAccess = false
     private var pendingQuit = false
+    private val shizukuPermissionListener = Shizuku.OnRequestPermissionResultListener { requestCode, grantResult ->
+        if (requestCode != SHIZUKU_PERMISSION_REQUEST_CODE) return@OnRequestPermissionResultListener
+        if (grantResult == PackageManager.PERMISSION_GRANTED) {
+            viewModel.onShizukuPermissionGranted()
+        } else {
+            viewModel.refreshShizukuStatus()
+            SnackbarManager.showError(getString(R.string.manual_patching_shizuku_permission_denied_message))
+        }
+    }
 
     private val safLauncher = registerForActivityResult(OpenAndroidDataTree()) { uri ->
         if (uri == null) {
@@ -210,7 +220,8 @@ class MainActivity : AppCompatActivity() {
                     isOnline = state.isOnline,
                     proxyToggleInProgress = state.proxyToggleInProgress,
                     needsSafGrant = state.needsSafGrant,
-                    hasEnabledEmulator = state.retroArchEnabled || state.dolphinEnabled || state.ppssppEnabled
+                    hasEnabledEmulator = state.retroArchEnabled || state.dolphinEnabled || state.ppssppEnabled,
+                    canStartProxy = !state.manualEmulatorPatchingEnabled || state.shizukuManualPatchingEnabled
                 )
                 updateAppUpdateMenuItem(state.availableAppUpdate)
                 updateNavBadge(navView, R.id.nav_cached_games, state.cachedGames.size)
@@ -249,17 +260,28 @@ class MainActivity : AppCompatActivity() {
                 when (event) {
                     MainUiEvent.PromptSmartCacheAfterProxyStart -> showSmartCacheAfterProxyStartDialog()
                     MainUiEvent.PromptManualCredentials -> showManualCredentialsDialog()
+                    MainUiEvent.OpenShizukuGuide -> openUrl(getString(R.string.manual_patching_shizuku_guide_url))
+                    MainUiEvent.RequestShizukuPermission -> Shizuku.requestPermission(SHIZUKU_PERMISSION_REQUEST_CODE)
                     is MainUiEvent.ShowAppUpdate -> showAppUpdateDialog(event.update)
                 }
             }
         }
+
+        Shizuku.addRequestPermissionResultListener(shizukuPermissionListener)
     }
 
     override fun onResume() {
         super.onResume()
+        viewModel.refreshShizukuStatus()
         if (viewModel.state.value.proxyRunning) {
             viewModel.validateToken()
         }
+    }
+
+    override fun onDestroy() {
+        Shizuku.removeRequestPermissionResultListener(shizukuPermissionListener)
+        supportFragmentManager.removeOnBackStackChangedListener(backStackListener)
+        super.onDestroy()
     }
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
@@ -278,7 +300,8 @@ class MainActivity : AppCompatActivity() {
             isOnline = state.isOnline,
             proxyToggleInProgress = state.proxyToggleInProgress,
             needsSafGrant = state.needsSafGrant,
-            hasEnabledEmulator = state.retroArchEnabled || state.dolphinEnabled || state.ppssppEnabled
+            hasEnabledEmulator = state.retroArchEnabled || state.dolphinEnabled || state.ppssppEnabled,
+            canStartProxy = !state.manualEmulatorPatchingEnabled || state.shizukuManualPatchingEnabled
         )
         updateAppUpdateMenuItem(state.availableAppUpdate)
         return true
@@ -370,11 +393,6 @@ class MainActivity : AppCompatActivity() {
         else -> null
     }
 
-    override fun onDestroy() {
-        supportFragmentManager.removeOnBackStackChangedListener(backStackListener)
-        super.onDestroy()
-    }
-
     private fun updateNavBadge(navView: NavigationView, itemId: Int, count: Int) {
         val tv = navView.menu.findItem(itemId)
             ?.actionView
@@ -388,7 +406,8 @@ class MainActivity : AppCompatActivity() {
         isOnline: Boolean,
         proxyToggleInProgress: Boolean,
         needsSafGrant: Boolean,
-        hasEnabledEmulator: Boolean
+        hasEnabledEmulator: Boolean,
+        canStartProxy: Boolean
     ) {
         val item = proxyMenuItem ?: return
         val actionView = item.actionView ?: return
@@ -400,7 +419,7 @@ class MainActivity : AppCompatActivity() {
         }
         label.text = if (proxyRunning) getString(R.string.proxy_stop) else getString(R.string.proxy_start)
         actionView.tooltipText = tooltipText
-        val canToggle = !proxyToggleInProgress && !needsSafGrant && (proxyRunning || hasEnabledEmulator)
+        val canToggle = !proxyToggleInProgress && !needsSafGrant && (proxyRunning || (hasEnabledEmulator && canStartProxy))
         actionView.isEnabled = canToggle
         actionView.alpha = if (canToggle) 1f else 0.45f
     }
@@ -824,7 +843,7 @@ private class OpenDolphinConfigTree : ActivityResultContract<Unit, Uri?>() {
 private class OpenPpssppRootTree : ActivityResultContract<Unit, Uri?>() {
     override fun createIntent(context: Context, input: Unit): Intent =
         Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).apply {
-            initialTreeUriForPath("/storage/emulated/0/Android/data/$UI_PPSSPP_PACKAGE/files")
+            initialTreeUriForPath("/storage/emulated/0/Android/data/$UI_PPSSPP_PACKAGE/files/$PPSSPP_PSP_DIR")
                 ?.let { putExtra(DocumentsContract.EXTRA_INITIAL_URI, it) }
             addFlags(
                 Intent.FLAG_GRANT_READ_URI_PERMISSION or
