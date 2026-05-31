@@ -59,7 +59,6 @@ import com.raofflineproxy.proxy.SmartCacheEmulator
 import com.raofflineproxy.service.ProxyService
 import com.raofflineproxy.update.AppUpdateChecker
 import com.raofflineproxy.update.AppUpdateInfo
-import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.combine
@@ -82,6 +81,7 @@ sealed interface MainUiEvent {
     data object OpenShizukuGuide : MainUiEvent
     data class ShowAppUpdate(val update: AppUpdateInfo) : MainUiEvent
     data object RequestShizukuPermission : MainUiEvent
+    data object PromptPpssppShizukuRootMode : MainUiEvent
 }
 
 data class MainUiState(
@@ -112,6 +112,8 @@ data class MainUiState(
     val shizukuStatus: ShizukuStatus = ShizukuStatus.Unsupported,
     val shizukuManualPatchingEnabled: Boolean = false,
     val shizukuOperationInProgress: Boolean = false,
+    val showPpssppShizukuRootModePrompt: Boolean = false,
+    val ppssppShizukuRootModeUnknown: Boolean = false,
     val scanInProgress: Boolean = false,
     val scanProgress: String? = null,
     val flushInProgress: Boolean = false,
@@ -138,6 +140,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private var pendingSmartCachePromptAfterProxyStart = false
     private var pendingSmartCacheRomGrantPaths = emptyList<String>()
     private var pendingSmartCacheGrantTargets = emptyList<SafGrantTarget>()
+    private var pendingPpssppShizukuRootModePrompt = false
     private var smartCacheAllFilesRejectedThisRun = false
     private fun str(resId: Int): String = getApplication<Application>().getString(resId)
     private fun str(resId: Int, vararg args: Any): String = getApplication<Application>().getString(resId, *args)
@@ -194,7 +197,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             dolphinEnabled = emulatorSupport.dolphinEnabled,
             ppssppEnabled = emulatorSupport.ppssppEnabled,
             shizukuStatus = resolveShizukuStatus(app),
-            shizukuManualPatchingEnabled = loadShizukuManualPatchingEnabled()
+            shizukuManualPatchingEnabled = loadShizukuManualPatchingEnabled(),
+            ppssppShizukuRootModeUnknown = loadPpssppRootMode() == PrefsConstants.PpssppRootMode.Unknown
         )
         restoreDolphinCredentialsOnLaunch(emulatorSupport)
         validateToken()
@@ -550,6 +554,37 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    fun onPpssppShizukuRootModeSelected(usesCustomRoot: Boolean) {
+        val app = getApplication<Application>()
+        pendingPpssppShizukuRootModePrompt = false
+        _state.value = _state.value.copy(showPpssppShizukuRootModePrompt = false)
+
+        if (usesCustomRoot) {
+            PrefsConstants.savePpssppRootMode(app, PrefsConstants.PpssppRootMode.CustomRoot)
+            _state.value = _state.value.copy(
+                ppssppShizukuRootModeUnknown = false,
+                needsSafGrant = true,
+                safGrantTarget = SafGrantTarget.Ppsspp,
+                pendingSafGrantTargets = listOf(SafGrantTarget.Ppsspp)
+            )
+            return
+        }
+
+        PrefsConstants.savePpssppRootMode(app, PrefsConstants.PpssppRootMode.DefaultPackagePath)
+        _state.value = _state.value.copy(ppssppShizukuRootModeUnknown = false)
+        if (pendingProxyStart) {
+            startProxyInternal(loadSafUri())
+        }
+    }
+
+    fun resetPpssppShizukuLocationChoice() {
+        val app = getApplication<Application>()
+        PrefsConstants.clearPpssppSafUri(app)
+        PrefsConstants.savePpssppRootMode(app, PrefsConstants.PpssppRootMode.Unknown)
+        _state.value = _state.value.copy(ppssppShizukuRootModeUnknown = true)
+        SnackbarManager.showMessage(str(R.string.ppsspp_shizuku_root_mode_reset))
+    }
+
     fun onSafRejected(target: SafGrantTarget) {
         val app = getApplication<Application>()
         if (!pendingProxyStart) {
@@ -591,6 +626,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     }
                     SafGrantTarget.Ppsspp -> {
                         PrefsConstants.clearPpssppSafUri(app)
+                        PrefsConstants.savePpssppRootMode(app, PrefsConstants.PpssppRootMode.Unknown)
+                        _state.value = _state.value.copy(ppssppShizukuRootModeUnknown = true)
                         SnackbarManager.showMessage(str(R.string.smart_cache_requires_ppsspp_access), SnackbarDuration.Indefinite)
                     }
                     SafGrantTarget.AllFilesAccess -> {
@@ -627,10 +664,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
 
         pendingProxyStart = false
+        pendingPpssppShizukuRootModePrompt = false
         _state.value = _state.value.copy(
             pendingSafGrantTargets = emptyList(),
             needsSafGrant = false,
-            safGrantTarget = null
+            safGrantTarget = null,
+            showPpssppShizukuRootModePrompt = false
         )
 
         when (target) {
@@ -648,6 +687,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             }
             SafGrantTarget.Ppsspp -> {
                 PrefsConstants.clearPpssppSafUri(app)
+                PrefsConstants.savePpssppRootMode(app, PrefsConstants.PpssppRootMode.Unknown)
+                _state.value = _state.value.copy(ppssppShizukuRootModeUnknown = true)
                 setPpssppEnabledInternal(false)
                 SnackbarManager.showMessage(str(R.string.proxy_start_aborted_ppsspp_saf_rejected), SnackbarDuration.Indefinite)
             }
@@ -769,11 +810,33 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
                 if (loadManualEmulatorPatchingEnabled()) {
                     if (loadShizukuManualPatchingEnabled()) {
+                        if (shouldPromptForPpssppShizukuRootMode(emulatorSupport)) {
+                            pendingPpssppShizukuRootModePrompt = true
+                            _state.value = _state.value.copy(
+                                proxyToggleInProgress = false,
+                                showPpssppShizukuRootModePrompt = true
+                            )
+                            _events.tryEmit(MainUiEvent.PromptPpssppShizukuRootMode)
+                            return@launch
+                        }
+
                         val shizukuResult = withContext(Dispatchers.IO) {
                             executeShizukuManualPatch(app, emulatorSupport, "patch")
                         }
                         refreshShizukuStatus()
                         if (!shizukuResult.success) {
+                            if (shizukuResult.needsPpssppSafGrant) {
+                                PrefsConstants.savePpssppRootMode(app, PrefsConstants.PpssppRootMode.CustomRoot)
+                                PrefsConstants.clearPpssppSafUri(app)
+                                _state.value = _state.value.copy(
+                                    needsSafGrant = true,
+                                    safGrantTarget = SafGrantTarget.Ppsspp,
+                                    pendingSafGrantTargets = listOf(SafGrantTarget.Ppsspp),
+                                    ppssppShizukuRootModeUnknown = false
+                                )
+                                return@launch
+                            }
+
                             pendingProxyStart = false
                             SnackbarManager.showError(shizukuResult.message)
                             return@launch
@@ -1581,10 +1644,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             pendingSafGrantTargets = emptyList(),
             cfgCopyBackPath = null,
             cfgIsPatched = if (enabled) null else _state.value.cfgIsPatched,
-            shizukuManualPatchingEnabled = if (enabled) _state.value.shizukuManualPatchingEnabled else false
+            shizukuManualPatchingEnabled = if (enabled) _state.value.shizukuManualPatchingEnabled else false,
+            showPpssppShizukuRootModePrompt = false,
+            ppssppShizukuRootModeUnknown = if (enabled) loadPpssppRootMode() == PrefsConstants.PpssppRootMode.Unknown else _state.value.ppssppShizukuRootModeUnknown
         )
         if (!enabled) {
             PrefsConstants.saveShizukuManualPatchingEnabled(app, false)
+            pendingPpssppShizukuRootModePrompt = false
         }
         if (!enabled) {
             checkCfgPatched(treeUri = loadSafUri())
@@ -1778,6 +1844,21 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun loadPpssppSafUri(): Uri? =
         PrefsConstants.loadPpssppSafUri(getApplication())
+
+    private fun loadPpssppRootMode(): PrefsConstants.PpssppRootMode =
+        PrefsConstants.loadPpssppRootMode(getApplication())
+
+    private fun shouldPromptForPpssppShizukuRootMode(emulatorSupport: EmulatorSupport): Boolean {
+        if (!emulatorSupport.ppssppEnabled) {
+            return false
+        }
+
+        if (pendingPpssppShizukuRootModePrompt) {
+            return false
+        }
+
+        return loadPpssppRootMode() == PrefsConstants.PpssppRootMode.Unknown
+    }
 
     internal fun consumePendingSmartCacheRomGrantPath(): String? =
         pendingSmartCacheRomGrantPaths.firstOrNull()

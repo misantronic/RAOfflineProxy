@@ -54,6 +54,13 @@
     <string name="dolphin_saf_dialog_message">This app needs access to Dolphin\'s package folder so it can patch RetroAchievements.ini and read Dolphin cache/save data for Smart Cache. Grant access to Android/data/org.dolphinemu.dolphinemu.</string>
     <string name="ppsspp_saf_dialog_message">This app needs access to the PPSSPP root folder so it can patch SYSTEM/ppsspp.ini. Choose your PPSSPP PSP folder if you use a custom location.</string>
     <string name="ppsspp_invalid_root_message">That folder is not a valid PPSSPP root. Choose a folder that contains SYSTEM/ppsspp.ini, such as your PPSSPP PSP folder.</string>
+    <string name="ppsspp_shizuku_root_mode_title">PPSSPP storage location</string>
+    <string name="ppsspp_shizuku_root_mode_message">Did you move your PPSSPP PSP data folder to a custom location on this device?</string>
+    <string name="ppsspp_shizuku_root_mode_custom">Yes, custom location</string>
+    <string name="ppsspp_shizuku_root_mode_default">No, use default folder</string>
+    <string name="ppsspp_shizuku_root_mode_reset_label">If you moved your PPSSPP files after the initial setup, reset the saved location choice so the app asks again on the next Start proxy.</string>
+    <string name="ppsspp_shizuku_root_mode_reset_action">Reset PPSSPP location choice</string>
+    <string name="ppsspp_shizuku_root_mode_reset">PPSSPP location choice reset. The app will ask again on next Start proxy.</string>
     <string name="smart_cache_all_files_access_message">Smart Cache can use broad file access to read ROMs directly from internal storage and SD cards. Grant All Files Access if you want to avoid ROM-folder prompts.</string>
     <string name="smart_cache_rom_saf_dialog_message">Smart Cache needs access to your ROM folder so it can read the recent game paths from RetroArch history and hash those ROM files.</string>
     <string name="saf_dialog_grant">Grant Access</string>
