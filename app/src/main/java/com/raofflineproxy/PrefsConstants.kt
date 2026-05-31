@@ -19,6 +19,7 @@ object PrefsConstants {
     const val KEY_SMART_CACHE_ROM_SAF_TREE_URIS = "smart_cache_rom_saf_tree_uris"
     const val KEY_AUTOSTART_PROXY = "autostart_proxy"
     const val KEY_MANUAL_EMULATOR_PATCHING = "manual_emulator_patching"
+    const val KEY_SHIZUKU_MANUAL_PATCHING_ENABLED = "shizuku_manual_patching_enabled"
     const val KEY_ENABLE_SMART_CACHING = "enable_smart_caching"
     const val KEY_ENABLE_RETROARCH = "enable_retroarch"
     const val KEY_ENABLE_DOLPHIN = "enable_dolphin"
@@ -193,6 +194,10 @@ object PrefsConstants {
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .getBoolean(KEY_MANUAL_EMULATOR_PATCHING, false)
 
+    fun loadShizukuManualPatchingEnabled(context: Context): Boolean =
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getBoolean(KEY_SHIZUKU_MANUAL_PATCHING_ENABLED, false)
+
     fun saveSmartCachingEnabled(context: Context, enabled: Boolean) {
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .edit { putBoolean(KEY_ENABLE_SMART_CACHING, enabled) }
@@ -201,6 +206,11 @@ object PrefsConstants {
     fun saveManualEmulatorPatchingEnabled(context: Context, enabled: Boolean) {
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .edit { putBoolean(KEY_MANUAL_EMULATOR_PATCHING, enabled) }
+    }
+
+    fun saveShizukuManualPatchingEnabled(context: Context, enabled: Boolean) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit { putBoolean(KEY_SHIZUKU_MANUAL_PATCHING_ENABLED, enabled) }
     }
 
     fun saveProxyPort(context: Context, port: Int) {
