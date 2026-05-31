@@ -79,7 +79,9 @@ enum class SafGrantTarget { RetroArch, SmartCacheRetroArch, Dolphin, Ppsspp, Sma
 sealed interface MainUiEvent {
     data object PromptSmartCacheAfterProxyStart : MainUiEvent
     data object PromptManualCredentials : MainUiEvent
+    data object OpenShizukuGuide : MainUiEvent
     data class ShowAppUpdate(val update: AppUpdateInfo) : MainUiEvent
+    data object RequestShizukuPermission : MainUiEvent
 }
 
 data class MainUiState(
@@ -107,6 +109,9 @@ data class MainUiState(
     val pendingSafGrantTargets: List<SafGrantTarget> = emptyList(),
     val cfgCopyBackPath: String? = null,
     val cfgIsPatched: Boolean? = null,
+    val shizukuStatus: ShizukuStatus = ShizukuStatus.Unsupported,
+    val shizukuManualPatchingEnabled: Boolean = false,
+    val shizukuOperationInProgress: Boolean = false,
     val scanInProgress: Boolean = false,
     val scanProgress: String? = null,
     val flushInProgress: Boolean = false,
@@ -187,9 +192,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             ppssppInstalled = emulatorSupport.ppssppInstalled,
             retroArchEnabled = emulatorSupport.retroArchEnabled,
             dolphinEnabled = emulatorSupport.dolphinEnabled,
-            ppssppEnabled = emulatorSupport.ppssppEnabled
+            ppssppEnabled = emulatorSupport.ppssppEnabled,
+            shizukuStatus = resolveShizukuStatus(app),
+            shizukuManualPatchingEnabled = loadShizukuManualPatchingEnabled()
         )
-        exportManualSetupConfig()
         restoreDolphinCredentialsOnLaunch(emulatorSupport)
         validateToken()
         viewModelScope.launch {
@@ -451,6 +457,65 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         )
     }
 
+    fun refreshShizukuStatus() {
+        val app = getApplication<Application>()
+        _state.value = _state.value.copy(shizukuStatus = resolveShizukuStatus(app))
+    }
+
+    fun requestShizukuPermission() {
+        when (_state.value.shizukuStatus) {
+            ShizukuStatus.PermissionDenied -> _events.tryEmit(MainUiEvent.RequestShizukuPermission)
+            ShizukuStatus.NotInstalled,
+            ShizukuStatus.NotRunning -> _events.tryEmit(MainUiEvent.OpenShizukuGuide)
+            else -> Unit
+        }
+    }
+
+    fun onShizukuPermissionGranted() {
+        val app = getApplication<Application>()
+        refreshShizukuStatus()
+
+        if (!_state.value.manualEmulatorPatchingEnabled || _state.value.proxyRunning) {
+            return
+        }
+
+        if (_state.value.shizukuStatus != ShizukuStatus.Ready || _state.value.shizukuManualPatchingEnabled) {
+            return
+        }
+
+        PrefsConstants.saveShizukuManualPatchingEnabled(app, true)
+        _state.value = _state.value.copy(shizukuManualPatchingEnabled = true)
+        SnackbarManager.showMessage(str(R.string.manual_patching_shizuku_enabled), SnackbarDuration.Indefinite)
+    }
+
+    fun toggleShizukuManualPatchingEnabled() {
+        val app = getApplication<Application>()
+        viewModelScope.launch {
+            if (_state.value.shizukuOperationInProgress) return@launch
+
+            val enable = !_state.value.shizukuManualPatchingEnabled
+            _state.value = _state.value.copy(shizukuOperationInProgress = true)
+            try {
+                if (enable && _state.value.shizukuStatus != ShizukuStatus.Ready) {
+                    requestShizukuPermission()
+                    return@launch
+                }
+
+                refreshShizukuStatus()
+
+                PrefsConstants.saveShizukuManualPatchingEnabled(app, enable)
+                _state.value = _state.value.copy(shizukuManualPatchingEnabled = enable)
+                if (enable) {
+                    SnackbarManager.showMessage(str(R.string.manual_patching_shizuku_enabled), SnackbarDuration.Long)
+                } else {
+                    SnackbarManager.showMessage(str(R.string.manual_patching_shizuku_disabled), SnackbarDuration.Long)
+                }
+            } finally {
+                _state.value = _state.value.copy(shizukuOperationInProgress = false)
+            }
+        }
+    }
+
     fun onSafGranted(target: SafGrantTarget) {
         var remaining = _state.value.pendingSafGrantTargets.drop(1)
         if (target == SafGrantTarget.SmartCacheRom && pendingSmartCacheRomGrantPaths.isNotEmpty()) {
@@ -703,6 +768,18 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 }
 
                 if (loadManualEmulatorPatchingEnabled()) {
+                    if (loadShizukuManualPatchingEnabled()) {
+                        val shizukuResult = withContext(Dispatchers.IO) {
+                            executeShizukuManualPatch(app, emulatorSupport, "patch")
+                        }
+                        refreshShizukuStatus()
+                        if (!shizukuResult.success) {
+                            pendingProxyStart = false
+                            SnackbarManager.showError(shizukuResult.message)
+                            return@launch
+                        }
+                    }
+
                     ProxyService.start(app)
                     pendingProxyStart = false
                     _state.value = _state.value.copy(
@@ -875,6 +952,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         if (!pendingSmartCachePromptAfterProxyStart) return
         val currentState = _state.value
         if (!currentState.proxyRunning) return
+        if (isSmartCacheDisabledForShizuku(currentState)) {
+            pendingSmartCachePromptAfterProxyStart = false
+            return
+        }
         if (!currentState.smartCachingEnabled) {
             pendingSmartCachePromptAfterProxyStart = false
             return
@@ -886,6 +967,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         _events.tryEmit(MainUiEvent.PromptSmartCacheAfterProxyStart)
     }
 
+    fun isSmartCacheDisabledForShizuku(state: MainUiState = _state.value): Boolean =
+        state.manualEmulatorPatchingEnabled && state.shizukuManualPatchingEnabled
+
     fun stopProxy(treeUri: Uri? = null) {
         val app = getApplication<Application>()
         viewModelScope.launch {
@@ -895,6 +979,17 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
             try {
                 if (loadManualEmulatorPatchingEnabled()) {
+                    val shizukuEnabled = loadShizukuManualPatchingEnabled()
+                    val shizukuResult = if (shizukuEnabled) {
+                        withContext(Dispatchers.IO) {
+                            executeShizukuManualPatch(app, loadEmulatorSupport(app), "revert")
+                        }.also {
+                            refreshShizukuStatus()
+                        }
+                    } else {
+                        null
+                    }
+
                     ProxyService.stop(app)
                     _state.value = _state.value.copy(
                         proxyRunning = false,
@@ -904,7 +999,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         cfgCopyBackPath = null
                     )
                     pendingSmartCachePromptAfterProxyStart = false
-                    SnackbarManager.showMessage(str(R.string.proxy_stopped_success))
+                    if (shizukuResult == null || shizukuResult.success) {
+                        SnackbarManager.showMessage(str(R.string.proxy_stopped_success))
+                    } else {
+                        SnackbarManager.showError(shizukuResult.message)
+                    }
                     return@launch
                 }
 
@@ -1481,10 +1580,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             safGrantTarget = null,
             pendingSafGrantTargets = emptyList(),
             cfgCopyBackPath = null,
-            cfgIsPatched = if (enabled) null else _state.value.cfgIsPatched
+            cfgIsPatched = if (enabled) null else _state.value.cfgIsPatched,
+            shizukuManualPatchingEnabled = if (enabled) _state.value.shizukuManualPatchingEnabled else false
         )
-        exportManualSetupConfig()
-
+        if (!enabled) {
+            PrefsConstants.saveShizukuManualPatchingEnabled(app, false)
+        }
         if (!enabled) {
             checkCfgPatched(treeUri = loadSafUri())
         }
@@ -1541,7 +1642,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 cfgIsPatched = null,
                 authState = AuthState.Unknown
             )
-            exportManualSetupConfig()
             validateToken()
         }
     }
@@ -1561,7 +1661,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             dolphinEnabled = updated.dolphinEnabled,
             ppssppEnabled = updated.ppssppEnabled
         )
-        exportManualSetupConfig()
     }
 
     fun setDolphinEnabled(enabled: Boolean) {
@@ -1583,7 +1682,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             dolphinEnabled = updated.dolphinEnabled,
             ppssppEnabled = updated.ppssppEnabled
         )
-        exportManualSetupConfig()
     }
 
     fun setPpssppEnabled(enabled: Boolean) {
@@ -1605,7 +1703,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             dolphinEnabled = updated.dolphinEnabled,
             ppssppEnabled = updated.ppssppEnabled
         )
-        exportManualSetupConfig()
     }
 
     fun setProxyPort(portText: String): Boolean {
@@ -1616,46 +1713,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val app = getApplication<Application>()
         PrefsConstants.saveProxyPort(app, port)
         _state.value = _state.value.copy(proxyPort = port)
-        exportManualSetupConfig()
         return true
-    }
-
-    private fun exportManualSetupConfig() {
-        val app = getApplication<Application>()
-        val currentState = _state.value
-
-        viewModelScope.launch(Dispatchers.IO) {
-            val enabledEmulators = buildList {
-                if (currentState.retroArchEnabled) add("retroarch")
-                if (currentState.dolphinEnabled) add("dolphin")
-                if (currentState.ppssppEnabled) add("ppsspp")
-            }
-
-            val content = JSONObject()
-                .put("manualEmulatorPatchingEnabled", currentState.manualEmulatorPatchingEnabled)
-                .put("proxyPort", currentState.proxyPort)
-                .put("enabledEmulators", org.json.JSONArray(enabledEmulators))
-                .toString(2)
-
-            runCatching {
-                val externalRoot = app.getExternalFilesDir(null)
-                if (externalRoot != null) {
-                    val externalDirectory = File(externalRoot, "manual-emulator-setup")
-                    externalDirectory.mkdirs()
-                    File(externalDirectory, "adb-config.json").writeText(content)
-                }
-            }.onFailure {
-                Log.w("RAProxy/ManualSetup", "Failed to export external adb-config.json: ${it.message}", it)
-            }
-
-            runCatching {
-                val internalDirectory = File(app.filesDir, "manual-emulator-setup")
-                internalDirectory.mkdirs()
-                File(internalDirectory, "adb-config.json").writeText(content)
-            }.onFailure {
-                Log.w("RAProxy/ManualSetup", "Failed to export internal adb-config.json: ${it.message}", it)
-            }
-        }
     }
 
     fun checkForAppUpdate(force: Boolean = false) {
@@ -1708,6 +1766,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun loadManualEmulatorPatchingEnabled(): Boolean =
         PrefsConstants.loadManualEmulatorPatchingEnabled(getApplication())
+
+    private fun loadShizukuManualPatchingEnabled(): Boolean =
+        PrefsConstants.loadShizukuManualPatchingEnabled(getApplication())
 
     private fun loadSafUri(): Uri? =
         PrefsConstants.loadSafUri(getApplication())

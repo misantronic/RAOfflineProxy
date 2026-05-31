@@ -10,6 +10,9 @@
     <color name="warning_background">#FFF6E8A6</color>
     <color name="warning_border">#FFE0B84A</color>
     <color name="warning_text">#FF5F4700</color>
+    <color name="info_background">#FFDCEEFF</color>
+    <color name="info_border">#FF7CB6F5</color>
+    <color name="info_text">#FF0D3C66</color>
     <color name="emulator_toggle_border_default">#FF3A3A3A</color>
     <color name="emulator_toggle_border_active">#FF000000</color>
     <color name="emulator_toggle_background_active">#FFFFD27A</color>

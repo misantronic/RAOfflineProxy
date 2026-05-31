@@ -3,7 +3,6 @@ package com.raofflineproxy.ui
 import android.content.Context
 import android.net.Uri
 import android.os.Build
-import android.os.Environment
 import android.util.AtomicFile
 import android.util.Log
 import androidx.documentfile.provider.DocumentFile
@@ -11,7 +10,6 @@ import com.raofflineproxy.proxyValue
 import com.raofflineproxy.R
 import java.io.File
 
-private val EXT_STORAGE by lazy { Environment.getExternalStorageDirectory().path }
 private const val TAG = "RAProxy/RetroArchCfg"
 private const val CFG_BACKUP_NAME = "retroarch.raofflineproxy.cfg"
 
@@ -20,14 +18,12 @@ internal val RETROARCH_PACKAGE_CANDIDATES = listOf(
     "com.retroarch"
 )
 
-private val SOURCE_CANDIDATES by lazy {
+internal val RETROARCH_SOURCE_CANDIDATES by lazy {
     RETROARCH_PACKAGE_CANDIDATES.flatMap { packageName ->
         listOf(
-            "$EXT_STORAGE/Android/data/$packageName/files/retroarch.cfg",
             "/storage/emulated/0/Android/data/$packageName/files/retroarch.cfg"
         )
     } + listOf(
-        "$EXT_STORAGE/RetroArch/retroarch.cfg",
         "/storage/emulated/0/RetroArch/retroarch.cfg"
     )
 }
@@ -115,7 +111,7 @@ private fun applyCfgTransform(
     ensureBackup: Boolean,
     extractCredentials: Boolean
 ): PatchResult {
-    Log.d(TAG, "apply: treeUri=$treeUri detectHardcore=$detectHardcore ensureBackup=$ensureBackup candidates=${SOURCE_CANDIDATES.size}")
+    Log.d(TAG, "apply: treeUri=$treeUri detectHardcore=$detectHardcore ensureBackup=$ensureBackup candidates=${RETROARCH_SOURCE_CANDIDATES.size}")
     if (treeUri != null) {
         val safResult = transformViaSaf(context, treeUri, transform, strings, detectHardcore, ensureBackup, extractCredentials)
         if (safResult != null) {
@@ -125,7 +121,7 @@ private fun applyCfgTransform(
         Log.d(TAG, "apply: treeUri present but SAF tree could not be opened")
     }
 
-    val directCandidate = SOURCE_CANDIDATES.map(::File).firstOrNull { it.exists() }
+    val directCandidate = RETROARCH_SOURCE_CANDIDATES.map(::File).firstOrNull { it.exists() }
     Log.d(TAG, "apply: directCandidate=${directCandidate?.path} writable=${directCandidate?.canWrite()}")
 
     if (directCandidate != null && directCandidate.canWrite()) {
@@ -370,7 +366,7 @@ fun checkRetroArchIsPatched(context: Context, treeUri: Uri?): Boolean {
         }
     }
 
-    val directCandidate = SOURCE_CANDIDATES.map(::File).firstOrNull { it.exists() && it.canRead() }
+    val directCandidate = RETROARCH_SOURCE_CANDIDATES.map(::File).firstOrNull { it.exists() && it.canRead() }
     if (directCandidate != null) {
         return try { isPatchedContent(directCandidate.readText(), proxyAddress) } catch (_: Exception) { false }
     }

@@ -17,19 +17,6 @@
             android:text="@string/manual_patching_intro"
             android:textSize="14sp" />
 
-        <TextView
-            android:id="@+id/tv_manual_patching_warning"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
-            android:background="@drawable/bg_warning_box"
-            android:lineSpacingMultiplier="1.15"
-            android:padding="16dp"
-            android:text="@string/manual_patching_warning"
-            android:textColor="@color/warning_text"
-            android:textSize="14sp"
-            android:textStyle="bold" />
-
         <CheckBox
             android:id="@+id/cb_manual_emulator_patching"
             android:layout_width="wrap_content"
@@ -45,50 +32,43 @@
             android:orientation="vertical"
             android:visibility="gone">
 
-            <com.google.android.material.tabs.TabLayout
-                android:id="@+id/tab_manual_patching"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content" />
-
             <LinearLayout
-                android:id="@+id/layout_manual_patching_adb"
+                android:id="@+id/layout_manual_patching_shizuku"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="16dp"
-                android:orientation="vertical">
+                android:orientation="vertical"
+                android:visibility="gone">
 
                 <TextView
-                    android:id="@+id/tv_manual_adb_prerequisites_title"
+                    android:id="@+id/tv_manual_shizuku_status"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="@string/manual_patching_adb_prerequisites_title"
                     android:textAppearance="@style/TextAppearance.MaterialComponents.Subtitle1"
                     android:textStyle="bold" />
 
                 <TextView
-                    android:id="@+id/tv_manual_adb_prerequisites_body"
+                    android:id="@+id/tv_manual_shizuku_body"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="8dp"
                     android:lineSpacingMultiplier="1.4"
                     android:textSize="14sp" />
 
-                <TextView
-                    android:id="@+id/tv_manual_adb_actions_title"
+                <Button
+                    android:id="@+id/btn_manual_shizuku_permission"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="20dp"
-                    android:text="@string/manual_patching_adb_actions_title"
-                    android:textAppearance="@style/TextAppearance.MaterialComponents.Subtitle1"
-                    android:textStyle="bold" />
+                    android:layout_marginTop="16dp"
+                    android:text="@string/manual_patching_shizuku_permission" />
 
-                <TextView
-                    android:id="@+id/tv_manual_adb_actions_body"
+                <Button
+                    android:id="@+id/btn_manual_shizuku_toggle"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
-                    android:lineSpacingMultiplier="1.4"
-                    android:textSize="14sp" />
+                    android:layout_marginTop="12dp"
+                    android:text="@string/manual_patching_shizuku_enable"
+                    android:visibility="gone" />
             </LinearLayout>
         </LinearLayout>
     </LinearLayout>

@@ -83,7 +83,6 @@
             android:id="@+id/layout_emulator_toggles"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginBottom="24dp"
             android:gravity="start|center_vertical"
             android:orientation="horizontal"
             android:visibility="gone">
@@ -112,10 +111,25 @@
                 layout="@layout/view_emulator_toggle" />
         </LinearLayout>
 
+        <TextView
+            android:id="@+id/tv_shizuku_info"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:layout_marginBottom="16dp"
+            android:background="@drawable/bg_info_box"
+            android:lineSpacingMultiplier="1.15"
+            android:padding="16dp"
+            android:text="@string/home_shizuku_info"
+            android:textColor="@color/info_text"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            android:visibility="gone" />
+
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
+            android:layout_marginTop="24dp"
             android:orientation="horizontal"
             android:gravity="start"
             android:baselineAligned="false">

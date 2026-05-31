@@ -47,6 +47,7 @@ android {
     }
 
     buildFeatures {
+        aidl = true
         viewBinding = true
         buildConfig = true
     }
@@ -97,6 +98,8 @@ dependencies {
     implementation(libs.coil)
     implementation(libs.documentfile)
     implementation(libs.recyclerview)
+    implementation(libs.shizuku.api)
+    implementation(libs.shizuku.provider)
     implementation(variantOf(libs.zstd.jni) { artifactType("aar") })
     testImplementation(libs.junit)
     testImplementation(libs.zstd.jni)
