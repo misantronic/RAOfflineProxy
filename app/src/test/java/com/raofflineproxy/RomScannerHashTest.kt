@@ -20,7 +20,9 @@ import com.raofflineproxy.proxy.hash.hashZipRom
 import com.raofflineproxy.proxy.hash.readBigEndianInt
 import com.raofflineproxy.proxy.hash.hashRom
 import com.raofflineproxy.proxy.hash.PsxRomHashStrategy
+import com.raofflineproxy.proxy.hash.PsxChdRomHashStrategy
 import com.raofflineproxy.proxy.hash.PspRomHashStrategy
+import com.raofflineproxy.proxy.hash.PspChdRomHashStrategy
 import com.raofflineproxy.proxy.hash.RomDataSource
 import com.raofflineproxy.proxy.hash.RomHashInput
 import com.raofflineproxy.proxy.hash.SnesRomHashStrategy
@@ -240,6 +242,8 @@ class RomScannerHashTest {
     fun pspMatches_supportsIsoAndPbp() {
         assertTrue(PspRomHashStrategy.matches("game.iso"))
         assertTrue(PspRomHashStrategy.matches("EBOOT.PBP"))
+        assertFalse(PspRomHashStrategy.matches("game.chd"))
+        assertTrue(PspChdRomHashStrategy.matches("game.chd"))
     }
 
     @Test
@@ -744,8 +748,11 @@ class RomScannerHashTest {
     }
 
     @Test
-    fun psxStrategy_matchesChd() {
-        assertTrue(PsxRomHashStrategy.matches("game.chd"))
+    fun psxStrategy_matchesBinIsoAndSeparateChd() {
+        assertTrue(PsxRomHashStrategy.matches("game.bin"))
+        assertTrue(PsxRomHashStrategy.matches("game.iso"))
+        assertFalse(PsxRomHashStrategy.matches("game.chd"))
+        assertTrue(PsxChdRomHashStrategy.matches("game.chd"))
     }
 
     @Test

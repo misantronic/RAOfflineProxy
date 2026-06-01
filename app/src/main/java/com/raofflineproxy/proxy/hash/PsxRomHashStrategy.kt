@@ -9,18 +9,9 @@ private const val PSX_EXE_BODY_SIZE_OFFSET = 0x1C
 private val PSX_EXE_MAGIC = "PS-X EXE".toByteArray(Charsets.US_ASCII)
 
 internal object PsxRomHashStrategy : RomHashStrategy {
-    override fun matches(fileName: String): Boolean = hasExtension(fileName, "bin", "iso", "chd")
+    override fun matches(fileName: String): Boolean = hasExtension(fileName, "bin", "iso")
 
-    override fun hash(input: RomHashInput): String? {
-        val openDataSource = input.openDataSource ?: return null
-        return openDataSource().use { dataSource ->
-            if (dataSource == null) return@use null
-
-            val sectorLayout = detectIsoSectorLayout(dataSource) ?: return@use null
-            val executable = findExecutable(dataSource, sectorLayout) ?: return@use null
-            hashExecutable(dataSource, sectorLayout, executable)
-        }
-    }
+    override fun hash(input: RomHashInput): String? = hashPsxDisc(input, input.openDataSource)
 
     internal fun parseBootPath(systemCnf: String): String? {
         val bootLine = systemCnf.lineSequence().firstOrNull { line ->
@@ -46,14 +37,14 @@ internal object PsxRomHashStrategy : RomHashStrategy {
         return normalized.takeIf { it.isNotEmpty() }
     }
 
-    private fun findExecutable(dataSource: RomDataSource, layout: SectorLayout): PsxExecutable? {
+    internal fun findExecutable(dataSource: RomDataSource, layout: SectorLayout): PsxExecutable? {
         val systemCnf = readFileText(dataSource, layout, "SYSTEM.CNF")
         val bootPath = parseBootPath(systemCnf ?: "") ?: "PSX.EXE"
         val executableRecord = findFileRecord(dataSource, layout, bootPath) ?: return null
         return PsxExecutable(bootPath, executableRecord.sector, executableRecord.size)
     }
 
-    private fun hashExecutable(dataSource: RomDataSource, layout: SectorLayout, executable: PsxExecutable): String? {
+    internal fun hashExecutable(dataSource: RomDataSource, layout: SectorLayout, executable: PsxExecutable): String? {
         val digest = MessageDigest.getInstance("MD5")
         digest.update(executable.path.toByteArray(Charsets.US_ASCII))
 
@@ -80,7 +71,24 @@ internal object PsxRomHashStrategy : RomHashStrategy {
 
 }
 
-private data class PsxExecutable(
+internal object PsxChdRomHashStrategy : RomHashStrategy {
+    override fun matches(fileName: String): Boolean = hasExtension(fileName, "chd")
+
+    override fun hash(input: RomHashInput): String? = hashPsxDisc(input, input.openPsxChdDataSource)
+}
+
+private fun hashPsxDisc(input: RomHashInput, openDataSource: (() -> RomDataSource?)?): String? {
+    val sourceFactory = openDataSource ?: return null
+    return sourceFactory().use { dataSource ->
+        if (dataSource == null) return@use null
+
+        val sectorLayout = detectIsoSectorLayout(dataSource) ?: return@use null
+        val executable = PsxRomHashStrategy.findExecutable(dataSource, sectorLayout) ?: return@use null
+        PsxRomHashStrategy.hashExecutable(dataSource, sectorLayout, executable)
+    }
+}
+
+internal data class PsxExecutable(
     val path: String,
     val sector: Long,
     val size: Long

@@ -14,9 +14,10 @@ namespace {
 
 constexpr uint32_t kCdMetadataTag = CDROM_TRACK_METADATA_TAG;
 constexpr uint32_t kCdMetadata2Tag = CDROM_TRACK_METADATA2_TAG;
-constexpr uint32_t kFrameSize = CD_FRAME_SIZE;
-constexpr uint32_t kSectorSize = CD_MAX_SECTOR_DATA;
+constexpr uint32_t kCdFrameSize = CD_FRAME_SIZE;
+constexpr uint32_t kCdSectorSize = CD_MAX_SECTOR_DATA;
 constexpr uint32_t kTrackPadding = CD_TRACK_PADDING;
+constexpr uint32_t kPspSectorSize = 2048;
 
 struct TrackInfo {
     uint32_t number;
@@ -87,13 +88,116 @@ bool loadTrackInfo(chd_file* chd, uint32_t index, TrackInfo* trackInfo) {
     return false;
 }
 
-class ChdDiscHandle {
+class PspChdHandle {
 public:
-    explicit ChdDiscHandle(std::string path)
+    explicit PspChdHandle(std::string path)
         : path_(std::move(path)) {
     }
 
-    ~ChdDiscHandle() {
+    ~PspChdHandle() {
+        if (chd_ != nullptr) {
+            chd_close(chd_);
+        }
+    }
+
+    bool open(std::string* error) {
+        chd_error result = chd_open(path_.c_str(), CHD_OPEN_READ, nullptr, &chd_);
+        if (result != CHDERR_NONE) {
+            *error = chd_error_string(result);
+            return false;
+        }
+
+        const chd_header* header = chd_get_header(chd_);
+        if (header == nullptr) {
+            *error = "missing CHD header";
+            return false;
+        }
+
+        if (header->unitbytes == 0 || header->hunkbytes == 0) {
+            *error = "invalid CHD geometry";
+            return false;
+        }
+
+        hunkBytes_ = header->hunkbytes;
+        unitBytes_ = header->unitbytes;
+        blocksPerHunk_ = hunkBytes_ / unitBytes_;
+        numBlocks_ = header->unitcount;
+        hunkBuffer_.resize(hunkBytes_);
+
+        if (unitBytes_ < kPspSectorSize || blocksPerHunk_ == 0 || numBlocks_ == 0) {
+            *error = "unsupported CHD unit geometry";
+            return false;
+        }
+
+        if ((hunkBytes_ % unitBytes_) != 0) {
+            *error = "misaligned CHD hunk geometry";
+            return false;
+        }
+
+        return true;
+    }
+
+    uint64_t logicalLength() const {
+        return static_cast<uint64_t>(numBlocks_) * kPspSectorSize;
+    }
+
+    int read(uint64_t offset, uint8_t* output, int requestedLength, std::string* error) {
+        if (offset >= logicalLength()) {
+            return -1;
+        }
+
+        const uint64_t available = logicalLength() - offset;
+        const int targetLength = static_cast<int>(std::min<uint64_t>(available, static_cast<uint64_t>(requestedLength)));
+        int totalRead = 0;
+
+        while (totalRead < targetLength) {
+            const uint64_t projectedOffset = offset + static_cast<uint64_t>(totalRead);
+            const uint32_t block = static_cast<uint32_t>(projectedOffset / kPspSectorSize);
+            if (block >= numBlocks_) {
+                break;
+            }
+            const uint32_t sectorOffset = static_cast<uint32_t>(projectedOffset % kPspSectorSize);
+            const uint32_t hunk = block / blocksPerHunk_;
+            const uint32_t blockInHunk = block % blocksPerHunk_;
+            const uint32_t hunkOffset = blockInHunk * unitBytes_ + sectorOffset;
+
+            if (cachedHunk_ != hunk) {
+                const chd_error result = chd_read(chd_, hunk, hunkBuffer_.data());
+                if (result != CHDERR_NONE) {
+                    *error = chd_error_string(result);
+                    return totalRead > 0 ? totalRead : -1;
+                }
+                cachedHunk_ = hunk;
+            }
+
+            const int bytesUntilSectorEnd = static_cast<int>(kPspSectorSize - sectorOffset);
+            const int bytesUntilUnitEnd = static_cast<int>(unitBytes_ - sectorOffset);
+            const int chunk = std::min(targetLength - totalRead, std::min(bytesUntilSectorEnd, bytesUntilUnitEnd));
+            std::memcpy(output + totalRead, hunkBuffer_.data() + hunkOffset, static_cast<size_t>(chunk));
+            totalRead += chunk;
+        }
+
+        return totalRead;
+    }
+
+private:
+    std::string path_;
+    chd_file* chd_ = nullptr;
+    uint32_t hunkBytes_ = 0;
+    uint32_t unitBytes_ = 0;
+    uint32_t blocksPerHunk_ = 0;
+    uint32_t numBlocks_ = 0;
+    uint32_t cachedHunk_ = UINT32_MAX;
+    std::vector<uint8_t> hunkBuffer_;
+};
+
+class CdChdHandle {
+public:
+    explicit CdChdHandle(std::string path)
+        : path_(std::move(path)) {
+    }
+
+    ~CdChdHandle() {
         if (chd_ != nullptr) {
             chd_close(chd_);
         }
@@ -133,7 +237,7 @@ public:
     }
 
     uint64_t logicalLength() const {
-        return static_cast<uint64_t>(firstTrackFrames_) * kSectorSize;
+        return static_cast<uint64_t>(firstTrackFrames_) * kCdSectorSize;
     }
 
     int read(uint64_t offset, uint8_t* output, int requestedLength, std::string* error) {
@@ -147,9 +251,9 @@ public:
 
         while (totalRead < targetLength) {
             const uint64_t projectedOffset = offset + static_cast<uint64_t>(totalRead);
-            const uint64_t absoluteFrame = firstTrackStartFrame_ + (projectedOffset / kSectorSize);
-            const uint32_t sectorOffset = static_cast<uint32_t>(projectedOffset % kSectorSize);
-            const uint64_t absoluteOffset = absoluteFrame * kFrameSize;
+            const uint64_t absoluteFrame = firstTrackStartFrame_ + (projectedOffset / kCdSectorSize);
+            const uint32_t sectorOffset = static_cast<uint32_t>(projectedOffset % kCdSectorSize);
+            const uint64_t absoluteOffset = absoluteFrame * kCdFrameSize;
             const uint32_t hunk = static_cast<uint32_t>(absoluteOffset / hunkBytes_);
             const uint32_t hunkOffset = static_cast<uint32_t>((absoluteOffset % hunkBytes_) + sectorOffset);
 
@@ -162,7 +266,7 @@ public:
                 cachedHunk_ = hunk;
             }
 
-            const int bytesUntilSectorEnd = static_cast<int>(kSectorSize - sectorOffset);
+            const int bytesUntilSectorEnd = static_cast<int>(kCdSectorSize - sectorOffset);
             const int bytesUntilHunkEnd = static_cast<int>(hunkBytes_ - hunkOffset);
             const int chunk = std::min(targetLength - totalRead, std::min(bytesUntilSectorEnd, bytesUntilHunkEnd));
             std::memcpy(output + totalRead, hunkBuffer_.data() + hunkOffset, static_cast<size_t>(chunk));
@@ -206,7 +310,7 @@ Java_com_raofflineproxy_proxy_hash_ChdNativeBridge_nativeOpen(
         return 0;
     }
 
-    auto* handle = new ChdDiscHandle(rawPath);
+    auto* handle = new PspChdHandle(rawPath);
     env->ReleaseStringUTFChars(path, rawPath);
 
     std::string error;
@@ -225,7 +329,7 @@ Java_com_raofflineproxy_proxy_hash_ChdNativeBridge_nativeLength(
     jclass,
     jlong handle
 ) {
-    auto* discHandle = reinterpret_cast<ChdDiscHandle*>(handle);
+    auto* discHandle = reinterpret_cast<PspChdHandle*>(handle);
     if (discHandle == nullptr) {
         return 0;
     }
@@ -241,7 +345,7 @@ Java_com_raofflineproxy_proxy_hash_ChdNativeBridge_nativeRead(
     jbyteArray output,
     jint requestedLength
 ) {
-    auto* discHandle = reinterpret_cast<ChdDiscHandle*>(handle);
+    auto* discHandle = reinterpret_cast<PspChdHandle*>(handle);
     if (discHandle == nullptr) {
         return -1;
     }
@@ -268,6 +372,83 @@ Java_com_raofflineproxy_proxy_hash_ChdNativeBridge_nativeClose(
     jclass,
     jlong handle
 ) {
-    auto* discHandle = reinterpret_cast<ChdDiscHandle*>(handle);
+    auto* discHandle = reinterpret_cast<PspChdHandle*>(handle);
+    delete discHandle;
+}
+
+extern "C" JNIEXPORT jlong JNICALL
+Java_com_raofflineproxy_proxy_hash_CdChdNativeBridge_nativeOpen(
+    JNIEnv* env,
+    jclass,
+    jstring path
+) {
+    const char* rawPath = env->GetStringUTFChars(path, nullptr);
+    if (rawPath == nullptr) {
+        return 0;
+    }
+
+    auto* handle = new CdChdHandle(rawPath);
+    env->ReleaseStringUTFChars(path, rawPath);
+
+    std::string error;
+    if (!handle->open(&error)) {
+        delete handle;
+        throwIOException(env, error);
+        return 0;
+    }
+
+    return reinterpret_cast<jlong>(handle);
+}
+
+extern "C" JNIEXPORT jlong JNICALL
+Java_com_raofflineproxy_proxy_hash_CdChdNativeBridge_nativeLength(
+    JNIEnv*,
+    jclass,
+    jlong handle
+) {
+    auto* discHandle = reinterpret_cast<CdChdHandle*>(handle);
+    if (discHandle == nullptr) {
+        return 0;
+    }
+    return static_cast<jlong>(discHandle->logicalLength());
+}
+
+extern "C" JNIEXPORT jint JNICALL
+Java_com_raofflineproxy_proxy_hash_CdChdNativeBridge_nativeRead(
+    JNIEnv* env,
+    jclass,
+    jlong handle,
+    jlong offset,
+    jbyteArray output,
+    jint requestedLength
+) {
+    auto* discHandle = reinterpret_cast<CdChdHandle*>(handle);
+    if (discHandle == nullptr) {
+        return -1;
+    }
+
+    jbyte* bytes = env->GetByteArrayElements(output, nullptr);
+    if (bytes == nullptr) {
+        return -1;
+    }
+
+    std::string error;
+    const int read = discHandle->read(static_cast<uint64_t>(offset), reinterpret_cast<uint8_t*>(bytes), requestedLength, &error);
+    env->ReleaseByteArrayElements(output, bytes, 0);
+
+    if (read < 0 && !error.empty()) {
+        throwIOException(env, error);
+    }
+
+    return read;
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_raofflineproxy_proxy_hash_CdChdNativeBridge_nativeClose(
+    JNIEnv*,
+    jclass,
+    jlong handle
+) {
+    auto* discHandle = reinterpret_cast<CdChdHandle*>(handle);
     delete discHandle;
 }

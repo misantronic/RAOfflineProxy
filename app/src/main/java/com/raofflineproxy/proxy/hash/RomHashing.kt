@@ -44,7 +44,9 @@ internal data class RomHashInput(
     val fileName: String,
     val fileSize: Long,
     val openStream: () -> InputStream?,
-    val openDataSource: (() -> RomDataSource?)? = null
+    val openDataSource: (() -> RomDataSource?)? = null,
+    val openPspChdDataSource: (() -> RomDataSource?)? = null,
+    val openPsxChdDataSource: (() -> RomDataSource?)? = null
 )
 
 internal interface RomDataSource : Closeable {
@@ -66,6 +68,8 @@ private val romHashStrategies: List<RomHashStrategy> = listOf(
     WiiDiscRomHashStrategy,
     PspRomHashStrategy,
     PsxRomHashStrategy,
+    PsxChdRomHashStrategy,
+    PspChdRomHashStrategy,
     NintendoDsRomHashStrategy,
     Nintendo64RomHashStrategy,
     Atari7800RomHashStrategy,
@@ -97,35 +101,62 @@ internal fun hashRom(
             fileName = fileName,
             fileSize = file.length(),
             openStream = { context.contentResolver.openInputStream(file.uri) },
-            openDataSource = openDataSource@{
-                if (hasExtension(fileName, "chd")) {
-                    val tempFile = File.createTempFile("romhash_", ".chd", context.cacheDir)
-                    val copied = runCatching {
-                        context.contentResolver.openInputStream(file.uri)?.use { input ->
-                            tempFile.outputStream().use(input::copyTo)
-                        }
-                    }.getOrNull()
-                    if (copied == null) {
-                        tempFile.delete()
-                        return@openDataSource null
-                    }
-
-                    ChdRomDataSource.open(tempFile)?.let { dataSource ->
-                        return@openDataSource object : RomDataSource by dataSource {
-                            override fun close() {
-                                dataSource.close()
-                                tempFile.delete()
-                            }
-                        }
-                    }
-                    tempFile.delete()
-                    return@openDataSource null
-                }
-
+            openDataSource = {
                 context.contentResolver.openFileDescriptor(file.uri, "r")?.let(::ParcelFileDescriptorRomDataSource)
+            },
+            openPspChdDataSource = {
+                if (!hasExtension(fileName, "chd")) {
+                    null
+                } else {
+                    openWrappedChdDataSource(
+                        tempDir = context.cacheDir,
+                        openInputStream = { context.contentResolver.openInputStream(file.uri) },
+                        openDataSource = PspChdRomDataSource::open
+                    )
+                }
+            },
+            openPsxChdDataSource = {
+                if (!hasExtension(fileName, "chd")) {
+                    null
+                } else {
+                    openWrappedChdDataSource(
+                        tempDir = context.cacheDir,
+                        openInputStream = { context.contentResolver.openInputStream(file.uri) },
+                        openDataSource = PsxChdRomDataSource::open
+                    )
+                }
             }
         )
     )
+}
+
+private fun openWrappedChdDataSource(
+    tempDir: File,
+    openInputStream: () -> InputStream?,
+    openDataSource: (File) -> RomDataSource?
+): RomDataSource? {
+    val tempFile = File.createTempFile("romhash_", ".chd", tempDir)
+    val copied = runCatching {
+        openInputStream()?.use { input ->
+            tempFile.outputStream().use(input::copyTo)
+        }
+    }.getOrNull()
+    if (copied == null) {
+        tempFile.delete()
+        return null
+    }
+
+    openDataSource(tempFile)?.let { dataSource ->
+        return object : RomDataSource by dataSource {
+            override fun close() {
+                dataSource.close()
+                tempFile.delete()
+            }
+        }
+    }
+
+    tempFile.delete()
+    return null
 }
 
 internal fun hashRom(input: RomHashInput): String? {
