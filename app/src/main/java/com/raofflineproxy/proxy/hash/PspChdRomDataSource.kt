@@ -2,7 +2,9 @@ package com.raofflineproxy.proxy.hash
 
 import java.io.File
 
-internal class ChdRomDataSource private constructor(
+private const val TAG = "RAProxy/PspChdHash"
+
+internal class PspChdRomDataSource private constructor(
     private val handle: Long,
     override val length: Long
 ) : RomDataSource {
@@ -20,19 +22,26 @@ internal class ChdRomDataSource private constructor(
     }
 
     companion object {
-        fun open(file: File): ChdRomDataSource? {
+        fun open(file: File): PspChdRomDataSource? {
             if (!ChdNativeBridge.isAvailable()) {
+                logWarn(TAG, "Native bridge unavailable for ${file.name}")
                 return null
             }
 
             var handle = 0L
             return runCatching {
                 handle = ChdNativeBridge.open(file.absolutePath)
-                ChdRomDataSource(handle, ChdNativeBridge.length(handle))
+                val length = ChdNativeBridge.length(handle)
+                if (length <= 0L) {
+                    error("Invalid CHD logical length=$length for ${file.name}")
+                }
+                logInfo(TAG, "Opened ${file.name} length=$length")
+                PspChdRomDataSource(handle, length)
             }.getOrElse {
                 if (handle != 0L) {
                     ChdNativeBridge.close(handle)
                 }
+                logWarn(TAG, "Failed to open ${file.name}: ${it.message ?: it::class.java.simpleName}")
                 null
             }
         }
