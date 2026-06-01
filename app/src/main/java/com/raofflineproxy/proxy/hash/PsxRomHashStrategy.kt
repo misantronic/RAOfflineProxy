@@ -11,7 +11,7 @@ private val PSX_EXE_MAGIC = "PS-X EXE".toByteArray(Charsets.US_ASCII)
 internal object PsxRomHashStrategy : RomHashStrategy {
     override fun matches(fileName: String): Boolean = hasExtension(fileName, "bin", "iso")
 
-    override fun hash(input: RomHashInput): String? = hashPsxDisc(input, input.openDataSource)
+    override fun hash(input: RomHashInput): String? = hashPsxDisc(input.openDataSource)
 
     internal fun parseBootPath(systemCnf: String): String? {
         val bootLine = systemCnf.lineSequence().firstOrNull { line ->
@@ -74,10 +74,10 @@ internal object PsxRomHashStrategy : RomHashStrategy {
 internal object PsxChdRomHashStrategy : RomHashStrategy {
     override fun matches(fileName: String): Boolean = hasExtension(fileName, "chd")
 
-    override fun hash(input: RomHashInput): String? = hashPsxDisc(input, input.openPsxChdDataSource)
+    override fun hash(input: RomHashInput): String? = hashPsxDisc(input.openPsxChdDataSource)
 }
 
-private fun hashPsxDisc(input: RomHashInput, openDataSource: (() -> RomDataSource?)?): String? {
+private fun hashPsxDisc(openDataSource: (() -> RomDataSource?)?): String? {
     val sourceFactory = openDataSource ?: return null
     return sourceFactory().use { dataSource ->
         if (dataSource == null) return@use null
