@@ -9,11 +9,10 @@ import com.raofflineproxy.proxyValue
 internal const val PPSSPP_PSP_DIR = "PSP"
 internal const val PPSSPP_SYSTEM_DIR = "SYSTEM"
 internal const val PPSSPP_INI_FILE = "ppsspp.ini"
-private const val PPSSPP_PACKAGE_NAME = "org.ppsspp.ppsspp"
 
 private val PPSSPP_SAF_ROOT_PATHS = listOf(
-    listOf(PPSSPP_PACKAGE_NAME, "files"),
-    listOf(PPSSPP_PACKAGE_NAME, "files", PPSSPP_PSP_DIR),
+    *UI_PPSSPP_PACKAGE_CANDIDATES.map { listOf(it, "files") }.toTypedArray(),
+    *UI_PPSSPP_PACKAGE_CANDIDATES.map { listOf(it, "files", PPSSPP_PSP_DIR) }.toTypedArray(),
     listOf("files"),
     listOf("files", PPSSPP_PSP_DIR),
     listOf(PPSSPP_PSP_DIR),
@@ -62,7 +61,7 @@ data class PpssppPatchResult(
 )
 
 internal fun isPpssppInstalled(context: Context): Boolean =
-    runCatching { context.packageManager.getPackageInfo(PPSSPP_PACKAGE_NAME, 0) }.isSuccess
+    resolveInstalledPackage(context, UI_PPSSPP_PACKAGE_CANDIDATES) != null
 
 fun patchPpssppCfg(context: Context, treeUri: Uri?): PpssppPatchResult {
     if (!isPpssppInstalled(context)) {

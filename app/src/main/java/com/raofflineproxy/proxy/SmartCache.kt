@@ -14,8 +14,8 @@ import com.raofflineproxy.proxy.hash.RomHashInput
 import com.raofflineproxy.proxy.hash.hashRom
 import com.raofflineproxy.ui.DOLPHIN_PACKAGE_CANDIDATES
 import com.raofflineproxy.ui.EmulatorSupport
-import com.raofflineproxy.ui.UI_PPSSPP_PACKAGE
 import com.raofflineproxy.ui.RETROARCH_PACKAGE_CANDIDATES
+import com.raofflineproxy.ui.UI_PPSSPP_PACKAGE_CANDIDATES
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -124,11 +124,11 @@ private val DOLPHIN_WII_DISC_TITLE_SOURCE_CANDIDATES by lazy {
     )
 }
 
-private val PPSSPP_RECENTS_PATHS = listOf(
-    listOf(UI_PPSSPP_PACKAGE, "files", "SYSTEM", "ppsspp.ini"),
-    listOf("files", "SYSTEM", "ppsspp.ini"),
-    listOf("SYSTEM", "ppsspp.ini")
-)
+private val PPSSPP_RECENTS_PATHS =
+    UI_PPSSPP_PACKAGE_CANDIDATES.map { listOf(it, "files", "SYSTEM", "ppsspp.ini") } + listOf(
+        listOf("files", "SYSTEM", "ppsspp.ini"),
+        listOf("SYSTEM", "ppsspp.ini")
+    )
 
 private const val MAX_SMART_CACHE_FILES = 75
 private const val SMART_CACHE_EMULATOR_BUDGET = 25

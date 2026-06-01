@@ -53,7 +53,7 @@ class HomeFragment : Fragment() {
         val ppssppToggle = bindToggle(view.findViewById(R.id.layout_ppsspp_toggle), R.string.emulator_ppsspp)
         val retroArchAppIcon = loadInstalledAppIcon(RETROARCH_PACKAGE_CANDIDATES)
         val dolphinAppIcon = loadInstalledAppIcon(DOLPHIN_PACKAGE_CANDIDATES)
-        val ppssppAppIcon = loadInstalledAppIcon(listOf(UI_PPSSPP_PACKAGE))
+        val ppssppAppIcon = loadInstalledAppIcon(UI_PPSSPP_PACKAGE_CANDIDATES)
         val activeBorderColor = requireContext().getColor(R.color.emulator_toggle_border_active)
         val activeBackgroundColor = requireContext().getColor(R.color.emulator_toggle_background_active)
         val defaultBorderColor = requireContext().getColor(R.color.emulator_toggle_border_default)

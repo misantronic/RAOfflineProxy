@@ -375,7 +375,9 @@ internal fun ppssppIniPathCandidates(
     rootPath: String?,
     rootMode: PrefsConstants.PpssppRootMode
 ): List<String> {
-    val defaultPath = "/storage/emulated/0/Android/data/$UI_PPSSPP_PACKAGE/files/$PPSSPP_PSP_DIR/$PPSSPP_SYSTEM_DIR/$PPSSPP_INI_FILE"
+    val defaultPaths = UI_PPSSPP_PACKAGE_CANDIDATES.map { packageName ->
+        "/storage/emulated/0/Android/data/$packageName/files/$PPSSPP_PSP_DIR/$PPSSPP_SYSTEM_DIR/$PPSSPP_INI_FILE"
+    }
     return buildList {
         when (rootMode) {
             PrefsConstants.PpssppRootMode.CustomRoot -> {
@@ -386,7 +388,7 @@ internal fun ppssppIniPathCandidates(
             }
 
             PrefsConstants.PpssppRootMode.DefaultPackagePath,
-            PrefsConstants.PpssppRootMode.Unknown -> add(defaultPath)
+            PrefsConstants.PpssppRootMode.Unknown -> addAll(defaultPaths)
         }
     }
 }

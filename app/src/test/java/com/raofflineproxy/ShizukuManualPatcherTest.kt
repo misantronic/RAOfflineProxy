@@ -53,7 +53,10 @@ class ShizukuManualPatcherTest {
     @Test
     fun ppssppIniPathCandidates_usesDefaultPackagePathWhenConfigured() {
         assertEquals(
-            listOf("/storage/emulated/0/Android/data/org.ppsspp.ppsspp/files/PSP/SYSTEM/ppsspp.ini"),
+            listOf(
+                "/storage/emulated/0/Android/data/org.ppsspp.ppsspp/files/PSP/SYSTEM/ppsspp.ini",
+                "/storage/emulated/0/Android/data/org.ppsspp.ppssppgold/files/PSP/SYSTEM/ppsspp.ini"
+            ),
             ppssppIniPathCandidates(
                 rootPath = "/storage/emulated/0/PPSSPP/PSP",
                 rootMode = PrefsConstants.PpssppRootMode.DefaultPackagePath
