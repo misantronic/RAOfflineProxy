@@ -4,7 +4,9 @@ import com.raofflineproxy.proxy.awaitPendingAwardWrite
 import com.raofflineproxy.proxy.buildPendingAward
 import com.raofflineproxy.proxy.contentTypeForFile
 import com.raofflineproxy.proxy.compactAchievementSetsResponse
+import com.raofflineproxy.proxy.compactCachedRawResponse
 import com.raofflineproxy.proxy.isChunkedTransferEncoding
+import com.raofflineproxy.proxy.isPpssppUserAgent
 import com.raofflineproxy.proxy.isStaticAssetRequest
 import com.raofflineproxy.proxy.parseContentLength
 import com.raofflineproxy.proxy.parseRequestLine
@@ -646,6 +648,81 @@ class ProxyServerTest {
     @Test
     fun shouldCacheResponse_falseForInvalidJson() {
         assertFalse(shouldCacheResponse("not json"))
+    }
+
+    @Test
+    fun isPpssppUserAgent_detectsPpsspp() {
+        assertTrue(isPpssppUserAgent("PPSSPP/v1.20.4"))
+        assertTrue(isPpssppUserAgent("ppsspp gold"))
+        assertFalse(isPpssppUserAgent("RetroArch/1.21.0"))
+    }
+
+    @Test
+    fun compactCachedRawResponse_skipsAchievementsetsCompactionForPpsspp() {
+        val body = """
+            {"Success":true,"GameId":3537,"Title":"Game","ConsoleId":41,"ImageIconUrl":"icon","Sets":[{"Title":null,"Type":"core","AchievementSetId":2174,"GameId":3537,"ImageIconUrl":"icon","Achievements":[],"Leaderboards":[]}]} 
+        """.trimIndent()
+
+        assertEquals(body, compactCachedRawResponse("achievementsets", body, "PPSSPP/v1.20.4"))
+    }
+
+    @Test
+    fun compactCachedRawResponse_compactsAchievementsetsForNonPpsspp() {
+        val body = """
+            {"Success":true,"GameId":3537,"Title":"Game","ConsoleId":41,"ImageIconUrl":"icon","Sets":[{"Title":null,"Type":"core","AchievementSetId":2174,"GameId":3537,"ImageIconUrl":"icon","Achievements":[{"ID":101000001,"MemAddr":"1=1.300.","Title":"Warning","Description":"warning","Points":0,"Author":"","Modified":1,"Created":1,"BadgeName":"00000","Flags":3,"Type":null,"Rarity":0,"RarityHardcore":0,"BadgeURL":"badge","BadgeLockedURL":"badge_lock"}],"Leaderboards":[]}]} 
+        """.trimIndent()
+
+        assertEquals(compactAchievementSetsResponse(body), compactCachedRawResponse("achievementsets", body, "RetroArch/1.21.0"))
+    }
+
+    @Test
+    fun compactAchievementSetsResponse_preservesJsonNulls() {
+        val compacted = compactAchievementSetsResponse(
+            """
+            {
+              "Success": true,
+              "GameId": 3537,
+              "Title": "God of War: Chains of Olympus",
+              "ConsoleId": 41,
+              "ImageIconUrl": "https://media.retroachievements.org/Images/120499.png",
+              "Sets": [
+                {
+                  "Title": null,
+                  "Type": "core",
+                  "AchievementSetId": 2174,
+                  "GameId": 3537,
+                  "ImageIconUrl": "https://media.retroachievements.org/Images/120499.png",
+                  "Achievements": [
+                    {
+                      "ID": 245120,
+                      "MemAddr": "0xHc8440c=1",
+                      "Title": "All-Powerful!",
+                      "Description": "Perform a 500-hit combo",
+                      "Points": 5,
+                      "Author": "Anic",
+                      "Modified": 1662937020,
+                      "Created": 1662259904,
+                      "BadgeName": "274081",
+                      "Flags": 3,
+                      "Type": null,
+                      "Rarity": 11.7,
+                      "RarityHardcore": 8.11,
+                      "BadgeURL": "https://media.retroachievements.org/Badge/274081.png",
+                      "BadgeLockedURL": "https://media.retroachievements.org/Badge/274081_lock.png"
+                    }
+                  ],
+                  "Leaderboards": []
+                }
+              ]
+            }
+            """.trimIndent()
+        )
+        val normalized = compacted.replace(Regex("\\s+"), "")
+
+        assertTrue(compacted, normalized.contains("\"Title\":null"))
+        assertTrue(compacted, normalized.contains("\"Type\":null"))
+        assertFalse(compacted.contains("\"Title\":\"null\""))
+        assertFalse(compacted.contains("\"Type\":\"null\""))
     }
 
     @Test
