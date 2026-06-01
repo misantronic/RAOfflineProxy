@@ -366,7 +366,7 @@ class ProxyServer(
             val rawKey = cacheKey(path, rawBody)
             val key = normalizedCacheKey(action, path, rawBody, normalizedBody)
             val userAgent = headers["user-agent"] ?: ""
-            val rawBodyToCache = compactCachedRawResponse(action, upstream, userAgent)
+            val rawBodyToCache = compactCachedRawResponse(action, upstream)
             scope.launch(Dispatchers.IO) {
                 db.cacheDao().upsert(CacheEntry(cacheKey = rawKey, responseBody = rawBodyToCache))
                 Log.i(TAG, "Cached: $rawKey")
@@ -955,14 +955,25 @@ internal fun normalizeCachedResponse(action: String?, path: String, body: String
         responseBody
     }
 
-internal fun compactCachedRawResponse(action: String?, responseBody: String, userAgent: String = ""): String =
-    if (action == "achievementsets" && !isPpssppUserAgent(userAgent)) {
+internal fun compactCachedRawResponse(
+    action: String?,
+    responseBody: String
+): String =
+    if (action == "achievementsets" && !shouldPreserveRawAchievementSets(action, responseBody)) {
         compactAchievementSetsResponse(responseBody)
     } else if (action == "unlocks") {
         filterWarningAchievementFromUnlocksResponse(responseBody)
     } else {
         responseBody
     }
+
+internal fun shouldPreserveRawAchievementSets(action: String?, responseBody: String): Boolean =
+    action == "achievementsets" && isPspAchievementSetsResponse(responseBody)
+
+internal const val PSP_CONSOLE_ID = 41
+
+internal fun isPspAchievementSetsResponse(responseBody: String): Boolean =
+    Regex("\"ConsoleI[dD]\"\\s*:\\s*\"?$PSP_CONSOLE_ID\"?").containsMatchIn(responseBody)
 
 internal fun isPpssppUserAgent(userAgent: String): Boolean =
     userAgent.contains("ppsspp", ignoreCase = true)

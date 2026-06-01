@@ -6,6 +6,7 @@ import com.raofflineproxy.proxy.contentTypeForFile
 import com.raofflineproxy.proxy.compactAchievementSetsResponse
 import com.raofflineproxy.proxy.compactCachedRawResponse
 import com.raofflineproxy.proxy.isChunkedTransferEncoding
+import com.raofflineproxy.proxy.isPspAchievementSetsResponse
 import com.raofflineproxy.proxy.isPpssppUserAgent
 import com.raofflineproxy.proxy.isStaticAssetRequest
 import com.raofflineproxy.proxy.parseContentLength
@@ -26,6 +27,7 @@ import com.raofflineproxy.proxy.filterWarningAchievementIds
 import com.raofflineproxy.proxy.normalizedCacheKey
 import com.raofflineproxy.proxy.sanitizeHttpReasonPhrase
 import com.raofflineproxy.proxy.shouldCacheResponse
+import com.raofflineproxy.proxy.shouldPreserveRawAchievementSets
 import com.raofflineproxy.proxy.shouldQueueAward
 import com.raofflineproxy.proxy.UpstreamResult
 import com.raofflineproxy.proxy.validateBodyRead
@@ -658,12 +660,32 @@ class ProxyServerTest {
     }
 
     @Test
+    fun isPspAchievementSetsResponse_trueForPspConsoleId() {
+        assertTrue(isPspAchievementSetsResponse("""{"Success":true,"ConsoleId":41}"""))
+    }
+
+    @Test
+    fun isPspAchievementSetsResponse_falseForNonPspConsoleId() {
+        assertFalse(isPspAchievementSetsResponse("""{"Success":true,"ConsoleId":12}"""))
+    }
+
+    @Test
+    fun shouldPreserveRawAchievementSets_trueForPspAchievementsets() {
+        assertTrue(shouldPreserveRawAchievementSets("achievementsets", """{"Success":true,"ConsoleId":41}"""))
+    }
+
+    @Test
+    fun shouldPreserveRawAchievementSets_falseForNonAchievementsetsAction() {
+        assertFalse(shouldPreserveRawAchievementSets("patch", """{"Success":true,"ConsoleId":41}"""))
+    }
+
+    @Test
     fun compactCachedRawResponse_skipsAchievementsetsCompactionForPpsspp() {
         val body = """
             {"Success":true,"GameId":3537,"Title":"Game","ConsoleId":41,"ImageIconUrl":"icon","Sets":[{"Title":null,"Type":"core","AchievementSetId":2174,"GameId":3537,"ImageIconUrl":"icon","Achievements":[],"Leaderboards":[]}]} 
         """.trimIndent()
 
-        assertEquals(body, compactCachedRawResponse("achievementsets", body, "PPSSPP/v1.20.4"))
+        assertEquals(body, compactCachedRawResponse("achievementsets", body))
     }
 
     @Test
@@ -672,7 +694,7 @@ class ProxyServerTest {
             {"Success":true,"GameId":3537,"Title":"Game","ConsoleId":41,"ImageIconUrl":"icon","Sets":[{"Title":null,"Type":"core","AchievementSetId":2174,"GameId":3537,"ImageIconUrl":"icon","Achievements":[{"ID":101000001,"MemAddr":"1=1.300.","Title":"Warning","Description":"warning","Points":0,"Author":"","Modified":1,"Created":1,"BadgeName":"00000","Flags":3,"Type":null,"Rarity":0,"RarityHardcore":0,"BadgeURL":"badge","BadgeLockedURL":"badge_lock"}],"Leaderboards":[]}]} 
         """.trimIndent()
 
-        assertEquals(compactAchievementSetsResponse(body), compactCachedRawResponse("achievementsets", body, "RetroArch/1.21.0"))
+        assertEquals(compactAchievementSetsResponse(body), compactCachedRawResponse("achievementsets", body))
     }
 
     @Test

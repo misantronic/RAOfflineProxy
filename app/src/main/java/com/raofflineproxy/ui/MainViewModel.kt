@@ -55,6 +55,7 @@ import com.raofflineproxy.proxy.compactCachedRawResponse
 import com.raofflineproxy.proxy.normalizeCachedResponse
 import com.raofflineproxy.proxy.resolveCachedGameIconPath
 import com.raofflineproxy.proxy.scanRomFolder
+import com.raofflineproxy.proxy.shouldPreserveRawAchievementSets
 import com.raofflineproxy.proxy.SmartCacheEmulator
 import com.raofflineproxy.service.ProxyService
 import com.raofflineproxy.update.AppUpdateChecker
@@ -1909,6 +1910,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private suspend fun compactCachedRawAchievementSets() {
         val rawEntries = runCatching { db.cacheDao().getAllByPrefix(CacheKeys.PREFIX_ACHIEVEMENTSETS) }.getOrDefault(emptyList())
         rawEntries.forEach { entry ->
+            if (shouldPreserveRawAchievementSets("achievementsets", entry.responseBody)) return@forEach
             val compacted = runCatching {
                 compactCachedRawResponse("achievementsets", entry.responseBody)
             }.getOrNull() ?: return@forEach
