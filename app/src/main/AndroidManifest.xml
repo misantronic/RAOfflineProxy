@@ -19,6 +19,7 @@
         <package android:name="com.retroarch" />
         <package android:name="org.dolphinemu.dolphinemu" />
         <package android:name="org.ppsspp.ppsspp" />
+        <package android:name="org.ppsspp.ppssppgold" />
     </queries>
 
     <application

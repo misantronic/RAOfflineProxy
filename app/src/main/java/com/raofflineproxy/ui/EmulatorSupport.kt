@@ -16,6 +16,12 @@ private val UI_DOLPHIN_PACKAGE_CANDIDATES = listOf(
 )
 
 internal const val UI_PPSSPP_PACKAGE = "org.ppsspp.ppsspp"
+internal const val UI_PPSSPP_GOLD_PACKAGE = "org.ppsspp.ppssppgold"
+
+internal val UI_PPSSPP_PACKAGE_CANDIDATES = listOf(
+    UI_PPSSPP_PACKAGE,
+    UI_PPSSPP_GOLD_PACKAGE
+)
 
 internal fun resolveInstalledPackage(context: Context, packageCandidates: List<String>): String? =
     packageCandidates.firstOrNull { packageName ->
@@ -38,7 +44,7 @@ internal fun loadEmulatorSupport(context: Context): EmulatorSupport {
     val prefs = context.getSharedPreferences(PrefsConstants.PREFS_NAME, Context.MODE_PRIVATE)
     val retroArchPackage = resolveInstalledPackage(context, UI_RETROARCH_PACKAGE_CANDIDATES)
     val dolphinPackage = resolveInstalledPackage(context, UI_DOLPHIN_PACKAGE_CANDIDATES)
-    val ppssppPackage = resolveInstalledPackage(context, listOf(UI_PPSSPP_PACKAGE))
+    val ppssppPackage = resolveInstalledPackage(context, UI_PPSSPP_PACKAGE_CANDIDATES)
     val retroArchInstalled = retroArchPackage != null
     val dolphinInstalled = dolphinPackage != null
     val ppssppInstalled = ppssppPackage != null

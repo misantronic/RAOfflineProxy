@@ -860,7 +860,8 @@ private class OpenDolphinConfigTree : ActivityResultContract<Unit, Uri?>() {
 private class OpenPpssppRootTree : ActivityResultContract<Unit, Uri?>() {
     override fun createIntent(context: Context, input: Unit): Intent =
         Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).apply {
-            initialTreeUriForPath("/storage/emulated/0/Android/data/$UI_PPSSPP_PACKAGE/files/$PPSSPP_PSP_DIR")
+            val ppssppPackage = resolveInstalledPackage(context, UI_PPSSPP_PACKAGE_CANDIDATES) ?: UI_PPSSPP_PACKAGE
+            initialTreeUriForPath("/storage/emulated/0/Android/data/$ppssppPackage/files/$PPSSPP_PSP_DIR")
                 ?.let { putExtra(DocumentsContract.EXTRA_INITIAL_URI, it) }
             addFlags(
                 Intent.FLAG_GRANT_READ_URI_PERMISSION or
