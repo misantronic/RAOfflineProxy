@@ -365,8 +365,8 @@ class ProxyServer(
             val normalizedBody = normalizeCachedResponse(action, path, rawBody, upstream)
             val rawKey = cacheKey(path, rawBody)
             val key = normalizedCacheKey(action, path, rawBody, normalizedBody)
-            val rawBodyToCache = compactCachedRawResponse(action, upstream)
             val userAgent = headers["user-agent"] ?: ""
+            val rawBodyToCache = compactCachedRawResponse(action, upstream, userAgent)
             scope.launch(Dispatchers.IO) {
                 db.cacheDao().upsert(CacheEntry(cacheKey = rawKey, responseBody = rawBodyToCache))
                 Log.i(TAG, "Cached: $rawKey")
@@ -955,14 +955,17 @@ internal fun normalizeCachedResponse(action: String?, path: String, body: String
         responseBody
     }
 
-internal fun compactCachedRawResponse(action: String?, responseBody: String): String =
-    if (action == "achievementsets") {
+internal fun compactCachedRawResponse(action: String?, responseBody: String, userAgent: String = ""): String =
+    if (action == "achievementsets" && !isPpssppUserAgent(userAgent)) {
         compactAchievementSetsResponse(responseBody)
     } else if (action == "unlocks") {
         filterWarningAchievementFromUnlocksResponse(responseBody)
     } else {
         responseBody
     }
+
+internal fun isPpssppUserAgent(userAgent: String): Boolean =
+    userAgent.contains("ppsspp", ignoreCase = true)
 
 internal const val WARNING_ACHIEVEMENT_ID = 101000001
 
