@@ -26,6 +26,7 @@ import com.raofflineproxy.markRetroAchievementsUnreachable
 import com.raofflineproxy.parseFormParams
 import com.raofflineproxy.probeRetroAchievements
 import com.raofflineproxy.proxyUserAgent
+import com.raofflineproxy.isLoopbackPortAvailable
 import com.raofflineproxy.data.AppDatabase
 import com.raofflineproxy.data.CacheEntry
 import com.raofflineproxy.data.CacheKeys
@@ -790,6 +791,17 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         startProxyInternal(treeUri)
     }
 
+    private fun prepareProxyPortForStart(): Int? {
+        val app = getApplication<Application>()
+        val port = PrefsConstants.loadProxyPort(app)
+        if (!isLoopbackPortAvailable(port)) {
+            SnackbarManager.showError(str(R.string.proxy_port_unavailable, port))
+            return null
+        }
+
+        return port
+    }
+
     private fun startProxyInternal(treeUri: Uri? = null) {
         val app = getApplication<Application>()
         viewModelScope.launch {
@@ -806,6 +818,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 if (!emulatorSupport.hasAnyEnabled) {
                     pendingProxyStart = false
                     SnackbarManager.showError(str(R.string.proxy_start_requires_emulator))
+                    return@launch
+                }
+
+                if (prepareProxyPortForStart() == null) {
+                    pendingProxyStart = false
                     return@launch
                 }
 

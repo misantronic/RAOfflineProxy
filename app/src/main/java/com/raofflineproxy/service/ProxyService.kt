@@ -128,7 +128,14 @@ class ProxyService : Service() {
             networkCallbackRegistered = true
         }
 
-        proxyServer.start()
+        try {
+            proxyServer.start()
+        } catch (error: Exception) {
+            Log.e(TAG, "Failed to start proxy server: ${error.message}", error)
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            stopSelf()
+            return START_NOT_STICKY
+        }
 
         if (isServerReachable()) {
             requestFlush()
