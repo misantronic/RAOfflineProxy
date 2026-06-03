@@ -47,11 +47,12 @@ Before enabling Shizuku in RAOfflineProxy:
 2. Enter your RetroAchievements username and password in the app when prompted.
 3. Open the Shizuku section and grant access.
 4. Enable Shizuku.
-5. Press **Start proxy** in RAOfflineProxy.
-6. RAOfflineProxy patches the enabled emulators through Shizuku and starts the proxy.
-7. Launch the emulator and play as normal.
-8. When you are done, press **Stop proxy**.
-9. RAOfflineProxy stops the proxy and reverts the enabled emulators through Shizuku.
+5. Fully quit RetroArch, Dolphin, PPSSPP, or any other supported emulator you were using.
+6. Press **Start proxy** in RAOfflineProxy.
+7. RAOfflineProxy patches the enabled emulators through Shizuku and starts the proxy.
+8. Wait until RAOfflineProxy finishes, then relaunch the emulator and play as normal.
+9. When you are done, press **Stop proxy**.
+10. RAOfflineProxy stops the proxy and reverts the enabled emulators through Shizuku.
 
 ## Important behavior difference
 
@@ -60,6 +61,7 @@ In the normal automatic flow, RAOfflineProxy patches emulator configs through th
 In manual mode on Android 14+, RAOfflineProxy uses Shizuku instead.
 
 - When Shizuku is enabled, the emulator expects RAOfflineProxy to be running after **Start proxy**
+- Fully closing the emulator before **Start proxy** and relaunching it afterward helps ensure the patched settings are picked up
 - If the proxy is not running, RetroAchievements requests will fail while the emulator is patched
 - **Stop proxy** reverts the emulator config through Shizuku so the emulator can connect directly to RetroAchievements again
 

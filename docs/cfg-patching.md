@@ -27,11 +27,11 @@ Dolphin stores its RetroAchievements configuration in `Config/RetroAchievements.
 
 RetroArch, Dolphin, and PPSSPP are patched and reverted independently depending on which emulator toggles are enabled in the app.
 
-Patching and reverting happen **automatically** when you start and stop the proxy: there is no separate setup step.
+Patching and reverting happen **automatically** when you start and stop the proxy: there is no separate setup step. For the patched settings to be picked up reliably, fully close the emulator before starting or stopping the proxy, then relaunch it afterward.
 
 ## Automatic Patching (Start Proxy)
 
-When you press **Start proxy** in the action bar, the app imports credentials from each enabled supported emulator, patches the emulator config, then starts the proxy service.
+When you press **Start proxy** in the action bar, the app imports credentials from each enabled supported emulator, patches the emulator config, then starts the proxy service. Do this only while the emulator is fully closed.
 
 :::tabs key:android-emulator
 
@@ -58,7 +58,7 @@ For Dolphin, the app patches `Config/RetroAchievements.ini`.
 
 ## Automatic Reverting (Stop Proxy)
 
-When you press **Stop proxy**, the app reverts any enabled emulator configs that were patched when the proxy started.
+When you press **Stop proxy**, the app reverts any enabled emulator configs that were patched when the proxy started. Do this only while the emulator is fully closed, then relaunch it after the revert finishes.
 
 :::tabs key:android-emulator
 
