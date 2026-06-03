@@ -1,14 +1,23 @@
 package com.raofflineproxy.ui
 
+import android.content.Intent
+import android.content.pm.PackageManager
 import android.content.Context
 import android.net.Uri
+import android.os.Build
 import androidx.documentfile.provider.DocumentFile
+import com.raofflineproxy.PrefsConstants
 import com.raofflineproxy.R
+import com.raofflineproxy.proxyBase
+import com.raofflineproxy.proxyPort
 import com.raofflineproxy.proxyValue
 
 internal const val PPSSPP_PSP_DIR = "PSP"
 internal const val PPSSPP_SYSTEM_DIR = "SYSTEM"
 internal const val PPSSPP_INI_FILE = "ppsspp.ini"
+internal const val PPSSPP_SET_HOST_OVERRIDE_ACTION = "org.ppsspp.ppsspp.action.SET_ACHIEVEMENTS_HOST_OVERRIDE"
+internal const val PPSSPP_CLEAR_HOST_OVERRIDE_ACTION = "org.ppsspp.ppsspp.action.CLEAR_ACHIEVEMENTS_HOST_OVERRIDE"
+internal const val PPSSPP_HOST_OVERRIDE_EXTRA = "host"
 
 private val PPSSPP_SAF_ROOT_PATHS = listOf(
     *UI_PPSSPP_PACKAGE_CANDIDATES.map { listOf(it, "files") }.toTypedArray(),
@@ -68,6 +77,8 @@ fun patchPpssppCfg(context: Context, treeUri: Uri?): PpssppPatchResult {
         return PpssppPatchResult(success = true, message = "PPSSPP not installed.", skippedNotInstalled = true)
     }
 
+    broadcastPpssppHostOverride(context)?.let { return it }
+
     return applyPpssppTransform(
         context = context,
         treeUri = treeUri,
@@ -83,6 +94,8 @@ fun revertPpssppCfg(context: Context, treeUri: Uri?, restoreHardcore: Boolean = 
         return PpssppPatchResult(success = true, message = "PPSSPP not installed.", skippedNotInstalled = true)
     }
 
+    clearPpssppHostOverride(context)?.let { return it }
+
     return applyPpssppTransform(
         context = context,
         treeUri = treeUri,
@@ -94,6 +107,11 @@ fun revertPpssppCfg(context: Context, treeUri: Uri?, restoreHardcore: Boolean = 
 }
 
 fun checkIsPpssppPatched(context: Context, treeUri: Uri?): Boolean {
+    if (supportsPpssppBroadcastOverride(context)) {
+        val prefs = context.getSharedPreferences(PrefsConstants.PREFS_NAME, Context.MODE_PRIVATE)
+        return prefs.getBoolean(PrefsConstants.KEY_PPSSPP_PATCHED_THIS_RUN, false)
+    }
+
     val proxyAddress = proxyValue(context)
     val tree = treeUri?.let { DocumentFile.fromTreeUri(context, it) } ?: return false
     val iniFile = resolvePpssppIni(tree) ?: return false
@@ -106,8 +124,18 @@ fun checkIsPpssppPatched(context: Context, treeUri: Uri?): Boolean {
 }
 
 internal fun validatePpssppRoot(context: Context, treeUri: Uri): Boolean {
+    if (supportsPpssppBroadcastOverride(context)) {
+        return true
+    }
+
     val tree = DocumentFile.fromTreeUri(context, treeUri) ?: return false
     return resolvePpssppIni(tree) != null
+}
+
+internal fun supportsPpssppBroadcastOverride(context: Context): Boolean {
+    val packageName = resolveInstalledPackage(context, UI_PPSSPP_PACKAGE_CANDIDATES) ?: return false
+    return resolvesPpssppBroadcast(context, packageName, PPSSPP_SET_HOST_OVERRIDE_ACTION)
+        && resolvesPpssppBroadcast(context, packageName, PPSSPP_CLEAR_HOST_OVERRIDE_ACTION)
 }
 
 internal fun buildPatchedPpssppContent(content: String, proxyAddress: String): String =
@@ -129,6 +157,51 @@ internal fun detectPpssppHardcoreEnabled(content: String): Boolean =
     extractPpssppAchievementValue(content, "AchievementsChallengeMode")
         ?.equals("true", ignoreCase = true)
         ?: false
+
+private fun broadcastPpssppHostOverride(context: Context): PpssppPatchResult? {
+    val packageName = resolveInstalledPackage(context, UI_PPSSPP_PACKAGE_CANDIDATES) ?: return null
+    if (!supportsPpssppBroadcastOverride(context)) {
+        return null
+    }
+
+    context.sendBroadcast(
+        Intent(PPSSPP_SET_HOST_OVERRIDE_ACTION)
+            .setPackage(packageName)
+            .putExtra(PPSSPP_HOST_OVERRIDE_EXTRA, proxyBase(proxyPort(context)))
+    )
+    return PpssppPatchResult(
+        success = true,
+        message = context.getString(R.string.ppsspp_patch_success),
+        skippedNotInstalled = false
+    )
+}
+
+private fun clearPpssppHostOverride(context: Context): PpssppPatchResult? {
+    val packageName = resolveInstalledPackage(context, UI_PPSSPP_PACKAGE_CANDIDATES) ?: return null
+    if (!supportsPpssppBroadcastOverride(context)) {
+        return null
+    }
+
+    context.sendBroadcast(
+        Intent(PPSSPP_CLEAR_HOST_OVERRIDE_ACTION)
+            .setPackage(packageName)
+    )
+    return PpssppPatchResult(
+        success = true,
+        message = context.getString(R.string.ppsspp_revert_success),
+        skippedNotInstalled = false
+    )
+}
+
+private fun resolvesPpssppBroadcast(context: Context, packageName: String, action: String): Boolean {
+    val intent = Intent(action).setPackage(packageName)
+    return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        context.packageManager.queryBroadcastReceivers(intent, PackageManager.ResolveInfoFlags.of(0)).isNotEmpty()
+    } else {
+        @Suppress("DEPRECATION")
+        context.packageManager.queryBroadcastReceivers(intent, 0).isNotEmpty()
+    }
+}
 
 private fun applyPpssppTransform(
     context: Context,
