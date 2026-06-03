@@ -18,6 +18,10 @@ Install the APK on your Android device. You can download the latest alpha prerel
 
 ## Step 2: Start the Proxy
 
+::: warning Fully quit emulators first
+Before pressing **Start proxy**, fully close RetroArch, Dolphin, PPSSPP, or any other supported emulator you were using. Start them again only after RAOfflineProxy finishes patching and the proxy is running.
+:::
+
 Start the proxy. RAOfflineProxy will import your saved RetroAchievements login automatically. On some devices, you may also need to grant folder access.
 
 ## Step 3: Cache Your Games
@@ -45,10 +49,11 @@ See [Caching Games](./caching-games) for full details.
 
 ## Step 4: Play Offline
 
-1. Start the proxy service (press **Start proxy** in the action bar, or enable auto-start)
-2. Launch RetroArch, Dolphin, or PPSSPP and load a cached game
-3. Earn achievements - they will queue locally when offline
-4. When you reconnect, the proxy automatically sends queued awards to RA
+1. Fully quit all supported emulators
+2. Start the proxy service (press **Start proxy** in the action bar, or enable auto-start)
+3. Launch RetroArch, Dolphin, or PPSSPP and load a cached game
+4. Earn achievements - they will queue locally when offline
+5. When you reconnect, the proxy automatically sends queued awards to RA
 
 ::: tip Test with the SNES Burn-in Test Cartridge
 The [SNES Burn-in Test Cartridge Test Kit](https://retroachievements.org/game/10701) is the perfect game to verify everything works. The ["I Can Move!"](https://retroachievements.org/achievement/52113) achievement is very easy to earn, and you can reset it on the achievement details page to test again. Great for confirming that offline queuing and syncing work correctly.
@@ -59,7 +64,7 @@ The [SNES Burn-in Test Cartridge Test Kit](https://retroachievements.org/game/10
 ```
 1. Install APK
 2. Enter RA credentials in RetroArch, Dolphin, or PPSSPP
-3. Open RAOfflineProxy → Start proxy while online
+3. Fully quit emulators → Open RAOfflineProxy → Start proxy while online
 4. Cache your games from **Cached Games** or just start them while online to cache them automatically
 5. Play!
 ```
