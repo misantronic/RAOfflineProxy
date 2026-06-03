@@ -5,8 +5,10 @@ import android.content.Context
 import android.content.Intent
 import androidx.core.content.edit
 import com.raofflineproxy.PrefsConstants
+import com.raofflineproxy.isLoopbackPortAvailable
 import com.raofflineproxy.data.AppDatabase
 import com.raofflineproxy.proxy.loadLoginCredentials
+import com.raofflineproxy.ui.executeShizukuManualPatch
 import com.raofflineproxy.ui.loadEmulatorSupport
 import com.raofflineproxy.ui.patchDolphinCfg
 import com.raofflineproxy.ui.patchPpssppCfg
@@ -21,13 +23,21 @@ class BootReceiver : BroadcastReceiver() {
         val prefs = context.getSharedPreferences(PrefsConstants.PREFS_NAME, Context.MODE_PRIVATE)
         if (!prefs.getBoolean(PrefsConstants.KEY_AUTOSTART_PROXY, false)) return
 
-        if (PrefsConstants.loadManualEmulatorPatchingEnabled(context)) {
-            ProxyService.start(context)
-            return
-        }
-
         val emulatorSupport = loadEmulatorSupport(context)
         if (!emulatorSupport.hasAnyEnabled) return
+
+        val preferredPort = PrefsConstants.loadProxyPort(context)
+        if (!isLoopbackPortAvailable(preferredPort)) return
+
+        if (PrefsConstants.loadManualEmulatorPatchingEnabled(context)) {
+            val result = runBlocking {
+                executeShizukuManualPatch(context, emulatorSupport, "patch")
+            }
+            if (result.success) {
+                ProxyService.start(context)
+            }
+            return
+        }
 
         val treeUri = PrefsConstants.loadSafUri(context)
         val dolphinTreeUri = PrefsConstants.loadDolphinSafUri(context)

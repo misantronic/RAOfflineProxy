@@ -207,6 +207,7 @@
     <string name="setting_proxy_port_label">Proxy port</string>
     <string name="setting_proxy_port_hint">Used for the local emulator proxy. Range: 1024 to 65535. Stop the proxy to change it.</string>
     <string name="setting_proxy_port_invalid">Enter a port between 1024 and 65535.</string>
+    <string name="proxy_port_unavailable">Port %1$d is already in use. Free it or choose a different port before starting the proxy.</string>
     <string name="btn_clear_cache">Clear Cache</string>
     <string name="btn_clear_database">Clear Database</string>
     <string name="btn_contact_feedback">Contact</string>

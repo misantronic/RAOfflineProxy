@@ -5,11 +5,11 @@ import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.util.Log
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
 import okhttp3.OkHttpClient
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.Request
+import java.net.InetAddress
+import java.net.ServerSocket
 import java.net.URLDecoder
 import java.security.MessageDigest
 import kotlin.math.max
@@ -34,8 +34,6 @@ data class RetroAchievementsReachability(
 
 private object RetroAchievementsReachabilityTracker {
     private val _state = MutableStateFlow(RetroAchievementsReachability())
-
-    val state: StateFlow<RetroAchievementsReachability> = _state.asStateFlow()
 
     @Synchronized
     fun current(): RetroAchievementsReachability = _state.value
@@ -161,12 +159,15 @@ fun proxyValue(context: Context): String = proxyValue(proxyPort(context))
 
 fun proxyBase(port: Int): String = "http://${proxyValue(port)}"
 
-fun proxyBase(context: Context): String = proxyBase(proxyPort(context))
-
 fun proxyUserAgent(original: String): String {
     if (original.contains(PROXY_UA_TAG)) return original
     return "$original $PROXY_UA_TAG/${BuildConfig.VERSION_NAME}"
 }
+
+internal fun isLoopbackPortAvailable(port: Int): Boolean = runCatching {
+    val bindAddress = InetAddress.getByName(proxyHost())
+    ServerSocket(port, 50, bindAddress).use { true }
+}.getOrDefault(false)
 
 fun redactTokens(input: String): String =
     TOKEN_QUERY_REGEX.replace(input) { "${it.groupValues[1]}t=<token>" }
