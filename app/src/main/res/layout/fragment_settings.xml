@@ -56,19 +56,40 @@
             android:text="@string/setting_proxy_port_hint"
             android:textAppearance="@style/TextAppearance.MaterialComponents.Body2" />
 
-        <Button
-            android:id="@+id/btn_clear_cache"
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="24dp"
-            android:text="@string/btn_clear_cache" />
+            android:baselineAligned="false"
+            android:orientation="horizontal">
 
-        <Button
-            android:id="@+id/btn_clear_database"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:text="@string/btn_clear_database" />
+            <Button
+                android:id="@+id/btn_clear_cache"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/btn_clear_cache"
+                tools:ignore="ButtonStyle" />
+
+            <Button
+                android:id="@+id/btn_clear_permissions"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:layout_weight="1"
+                android:text="@string/btn_clear_permissions"
+                tools:ignore="ButtonStyle"/>
+
+            <Button
+                android:id="@+id/btn_clear_database"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:layout_weight="1"
+                android:text="@string/btn_clear_database"
+                tools:ignore="ButtonStyle"/>
+
+        </LinearLayout>
 
         <LinearLayout
             android:layout_width="match_parent"

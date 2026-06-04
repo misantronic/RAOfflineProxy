@@ -120,7 +120,19 @@ data class MainUiState(
     val scanProgress: String? = null,
     val flushInProgress: Boolean = false,
     val availableAppUpdate: AppUpdateInfo? = null
-)
+) {
+    fun clearedPermissions(): MainUiState = copy(
+        manualEmulatorPatchingEnabled = false,
+        needsSafGrant = false,
+        safGrantTarget = null,
+        pendingSafGrantTargets = emptyList(),
+        cfgCopyBackPath = null,
+        cfgIsPatched = null,
+        shizukuManualPatchingEnabled = false,
+        showPpssppShizukuRootModePrompt = false,
+        ppssppShizukuRootModeUnknown = true
+    )
+}
 
 class MainViewModel(app: Application) : AndroidViewModel(app) {
     private companion object {
@@ -1281,6 +1293,32 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 scanProgress = null
             )
             SnackbarManager.showMessage(str(R.string.cache_cleared))
+        }
+    }
+
+    fun clearPermissions() {
+        val app = getApplication<Application>()
+
+        viewModelScope.launch(Dispatchers.IO) {
+            app.contentResolver.persistedUriPermissions.toList().forEach { permission ->
+                val flags =
+                    (if (permission.isReadPermission) android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION else 0) or
+                        (if (permission.isWritePermission) android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION else 0)
+
+                if (flags == 0) return@forEach
+
+                runCatching {
+                    app.contentResolver.releasePersistableUriPermission(permission.uri, flags)
+                }
+            }
+
+            PrefsConstants.clearPermissions(app)
+            pendingPpssppShizukuRootModePrompt = false
+
+            _state.value = _state.value.clearedPermissions()
+
+            checkCfgPatched(treeUri = loadSafUri())
+            SnackbarManager.showMessage(str(R.string.permissions_cleared))
         }
     }
 

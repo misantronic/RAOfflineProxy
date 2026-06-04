@@ -35,6 +35,7 @@ class SettingsFragment : Fragment() {
         val etProxyPort = view.findViewById<TextInputEditText>(R.id.et_proxy_port)
         val tvProxyPortHint = view.findViewById<TextView>(R.id.tv_proxy_port_hint)
         val btnClearCache = view.findViewById<Button>(R.id.btn_clear_cache)
+        val btnClearPermissions = view.findViewById<Button>(R.id.btn_clear_permissions)
         val btnClearDatabase = view.findViewById<Button>(R.id.btn_clear_database)
         cbAutostart.text = getString(R.string.setting_autostart_label, getString(R.string.app_name))
         etProxyPort.filters = arrayOf(InputFilter.LengthFilter(5))
@@ -104,6 +105,19 @@ class SettingsFragment : Fragment() {
                 .show()
         }
 
+        btnClearPermissions.setOnClickListener {
+            AlertDialog.Builder(requireContext())
+                .setTitle(R.string.clear_permissions_confirm_title)
+                .setMessage(R.string.clear_permissions_confirm_message)
+                .setPositiveButton(R.string.clear_action) { _, _ ->
+                    viewModel.clearPermissions()
+                }
+                .setNegativeButton(android.R.string.cancel, null)
+                .create()
+                .also { it.setCanceledOnTouchOutside(false) }
+                .show()
+        }
+
         view.findViewById<Button>(R.id.btn_contact_feedback).setOnClickListener {
             val url = getString(R.string.contact_feedback_url)
             startActivity(Intent(Intent.ACTION_VIEW, url.toUri()))
@@ -135,6 +149,7 @@ class SettingsFragment : Fragment() {
                 etProxyPort.isEnabled = !state.proxyRunning
                 tvProxyPortHint.isEnabled = !state.proxyRunning
                 btnClearCache.isEnabled = !state.proxyRunning
+                btnClearPermissions.isEnabled = !state.proxyRunning
                 btnClearDatabase.isEnabled = !state.proxyRunning
                 if (!state.proxyRunning) {
                     inputProxyPort.error = null
