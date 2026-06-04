@@ -6,7 +6,7 @@ import time
 from pathlib import Path
 
 from .batocera_conf import patch_batocera_conf, revert_batocera_conf
-from .config import APP_VERSION, CONFIG_DIR, load_config
+from .config import APP_VERSION, CONFIG_DIR, load_config, save_config
 from .platform import (
     autostart_enabled,
     autostart_supported,
@@ -96,6 +96,7 @@ FONT_CANDIDATES = [
     "Noto Sans HK",
 ]
 LOGO_PATH = Path(__file__).resolve().parent / "logo-320.png"
+CALIBRATION_FACE_BUTTONS = {BTN_SOUTH, BTN_EAST}
 
 
 def run_menu_sdl(command_runner: str) -> None:
@@ -184,7 +185,7 @@ class MenuSdlSession:
         self.pygame = pygame
         self.config_data = load_config()
         self.running = True
-        self.view = "main"
+        self.view = "controller_calibration" if self.needs_controller_calibration() else "main"
         self.selected_index = 0
         self.scroll_offset = 0
         self.message: tuple[str, float] | None = None
@@ -229,6 +230,13 @@ class MenuSdlSession:
         self.main_update_version = None
         self.main_update_asset_url = None
         self.main_update_dialog_seen = False
+        self.calibration_confirm_button = self.configured_confirm_button()
+        self.calibration_cancel_button = self.configured_cancel_button()
+        self.calibration_step = (
+            "done"
+            if self.calibration_complete()
+            else ("confirm" if self.calibration_confirm_button is None else "cancel")
+        )
         self.clear_cache_return_view = "cached_games"
         self.active_game_unlock_game_id = None
         self.active_game_unlock_count_cached = None
@@ -337,6 +345,9 @@ class MenuSdlSession:
         self.pygame.display.flip()
 
     def labels(self, running: bool) -> list[str]:
+        if self.view == "controller_calibration":
+            return []
+
         if self.view == "cached_games":
             cached = [game.title for game in self.cached_games]
             return ["Add ROM", "Start Smart Cache", *cached, "Clear cache", "Back"]
@@ -413,6 +424,8 @@ class MenuSdlSession:
         return self.labels(self.proxy_running() if running is None else running)
 
     def title_for_view(self) -> str:
+        if self.view == "controller_calibration":
+            return "Controller Setup"
         if self.view == "cached_games":
             return "Cached Games"
         if self.view == "pending_awards":
@@ -458,6 +471,12 @@ class MenuSdlSession:
         return list(getattr(self, "active_game_unlock_titles_cached", []))
 
     def status_text(self, running: bool) -> str:
+        if self.view == "controller_calibration":
+            if self.calibration_step == "confirm":
+                return "Press the button labeled A"
+            if self.calibration_step == "cancel":
+                return "Press the button labeled B"
+            return "Controller setup complete"
         if self.view == "cached_games":
             return f"CACHED: {len(self.cached_games)} / {MAX_CACHED_GAMES}"
         if self.view == "pending_awards":
@@ -506,15 +525,22 @@ class MenuSdlSession:
         return status
 
     def bottom_hint_text(self) -> str | None:
+        if self.view == "controller_calibration":
+            if self.calibration_step == "confirm":
+                return "Face buttons only. Press the labeled A button to continue."
+            if self.calibration_step == "cancel":
+                return "Now press the labeled B button."
+            return None
+
         if self.view != "main":
             if self.view == "smart_cache_prompt":
                 return None
             if self.view == "clear_cache_confirm":
-                return "Press A or START to confirm. B to cancel."
+                return self.confirm_cancel_hint("confirm", "cancel")
             if self.view == "cache_progress":
                 return None
             if self.view == "update_prompt":
-                return "Press START or A to install."
+                return self.confirm_cancel_hint("install", None)
             cache_result = getattr(self, "cache_result", None)
             if cache_result is not None:
                 text, expires_at = cache_result
@@ -557,6 +583,9 @@ class MenuSdlSession:
     def handle_raw_input(self) -> None:
         for key in read_keys(self.input_handles):
             log_menu_sdl(f"raw key={key}")
+            if self.handle_calibration_key(key):
+                continue
+
             if key in {KEY_UP, KEY_LEFT, BTN_DPAD_UP, BTN_DPAD_LEFT}:
                 self.navigate(-1)
                 continue
@@ -565,14 +594,17 @@ class MenuSdlSession:
                 self.navigate(1)
                 continue
 
-            if key in {KEY_ENTER, KEY_SPACE, KEY_S, BTN_SOUTH, BTN_START}:
+            if self.is_confirm_key(key):
                 self.activate_selected()
                 continue
 
-            if key in {KEY_ESC, KEY_BACKSPACE, KEY_Q, BTN_EAST, BTN_SELECT}:
+            if self.is_cancel_key(key):
                 self.go_back()
 
     def handle_key(self, key: int) -> None:
+        if self.view == "controller_calibration":
+            return
+
         if key in {self.pygame.K_UP, self.pygame.K_LEFT}:
             self.navigate(-1)
             return
@@ -595,6 +627,9 @@ class MenuSdlSession:
         log_menu_sdl(f"navigate delta={delta} selected={self.selected_index}")
 
     def activate_selected(self) -> None:
+        if self.view == "controller_calibration":
+            return
+
         if self.view == "cached_games":
             self.activate_cached_games_selected()
             return
@@ -770,6 +805,93 @@ class MenuSdlSession:
 
     def is_knulli_platform(self) -> bool:
         return Path("/userdata/system").exists()
+
+    def calibration_complete(self) -> bool:
+        return (
+            self.configured_confirm_button() is not None
+            and self.configured_cancel_button() is not None
+        )
+
+    def needs_controller_calibration(self) -> bool:
+        return not self.calibration_complete()
+
+    def configured_confirm_button(self) -> int | None:
+        value = self.config_data.get("controller_confirm_button")
+        return self.parse_button_code(value)
+
+    def configured_cancel_button(self) -> int | None:
+        value = self.config_data.get("controller_cancel_button")
+        return self.parse_button_code(value)
+
+    def parse_button_code(self, value: object) -> int | None:
+        if value is None:
+            return None
+
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return None
+
+    def handle_calibration_key(self, key: int) -> bool:
+        if self.view != "controller_calibration":
+            return False
+
+        if key not in CALIBRATION_FACE_BUTTONS:
+            return True
+
+        if self.calibration_step == "confirm":
+            self.calibration_confirm_button = key
+            self.calibration_step = "cancel"
+            self.persist_controller_mapping()
+            return True
+
+        if self.calibration_step != "cancel":
+            return True
+
+        if key == self.calibration_confirm_button:
+            self.message = ("B must be a different button", time.monotonic() + 1.5)
+            return True
+
+        self.calibration_cancel_button = key
+        self.calibration_step = "done"
+        self.persist_controller_mapping()
+        self.view = "main"
+        self.message = ("Controller mapping saved", time.monotonic() + 1.5)
+        self.refresh_main_menu_state(force=True)
+        return True
+
+    def persist_controller_mapping(self) -> None:
+        self.config_data["controller_confirm_button"] = self.calibration_confirm_button
+        if self.calibration_cancel_button is None:
+            self.config_data.pop("controller_cancel_button", None)
+        else:
+            self.config_data["controller_cancel_button"] = self.calibration_cancel_button
+        save_config(self.config_data)
+
+    def confirm_button_name(self) -> str:
+        return "A" if self.calibration_confirm_button == BTN_SOUTH else "B"
+
+    def cancel_button_name(self) -> str:
+        return "A" if self.calibration_cancel_button == BTN_SOUTH else "B"
+
+    def confirm_cancel_hint(self, confirm_action: str, cancel_action: str | None) -> str:
+        confirm_label = self.confirm_button_name()
+        if cancel_action is None:
+            return f"Press START or {confirm_label} to {confirm_action}."
+
+        cancel_label = self.cancel_button_name()
+        return (
+            f"Press {confirm_label} or START to {confirm_action}. "
+            f"{cancel_label} to {cancel_action}."
+        )
+
+    def is_confirm_key(self, key: int) -> bool:
+        confirm_key = self.calibration_confirm_button or BTN_SOUTH
+        return key in {KEY_ENTER, KEY_SPACE, KEY_S, confirm_key, BTN_START}
+
+    def is_cancel_key(self, key: int) -> bool:
+        cancel_key = self.calibration_cancel_button or BTN_EAST
+        return key in {KEY_ESC, KEY_BACKSPACE, KEY_Q, cancel_key, BTN_SELECT}
 
     def activate_game_actions_selected(self) -> None:
         if self.active_game is None:

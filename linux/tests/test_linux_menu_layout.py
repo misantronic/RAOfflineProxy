@@ -69,11 +69,50 @@ class MenuLayoutTests(unittest.TestCase):
     def test_bottom_hint_for_clear_cache_confirm(self) -> None:
         session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
         session.view = "clear_cache_confirm"
+        session.calibration_confirm_button = menu_sdl.BTN_SOUTH
+        session.calibration_cancel_button = menu_sdl.BTN_EAST
 
         self.assertEqual(
             menu_sdl.MenuSdlSession.bottom_hint_text(session),
             "Press A or START to confirm. B to cancel.",
         )
+
+    def test_bottom_hint_for_clear_cache_confirm_reflects_swapped_mapping(self) -> None:
+        session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
+        session.view = "clear_cache_confirm"
+        session.calibration_confirm_button = menu_sdl.BTN_EAST
+        session.calibration_cancel_button = menu_sdl.BTN_SOUTH
+
+        self.assertEqual(
+            menu_sdl.MenuSdlSession.bottom_hint_text(session),
+            "Press B or START to confirm. A to cancel.",
+        )
+
+    def test_bottom_hint_for_controller_calibration_prompt(self) -> None:
+        session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
+        session.view = "controller_calibration"
+        session.calibration_step = "confirm"
+
+        self.assertEqual(
+            menu_sdl.MenuSdlSession.bottom_hint_text(session),
+            "Face buttons only. Press the labeled A button to continue.",
+        )
+
+    def test_status_text_for_controller_calibration_confirm_step(self) -> None:
+        session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
+        session.view = "controller_calibration"
+        session.calibration_step = "confirm"
+
+        self.assertEqual(
+            menu_sdl.MenuSdlSession.status_text(session, running=False),
+            "Press the button labeled A",
+        )
+
+    def test_labels_empty_during_controller_calibration(self) -> None:
+        session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
+        session.view = "controller_calibration"
+
+        self.assertEqual(menu_sdl.MenuSdlSession.labels(session, running=False), [])
 
     def test_status_reports_proxy_and_connectivity_when_credentials_exist(self) -> None:
         session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
@@ -317,6 +356,183 @@ class MenuLayoutTests(unittest.TestCase):
         finally:
             menu_sdl.MenuSdlSession.restore_view_position = original_restore_view_position
             menu_sdl.MenuSdlSession.refresh_cached_games = original_refresh_cached_games
+
+    def test_handle_calibration_key_persists_confirm_then_cancel_mapping(self) -> None:
+        session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
+        session.view = "controller_calibration"
+        session.calibration_step = "confirm"
+        session.calibration_confirm_button = None
+        session.calibration_cancel_button = None
+        session.config_data = {}
+        session.message = None
+        session.refresh_main_menu_state = lambda force=False: setattr(
+            session, "refresh_forced", force
+        )
+
+        original_save_config = menu_sdl.save_config
+        try:
+            saved_configs = []
+            menu_sdl.save_config = lambda config: saved_configs.append(dict(config))
+
+            self.assertTrue(
+                menu_sdl.MenuSdlSession.handle_calibration_key(
+                    session, menu_sdl.BTN_EAST
+                )
+            )
+            self.assertEqual(session.calibration_confirm_button, menu_sdl.BTN_EAST)
+            self.assertEqual(session.calibration_step, "cancel")
+
+            self.assertTrue(
+                menu_sdl.MenuSdlSession.handle_calibration_key(
+                    session, menu_sdl.BTN_SOUTH
+                )
+            )
+
+            self.assertEqual(session.calibration_cancel_button, menu_sdl.BTN_SOUTH)
+            self.assertEqual(session.calibration_step, "done")
+            self.assertEqual(session.view, "main")
+            self.assertEqual(session.refresh_forced, True)
+            self.assertEqual(
+                saved_configs,
+                [
+                    {"controller_confirm_button": menu_sdl.BTN_EAST},
+                    {
+                        "controller_confirm_button": menu_sdl.BTN_EAST,
+                        "controller_cancel_button": menu_sdl.BTN_SOUTH,
+                    },
+                ],
+            )
+        finally:
+            menu_sdl.save_config = original_save_config
+
+    def test_handle_calibration_key_rejects_duplicate_b_button(self) -> None:
+        session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
+        session.view = "controller_calibration"
+        session.calibration_step = "cancel"
+        session.calibration_confirm_button = menu_sdl.BTN_SOUTH
+        session.calibration_cancel_button = None
+        session.config_data = {"controller_confirm_button": menu_sdl.BTN_SOUTH}
+        session.message = None
+
+        original_save_config = menu_sdl.save_config
+        try:
+            saved_configs = []
+            menu_sdl.save_config = lambda config: saved_configs.append(dict(config))
+
+            self.assertTrue(
+                menu_sdl.MenuSdlSession.handle_calibration_key(
+                    session, menu_sdl.BTN_SOUTH
+                )
+            )
+
+            self.assertIsNone(session.calibration_cancel_button)
+            self.assertEqual(session.calibration_step, "cancel")
+            self.assertEqual(session.view, "controller_calibration")
+            self.assertEqual(saved_configs, [])
+            self.assertIsNotNone(session.message)
+        finally:
+            menu_sdl.save_config = original_save_config
+
+    def test_init_starts_on_calibration_when_mapping_missing(self) -> None:
+        surface = object()
+
+        class FakeClock:
+            def tick(self, _fps):
+                return None
+
+        class FakeFontModule:
+            @staticmethod
+            def match_font(_name):
+                return None
+
+            @staticmethod
+            def Font(_path, size):
+                class FakeFont:
+                    def __init__(self):
+                        self.size = size
+
+                    def set_bold(self, _bold):
+                        return None
+
+                    def get_height(self):
+                        return self.size
+
+                return FakeFont()
+
+        class FakeTimeModule:
+            @staticmethod
+            def Clock():
+                return FakeClock()
+
+        class FakePygame:
+            font = FakeFontModule()
+            time = FakeTimeModule()
+
+        with (
+            patch.object(menu_sdl, "load_config", return_value={}),
+            patch.object(menu_sdl, "open_input_devices", return_value=[]),
+            patch.object(menu_sdl, "Storage", return_value=object()),
+            patch.object(menu_sdl.MenuSdlSession, "refresh_main_menu_state", return_value=None),
+            patch.object(menu_sdl.MenuSdlSession, "refresh_cached_games", return_value=None),
+        ):
+            session = menu_sdl.MenuSdlSession("runner", surface, 640, 480, FakePygame())
+
+        self.assertEqual(session.view, "controller_calibration")
+        self.assertEqual(session.calibration_step, "confirm")
+
+    def test_init_skips_calibration_when_mapping_exists(self) -> None:
+        surface = object()
+
+        class FakeClock:
+            def tick(self, _fps):
+                return None
+
+        class FakeFontModule:
+            @staticmethod
+            def match_font(_name):
+                return None
+
+            @staticmethod
+            def Font(_path, size):
+                class FakeFont:
+                    def __init__(self):
+                        self.size = size
+
+                    def set_bold(self, _bold):
+                        return None
+
+                    def get_height(self):
+                        return self.size
+
+                return FakeFont()
+
+        class FakeTimeModule:
+            @staticmethod
+            def Clock():
+                return FakeClock()
+
+        class FakePygame:
+            font = FakeFontModule()
+            time = FakeTimeModule()
+
+        with (
+            patch.object(
+                menu_sdl,
+                "load_config",
+                return_value={
+                    "controller_confirm_button": menu_sdl.BTN_EAST,
+                    "controller_cancel_button": menu_sdl.BTN_SOUTH,
+                },
+            ),
+            patch.object(menu_sdl, "open_input_devices", return_value=[]),
+            patch.object(menu_sdl, "Storage", return_value=object()),
+            patch.object(menu_sdl.MenuSdlSession, "refresh_main_menu_state", return_value=None),
+            patch.object(menu_sdl.MenuSdlSession, "refresh_cached_games", return_value=None),
+        ):
+            session = menu_sdl.MenuSdlSession("runner", surface, 640, 480, FakePygame())
+
+        self.assertEqual(session.view, "main")
+        self.assertEqual(session.calibration_step, "done")
 
     def test_refresh_main_menu_state_checks_update_only_on_force(self) -> None:
         session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
