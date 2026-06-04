@@ -170,9 +170,12 @@
 
     <!-- Clear cache/database -->
     <string name="cache_cleared">Cache cleared.</string>
+    <string name="permissions_cleared">Permissions cleared.</string>
     <string name="database_cleared">Database cleared.</string>
     <string name="clear_cache_confirm_title">Clear cache?</string>
     <string name="clear_cache_confirm_message">This will remove all cached games and cached RetroAchievements data.</string>
+    <string name="clear_permissions_confirm_title">Clear permissions?</string>
+    <string name="clear_permissions_confirm_message">This will remove all granted folder access permissions and reset saved access choices.</string>
     <string name="clear_database_confirm_title">Clear database?</string>
     <string name="clear_database_confirm_message">This will remove all cached data and all pending awards.</string>
     <string name="clear_action">Clear</string>
@@ -209,6 +212,7 @@
     <string name="setting_proxy_port_invalid">Enter a port between 1024 and 65535.</string>
     <string name="proxy_port_unavailable">Port %1$d is already in use. Free it or choose a different port before starting the proxy.</string>
     <string name="btn_clear_cache">Clear Cache</string>
+    <string name="btn_clear_permissions">Clear Permissions</string>
     <string name="btn_clear_database">Clear Database</string>
     <string name="btn_contact_feedback">Contact</string>
     <string name="contact_feedback_url">https://forms.gle/XPRfWe2hAqzYy3JX9</string>

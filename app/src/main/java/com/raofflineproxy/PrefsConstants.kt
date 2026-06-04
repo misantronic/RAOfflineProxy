@@ -233,6 +233,22 @@ object PrefsConstants {
             .edit { putBoolean(KEY_SHIZUKU_MANUAL_PATCHING_ENABLED, enabled) }
     }
 
+    fun clearPermissions(context: Context) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit {
+                remove(KEY_SAF_TREE_URI)
+                remove(KEY_RETROARCH_SAF_TREE_URI)
+                remove(KEY_RETROARCH_SMART_CACHE_SAF_TREE_URI)
+                remove(KEY_DOLPHIN_SAF_TREE_URI)
+                remove(KEY_PPSSPP_SAF_TREE_URI)
+                remove(KEY_PPSSPP_ROOT_MODE)
+                remove(KEY_SMART_CACHE_ROM_SAF_TREE_URI)
+                remove(KEY_SMART_CACHE_ROM_SAF_TREE_URIS)
+                remove(KEY_MANUAL_EMULATOR_PATCHING)
+                remove(KEY_SHIZUKU_MANUAL_PATCHING_ENABLED)
+            }
+    }
+
     fun saveProxyPort(context: Context, port: Int) {
         require(isValidProxyPort(port)) { "Invalid proxy port: $port" }
 
