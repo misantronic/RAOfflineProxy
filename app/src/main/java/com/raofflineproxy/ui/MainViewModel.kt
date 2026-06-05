@@ -1972,19 +1972,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             return
         }
         val currentVersionName = BuildConfig.VERSION_NAME
-        val now = System.currentTimeMillis()
-        if (!force && now - PrefsConstants.loadAppUpdateLastCheckedAt(app) < APP_UPDATE_CHECK_INTERVAL_MS) {
-            Log.d("RAProxy/Updates", "Skipping app update check; last check was too recent")
-            val cachedUpdate = PrefsConstants.loadAvailableAppUpdate(app)
-                ?.takeIf { AppUpdateChecker.isUpdateNewerThanCurrent(currentVersionName, it.versionName) }
-            _state.value = _state.value.copy(availableAppUpdate = cachedUpdate)
-            return
-        }
         if (!hasValidatedInternet(connectivityManager)) {
             Log.i("RAProxy/Updates", "Skipping app update check; validated internet not available")
             return
         }
 
+        val now = System.currentTimeMillis()
         PrefsConstants.saveAppUpdateLastCheckedAt(app, now)
         Log.i("RAProxy/Updates", "Starting app update check force=$force")
         viewModelScope.launch {
@@ -1998,8 +1991,17 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             Log.i("RAProxy/Updates", "App update available: ${update.versionName}")
             PrefsConstants.saveAvailableAppUpdate(app, update)
             _state.value = _state.value.copy(availableAppUpdate = update)
-            _events.emit(MainUiEvent.ShowAppUpdate(update))
+            if (shouldShowAppUpdateDialog(now)) {
+                PrefsConstants.saveAppUpdateLastPromptedAt(app, now)
+                _events.emit(MainUiEvent.ShowAppUpdate(update))
+            }
         }
+    }
+
+    private fun shouldShowAppUpdateDialog(now: Long): Boolean {
+        val app = getApplication<Application>()
+        val lastPromptedAt = PrefsConstants.loadAppUpdateLastPromptedAt(app)
+        return now - lastPromptedAt >= APP_UPDATE_CHECK_INTERVAL_MS
     }
 
     private fun loadAutostartPref(): Boolean =
