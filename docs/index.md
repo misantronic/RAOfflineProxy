@@ -22,7 +22,7 @@ hero:
 features:
   - icon: ⚙️
     title: Easy Setup
-    details: Starting the proxy automatically configures supported emulators - stopping it restores your original settings.
+    details: Starting the proxy automatically configures supported emulators. Stopping it restores your original settings.
   - icon: 💾
     title: Play Offline
     details: Your game and achievement data is saved to your device so everything works without Wi-Fi or mobile data.
@@ -51,6 +51,10 @@ features:
         <div class="supported-platforms__item">
           <img src="/ppsspp.png" alt="PPSSPP logo">
           <span>PPSSPP</span>
+        </div>
+        <div class="supported-platforms__item">
+          <img class="supported-platforms__logo--rounded" src="/armsx2.webp" alt="ARMSX2 logo">
+          <span>ARMSX2</span>
         </div>
       </div>
     </div>

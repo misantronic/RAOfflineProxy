@@ -96,6 +96,10 @@
   object-fit: contain;
 }
 
+.supported-platforms__logo--rounded {
+  border-radius: 12px;
+}
+
 .supported-platforms__item span {
   font-weight: 600;
 }
