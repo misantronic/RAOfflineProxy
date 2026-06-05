@@ -27,7 +27,8 @@ class BootReceiver : BroadcastReceiver() {
         if (action != Intent.ACTION_BOOT_COMPLETED) return
 
         val prefs = context.getSharedPreferences(PrefsConstants.PREFS_NAME, Context.MODE_PRIVATE)
-        if (!prefs.getBoolean(PrefsConstants.KEY_AUTOSTART_PROXY, false)) return
+        val shouldRestartProxy = prefs.getBoolean(PrefsConstants.KEY_AUTOSTART_PROXY, false) || ProxyService.shouldKeepRunning(context)
+        if (!shouldRestartProxy) return
 
         val emulatorSupport = loadEmulatorSupport(context)
         if (!emulatorSupport.hasAnyEnabled) return
