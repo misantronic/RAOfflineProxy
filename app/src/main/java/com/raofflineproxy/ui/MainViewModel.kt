@@ -320,9 +320,22 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private fun recoverPatchedCfgIfProxyStopped() {
         val app = getApplication<Application>()
         viewModelScope.launch {
+            val shouldKeepRunning = ProxyService.shouldKeepRunning(app)
             if (loadManualEmulatorPatchingEnabled()) {
                 val proxyRunning = ProxyService.isRunning(app)
                 if (!proxyRunning) {
+                    if (shouldKeepRunning) {
+                        ProxyService.start(app)
+                        _state.value = _state.value.copy(
+                            proxyRunning = true,
+                            cfgIsPatched = null,
+                            needsSafGrant = false,
+                            safGrantTarget = null,
+                            cfgCopyBackPath = null
+                        )
+                        return@launch
+                    }
+
                     val prefs = app.getSharedPreferences(PrefsConstants.PREFS_NAME, Context.MODE_PRIVATE)
                     if (prefs.getBoolean(PrefsConstants.KEY_ARMSX2_PATCHED_THIS_RUN, false)) {
                         val armsx2Result = withContext(Dispatchers.IO) { revertArmsx2Cfg(app) }
@@ -357,6 +370,18 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             val dolphinPatchedThisRun = prefs.getBoolean(PrefsConstants.KEY_DOLPHIN_PATCHED_THIS_RUN, false)
             val ppssppPatchedThisRun = prefs.getBoolean(PrefsConstants.KEY_PPSSPP_PATCHED_THIS_RUN, false)
             val armsx2PatchedThisRun = prefs.getBoolean(PrefsConstants.KEY_ARMSX2_PATCHED_THIS_RUN, false)
+
+            if (!proxyRunning && shouldKeepRunning) {
+                ProxyService.start(app)
+                _state.value = _state.value.copy(
+                    proxyRunning = true,
+                    cfgIsPatched = anyPatched,
+                    needsSafGrant = false,
+                    safGrantTarget = null,
+                    cfgCopyBackPath = null
+                )
+                return@launch
+            }
 
             if ((!anyPatched && !retroArchPatchedThisRun && !dolphinPatchedThisRun && !ppssppPatchedThisRun && !armsx2PatchedThisRun) || proxyRunning) {
                 _state.value = _state.value.copy(

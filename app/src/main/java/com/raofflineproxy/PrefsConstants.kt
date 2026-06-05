@@ -37,6 +37,7 @@ object PrefsConstants {
     const val KEY_PPSSPP_HARDCORE_WAS_ENABLED = "ppsspp_hardcore_was_enabled"
     const val KEY_DOLPHIN_GAME_SETTINGS_HARDCORE_OVERRIDES = "dolphin_game_settings_hardcore_overrides"
     const val KEY_SKIP_NEXT_CFG_REVERT = "skip_next_cfg_revert"
+    const val KEY_PROXY_SHOULD_BE_RUNNING = "proxy_should_be_running"
     const val KEY_RETROARCH_PATCHED_THIS_RUN = "retroarch_patched_this_run"
     const val KEY_DOLPHIN_PATCHED_THIS_RUN = "dolphin_patched_this_run"
     const val KEY_PPSSPP_PATCHED_THIS_RUN = "ppsspp_patched_this_run"

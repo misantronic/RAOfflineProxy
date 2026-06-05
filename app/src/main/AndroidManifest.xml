@@ -58,12 +58,15 @@
         <service
             android:name=".service.ProxyService"
             android:exported="false"
-            android:stopWithTask="true"
             android:foregroundServiceType="specialUse">
             <property
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="local_http_proxy_for_retroachievements_offline_caching" />
         </service>
+
+        <receiver
+            android:name=".service.ProxyRestartReceiver"
+            android:exported="false" />
 
         <receiver
             android:name=".service.BootReceiver"
