@@ -3,7 +3,7 @@
 ## Overview
 
 ::: tip Version info
-Supported from **v1.3.0-alpha1**
+Supported from **v1.3.1-alpha1**
 :::
 
 **Manual Emulator Setup** is the fallback for Android 14+ devices where RAOfflineProxy cannot reliably patch emulator config files through normal Android storage APIs.
