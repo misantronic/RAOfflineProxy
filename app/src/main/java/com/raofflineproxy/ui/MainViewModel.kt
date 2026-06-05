@@ -100,9 +100,11 @@ data class MainUiState(
     val retroArchInstalled: Boolean = false,
     val dolphinInstalled: Boolean = false,
     val ppssppInstalled: Boolean = false,
+    val armsx2Installed: Boolean = false,
     val retroArchEnabled: Boolean = false,
     val dolphinEnabled: Boolean = false,
     val ppssppEnabled: Boolean = false,
+    val armsx2Enabled: Boolean = false,
     val pendingAwards: List<PendingAwardUi> = emptyList(),
     val awardHistory: List<PendingAwardUi> = emptyList(),
     val cachedGames: List<CachedGame> = emptyList(),
@@ -121,6 +123,9 @@ data class MainUiState(
     val flushInProgress: Boolean = false,
     val availableAppUpdate: AppUpdateInfo? = null
 ) {
+    val hasEnabledEmulator: Boolean = retroArchEnabled || dolphinEnabled || ppssppEnabled || armsx2Enabled
+    val hasShizukuManagedEnabledEmulator: Boolean = hasEnabledEmulator && (retroArchEnabled || dolphinEnabled || ppssppEnabled)
+
     fun clearedPermissions(): MainUiState = copy(
         manualEmulatorPatchingEnabled = false,
         needsSafGrant = false,
@@ -196,7 +201,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val emulatorSupport = loadEmulatorSupport(app)
         Log.i(
             "RAProxy/Emulators",
-            "init support retroArchInstalled=${emulatorSupport.retroArchInstalled} dolphinInstalled=${emulatorSupport.dolphinInstalled} ppssppInstalled=${emulatorSupport.ppssppInstalled} retroArchEnabled=${emulatorSupport.retroArchEnabled} dolphinEnabled=${emulatorSupport.dolphinEnabled} ppssppEnabled=${emulatorSupport.ppssppEnabled}"
+            "init support retroArchInstalled=${emulatorSupport.retroArchInstalled} dolphinInstalled=${emulatorSupport.dolphinInstalled} ppssppInstalled=${emulatorSupport.ppssppInstalled} armsx2Installed=${emulatorSupport.armsx2Installed} retroArchEnabled=${emulatorSupport.retroArchEnabled} dolphinEnabled=${emulatorSupport.dolphinEnabled} ppssppEnabled=${emulatorSupport.ppssppEnabled} armsx2Enabled=${emulatorSupport.armsx2Enabled}"
         )
         _state.value = _state.value.copy(
             autostartProxy = loadAutostartPref(),
@@ -207,9 +212,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             retroArchInstalled = emulatorSupport.retroArchInstalled,
             dolphinInstalled = emulatorSupport.dolphinInstalled,
             ppssppInstalled = emulatorSupport.ppssppInstalled,
+            armsx2Installed = emulatorSupport.armsx2Installed,
             retroArchEnabled = emulatorSupport.retroArchEnabled,
             dolphinEnabled = emulatorSupport.dolphinEnabled,
             ppssppEnabled = emulatorSupport.ppssppEnabled,
+            armsx2Enabled = emulatorSupport.armsx2Enabled,
             shizukuStatus = resolveShizukuStatus(app),
             shizukuManualPatchingEnabled = loadShizukuManualPatchingEnabled(),
             ppssppShizukuRootModeUnknown = loadPpssppRootMode() == PrefsConstants.PpssppRootMode.Unknown
@@ -314,8 +321,20 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val app = getApplication<Application>()
         viewModelScope.launch {
             if (loadManualEmulatorPatchingEnabled()) {
+                val proxyRunning = ProxyService.isRunning(app)
+                if (!proxyRunning) {
+                    val prefs = app.getSharedPreferences(PrefsConstants.PREFS_NAME, Context.MODE_PRIVATE)
+                    if (prefs.getBoolean(PrefsConstants.KEY_ARMSX2_PATCHED_THIS_RUN, false)) {
+                        val armsx2Result = withContext(Dispatchers.IO) { revertArmsx2Cfg(app) }
+                        if (armsx2Result.success) {
+                            prefs.edit { remove(PrefsConstants.KEY_ARMSX2_PATCHED_THIS_RUN) }
+                        } else {
+                            SnackbarManager.showError(armsx2Result.message)
+                        }
+                    }
+                }
                 _state.value = _state.value.copy(
-                    proxyRunning = ProxyService.isRunning(app),
+                    proxyRunning = proxyRunning,
                     cfgIsPatched = null,
                     needsSafGrant = false,
                     safGrantTarget = null,
@@ -330,14 +349,16 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             val retroArchPatched = withContext(Dispatchers.IO) { checkRetroArchIsPatched(app, retroArchTreeUri) }
             val dolphinPatched = withContext(Dispatchers.IO) { checkIsDolphinPatched(app, dolphinTreeUri) }
             val ppssppPatched = withContext(Dispatchers.IO) { checkIsPpssppPatched(app, ppssppTreeUri) }
-            val anyPatched = retroArchPatched || dolphinPatched || ppssppPatched
+            val armsx2Patched = withContext(Dispatchers.IO) { checkIsArmsx2Patched(app) }
+            val anyPatched = retroArchPatched || dolphinPatched || ppssppPatched || armsx2Patched
             val proxyRunning = ProxyService.isRunning(app)
             val prefs = app.getSharedPreferences(PrefsConstants.PREFS_NAME, Context.MODE_PRIVATE)
             val retroArchPatchedThisRun = prefs.getBoolean(PrefsConstants.KEY_RETROARCH_PATCHED_THIS_RUN, false)
             val dolphinPatchedThisRun = prefs.getBoolean(PrefsConstants.KEY_DOLPHIN_PATCHED_THIS_RUN, false)
             val ppssppPatchedThisRun = prefs.getBoolean(PrefsConstants.KEY_PPSSPP_PATCHED_THIS_RUN, false)
+            val armsx2PatchedThisRun = prefs.getBoolean(PrefsConstants.KEY_ARMSX2_PATCHED_THIS_RUN, false)
 
-            if ((!anyPatched && !retroArchPatchedThisRun && !dolphinPatchedThisRun && !ppssppPatchedThisRun) || proxyRunning) {
+            if ((!anyPatched && !retroArchPatchedThisRun && !dolphinPatchedThisRun && !ppssppPatchedThisRun && !armsx2PatchedThisRun) || proxyRunning) {
                 _state.value = _state.value.copy(
                     proxyRunning = proxyRunning,
                     cfgIsPatched = anyPatched
@@ -375,6 +396,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             }
             val ppssppRevertedTarget = ppssppResult.success && ppssppResult.copyBackPath == null
 
+            val armsx2Result = if (armsx2PatchedThisRun || armsx2Patched) {
+                withContext(Dispatchers.IO) {
+                    revertArmsx2Cfg(app)
+                }
+            } else {
+                Armsx2PatchResult(success = true, message = "ARMSX2 not patched this run.", skippedNotInstalled = true)
+            }
+            val armsx2RevertedTarget = armsx2Result.success
+
             if (retroArchRevertedTarget) {
                 prefs.edit {
                     remove(PrefsConstants.KEY_RETROARCH_HARDCORE_WAS_ENABLED)
@@ -396,6 +426,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 }
             }
 
+            if (armsx2RevertedTarget) {
+                prefs.edit {
+                    remove(PrefsConstants.KEY_ARMSX2_PATCHED_THIS_RUN)
+                }
+            }
+
             val needsSafGrant = retroArchResult.needsSafGrant || dolphinResult.needsSafGrant || ppssppResult.needsSafGrant
             val safGrantTarget = when {
                 retroArchResult.needsSafGrant -> SafGrantTarget.RetroArch
@@ -407,7 +443,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
             _state.value = _state.value.copy(
                 proxyRunning = false,
-                cfgIsPatched = !(retroArchRevertedTarget && dolphinRevertedTarget && ppssppRevertedTarget),
+                cfgIsPatched = !(retroArchRevertedTarget && dolphinRevertedTarget && ppssppRevertedTarget && armsx2RevertedTarget),
                 needsSafGrant = needsSafGrant,
                 safGrantTarget = safGrantTarget,
                 cfgCopyBackPath = cfgCopyBackPath
@@ -419,6 +455,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 SnackbarManager.showError(dolphinResult.message)
             } else if (!ppssppRevertedTarget && !ppssppResult.needsSafGrant) {
                 SnackbarManager.showError(ppssppResult.message)
+            } else if (!armsx2RevertedTarget) {
+                SnackbarManager.showError(armsx2Result.message)
             }
         }
     }
@@ -839,7 +877,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 }
 
                 if (loadManualEmulatorPatchingEnabled()) {
-                    if (loadShizukuManualPatchingEnabled()) {
+                    if (loadShizukuManualPatchingEnabled() && emulatorSupport.hasAnyShizukuManagedEnabled) {
                         if (shouldPromptForPpssppShizukuRootMode(emulatorSupport)) {
                             pendingPpssppShizukuRootModePrompt = true
                             _state.value = _state.value.copy(
@@ -871,6 +909,24 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                             SnackbarManager.showError(shizukuResult.message)
                             return@launch
                         }
+                    }
+
+                    val armsx2Result = if (emulatorSupport.armsx2Enabled) {
+                        withContext(Dispatchers.IO) { patchArmsx2Cfg(app) }
+                    } else {
+                        Armsx2PatchResult(success = true, message = "ARMSX2 disabled.", skippedNotInstalled = true)
+                    }
+                    if (emulatorSupport.armsx2Enabled) {
+                        if (!armsx2Result.success && !armsx2Result.skippedNotInstalled) {
+                            pendingProxyStart = false
+                            SnackbarManager.showError(armsx2Result.message)
+                            return@launch
+                        }
+                        if (armsx2Result.success && !armsx2Result.skippedNotInstalled) {
+                            prefs.edit { putBoolean(PrefsConstants.KEY_ARMSX2_PATCHED_THIS_RUN, true) }
+                        }
+                    } else {
+                        prefs.edit { remove(PrefsConstants.KEY_ARMSX2_PATCHED_THIS_RUN) }
                     }
 
                     ProxyService.start(app)
@@ -1009,6 +1065,27 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     prefs.edit { remove(PrefsConstants.KEY_PPSSPP_PATCHED_THIS_RUN) }
                 }
 
+                val armsx2Result = if (emulatorSupport.armsx2Enabled) {
+                    withContext(Dispatchers.IO) {
+                        patchArmsx2Cfg(app)
+                    }
+                } else {
+                    Armsx2PatchResult(success = true, message = "ARMSX2 disabled.", skippedNotInstalled = true)
+                }
+                if (emulatorSupport.armsx2Enabled) {
+                    if (!armsx2Result.success && !armsx2Result.skippedNotInstalled) {
+                        SnackbarManager.showError(armsx2Result.message)
+                        pendingProxyStart = false
+                        return@launch
+                    } else if (armsx2Result.success && !armsx2Result.skippedNotInstalled) {
+                        prefs.edit {
+                            putBoolean(PrefsConstants.KEY_ARMSX2_PATCHED_THIS_RUN, true)
+                        }
+                    }
+                } else {
+                    prefs.edit { remove(PrefsConstants.KEY_ARMSX2_PATCHED_THIS_RUN) }
+                }
+
                 val credentialsToCache = selectImportedCredentials(
                     retroArch = result.credentials,
                     dolphin = dolphinResult.credentials,
@@ -1073,7 +1150,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             try {
                 if (loadManualEmulatorPatchingEnabled()) {
                     val shizukuEnabled = loadShizukuManualPatchingEnabled()
-                    val shizukuResult = if (shizukuEnabled) {
+                    val shizukuResult = if (shizukuEnabled && loadEmulatorSupport(app).hasAnyShizukuManagedEnabled) {
                         withContext(Dispatchers.IO) {
                             executeShizukuManualPatch(app, loadEmulatorSupport(app), "revert")
                         }.also {
@@ -1081,6 +1158,16 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         }
                     } else {
                         null
+                    }
+                    val prefs = app.getSharedPreferences(PrefsConstants.PREFS_NAME, Context.MODE_PRIVATE)
+                    val armsx2PatchedThisRun = prefs.getBoolean(PrefsConstants.KEY_ARMSX2_PATCHED_THIS_RUN, false)
+                    val armsx2Result = if (armsx2PatchedThisRun) {
+                        withContext(Dispatchers.IO) { revertArmsx2Cfg(app) }
+                    } else {
+                        Armsx2PatchResult(success = true, message = "ARMSX2 not patched this run.", skippedNotInstalled = true)
+                    }
+                    if (armsx2Result.success) {
+                        prefs.edit { remove(PrefsConstants.KEY_ARMSX2_PATCHED_THIS_RUN) }
                     }
 
                     ProxyService.stop(app)
@@ -1092,10 +1179,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         cfgCopyBackPath = null
                     )
                     pendingSmartCachePromptAfterProxyStart = false
-                    if (shizukuResult == null || shizukuResult.success) {
+                    if ((shizukuResult == null || shizukuResult.success) && armsx2Result.success) {
                         SnackbarManager.showMessage(str(R.string.proxy_stopped_success))
+                    } else if (!armsx2Result.success) {
+                        SnackbarManager.showError(armsx2Result.message)
                     } else {
-                        SnackbarManager.showError(shizukuResult.message)
+                        SnackbarManager.showError(shizukuResult?.message ?: "Failed to stop proxy.")
                     }
                     return@launch
                 }
@@ -1133,6 +1222,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     PpssppPatchResult(success = true, message = "PPSSPP not patched this run.", skippedNotInstalled = true)
                 }
 
+                val armsx2PatchedThisRun = prefs.getBoolean(PrefsConstants.KEY_ARMSX2_PATCHED_THIS_RUN, false)
+                val armsx2Result = if (armsx2PatchedThisRun) {
+                    withContext(Dispatchers.IO) {
+                        revertArmsx2Cfg(app)
+                    }
+                } else {
+                    Armsx2PatchResult(success = true, message = "ARMSX2 not patched this run.", skippedNotInstalled = true)
+                }
+
                 if (revertedTarget) {
                     prefs.edit {
                         remove(PrefsConstants.KEY_RETROARCH_HARDCORE_WAS_ENABLED)
@@ -1150,6 +1248,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     prefs.edit {
                         remove(PrefsConstants.KEY_PPSSPP_HARDCORE_WAS_ENABLED)
                         remove(PrefsConstants.KEY_PPSSPP_PATCHED_THIS_RUN)
+                    }
+                }
+                if (armsx2Result.success) {
+                    prefs.edit {
+                        remove(PrefsConstants.KEY_ARMSX2_PATCHED_THIS_RUN)
                     }
                 }
 
@@ -1200,6 +1303,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     SnackbarManager.showError(ppssppResult.message)
                 } else if (!ppssppResult.success && !ppssppResult.skippedNotInstalled) {
                     SnackbarManager.showError(ppssppResult.message)
+                } else if (!armsx2Result.success && !armsx2Result.skippedNotInstalled) {
+                    SnackbarManager.showError(armsx2Result.message)
                 }
             } finally {
                 delay(250)
@@ -1224,7 +1329,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             val patched = withContext(Dispatchers.IO) {
                 checkRetroArchIsPatched(app, treeUri) ||
                     checkIsDolphinPatched(app, loadDolphinSafUri()) ||
-                    checkIsPpssppPatched(app, loadPpssppSafUri())
+                    checkIsPpssppPatched(app, loadPpssppSafUri()) ||
+                    checkIsArmsx2Patched(app)
             }
             _state.value = _state.value.copy(cfgIsPatched = patched)
         }
@@ -1781,7 +1887,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         _state.value = _state.value.copy(
             retroArchEnabled = updated.retroArchEnabled,
             dolphinEnabled = updated.dolphinEnabled,
-            ppssppEnabled = updated.ppssppEnabled
+            ppssppEnabled = updated.ppssppEnabled,
+            armsx2Enabled = updated.armsx2Enabled
         )
     }
 
@@ -1802,7 +1909,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         _state.value = _state.value.copy(
             retroArchEnabled = updated.retroArchEnabled,
             dolphinEnabled = updated.dolphinEnabled,
-            ppssppEnabled = updated.ppssppEnabled
+            ppssppEnabled = updated.ppssppEnabled,
+            armsx2Enabled = updated.armsx2Enabled
         )
     }
 
@@ -1823,7 +1931,26 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         _state.value = _state.value.copy(
             retroArchEnabled = updated.retroArchEnabled,
             dolphinEnabled = updated.dolphinEnabled,
-            ppssppEnabled = updated.ppssppEnabled
+            ppssppEnabled = updated.ppssppEnabled,
+            armsx2Enabled = updated.armsx2Enabled
+        )
+    }
+
+    fun setArmsx2Enabled(enabled: Boolean) {
+        val app = getApplication<Application>()
+        val support = loadEmulatorSupport(app)
+        if (!support.armsx2Installed || (support.installedCount == 1) || _state.value.proxyRunning) {
+            return
+        }
+
+        app.getSharedPreferences(PrefsConstants.PREFS_NAME, Context.MODE_PRIVATE)
+            .edit { putBoolean(PrefsConstants.KEY_ENABLE_ARMSX2, enabled) }
+        val updated = loadEmulatorSupport(app)
+        _state.value = _state.value.copy(
+            retroArchEnabled = updated.retroArchEnabled,
+            dolphinEnabled = updated.dolphinEnabled,
+            ppssppEnabled = updated.ppssppEnabled,
+            armsx2Enabled = updated.armsx2Enabled
         )
     }
 
