@@ -50,6 +50,9 @@ import com.raofflineproxy.proxy.HttpGetResult
 import com.raofflineproxy.proxy.httpGet
 import com.raofflineproxy.proxy.loginAndCacheToken
 import com.raofflineproxy.proxy.loadLoginCredentials
+import com.raofflineproxy.proxy.loadCachedGameRefreshTargets
+import com.raofflineproxy.proxy.refreshCachedGameOfflineBundle
+import com.raofflineproxy.proxy.RefreshNotificationMode
 import com.raofflineproxy.proxy.runSmartCache
 import com.raofflineproxy.proxy.loadUserAgent
 import com.raofflineproxy.proxy.compactCachedRawResponse
@@ -1519,18 +1522,26 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val app = getApplication<Application>()
         viewModelScope.launch {
             val credentials = requireCredentials() ?: return@launch
-            val games = _state.value.cachedGames.reversed()
-            val startingMessage = str(R.string.refresh_progress, 0, games.size)
+            val refreshTargets = withContext(Dispatchers.IO) { loadCachedGameRefreshTargets(db) }
+            val startingMessage = str(R.string.refresh_progress, 0, refreshTargets.size)
             _state.value = _state.value.copy(scanInProgress = true, scanProgress = startingMessage)
             SnackbarManager.showProgress(startingMessage)
             val userAgent = withContext(Dispatchers.IO) { proxyUserAgent(loadUserAgent(db)) }
             withContext(Dispatchers.IO) {
-                for ((index, game) in games.withIndex()) {
-                    val progressMessage = str(R.string.refresh_progress_named, index + 1, games.size, game.title)
+                for ((index, target) in refreshTargets.withIndex()) {
+                    val title = _state.value.cachedGames.firstOrNull { it.gameId == target.gameId.toString() }?.title
+                        ?: target.gameId.toString()
+                    val progressMessage = str(R.string.refresh_progress_named, index + 1, refreshTargets.size, title)
                     _state.value = _state.value.copy(scanProgress = progressMessage)
                     SnackbarManager.showProgress(progressMessage)
-                    val gameId = game.gameId.toIntOrNull() ?: continue
-                    cacheGame(app, gameId, credentials, userAgent, db)
+                    refreshCachedGameOfflineBundle(
+                        context = app,
+                        target = target,
+                        creds = credentials,
+                        userAgent = userAgent,
+                        db = db,
+                        notificationMode = RefreshNotificationMode.Foreground
+                    )
                 }
             }
             _state.value = _state.value.copy(
@@ -1538,7 +1549,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 scanProgress = null
             )
             SnackbarManager.showProgress(null)
-            SnackbarManager.showMessage(str(R.string.refresh_complete, games.size), SnackbarDuration.Indefinite)
+            SnackbarManager.showMessage(str(R.string.refresh_complete, refreshTargets.size), SnackbarDuration.Indefinite)
         }
     }
 

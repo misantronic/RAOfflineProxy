@@ -25,4 +25,15 @@ object CacheKeys {
 
     fun parseGameIdStringFromPatchKey(cacheKey: String): String? =
         cacheKey.removePrefix(PREFIX_PATCH).split(":").firstOrNull()?.takeIf { it.isNotEmpty() }
+
+    fun parseUserFromPatchKey(cacheKey: String): String? =
+        cacheKey.removePrefix(PREFIX_PATCH).split(":").getOrNull(1)?.takeIf { it.isNotEmpty() }
+
+    fun parseAchievementSetsHash(cacheKey: String): String? =
+        cacheKey.removePrefix(PREFIX_ACHIEVEMENTSETS).substringBeforeLast(":", "")
+            .takeIf { it.isNotEmpty() }
+
+    fun parseUserFromAchievementSetsKey(cacheKey: String): String? =
+        cacheKey.removePrefix(PREFIX_ACHIEVEMENTSETS).substringAfterLast(':', "")
+            .takeIf { it.isNotEmpty() }
 }
