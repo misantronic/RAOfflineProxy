@@ -34,9 +34,11 @@ import com.raofflineproxy.data.CacheKeys
 import com.raofflineproxy.proxy.AwardFlusher
 import com.raofflineproxy.proxy.GameActivity
 import com.raofflineproxy.proxy.ProxyServer
-import com.raofflineproxy.proxy.cacheGame
 import com.raofflineproxy.proxy.loadLoginCredentials
+import com.raofflineproxy.proxy.loadCachedGameRefreshTargets
 import com.raofflineproxy.proxy.loadUserAgent
+import com.raofflineproxy.proxy.refreshCachedGameOfflineBundle
+import com.raofflineproxy.proxy.RefreshNotificationMode
 import com.raofflineproxy.ui.MainActivity
 import com.raofflineproxy.ui.revertDolphinCfg
 import com.raofflineproxy.ui.revertPpssppCfg
@@ -200,16 +202,23 @@ class ProxyService : Service() {
                 continue
             }
             val userAgent = loadUserAgent(db)
-            val gameIds = db.cacheDao().getAllByPrefix(CacheKeys.PREFIX_PATCH)
-                .mapNotNull { entry -> CacheKeys.parseGameIdFromPatchKey(entry.cacheKey) }
-                .distinct()
-            Log.i(TAG, "Periodic refresh: ${gameIds.size} game(s)")
-            for (gameId in gameIds) {
+            val refreshTargets = loadCachedGameRefreshTargets(db)
+            Log.i(TAG, "Periodic refresh: ${refreshTargets.size} game(s)")
+            for (target in refreshTargets) {
                 if (onlineRefreshIdleDelayMs() > 0) {
                     Log.i(TAG, "Periodic refresh paused; proxy became active")
                     break
                 }
-                cacheGame(this@ProxyService, gameId, credentials, userAgent, db, cacheImages = false)
+                refreshCachedGameOfflineBundle(
+                    context = this@ProxyService,
+                    target = target,
+                    creds = credentials,
+                    userAgent = userAgent,
+                    db = db,
+                    notificationMode = RefreshNotificationMode.Background,
+                    cacheImages = false,
+                    cacheBadgeImages = false
+                )
             }
             db.cacheDao().evictOlderThan(System.currentTimeMillis() - CACHE_TTL_MS)
             Log.i(TAG, "Periodic refresh complete")
