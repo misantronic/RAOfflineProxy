@@ -2,6 +2,7 @@ package com.raofflineproxy.service
 
 import android.Manifest
 import android.app.ActivityManager
+import android.app.AlarmManager
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -16,6 +17,7 @@ import android.net.NetworkCapabilities
 import android.net.NetworkRequest
 import android.os.Build
 import android.os.IBinder
+import android.os.SystemClock
 import android.util.Log
 import androidx.annotation.RequiresPermission
 import androidx.core.content.edit
@@ -56,6 +58,7 @@ private const val REFRESH_INTERVAL_MS = 60L * 60 * 1000 // 1 hour
 private const val CACHE_TTL_MS = 7L * 24 * 60 * 60 * 1000 // 7 days
 private const val OFFLINE_PING_IDLE_TIMEOUT_MS = 150_000L
 private const val ONLINE_REFRESH_IDLE_DELAY_MS = 5L * 60 * 1000
+private const val RESTART_DELAY_MS = 5_000L
 
 class ProxyService : Service() {
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
@@ -110,6 +113,14 @@ class ProxyService : Service() {
 
     @RequiresPermission(Manifest.permission.ACCESS_NETWORK_STATE)
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (!shouldKeepRunning(this)) {
+            Log.i(TAG, "Ignoring start request because proxy is not marked active")
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            stopSelf()
+            return START_NOT_STICKY
+        }
+
+        cancelRestart(this)
         createNotificationChannel()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             startForeground(NOTIFICATION_ID, buildNotification(), ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
@@ -158,7 +169,7 @@ class ProxyService : Service() {
             }
         }
 
-        return START_NOT_STICKY
+        return START_STICKY
     }
 
     private fun requestFlush() {
@@ -206,7 +217,12 @@ class ProxyService : Service() {
     }
 
     override fun onDestroy() {
-        revertPatchedCfgIfNeeded()
+        if (shouldKeepRunning(this)) {
+            Log.w(TAG, "Proxy service destroyed unexpectedly; scheduling restart")
+            scheduleRestart(this)
+        } else {
+            revertPatchedCfgIfNeeded()
+        }
         runningInProcess = false
         proxyServer.stop()
         if (networkCallbackRegistered) {
@@ -218,10 +234,12 @@ class ProxyService : Service() {
     }
 
     override fun onTaskRemoved(rootIntent: Intent?) {
-        Log.i(TAG, "Task removed; stopping proxy service")
-        revertPatchedCfgIfNeeded()
-        stopForeground(STOP_FOREGROUND_REMOVE)
-        stopSelf()
+        if (shouldKeepRunning(this)) {
+            Log.i(TAG, "Task removed; keeping proxy alive and scheduling restart fallback")
+            scheduleRestart(this)
+        } else {
+            Log.i(TAG, "Task removed after explicit stop")
+        }
         super.onTaskRemoved(rootIntent)
     }
 
@@ -477,14 +495,53 @@ class ProxyService : Service() {
     }
 
     companion object {
+        private const val RESTART_REQUEST_CODE = 1001
+
         @Volatile
         private var runningInProcess = false
 
+        private fun restartPendingIntent(context: Context): PendingIntent = PendingIntent.getBroadcast(
+            context,
+            RESTART_REQUEST_CODE,
+            Intent(context, ProxyRestartReceiver::class.java),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        fun shouldKeepRunning(context: Context): Boolean =
+            context.getSharedPreferences(PrefsConstants.PREFS_NAME, MODE_PRIVATE)
+                .getBoolean(PrefsConstants.KEY_PROXY_SHOULD_BE_RUNNING, false)
+
+        private fun setShouldKeepRunning(context: Context, shouldRun: Boolean) {
+            context.getSharedPreferences(PrefsConstants.PREFS_NAME, MODE_PRIVATE)
+                .edit { putBoolean(PrefsConstants.KEY_PROXY_SHOULD_BE_RUNNING, shouldRun) }
+        }
+
+        fun scheduleRestart(context: Context, delayMs: Long = RESTART_DELAY_MS) {
+            if (!shouldKeepRunning(context)) return
+
+            val alarmManager = context.getSystemService(AlarmManager::class.java) ?: return
+            val triggerAtMillis = SystemClock.elapsedRealtime() + delayMs
+            alarmManager.setAndAllowWhileIdle(
+                AlarmManager.ELAPSED_REALTIME_WAKEUP,
+                triggerAtMillis,
+                restartPendingIntent(context)
+            )
+        }
+
+        fun cancelRestart(context: Context) {
+            val alarmManager = context.getSystemService(AlarmManager::class.java) ?: return
+            alarmManager.cancel(restartPendingIntent(context))
+        }
+
         fun start(context: Context) {
+            setShouldKeepRunning(context, true)
+            cancelRestart(context)
             context.startForegroundService(Intent(context, ProxyService::class.java))
         }
 
         fun stop(context: Context) {
+            setShouldKeepRunning(context, false)
+            cancelRestart(context)
             context.stopService(Intent(context, ProxyService::class.java))
         }
 
