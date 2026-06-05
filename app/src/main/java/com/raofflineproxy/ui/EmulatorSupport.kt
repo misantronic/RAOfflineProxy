@@ -32,12 +32,15 @@ internal data class EmulatorSupport(
     val retroArchInstalled: Boolean,
     val dolphinInstalled: Boolean,
     val ppssppInstalled: Boolean,
+    val armsx2Installed: Boolean,
     val retroArchEnabled: Boolean,
     val dolphinEnabled: Boolean,
-    val ppssppEnabled: Boolean
+    val ppssppEnabled: Boolean,
+    val armsx2Enabled: Boolean
 ) {
-    val installedCount: Int = listOf(retroArchInstalled, dolphinInstalled, ppssppInstalled).count { it }
-    val hasAnyEnabled: Boolean = retroArchEnabled || dolphinEnabled || ppssppEnabled
+    val installedCount: Int = listOf(retroArchInstalled, dolphinInstalled, ppssppInstalled, armsx2Installed).count { it }
+    val hasAnyEnabled: Boolean = retroArchEnabled || dolphinEnabled || ppssppEnabled || armsx2Enabled
+    val hasAnyShizukuManagedEnabled: Boolean = retroArchEnabled || dolphinEnabled || ppssppEnabled
 }
 
 internal fun loadEmulatorSupport(context: Context): EmulatorSupport {
@@ -45,36 +48,48 @@ internal fun loadEmulatorSupport(context: Context): EmulatorSupport {
     val retroArchPackage = resolveInstalledPackage(context, UI_RETROARCH_PACKAGE_CANDIDATES)
     val dolphinPackage = resolveInstalledPackage(context, UI_DOLPHIN_PACKAGE_CANDIDATES)
     val ppssppPackage = resolveInstalledPackage(context, UI_PPSSPP_PACKAGE_CANDIDATES)
+    val armsx2Package = resolveInstalledPackage(context, UI_ARMSX2_PACKAGE_CANDIDATES)
     val retroArchInstalled = retroArchPackage != null
     val dolphinInstalled = dolphinPackage != null
     val ppssppInstalled = ppssppPackage != null
+    val armsx2Installed = armsx2Package != null
 
-    Log.i("RAProxy/Emulators", "resolved packages retroArch=$retroArchPackage dolphin=$dolphinPackage ppsspp=$ppssppPackage")
+    Log.i("RAProxy/Emulators", "resolved packages retroArch=$retroArchPackage dolphin=$dolphinPackage ppsspp=$ppssppPackage armsx2=$armsx2Package")
+
+    val installedCount = listOf(retroArchInstalled, dolphinInstalled, ppssppInstalled, armsx2Installed).count { it }
 
     val retroArchEnabled = when {
         !retroArchInstalled -> false
-        retroArchInstalled && !dolphinInstalled -> true
+        installedCount == 1 -> true
         else -> prefs.getBoolean(PrefsConstants.KEY_ENABLE_RETROARCH, true)
     }
 
     val dolphinEnabled = when {
         !dolphinInstalled -> false
-        dolphinInstalled && listOf(retroArchInstalled, ppssppInstalled).count { it } == 0 -> true
+        installedCount == 1 -> true
         else -> prefs.getBoolean(PrefsConstants.KEY_ENABLE_DOLPHIN, true)
     }
 
     val ppssppEnabled = when {
         !ppssppInstalled -> false
-        ppssppInstalled && listOf(retroArchInstalled, dolphinInstalled).count { it } == 0 -> true
+        installedCount == 1 -> true
         else -> prefs.getBoolean(PrefsConstants.KEY_ENABLE_PPSSPP, true)
+    }
+
+    val armsx2Enabled = when {
+        !armsx2Installed -> false
+        installedCount == 1 -> true
+        else -> prefs.getBoolean(PrefsConstants.KEY_ENABLE_ARMSX2, true)
     }
 
     return EmulatorSupport(
         retroArchInstalled = retroArchInstalled,
         dolphinInstalled = dolphinInstalled,
         ppssppInstalled = ppssppInstalled,
+        armsx2Installed = armsx2Installed,
         retroArchEnabled = retroArchEnabled,
         dolphinEnabled = dolphinEnabled,
-        ppssppEnabled = ppssppEnabled
+        ppssppEnabled = ppssppEnabled,
+        armsx2Enabled = armsx2Enabled
     )
 }
