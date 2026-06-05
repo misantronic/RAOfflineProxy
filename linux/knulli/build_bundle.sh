@@ -7,7 +7,7 @@ DIST_DIR="${SCRIPT_DIR}/dist"
 BUILD_DIR="${DIST_DIR}/raofflineproxy-knulli-bundle"
 APP_DIR="${BUILD_DIR}/app"
 LIB_DIR="${BUILD_DIR}/lib"
-INSTALLER_PATH="${DIST_DIR}/RAOfflineProxy-Knulli-v1.3.0-alpha1-Install.sh"
+INSTALLER_PATH="${DIST_DIR}/RAOfflineProxy-Knulli-v1.3.1-alpha1-Install.sh"
 TEMP_TARBALL="${DIST_DIR}/.raofflineproxy-knulli-bundle.tar.gz"
 
 "${SCRIPT_DIR}/build_libchdr.sh"
