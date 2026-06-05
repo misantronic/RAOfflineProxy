@@ -21,6 +21,9 @@
         android:id="@+id/tv_label"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
+        android:ellipsize="end"
+        android:maxLines="1"
+        android:singleLine="true"
         android:textAllCaps="true"
         android:textAppearance="@style/TextAppearance.MaterialComponents.Button" />
 

@@ -35,12 +35,13 @@
     <string name="home_emulators_label">Enabled Emulators</string>
     <string name="home_manual_setup_warning">With your Android version (%1$s), automatic emulator setup will most likely not work on this device. Please consider using Manual Emulator Setup instead. Android builds can differ, so you can still try Start proxy with automatic setup if you want.</string>
     <string name="home_shizuku_info">You are running the proxy through Shizuku.</string>
-    <string name="home_no_emulator_warning">No supported emulator was found. Install RetroArch or Dolphin to use RAOfflineProxy.</string>
+    <string name="home_no_emulator_warning">No supported emulator was found. Install RetroArch, Dolphin, PPSSPP, or ARMSX2 to use RAOfflineProxy.</string>
     <string name="home_token_warning">No RetroAchievements credentials were found in a supported emulator config, or the saved token is no longer valid. Open your emulator and log in while online, then start the proxy again.</string>
     <string name="home_go_to_cached_games">Go to Cached Games</string>
     <string name="emulator_retroarch">RetroArch</string>
     <string name="emulator_dolphin">Dolphin</string>
     <string name="emulator_ppsspp">PPSSPP</string>
+    <string name="emulator_armsx2">ARMSX2</string>
     <string name="emulator_toggle_icon_cd">Installed emulator icon</string>
     <string name="proxy_start_requires_emulator">Enable at least one installed emulator to start the proxy.</string>
     <string name="proxy_start_aborted_retroarch_saf_rejected">Proxy not started because RetroArch folder access was rejected.</string>
@@ -89,6 +90,8 @@
     <string name="ppsspp_patch_success">PPSSPP patched successfully.</string>
     <string name="ppsspp_patch_error_file">Error patching PPSSPP config %1$s: %2$s</string>
     <string name="ppsspp_patch_error_unavailable">Could not patch PPSSPP automatically. Grant the PPSSPP root folder and try again.</string>
+    <string name="armsx2_patch_success">ARMSX2 patched successfully.</string>
+    <string name="armsx2_patch_error_unavailable">Could not patch ARMSX2 automatically. Make sure a supported ARMSX2 build is installed and try again.</string>
     <!-- CFG revert messages -->
     <string name="revert_already_reverted">Already reverted — no changes needed.</string>
     <string name="revert_success_saf">Reverted successfully via folder access.</string>
@@ -108,6 +111,8 @@
     <string name="ppsspp_revert_success">PPSSPP reverted successfully.</string>
     <string name="ppsspp_revert_error_file">Error reverting PPSSPP config %1$s: %2$s</string>
     <string name="ppsspp_revert_error_unavailable">Could not revert PPSSPP automatically. Reopen the app, grant the PPSSPP root folder if prompted, and try again.</string>
+    <string name="armsx2_revert_success">ARMSX2 reverted successfully.</string>
+    <string name="armsx2_revert_error_unavailable">Could not revert ARMSX2 automatically. Reopen the app and try again.</string>
 
     <!-- Flush messages -->
     <string name="flush_started">Flushing awards…</string>
