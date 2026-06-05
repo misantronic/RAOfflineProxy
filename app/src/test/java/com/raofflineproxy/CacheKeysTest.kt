@@ -3,6 +3,7 @@ package com.raofflineproxy
 import com.raofflineproxy.data.CacheKeys
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class CacheKeysTest {
@@ -173,5 +174,32 @@ class CacheKeysTest {
     @Test
     fun parseGameIdStringFromPatchKey_noColonAfterGameId() {
         assertEquals("5678", CacheKeys.parseGameIdStringFromPatchKey("patch:5678"))
+    }
+
+    @Test
+    fun parseUserFromPatchKey_validKey() {
+        assertEquals("player", CacheKeys.parseUserFromPatchKey("patch:1234:player"))
+    }
+
+    @Test
+    fun parseUserFromPatchKey_missingUser() {
+        assertNull(CacheKeys.parseUserFromPatchKey("patch:1234:"))
+    }
+
+    @Test
+    fun parseAchievementSetsHash_validKey() {
+        assertEquals("abc123hash", CacheKeys.parseAchievementSetsHash("achievementsets:abc123hash:player"))
+    }
+
+    @Test
+    fun parseUserFromAchievementSetsKey_validKey() {
+        assertEquals("player", CacheKeys.parseUserFromAchievementSetsKey("achievementsets:abc123hash:player"))
+    }
+
+    @Test
+    fun parseAchievementSetsKey_handlesEmbeddedColonsByUsingLastSeparator() {
+        assertEquals("hash:with:colons", CacheKeys.parseAchievementSetsHash("achievementsets:hash:with:colons:player"))
+        assertEquals("player", CacheKeys.parseUserFromAchievementSetsKey("achievementsets:hash:with:colons:player"))
+        assertTrue(CacheKeys.parseAchievementSetsHash("achievementsets:hash:with:colons:player")!!.contains(':'))
     }
 }
