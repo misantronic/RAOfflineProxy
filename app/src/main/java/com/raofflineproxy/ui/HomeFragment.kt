@@ -47,13 +47,15 @@ class HomeFragment : Fragment() {
         val btnGoToCachedGames = view.findViewById<MaterialButton>(R.id.btn_go_to_cached_games)
         val homeDescription = view.findViewById<TextView>(R.id.tv_home_description)
         val emulatorLabel = view.findViewById<TextView>(R.id.tv_emulator_label)
-        val emulatorToggles = view.findViewById<LinearLayout>(R.id.layout_emulator_toggles)
+        val emulatorToggles = view.findViewById<ViewGroup>(R.id.layout_emulator_toggles)
         val retroArchToggle = bindToggle(view.findViewById(R.id.layout_retroarch_toggle), R.string.emulator_retroarch)
         val dolphinToggle = bindToggle(view.findViewById(R.id.layout_dolphin_toggle), R.string.emulator_dolphin)
         val ppssppToggle = bindToggle(view.findViewById(R.id.layout_ppsspp_toggle), R.string.emulator_ppsspp)
+        val armsx2Toggle = bindToggle(view.findViewById(R.id.layout_armsx2_toggle), R.string.emulator_armsx2)
         val retroArchAppIcon = loadInstalledAppIcon(RETROARCH_PACKAGE_CANDIDATES)
         val dolphinAppIcon = loadInstalledAppIcon(DOLPHIN_PACKAGE_CANDIDATES)
         val ppssppAppIcon = loadInstalledAppIcon(UI_PPSSPP_PACKAGE_CANDIDATES)
+        val armsx2AppIcon = loadInstalledAppIcon(UI_ARMSX2_PACKAGE_CANDIDATES)
         val activeBorderColor = requireContext().getColor(R.color.emulator_toggle_border_active)
         val activeBackgroundColor = requireContext().getColor(R.color.emulator_toggle_background_active)
         val defaultBorderColor = requireContext().getColor(R.color.emulator_toggle_border_default)
@@ -108,17 +110,24 @@ class HomeFragment : Fragment() {
                 viewModel.setPpssppEnabled(!viewModel.state.value.ppssppEnabled)
             }
         }
+        armsx2Toggle.row.setOnClickListener {
+            if (armsx2Toggle.row.isEnabled) {
+                viewModel.setArmsx2Enabled(!viewModel.state.value.armsx2Enabled)
+            }
+        }
 
         viewLifecycleOwner.lifecycleScope.launch {
             viewModel.state.collect { state ->
-                val installedCount = listOf(state.retroArchInstalled, state.dolphinInstalled, state.ppssppInstalled).count { it }
+                val installedCount = listOf(state.retroArchInstalled, state.dolphinInstalled, state.ppssppInstalled, state.armsx2Installed).count { it }
                 val noEmulatorInstalled = installedCount == 0
                 val onlyOneInstalled = installedCount == 1
+                val hasManualSetupManagedEmulator = state.retroArchInstalled || state.dolphinInstalled || state.ppssppInstalled
                 val proxyStartPending = state.proxyToggleInProgress || state.needsSafGrant
-                val shouldRecommendManualSetup = installedCount > 0 &&
+                val shouldRecommendManualSetup = hasManualSetupManagedEmulator &&
                     !state.manualEmulatorPatchingEnabled &&
                     shouldRecommendManualSetupForDevice()
                 val manualSetupNeedsShizuku = state.manualEmulatorPatchingEnabled &&
+                    hasManualSetupManagedEmulator &&
                     !state.shizukuManualPatchingEnabled
                 val shouldShowManualSetupButton = !state.proxyRunning &&
                     (shouldRecommendManualSetup || manualSetupNeedsShizuku)
@@ -141,7 +150,7 @@ class HomeFragment : Fragment() {
 
                 btnStartProxy.visibility = if (shouldShowManualSetupButton) View.GONE else View.VISIBLE
                 btnStartProxy.text = getString(if (state.proxyRunning) R.string.proxy_stop else R.string.proxy_start)
-                btnStartProxy.isEnabled = if (state.proxyRunning) !proxyStartPending else !proxyStartPending && (state.retroArchEnabled || state.dolphinEnabled || state.ppssppEnabled)
+                btnStartProxy.isEnabled = if (state.proxyRunning) !proxyStartPending else !proxyStartPending && (state.retroArchEnabled || state.dolphinEnabled || state.ppssppEnabled || state.armsx2Enabled)
                 btnStartProxy.alpha = if (proxyStartPending) 0.45f else 1f
                 btnManualEmulatorSetup.visibility = if (shouldShowManualSetupButton) View.VISIBLE else View.GONE
                 btnGoToCachedGames.visibility = if (state.proxyRunning) View.VISIBLE else View.GONE
@@ -151,14 +160,17 @@ class HomeFragment : Fragment() {
                 retroArchToggle.row.visibility = if (state.retroArchInstalled) View.VISIBLE else View.GONE
                 dolphinToggle.row.visibility = if (state.dolphinInstalled) View.VISIBLE else View.GONE
                 ppssppToggle.row.visibility = if (state.ppssppInstalled) View.VISIBLE else View.GONE
+                armsx2Toggle.row.visibility = if (state.armsx2Installed) View.VISIBLE else View.GONE
 
                 retroArchToggle.row.isEnabled = state.retroArchInstalled && !state.proxyRunning && !onlyOneInstalled
                 dolphinToggle.row.isEnabled = state.dolphinInstalled && !state.proxyRunning && !onlyOneInstalled
                 ppssppToggle.row.isEnabled = state.ppssppInstalled && !state.proxyRunning && !onlyOneInstalled
+                armsx2Toggle.row.isEnabled = state.armsx2Installed && !state.proxyRunning && !onlyOneInstalled
 
                 retroArchToggle.icon.setImageDrawable(retroArchAppIcon)
                 dolphinToggle.icon.setImageDrawable(dolphinAppIcon)
                 ppssppToggle.icon.setImageDrawable(ppssppAppIcon)
+                armsx2Toggle.icon.setImageDrawable(armsx2AppIcon)
 
                 applyToggleRowStyle(
                     toggle = retroArchToggle,
@@ -181,6 +193,15 @@ class HomeFragment : Fragment() {
                 applyToggleRowStyle(
                     toggle = ppssppToggle,
                     isSelected = state.ppssppEnabled,
+                    activeBorderColor = activeBorderColor,
+                    activeBackgroundColor = activeBackgroundColor,
+                    defaultBorderColor = defaultBorderColor,
+                    activeTextColor = activeTextColor,
+                    defaultTextColor = defaultTextColor
+                )
+                applyToggleRowStyle(
+                    toggle = armsx2Toggle,
+                    isSelected = state.armsx2Enabled,
                     activeBorderColor = activeBorderColor,
                     activeBackgroundColor = activeBackgroundColor,
                     defaultBorderColor = defaultBorderColor,

@@ -221,8 +221,8 @@ class MainActivity : AppCompatActivity() {
                     isOnline = state.isOnline,
                     proxyToggleInProgress = state.proxyToggleInProgress,
                     needsSafGrant = state.needsSafGrant,
-                    hasEnabledEmulator = state.retroArchEnabled || state.dolphinEnabled || state.ppssppEnabled,
-                    canStartProxy = !state.manualEmulatorPatchingEnabled || state.shizukuManualPatchingEnabled
+                    hasEnabledEmulator = state.hasEnabledEmulator,
+                    canStartProxy = !state.manualEmulatorPatchingEnabled || state.shizukuManualPatchingEnabled || !state.hasShizukuManagedEnabledEmulator
                 )
                 updateAppUpdateMenuItem(state.availableAppUpdate)
                 updateNavBadge(navView, R.id.nav_cached_games, state.cachedGames.size)
@@ -302,8 +302,8 @@ class MainActivity : AppCompatActivity() {
             isOnline = state.isOnline,
             proxyToggleInProgress = state.proxyToggleInProgress,
             needsSafGrant = state.needsSafGrant,
-            hasEnabledEmulator = state.retroArchEnabled || state.dolphinEnabled || state.ppssppEnabled,
-            canStartProxy = !state.manualEmulatorPatchingEnabled || state.shizukuManualPatchingEnabled
+            hasEnabledEmulator = state.hasEnabledEmulator,
+            canStartProxy = !state.manualEmulatorPatchingEnabled || state.shizukuManualPatchingEnabled || !state.hasShizukuManagedEnabledEmulator
         )
         updateAppUpdateMenuItem(state.availableAppUpdate)
         return true

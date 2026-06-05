@@ -39,6 +39,7 @@ import com.raofflineproxy.ui.MainActivity
 import com.raofflineproxy.ui.revertDolphinCfg
 import com.raofflineproxy.ui.revertPpssppCfg
 import com.raofflineproxy.ui.revertRetroArchCfg
+import com.raofflineproxy.ui.revertArmsx2Cfg
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -422,6 +423,14 @@ class ProxyService : Service() {
         }
         val revertedPpssppTarget = ppssppResult.success && ppssppResult.copyBackPath == null
 
+        val armsx2PatchedThisRun = prefs.getBoolean(PrefsConstants.KEY_ARMSX2_PATCHED_THIS_RUN, false)
+        val armsx2Result = if (armsx2PatchedThisRun) {
+            revertArmsx2Cfg(this)
+        } else {
+            com.raofflineproxy.ui.Armsx2PatchResult(success = true, message = "ARMSX2 not patched this run.", skippedNotInstalled = true)
+        }
+        val revertedArmsx2Target = armsx2Result.success
+
         if (revertedTarget) {
             prefs.edit {
                 remove(PrefsConstants.KEY_RETROARCH_HARDCORE_WAS_ENABLED)
@@ -443,16 +452,28 @@ class ProxyService : Service() {
             }
             Log.i(TAG, "PPSSPP ppsspp.ini reverted during service shutdown")
         }
-        if (revertedTarget) {
+        if (revertedArmsx2Target) {
+            prefs.edit { remove(PrefsConstants.KEY_ARMSX2_PATCHED_THIS_RUN) }
+            Log.i(TAG, "ARMSX2 host override reverted during service shutdown")
+        }
+        if (revertedTarget && revertedDolphinTarget && revertedPpssppTarget && revertedArmsx2Target) {
             return
         }
 
-        val reason = if (result.copyBackPath != null) {
-            "${result.message} copyBackPath=${result.copyBackPath}"
+        val reason = if (!revertedTarget) {
+            if (result.copyBackPath != null) {
+                "${result.message} copyBackPath=${result.copyBackPath}"
+            } else {
+                result.message
+            }
+        } else if (!revertedDolphinTarget) {
+            dolphinResult.message
+        } else if (!revertedPpssppTarget) {
+            ppssppResult.message
         } else {
-            result.message
+            armsx2Result.message
         }
-        Log.w(TAG, "Failed to revert RetroArch cfg during service shutdown: $reason")
+        Log.w(TAG, "Failed to revert emulator config during service shutdown: $reason")
     }
 
     companion object {
