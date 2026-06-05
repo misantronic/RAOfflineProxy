@@ -44,6 +44,7 @@ object PrefsConstants {
     const val KEY_PROXY_PORT = "proxy_port"
     const val KEY_APP_UPDATE_CHECK_ENABLED = "app_update_check_enabled"
     const val KEY_APP_UPDATE_LAST_CHECKED_AT = "app_update_last_checked_at"
+    const val KEY_APP_UPDATE_LAST_PROMPTED_AT = "app_update_last_prompted_at"
     private const val KEY_AVAILABLE_APP_UPDATE = "available_app_update"
 
     const val DEFAULT_PROXY_PORT = 8080
@@ -258,10 +259,6 @@ object PrefsConstants {
             .edit { putInt(KEY_PROXY_PORT, port) }
     }
 
-    fun loadAppUpdateLastCheckedAt(context: Context): Long =
-        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .getLong(KEY_APP_UPDATE_LAST_CHECKED_AT, 0L)
-
     fun loadAppUpdateCheckEnabled(context: Context): Boolean =
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .getBoolean(KEY_APP_UPDATE_CHECK_ENABLED, true)
@@ -281,19 +278,13 @@ object PrefsConstants {
             .edit { remove(KEY_APP_UPDATE_LAST_CHECKED_AT) }
     }
 
-    fun loadAvailableAppUpdate(context: Context): AppUpdateInfo? {
-        val raw = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .getString(KEY_AVAILABLE_APP_UPDATE, null)
-            ?: return null
+    fun loadAppUpdateLastPromptedAt(context: Context): Long =
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getLong(KEY_APP_UPDATE_LAST_PROMPTED_AT, 0L)
 
-        return runCatching {
-            val json = JSONObject(raw)
-            AppUpdateInfo(
-                versionName = json.getString("versionName"),
-                apkUrl = json.getString("apkUrl"),
-                releaseUrl = json.getString("releaseUrl")
-            )
-        }.getOrNull()
+    fun saveAppUpdateLastPromptedAt(context: Context, promptedAt: Long) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit { putLong(KEY_APP_UPDATE_LAST_PROMPTED_AT, promptedAt) }
     }
 
     fun saveAvailableAppUpdate(context: Context, update: AppUpdateInfo) {
