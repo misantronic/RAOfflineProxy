@@ -57,6 +57,24 @@ data class LoginCredentials(val user: String, val token: String)
 
 data class PasswordCredentials(val user: String, val password: String)
 
+internal enum class RefreshEndpoint {
+    Patch,
+    AchievementSets
+}
+
+internal data class CachedGameRefreshTarget(
+    val gameId: Int,
+    val user: String,
+    val sourceRomPath: String? = null,
+    val endpoint: RefreshEndpoint,
+    val romHash: String? = null
+)
+
+internal enum class RefreshNotificationMode {
+    Foreground,
+    Background
+}
+
 internal sealed interface HttpGetResult {
     data class Success(val body: String) : HttpGetResult
     data class Failure(
@@ -200,6 +218,135 @@ suspend fun refreshGamePatch(
     }
     Log.i(TAG, "refreshGamePatch: updated cache for gameId=$gameId")
     return normalizedBody
+}
+
+internal suspend fun loadCachedGameRefreshTargets(db: AppDatabase): List<CachedGameRefreshTarget> {
+    val patchEntries = db.cacheDao().getAllByPrefix(CacheKeys.PREFIX_PATCH)
+    val achievementSetEntries = db.cacheDao().getAllByPrefix(CacheKeys.PREFIX_ACHIEVEMENTSETS)
+    val achievementSetsByGameAndUser = buildMap<Pair<Int, String>, String> {
+        achievementSetEntries.forEach { entry ->
+            val user = CacheKeys.parseUserFromAchievementSetsKey(entry.cacheKey) ?: return@forEach
+            val hash = CacheKeys.parseAchievementSetsHash(entry.cacheKey) ?: return@forEach
+            val gameId = runCatching {
+                JSONObject(normalizeCachedResponse("achievementsets", "", "u=$user&m=$hash", entry.responseBody))
+                    .getJSONObject("PatchData")
+                    .optInt("ID")
+            }.getOrDefault(0)
+            if (gameId > 0) {
+                putIfAbsent(gameId to user, hash)
+            }
+        }
+    }
+
+    return patchEntries.mapNotNull { entry ->
+        val gameId = CacheKeys.parseGameIdFromPatchKey(entry.cacheKey) ?: return@mapNotNull null
+        val user = CacheKeys.parseUserFromPatchKey(entry.cacheKey) ?: return@mapNotNull null
+        val endpointHash = achievementSetsByGameAndUser[gameId to user]
+        CachedGameRefreshTarget(
+            gameId = gameId,
+            user = user,
+            sourceRomPath = entry.sourceRomPath,
+            endpoint = if (endpointHash != null) RefreshEndpoint.AchievementSets else RefreshEndpoint.Patch,
+            romHash = endpointHash
+        )
+    }
+}
+
+internal suspend fun refreshCachedGameOfflineBundle(
+    context: Context,
+    target: CachedGameRefreshTarget,
+    creds: LoginCredentials,
+    userAgent: String,
+    db: AppDatabase,
+    notificationMode: RefreshNotificationMode,
+    cacheImages: Boolean = true,
+    cacheBadgeImages: Boolean = true
+): Boolean {
+    val action = if (target.endpoint == RefreshEndpoint.AchievementSets && !target.romHash.isNullOrBlank()) {
+        "achievementsets"
+    } else {
+        "patch"
+    }
+    val requestParams = buildMap {
+        put("u", creds.user)
+        put("t", creds.token)
+        if (action == "achievementsets") {
+            put("m", target.romHash.orEmpty())
+        } else {
+            put("g", target.gameId.toString())
+        }
+    }
+    val patchUrl = buildApiUrl(RA_HOST, action, requestParams)
+    when (val result = httpGet(patchUrl, userAgent)) {
+        is HttpGetResult.Success -> {
+            val normalizedBody = normalizeCachedResponse(
+                action,
+                "",
+                requestParams.entries.joinToString("&") { "${it.key}=${it.value}" },
+                result.body
+            )
+            val normalizedJson = runCatching { JSONObject(normalizedBody) }.getOrNull()
+            if (normalizedJson?.optBoolean("Success", false) != true) {
+                reportRefreshFailure(
+                    context = context,
+                    action = action,
+                    userMessage = context.getString(R.string.request_failed_invalid_response, action),
+                    logDetails = "$action invalid response url=${redactTokens(patchUrl)}",
+                    notificationMode = notificationMode
+                )
+                return false
+            }
+
+            if (action == "achievementsets") {
+                val achievementSetsKey = CacheKeys.achievementSets(target.romHash.orEmpty(), creds.user)
+                val rawBodyToCache = compactCachedRawResponse(action, result.body)
+                db.cacheDao().upsert(
+                    CacheEntry(
+                        cacheKey = achievementSetsKey,
+                        responseBody = rawBodyToCache
+                    )
+                )
+            }
+            db.cacheDao().upsert(
+                CacheEntry(
+                    cacheKey = CacheKeys.patch(target.gameId, creds.user),
+                    responseBody = normalizedBody,
+                    sourceRomPath = target.sourceRomPath
+                )
+            )
+            if (cacheImages) {
+                cachePatchImages(context, target.gameId, userAgent, normalizedBody, cacheBadges = cacheBadgeImages)
+            }
+        }
+        is HttpGetResult.Failure -> {
+            reportRefreshFailure(
+                context = context,
+                action = action,
+                userMessage = result.userMessage(context, action),
+                logDetails = result.logMessage(action, patchUrl),
+                notificationMode = notificationMode
+            )
+            return false
+        }
+    }
+
+    val unlocksOk = cacheUnlocks(context, target.gameId, creds, userAgent, db, notificationMode)
+    cacheSession(target.gameId, creds, db)
+    Log.i(TAG, "refreshCachedGameOfflineBundle complete for gameId=${target.gameId} endpoint=$action")
+    return unlocksOk
+}
+
+private fun reportRefreshFailure(
+    context: Context,
+    action: String,
+    userMessage: String,
+    logDetails: String,
+    notificationMode: RefreshNotificationMode
+) {
+    Log.e(TAG, "refresh failure action=$action: $logDetails")
+    if (notificationMode == RefreshNotificationMode.Foreground) {
+        RequestFailureNotifier.report(userMessage, logDetails)
+    }
 }
 
 suspend fun scanRomFolder(
@@ -379,54 +526,22 @@ internal suspend fun cacheGame(
     cacheImages: Boolean = true,
     cacheBadgeImages: Boolean = true
 ) {
-    val action = if (romHash != null) "achievementsets" else "patch"
-    val requestParams = buildMap {
-        put("u", creds.user)
-        put("t", creds.token)
-        if (romHash != null) {
-            put("m", romHash)
-        } else {
-            put("g", gameId.toString())
-        }
-    }
-    val patchUrl = buildApiUrl(
-        RA_HOST,
-        action,
-        requestParams
+    refreshCachedGameOfflineBundle(
+        context = context,
+        target = CachedGameRefreshTarget(
+            gameId = gameId,
+            user = creds.user,
+            sourceRomPath = sourceRomPath,
+            endpoint = if (romHash != null) RefreshEndpoint.AchievementSets else RefreshEndpoint.Patch,
+            romHash = romHash
+        ),
+        creds = creds,
+        userAgent = userAgent,
+        db = db,
+        notificationMode = RefreshNotificationMode.Foreground,
+        cacheImages = cacheImages,
+        cacheBadgeImages = cacheBadgeImages
     )
-    when (val result = httpGet(patchUrl, userAgent)) {
-        is HttpGetResult.Success -> {
-            val normalizedBody = normalizeCachedResponse(action, "", requestParams.entries.joinToString("&") { "${it.key}=${it.value}" }, result.body)
-            if (romHash != null) {
-                val achievementSetsKey = CacheKeys.achievementSets(romHash, creds.user)
-                val rawBodyToCache = compactCachedRawResponse(action, result.body)
-                db.cacheDao().upsert(
-                    CacheEntry(
-                        cacheKey = achievementSetsKey,
-                        responseBody = rawBodyToCache
-                    )
-                )
-            }
-            db.cacheDao().upsert(
-                CacheEntry(
-                    cacheKey = CacheKeys.patch(gameId, creds.user),
-                    responseBody = normalizedBody,
-                    sourceRomPath = sourceRomPath
-                )
-            )
-            if (cacheImages) {
-                cachePatchImages(context, gameId, userAgent, normalizedBody, cacheBadges = cacheBadgeImages)
-            }
-        }
-        is HttpGetResult.Failure -> {
-            val logDetails = result.logMessage(action, patchUrl)
-            Log.e(TAG, "cacheGame $action refresh failed for gameId=$gameId: $logDetails")
-            RequestFailureNotifier.report(result.userMessage(context, action), logDetails)
-        }
-    }
-    cacheUnlocks(context, gameId, creds, userAgent, db)
-    cacheSession(gameId, creds, db)
-    Log.i(TAG, "cacheGame complete for gameId=$gameId")
 }
 
 private fun resolveDocumentAbsolutePath(file: DocumentFile): String? {
@@ -446,8 +561,9 @@ internal suspend fun cacheUnlocks(
     gameId: Int,
     creds: LoginCredentials,
     userAgent: String,
-    db: AppDatabase
-) {
+    db: AppDatabase,
+    notificationMode: RefreshNotificationMode = RefreshNotificationMode.Foreground
+): Boolean {
     val url = buildApiUrl(
         RA_HOST,
         "unlocks",
@@ -468,12 +584,19 @@ internal suspend fun cacheUnlocks(
                 )
             )
             Log.i(TAG, "Cached unlocks for gameId=$gameId")
+            return true
         }
 
         is HttpGetResult.Failure -> {
             val logDetails = result.logMessage("unlocks", url)
-            Log.e(TAG, "cacheUnlocks failed for gameId=$gameId: $logDetails")
-            RequestFailureNotifier.report(result.userMessage(context, "unlocks"), logDetails)
+            reportRefreshFailure(
+                context = context,
+                action = "unlocks",
+                userMessage = result.userMessage(context, "unlocks"),
+                logDetails = logDetails,
+                notificationMode = notificationMode
+            )
+            return false
         }
     }
 }
