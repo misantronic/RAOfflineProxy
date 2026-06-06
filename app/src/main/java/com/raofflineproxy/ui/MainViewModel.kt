@@ -43,7 +43,6 @@ import com.raofflineproxy.proxy.LoginCredentials
 import com.raofflineproxy.proxy.PasswordCredentials
 import com.raofflineproxy.proxy.patchImageUrl
 import com.raofflineproxy.proxy.cacheLoginCredentialsResponse
-import com.raofflineproxy.proxy.cacheGame
 import com.raofflineproxy.proxy.clearAllCachedImages
 import com.raofflineproxy.proxy.deleteCachedImagesForGame
 import com.raofflineproxy.proxy.HttpGetResult
@@ -1148,20 +1147,18 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun maybePromptSmartCacheAfterProxyStart() {
         if (!pendingSmartCachePromptAfterProxyStart) return
+        pendingSmartCachePromptAfterProxyStart = false
         val currentState = _state.value
         if (!currentState.proxyRunning) return
         if (isSmartCacheDisabledForShizuku(currentState)) {
-            pendingSmartCachePromptAfterProxyStart = false
             return
         }
         if (!currentState.smartCachingEnabled) {
-            pendingSmartCachePromptAfterProxyStart = false
             return
         }
         if (currentState.cachedGames.isNotEmpty()) return
         if (!currentState.isOnline) return
         if (!currentState.hasLoginCredentials) return
-        pendingSmartCachePromptAfterProxyStart = false
         _events.tryEmit(MainUiEvent.PromptSmartCacheAfterProxyStart)
     }
 
