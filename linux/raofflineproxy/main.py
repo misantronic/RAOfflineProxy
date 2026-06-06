@@ -21,6 +21,7 @@ from .platform import (
 )
 from .batocera_conf import patch_batocera_conf, revert_batocera_conf
 from .retroarch_cfg import (
+    enforce_patched_cfg,
     patch_retroarch_cfg,
     revert_retroarch_cfg,
     status_retroarch_cfg,
@@ -77,9 +78,9 @@ def safe_stop_proxy(config_data: dict, cfg_path: str | None) -> list[str]:
     output: list[str] = []
 
     remove_stale_hook()
-    service = stop_service_process()
     patch_state = load_patch_state() or {}
     revert_cfg_path = patch_state.get("cfg_path") or cfg_path
+    service = stop_service_process()
     previous_batocera = patch_state.get("batocera_previous", {})
     batocera = revert_batocera_conf(config_data, previous_batocera)
 
@@ -95,7 +96,7 @@ def safe_stop_proxy(config_data: dict, cfg_path: str | None) -> list[str]:
 
     revert_result = None
     if patch_state:
-        revert_result = revert_retroarch_cfg(revert_cfg_path)
+        revert_result = revert_retroarch_cfg(revert_cfg_path, patch_state)
     elif revert_cfg_path:
         try:
             revert_result = revert_retroarch_cfg(revert_cfg_path)
@@ -249,6 +250,7 @@ def main() -> None:
         if args.command == "start-proxy":
             remove_stale_hook()
             result = patch_retroarch_cfg(cfg_path, config_data)
+            enforce_patched_cfg(cfg_path, config_data)
             batocera = patch_batocera_conf(config_data)
             patch_state = load_patch_state() or {}
             patch_state["batocera_previous"] = batocera.get("previous", {})
