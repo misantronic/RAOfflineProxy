@@ -24,7 +24,10 @@ class LinuxStopProxyTests(unittest.TestCase):
         ):
             output = main.safe_stop_proxy({}, "/runtime/retroarch.cfg")
 
-        revert_cfg.assert_called_once_with("/saved/retroarch.cfg")
+        revert_cfg.assert_called_once_with(
+            "/saved/retroarch.cfg",
+            {"cfg_path": "/saved/retroarch.cfg", "batocera_previous": {}},
+        )
         self.assertEqual(output[-1], "Reverted retroarch.cfg")
 
     def test_stop_proxy_inline_prefers_saved_patch_cfg_path(self) -> None:
@@ -42,4 +45,7 @@ class LinuxStopProxyTests(unittest.TestCase):
         ):
             menu_sdl.stop_proxy_inline()
 
-        revert_cfg.assert_called_once_with("/saved/retroarch.cfg")
+        revert_cfg.assert_called_once_with(
+            "/saved/retroarch.cfg",
+            {"cfg_path": "/saved/retroarch.cfg", "batocera_previous": {}},
+        )

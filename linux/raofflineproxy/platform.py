@@ -1,10 +1,16 @@
 from pathlib import Path
 
-from .config import DEFAULT_ONION_STARTUP_SCRIPT, detect_retroarch_cfg
+from .config import (
+    DEFAULT_MUOS_INIT_DIR,
+    DEFAULT_ONION_STARTUP_SCRIPT,
+    detect_retroarch_cfg,
+)
 
 DEFAULT_KNULLI_ROMS_ROOT = Path("/userdata/roms")
+DEFAULT_MUOS_ROMS_ROOT = Path("/roms")
 DEFAULT_ONION_ROMS_ROOT = Path("/mnt/SDCARD/Roms")
 DEFAULT_KNULLI_STARTUP_SCRIPT = Path("/userdata/system/custom.sh")
+DEFAULT_MUOS_STARTUP_SCRIPT = DEFAULT_MUOS_INIT_DIR / "raofflineproxy.sh"
 ROM_DIRECTORY_KEYS = [
     "rgui_browser_directory",
     "content_directory",
@@ -30,6 +36,9 @@ def resolve_rom_root(config_data: dict) -> Path:
 
     if DEFAULT_KNULLI_ROMS_ROOT.exists() and DEFAULT_KNULLI_ROMS_ROOT.is_dir():
         return DEFAULT_KNULLI_ROMS_ROOT
+
+    if DEFAULT_MUOS_ROMS_ROOT.exists() and DEFAULT_MUOS_ROMS_ROOT.is_dir():
+        return DEFAULT_MUOS_ROMS_ROOT
 
     if DEFAULT_ONION_ROMS_ROOT.exists() and DEFAULT_ONION_ROMS_ROOT.is_dir():
         return DEFAULT_ONION_ROMS_ROOT
@@ -63,6 +72,9 @@ def autostart_enabled(config_data: dict) -> bool:
     if startup_script == DEFAULT_ONION_STARTUP_SCRIPT:
         return True
 
+    if startup_script == DEFAULT_MUOS_STARTUP_SCRIPT:
+        return True
+
     content = startup_script.read_text(encoding="utf-8", errors="replace")
     return AUTOSTART_SENTINEL_START in content and AUTOSTART_SENTINEL_END in content
 
@@ -75,6 +87,11 @@ def enable_autostart(config_data: dict) -> None:
     if startup_script == DEFAULT_ONION_STARTUP_SCRIPT:
         startup_script.parent.mkdir(parents=True, exist_ok=True)
         startup_script.write_text(onion_autostart_script(), encoding="utf-8")
+        return
+
+    if startup_script == DEFAULT_MUOS_STARTUP_SCRIPT:
+        startup_script.parent.mkdir(parents=True, exist_ok=True)
+        startup_script.write_text(muos_autostart_script(config_data), encoding="utf-8")
         return
 
     startup_script.parent.mkdir(parents=True, exist_ok=True)
@@ -98,6 +115,10 @@ def disable_autostart(config_data: dict) -> None:
         startup_script.unlink()
         return
 
+    if startup_script == DEFAULT_MUOS_STARTUP_SCRIPT:
+        startup_script.unlink()
+        return
+
     existing = startup_script.read_text(encoding="utf-8", errors="replace")
     cleaned = strip_autostart_block(existing).strip()
     startup_script.write_text(f"{cleaned}\n" if cleaned else "", encoding="utf-8")
@@ -110,6 +131,9 @@ def resolve_startup_script_path(config_data: dict) -> Path | None:
 
     if Path("/mnt/SDCARD/.tmp_update").exists():
         return DEFAULT_ONION_STARTUP_SCRIPT
+
+    if Path("/opt/muos/script/archive").exists():
+        return DEFAULT_MUOS_STARTUP_SCRIPT
 
     if Path("/userdata/system").exists():
         return DEFAULT_KNULLI_STARTUP_SCRIPT
@@ -134,6 +158,14 @@ def autostart_command(config_data: dict) -> tuple[str]:
     startup_script = resolve_startup_script_path(config_data)
     if startup_script == DEFAULT_ONION_STARTUP_SCRIPT:
         return ("/mnt/SDCARD/App/RAOfflineProxy/autostart-launch.sh",)
+
+    if startup_script == DEFAULT_MUOS_STARTUP_SCRIPT:
+        return (
+            str(
+                config_data.get("autostart_launcher")
+                or "/run/muos/storage/application/RAOfflineProxy/launch.sh"
+            ),
+        )
 
     launcher = str(
         config_data.get("autostart_launcher")
@@ -164,6 +196,21 @@ def onion_autostart_script() -> str:
             "APP_DIR=/mnt/SDCARD/App/RAOfflineProxy",
             'if [ -x "$APP_DIR/autostart-launch.sh" ]; then',
             '  sh "$APP_DIR/autostart-launch.sh"',
+            "fi",
+            "",
+        ]
+    )
+
+
+def muos_autostart_script(config_data: dict) -> str:
+    launcher = autostart_command(config_data)[0]
+    return "\n".join(
+        [
+            "#!/bin/sh",
+            "set -eu",
+            "",
+            f'if [ -x "{launcher}" ]; then',
+            f'  exec "{launcher}" start-proxy >/dev/null 2>&1 || true',
             "fi",
             "",
         ]

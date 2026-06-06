@@ -18,6 +18,7 @@ from .platform import (
 from .pending_awards import delete_pending_award, list_pending_awards
 from .network import online_check
 from .retroarch_cfg import (
+    enforce_patched_cfg,
     load_retroarch_credentials,
     patch_retroarch_cfg,
     revert_retroarch_cfg,
@@ -106,15 +107,28 @@ def run_menu_sdl(command_runner: str) -> None:
     pygame.font.init()
 
     try:
-        surface = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
+        try:
+            surface = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
+        except pygame.error as exc:
+            configured_driver = os.environ.get("SDL_VIDEODRIVER", "")
+            if configured_driver != "" and "not available" in str(exc):
+                log_menu_sdl(
+                    f"display fallback from driver={configured_driver} error={exc}"
+                )
+                os.environ.pop("SDL_VIDEODRIVER", None)
+                pygame.display.quit()
+                pygame.display.init()
+                surface = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
+            else:
+                raise
         width, height = surface.get_size()
-        log_menu_sdl(f"run_menu_sdl start width={width} height={height}")
         session = MenuSdlSession(command_runner, surface, width, height, pygame)
         session.run()
     except Exception:
         log_menu_sdl(traceback.format_exc().rstrip())
         raise
     finally:
+        restart_muos_frontend()
         pygame.quit()
 
 
@@ -130,6 +144,22 @@ def remove_stale_hook() -> None:
         STALE_HOOK_PATH.unlink()
 
 
+def running_on_muos() -> bool:
+    return Path("/opt/muos/script/archive").exists()
+
+
+def restart_muos_frontend() -> None:
+    if not running_on_muos():
+        return
+
+    subprocess.Popen(
+        ["setsid", "-f", "/opt/muos/script/mux/frontend.sh"],
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+
+
 def runtime_config() -> tuple[dict, str]:
     config_data = load_config()
     cfg_path = resolve_retroarch_cfg(config_data)
@@ -140,6 +170,7 @@ def start_proxy_inline() -> None:
     config_data, cfg_path = runtime_config()
     remove_stale_hook()
     patch_retroarch_cfg(cfg_path, config_data)
+    enforce_patched_cfg(cfg_path, config_data)
     batocera = patch_batocera_conf(config_data)
     patch_state = load_patch_state() or {}
     patch_state["batocera_previous"] = batocera.get("previous", {})
@@ -151,14 +182,14 @@ def start_proxy_inline() -> None:
 def stop_proxy_inline() -> None:
     config_data, cfg_path = runtime_config()
     remove_stale_hook()
-    service = stop_service_process()
     patch_state = load_patch_state() or {}
     revert_cfg_path = patch_state.get("cfg_path") or cfg_path
+    service = stop_service_process()
     previous_batocera = patch_state.get("batocera_previous", {})
     revert_batocera_conf(config_data, previous_batocera)
 
     if patch_state:
-        revert_retroarch_cfg(revert_cfg_path)
+        revert_retroarch_cfg(revert_cfg_path, patch_state)
         return
 
     if not service.get("already_stopped"):
@@ -248,13 +279,15 @@ class MenuSdlSession:
         self.meta_font = self.load_font(max(16, height // 44), bold=False)
         self.clock = pygame.time.Clock()
 
-        log_menu_sdl(
-            f"MenuSdlSession init width={width} height={height} input_handles={len(self.input_handles)}"
-        )
         self.refresh_main_menu_state(force=True)
         self.refresh_cached_games()
 
     def load_font(self, size: int, bold: bool = False):
+        if Path("/opt/muos/script/archive").exists():
+            font = self.pygame.font.Font(None, size)
+            font.set_bold(bold)
+            return font
+
         for font_name in FONT_CANDIDATES:
             font_path = self.pygame.font.match_font(font_name)
             if font_path is None:
@@ -262,14 +295,10 @@ class MenuSdlSession:
 
             font = self.pygame.font.Font(font_path, size)
             font.set_bold(bold)
-            log_menu_sdl(
-                f"font selected name={font_name} path={font_path} size={size} bold={bold}"
-            )
             return font
 
         font = self.pygame.font.Font(None, size)
         font.set_bold(bold)
-        log_menu_sdl(f"font fallback default size={size} bold={bold}")
         return font
 
     def run(self) -> None:
@@ -405,7 +434,9 @@ class MenuSdlSession:
                 if self.main_autostart_enabled
                 else "Enable autostart"
             )
-        labels.extend(["Uninstall", "Exit Menu"])
+        if self.is_knulli_platform():
+            labels.append("Uninstall")
+        labels.append("Exit Menu")
         return labels
 
     def is_logged_in(self, config_data: dict | None = None) -> bool:
@@ -576,13 +607,11 @@ class MenuSdlSession:
                 return
 
             if event.type == self.pygame.KEYDOWN:
-                log_menu_sdl(f"pygame keydown key={event.key}")
                 self.handle_key(event.key)
                 continue
 
     def handle_raw_input(self) -> None:
         for key in read_keys(self.input_handles):
-            log_menu_sdl(f"raw key={key}")
             if self.handle_calibration_key(key):
                 continue
 
@@ -624,7 +653,6 @@ class MenuSdlSession:
         start_y = self.item_start_y()
         gap = self.item_gap()
         self.ensure_selection_visible(items, start_y, gap)
-        log_menu_sdl(f"navigate delta={delta} selected={self.selected_index}")
 
     def activate_selected(self) -> None:
         if self.view == "controller_calibration":
@@ -1761,6 +1789,10 @@ class MenuSdlSession:
             self.dismiss_update_prompt()
 
     def uninstall(self) -> None:
+        if not self.is_knulli_platform():
+            self.message = ("Uninstall is not available on this platform", time.monotonic() + ERROR_SECONDS)
+            return
+
         launcher = "/userdata/system/raofflineproxy/bin/raofflineproxy-uninstall"
         try:
             self.storage.close()

@@ -45,15 +45,17 @@ def process_matches_service(pid: int) -> bool:
     return False
 
 
-def discover_service_pid() -> int | None:
+def discover_service_pids() -> list[int]:
+    pids: set[int] = set()
+
     proc_pid = _discover_service_pid_from_proc()
     if proc_pid is not None:
-        return proc_pid
+        pids.add(proc_pid)
 
     try:
-        output = subprocess.check_output(["ps", "-eo", "pid=,command="], text=True)
-    except subprocess.CalledProcessError:
-        return None
+        output = subprocess.check_output(["ps", "-eo", "pid=,args="], text=True)
+    except (subprocess.CalledProcessError, OSError):
+        output = ""
 
     for raw_line in output.splitlines():
         line = raw_line.strip()
@@ -62,12 +64,25 @@ def discover_service_pid() -> int | None:
         pid_text, _, command = line.partition(" ")
         if not pid_text or not command:
             continue
-        if any(marker in command for marker in SERVICE_COMMAND_MARKERS):
-            try:
-                return int(pid_text)
-            except ValueError:
-                continue
-    return None
+        if not any(marker in command for marker in SERVICE_COMMAND_MARKERS):
+            continue
+        try:
+            pids.add(int(pid_text))
+        except ValueError:
+            continue
+
+    return sorted(
+        pid
+        for pid in pids
+        if process_is_running(pid) and process_matches_service(pid)
+    )
+
+
+def discover_service_pid() -> int | None:
+    pids = discover_service_pids()
+    if not pids:
+        return None
+    return pids[0]
 
 
 def tracked_or_discovered_service_pid() -> int | None:
@@ -146,10 +161,11 @@ def save_running_service_state(
 
 
 def start_service_process(config_data: dict) -> dict:
-    pid = tracked_or_discovered_service_pid()
-    if pid is not None:
+    existing_pids = discover_service_pids()
+    if existing_pids:
+        pid = existing_pids[0]
         save_running_service_state(pid, config_data)
-        return {"started": False, "already_running": True, "pid": pid}
+        return {"started": False, "already_running": True, "pid": pid, "pids": existing_pids}
 
     LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
     with LOG_FILE.open("a", encoding="utf-8") as log_handle:
@@ -167,30 +183,53 @@ def start_service_process(config_data: dict) -> dict:
 
 
 def stop_service_process(timeout_seconds: int = 10) -> dict:
-    pid = tracked_or_discovered_service_pid()
-    if pid is None:
+    pids = discover_service_pids()
+    tracked_pid = load_pid()
+    if tracked_pid is not None and tracked_pid not in pids:
+        pids = [tracked_pid, *pids]
+
+    pids = [
+        pid
+        for pid in dict.fromkeys(pids)
+        if process_is_running(pid) and process_matches_service(pid)
+    ]
+
+    if not pids:
         clear_pid()
         clear_service_status()
         return {"stopped": False, "already_stopped": True}
 
-    if not process_is_running(pid):
-        clear_pid()
-        clear_service_status()
-        return {"stopped": False, "already_stopped": True}
+    for pid in pids:
+        try:
+            os.kill(pid, signal.SIGTERM)
+        except OSError:
+            pass
 
-    os.kill(pid, signal.SIGTERM)
     deadline = time.time() + timeout_seconds
     while time.time() < deadline:
-        if process_has_exited(pid):
+        remaining = [pid for pid in pids if not process_has_exited(pid)]
+        if not remaining:
             clear_pid()
             clear_service_status()
-            return {"stopped": True, "already_stopped": False, "pid": pid}
+            return {"stopped": True, "already_stopped": False, "pid": pids[0], "pids": pids}
         time.sleep(0.25)
 
-    os.kill(pid, signal.SIGKILL)
+    remaining = [pid for pid in pids if not process_has_exited(pid)]
+    for pid in remaining:
+        try:
+            os.kill(pid, signal.SIGKILL)
+        except OSError:
+            pass
+
     clear_pid()
     clear_service_status()
-    return {"stopped": True, "already_stopped": False, "pid": pid, "forced": True}
+    return {
+        "stopped": True,
+        "already_stopped": False,
+        "pid": pids[0],
+        "pids": pids,
+        "forced": True,
+    }
 
 
 def service_status() -> dict:
