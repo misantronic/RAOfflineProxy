@@ -64,6 +64,9 @@ private val CACHEABLE_ACTIONS = setOf("patch", "achievementsets", "gameid", "ach
 // Headers OkHttp manages itself — never forward these
 private val SKIP_HEADERS = setOf("host", "content-length", "connection", "transfer-encoding", "accept-encoding")
 
+internal const val GC_CONSOLE_ID = 16
+internal const val WII_CONSOLE_ID = 19
+
 internal sealed interface ParsedRequestLineResult {
     data class Valid(val method: String, val path: String) : ParsedRequestLineResult
     data class Invalid(val statusCode: Int, val message: String) : ParsedRequestLineResult
@@ -959,7 +962,7 @@ internal fun compactCachedRawResponse(
     action: String?,
     responseBody: String
 ): String =
-    if (action == "achievementsets" && !shouldPreserveRawAchievementSets(action, responseBody)) {
+    if (action == "achievementsets" && shouldCompactAchievementSets(action, responseBody)) {
         compactAchievementSetsResponse(responseBody)
     } else if (action == "unlocks") {
         filterWarningAchievementFromUnlocksResponse(responseBody)
@@ -967,13 +970,14 @@ internal fun compactCachedRawResponse(
         responseBody
     }
 
-internal fun shouldPreserveRawAchievementSets(action: String?, responseBody: String): Boolean =
-    action == "achievementsets" && isPspAchievementSetsResponse(responseBody)
+internal fun shouldCompactAchievementSets(action: String?, responseBody: String): Boolean =
+    action == "achievementsets" && (isGcAchievementSetsResponse(responseBody) || isWiiAchievementSetsResponse(responseBody))
 
-internal const val PSP_CONSOLE_ID = 41
+internal fun isGcAchievementSetsResponse(responseBody: String): Boolean =
+    Regex("\"ConsoleI[dD]\"\\s*:\\s*\"?$GC_CONSOLE_ID\"?").containsMatchIn(responseBody)
 
-internal fun isPspAchievementSetsResponse(responseBody: String): Boolean =
-    Regex("\"ConsoleI[dD]\"\\s*:\\s*\"?$PSP_CONSOLE_ID\"?").containsMatchIn(responseBody)
+internal fun isWiiAchievementSetsResponse(responseBody: String): Boolean =
+    Regex("\"ConsoleI[dD]\"\\s*:\\s*\"?$WII_CONSOLE_ID\"?").containsMatchIn(responseBody)
 
 internal fun isPpssppUserAgent(userAgent: String): Boolean =
     userAgent.contains("ppsspp", ignoreCase = true)
