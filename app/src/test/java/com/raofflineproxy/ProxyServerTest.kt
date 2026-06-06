@@ -5,10 +5,11 @@ import com.raofflineproxy.proxy.buildPendingAward
 import com.raofflineproxy.proxy.contentTypeForFile
 import com.raofflineproxy.proxy.compactAchievementSetsResponse
 import com.raofflineproxy.proxy.compactCachedRawResponse
+import com.raofflineproxy.proxy.isGcAchievementSetsResponse
 import com.raofflineproxy.proxy.isChunkedTransferEncoding
-import com.raofflineproxy.proxy.isPspAchievementSetsResponse
 import com.raofflineproxy.proxy.isPpssppUserAgent
 import com.raofflineproxy.proxy.isStaticAssetRequest
+import com.raofflineproxy.proxy.isWiiAchievementSetsResponse
 import com.raofflineproxy.proxy.parseContentLength
 import com.raofflineproxy.proxy.parseRequestLine
 import com.raofflineproxy.proxy.ParsedRequestLineResult
@@ -27,7 +28,7 @@ import com.raofflineproxy.proxy.filterWarningAchievementIds
 import com.raofflineproxy.proxy.normalizedCacheKey
 import com.raofflineproxy.proxy.sanitizeHttpReasonPhrase
 import com.raofflineproxy.proxy.shouldCacheResponse
-import com.raofflineproxy.proxy.shouldPreserveRawAchievementSets
+import com.raofflineproxy.proxy.shouldCompactAchievementSets
 import com.raofflineproxy.proxy.shouldQueueAward
 import com.raofflineproxy.proxy.UpstreamResult
 import com.raofflineproxy.proxy.validateBodyRead
@@ -660,27 +661,42 @@ class ProxyServerTest {
     }
 
     @Test
-    fun isPspAchievementSetsResponse_trueForPspConsoleId() {
-        assertTrue(isPspAchievementSetsResponse("""{"Success":true,"ConsoleId":41}"""))
+    fun isGcAchievementSetsResponse_trueForGcConsoleId() {
+        assertTrue(isGcAchievementSetsResponse("""{"Success":true,"ConsoleId":16}"""))
     }
 
     @Test
-    fun isPspAchievementSetsResponse_falseForNonPspConsoleId() {
-        assertFalse(isPspAchievementSetsResponse("""{"Success":true,"ConsoleId":12}"""))
+    fun isGcAchievementSetsResponse_falseForNonGcConsoleId() {
+        assertFalse(isGcAchievementSetsResponse("""{"Success":true,"ConsoleId":12}"""))
     }
 
     @Test
-    fun shouldPreserveRawAchievementSets_trueForPspAchievementsets() {
-        assertTrue(shouldPreserveRawAchievementSets("achievementsets", """{"Success":true,"ConsoleId":41}"""))
+    fun isWiiAchievementSetsResponse_trueForWiiConsoleId() {
+        assertTrue(isWiiAchievementSetsResponse("""{"Success":true,"ConsoleId":19}"""))
     }
 
     @Test
-    fun shouldPreserveRawAchievementSets_falseForNonAchievementsetsAction() {
-        assertFalse(shouldPreserveRawAchievementSets("patch", """{"Success":true,"ConsoleId":41}"""))
+    fun isWiiAchievementSetsResponse_falseForNonWiiConsoleId() {
+        assertFalse(isWiiAchievementSetsResponse("""{"Success":true,"ConsoleId":12}"""))
     }
 
     @Test
-    fun compactCachedRawResponse_skipsAchievementsetsCompactionForPpsspp() {
+    fun shouldCompactAchievementSets_trueForGcAchievementsets() {
+        assertTrue(shouldCompactAchievementSets("achievementsets", """{"Success":true,"ConsoleId":16}"""))
+    }
+
+    @Test
+    fun shouldCompactAchievementSets_trueForWiiAchievementsets() {
+        assertTrue(shouldCompactAchievementSets("achievementsets", """{"Success":true,"ConsoleId":19}"""))
+    }
+
+    @Test
+    fun shouldCompactAchievementSets_falseForNonAchievementsetsAction() {
+        assertFalse(shouldCompactAchievementSets("patch", """{"Success":true,"ConsoleId":16}"""))
+    }
+
+    @Test
+    fun compactCachedRawResponse_preservesAchievementsetsForPsp() {
         val body = """
             {"Success":true,"GameId":3537,"Title":"Game","ConsoleId":41,"ImageIconUrl":"icon","Sets":[{"Title":null,"Type":"core","AchievementSetId":2174,"GameId":3537,"ImageIconUrl":"icon","Achievements":[],"Leaderboards":[]}]} 
         """.trimIndent()
@@ -689,9 +705,9 @@ class ProxyServerTest {
     }
 
     @Test
-    fun compactCachedRawResponse_compactsAchievementsetsForNonPpsspp() {
+    fun compactCachedRawResponse_compactsAchievementsetsForGc() {
         val body = """
-            {"Success":true,"GameId":3537,"Title":"Game","ConsoleId":41,"ImageIconUrl":"icon","Sets":[{"Title":null,"Type":"core","AchievementSetId":2174,"GameId":3537,"ImageIconUrl":"icon","Achievements":[{"ID":101000001,"MemAddr":"1=1.300.","Title":"Warning","Description":"warning","Points":0,"Author":"","Modified":1,"Created":1,"BadgeName":"00000","Flags":3,"Type":null,"Rarity":0,"RarityHardcore":0,"BadgeURL":"badge","BadgeLockedURL":"badge_lock"}],"Leaderboards":[]}]} 
+            {"Success":true,"GameId":3537,"Title":"Game","ConsoleId":16,"ImageIconUrl":"icon","Sets":[{"Title":null,"Type":"core","AchievementSetId":2174,"GameId":3537,"ImageIconUrl":"icon","Achievements":[{"ID":101000001,"MemAddr":"1=1.300.","Title":"Warning","Description":"warning","Points":0,"Author":"","Modified":1,"Created":1,"BadgeName":"00000","Flags":3,"Type":null,"Rarity":0,"RarityHardcore":0,"BadgeURL":"badge","BadgeLockedURL":"badge_lock"}],"Leaderboards":[]}]} 
         """.trimIndent()
 
         assertEquals(compactAchievementSetsResponse(body), compactCachedRawResponse("achievementsets", body))
