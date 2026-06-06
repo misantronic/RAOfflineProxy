@@ -6,6 +6,9 @@ from pathlib import Path
 
 DEFAULT_ONION_APP_DIR = Path("/mnt/SDCARD/App/RAOfflineProxy")
 DEFAULT_ONION_STARTUP_SCRIPT = Path("/mnt/SDCARD/.tmp_update/startup/raofflineproxy.sh")
+DEFAULT_MUOS_APPLICATION_DIR = Path("/run/muos/storage/application/RAOfflineProxy")
+DEFAULT_MUOS_INIT_DIR = Path("/run/muos/storage/init")
+DEFAULT_MUOS_RETROARCH_CFG = Path("/opt/muos/share/info/config/retroarch.cfg")
 DEFAULT_BATOCERA_CONF = Path("/userdata/system/batocera.conf")
 DEFAULT_KNULLI_CONF = Path("/userdata/system/knulli.conf")
 
@@ -21,6 +24,9 @@ def resolve_config_dir() -> Path:
 
     if DEFAULT_ONION_APP_DIR.exists():
         return DEFAULT_ONION_APP_DIR / "data"
+
+    if DEFAULT_MUOS_APPLICATION_DIR.exists():
+        return DEFAULT_MUOS_APPLICATION_DIR / "data"
 
     if Path("/userdata/system").exists():
         return Path("/userdata/system/.config/raofflineproxy")
@@ -129,6 +135,9 @@ def detect_batocera_conf(config_data: dict) -> str | None:
     if env_override:
         return env_override
 
+    if Path("/opt/muos/script/archive").exists():
+        return None
+
     if DEFAULT_KNULLI_CONF.exists():
         return str(DEFAULT_KNULLI_CONF)
 
@@ -142,6 +151,9 @@ def detect_retroarch_cfg() -> str:
     env_override = os.environ.get("RAOFFLINEPROXY_RETROARCH_CFG")
     if env_override:
         return env_override
+
+    if DEFAULT_MUOS_RETROARCH_CFG.exists():
+        return str(DEFAULT_MUOS_RETROARCH_CFG)
 
     if Path("/userdata").exists():
         return str(Path("/userdata/system/configs/retroarch/retroarchcustom.cfg"))

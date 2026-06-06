@@ -13,6 +13,67 @@ TOKEN_KEY = "cheevos_token"
 PASSWORD_KEY = "cheevos_password"
 
 
+def cheevos_append_cfg_path(cfg_path: str | None) -> Path | None:
+    if not cfg_path:
+        return None
+
+    target = Path(cfg_path)
+    return target.with_name("retroarch.cheevos.cfg")
+
+
+def patch_cheevos_append_cfg(cfg_path: str | None, config_data: dict) -> dict | None:
+    target = cheevos_append_cfg_path(cfg_path)
+    if target is None or not target.exists():
+        return None
+
+    original = target.read_text(encoding="utf-8", errors="replace")
+    proxy_address = proxy_value(config_data)
+    previous_host = _extract_config_value(original, HOST_KEY)
+    previous_enable = _extract_config_value(original, ENABLE_KEY)
+    hardcore_was_enabled = detect_hardcore_enabled(original)
+    transformed = build_patched_content(original, proxy_address)
+
+    if transformed != original:
+        target.write_text(transformed, encoding="utf-8")
+
+    return {
+        "cfg_path": str(target),
+        "hardcore_was_enabled": hardcore_was_enabled,
+        "previous_enable": previous_enable,
+        "previous_host": previous_host,
+        "changed": transformed != original,
+    }
+
+
+def revert_cheevos_append_cfg(state: dict | None) -> dict | None:
+    if not state:
+        return None
+
+    target_path = state.get("cfg_path")
+    if not target_path:
+        return None
+
+    target = Path(target_path)
+    if not target.exists():
+        return None
+
+    current = target.read_text(encoding="utf-8", errors="replace")
+    transformed = build_reverted_content(
+        current,
+        state.get("previous_host"),
+        state.get("previous_enable"),
+        bool(state.get("hardcore_was_enabled", False)),
+    )
+
+    if transformed != current:
+        target.write_text(transformed, encoding="utf-8")
+
+    return {
+        "cfg_path": str(target),
+        "changed": transformed != current,
+    }
+
+
 def detect_hardcore_enabled(content: str) -> bool:
     return _extract_config_value(content, HARDCORE_KEY) == "true"
 
@@ -95,6 +156,7 @@ def patch_retroarch_cfg(cfg_path: str, config_data: dict) -> dict:
     if not target.exists():
         raise FileNotFoundError(f"RetroArch config not found: {target}")
 
+    existing_patch_state = load_patch_state() or {}
     original = target.read_text(encoding="utf-8", errors="replace")
     proxy_address = proxy_value(config_data)
     previous_host = _extract_config_value(original, HOST_KEY)
@@ -108,6 +170,24 @@ def patch_retroarch_cfg(cfg_path: str, config_data: dict) -> dict:
     if transformed != original:
         target.write_text(transformed, encoding="utf-8")
 
+    cheevos_append_state = patch_cheevos_append_cfg(str(target), config_data)
+
+    if was_already_patched and existing_patch_state.get("cfg_path") == str(target):
+        saved_previous_host = existing_patch_state.get("previous_host")
+        saved_proxy_host = existing_patch_state.get("proxy_host")
+        previous_host = (
+            ""
+            if saved_previous_host == saved_proxy_host == proxy_address
+            else saved_previous_host
+        )
+        previous_enable = existing_patch_state.get("previous_enable")
+        hardcore_was_enabled = bool(
+            existing_patch_state.get("hardcore_was_enabled", hardcore_was_enabled)
+        )
+        cheevos_append_state = existing_patch_state.get(
+            "cheevos_append_cfg", cheevos_append_state
+        )
+
     save_patch_state(
         {
             "cfg_path": str(target),
@@ -116,6 +196,7 @@ def patch_retroarch_cfg(cfg_path: str, config_data: dict) -> dict:
             "previous_enable": previous_enable,
             "proxy_host": proxy_address,
             "retroarch_cfg": str(target),
+            "cheevos_append_cfg": cheevos_append_state,
         }
     )
 
@@ -130,8 +211,10 @@ def patch_retroarch_cfg(cfg_path: str, config_data: dict) -> dict:
     }
 
 
-def revert_retroarch_cfg(cfg_path: Optional[str] = None) -> dict:
-    patch_state = load_patch_state()
+def revert_retroarch_cfg(
+    cfg_path: Optional[str] = None, patch_state_override: Optional[dict] = None
+) -> dict:
+    patch_state = patch_state_override if patch_state_override is not None else load_patch_state()
     target_path = cfg_path or (patch_state or {}).get("cfg_path")
     if target_path is None:
         raise RuntimeError("Proxy patch state not found")
@@ -147,6 +230,9 @@ def revert_retroarch_cfg(cfg_path: Optional[str] = None) -> dict:
         bool(patch_state.get("hardcore_was_enabled", False)) if patch_state else False
     )
 
+    if patch_state and previous_host == patch_state.get("proxy_host"):
+        previous_host = ""
+
     if patch_state is None:
         previous_host = ""
         previous_enable = _extract_config_value(current, ENABLE_KEY)
@@ -161,7 +247,9 @@ def revert_retroarch_cfg(cfg_path: Optional[str] = None) -> dict:
     if transformed != current:
         target.write_text(transformed, encoding="utf-8")
 
-    if patch_state is not None:
+    revert_cheevos_append_cfg((patch_state or {}).get("cheevos_append_cfg"))
+
+    if patch_state_override is None and patch_state is not None:
         clear_patch_state()
     return {
         "cfg_path": str(target),
