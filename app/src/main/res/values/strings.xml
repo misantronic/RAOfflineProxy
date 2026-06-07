@@ -62,7 +62,7 @@
     <string name="ppsspp_shizuku_root_mode_reset_label">If you moved your PPSSPP files after the initial setup, reset the saved location choice so the app asks again on the next Start proxy.</string>
     <string name="ppsspp_shizuku_root_mode_reset_action">Reset PPSSPP location choice</string>
     <string name="ppsspp_shizuku_root_mode_reset">PPSSPP location choice reset. The app will ask again on next Start proxy.</string>
-    <string name="smart_cache_all_files_access_message">Smart Cache can use broad file access to read ROMs directly from internal storage and SD cards. Grant All Files Access if you want to avoid ROM-folder prompts.</string>
+    <string name="all_files_access_message">The app can use broad file access to read ROMs directly from internal storage and SD cards. Grant All Files Access to avoid per-folder prompts.</string>
     <string name="smart_cache_rom_saf_dialog_message">Smart Cache needs access to your ROM folder so it can read the recent game paths from RetroArch history and hash those ROM files.</string>
     <string name="saf_dialog_grant">Grant Access</string>
     <string name="action_ok">OK</string>

@@ -544,17 +544,6 @@ internal suspend fun cacheGame(
     )
 }
 
-private fun resolveDocumentAbsolutePath(file: DocumentFile): String? {
-    val uriPath = file.uri.path ?: return null
-    val encodedPath = uriPath.substringAfterLast("/document/", missingDelimiterValue = "")
-        .takeIf { it.isNotBlank() }
-        ?: return null
-    val documentPath = Uri.decode(encodedPath).substringAfter(':', missingDelimiterValue = "")
-        .trim('/')
-        .takeIf { it.isNotBlank() }
-        ?: return null
-    return "/storage/emulated/0/$documentPath"
-}
 
 internal suspend fun cacheUnlocks(
     context: Context,
