@@ -27,10 +27,13 @@ find "${APP_DIR}" -name "*.pyc" -delete
 chmod +x "${DIST_DIR}/launch.sh"
 chmod +x "${DIST_DIR}/mux_launch.sh"
 
+# Bundle the icon inside the app dir; launch.sh installs it into theme dirs on first run.
+cp "${SCRIPT_DIR}/raofflineproxy.png" "${DIST_DIR}/raofflineproxy.png"
+
 printf '%s\n' "Created ${DIST_DIR}"
 
-# Build .muxapp archive — a zip containing RAOfflineProxy/ extracted by muOS
-# Archive Manager directly into MUOS/application/ on the SD card.
+# Build .muxapp archive — .muxapp is always extracted into application/ by Archive Manager.
+# The icon is installed into theme dirs on first launch by launch.sh.
 rm -f "${MUXAPP_PATH}"
 export COPYFILE_DISABLE=1  # suppress macOS ._* metadata files in the zip
 (cd "${SCRIPT_DIR}/dist" && zip -r "${MUXAPP_PATH}" "RAOfflineProxy" --exclude "RAOfflineProxy/data/*")
