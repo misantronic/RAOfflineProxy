@@ -12,6 +12,17 @@ PYTHON_STDERR_FILE="${DATA_DIR}/python-stderr.log"
 
 mkdir -p "$DATA_DIR"
 
+# Install icon into every theme on each run (needed for Applications menu)
+_install_icon() {
+    ICON_SRC="${BASE_DIR}/raofflineproxy.png"
+    [ -f "$ICON_SRC" ] || return 0
+    find "/run/muos/storage/theme" \
+        -path "*/glyph/muxapp" -type d 2>/dev/null | while read -r THEME_DIR; do
+        cp "$ICON_SRC" "${THEME_DIR}/raofflineproxy.png"
+    done
+}
+_install_icon
+
 export HOME="/root"
 export XDG_CONFIG_HOME="/root/.config"
 export RAOFFLINEPROXY_CONFIG_DIR="$DATA_DIR"
