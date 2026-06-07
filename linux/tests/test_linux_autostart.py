@@ -1,3 +1,4 @@
+import stat
 import tempfile
 import unittest
 from pathlib import Path
@@ -116,28 +117,42 @@ class LinuxAutostartTests(unittest.TestCase):
     def test_muos_enable_autostart_writes_plain_init_script(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             startup_script = Path(temp_dir) / "raofflineproxy.sh"
+            user_init_config = Path(temp_dir) / "user_init"
+            user_init_config.write_text("0\n", encoding="utf-8")
             config_data = {"startup_script": str(startup_script)}
 
             original_muos_startup = platform.DEFAULT_MUOS_STARTUP_SCRIPT
+            original_user_init_config = platform.MUOS_USER_INIT_CONFIG
             try:
                 platform.DEFAULT_MUOS_STARTUP_SCRIPT = startup_script
+                platform.MUOS_USER_INIT_CONFIG = user_init_config
                 platform.enable_autostart(config_data)
 
                 content = startup_script.read_text(encoding="utf-8")
                 self.assertIn('"/run/muos/storage/application/RAOfflineProxy/launch.sh"', content)
                 self.assertIn('start-proxy >/dev/null 2>&1 || true', content)
+                self.assertEqual(user_init_config.read_text(encoding="utf-8").strip(), "1")
                 self.assertTrue(platform.autostart_enabled(config_data))
+                self.assertTrue(
+                    startup_script.stat().st_mode & stat.S_IXUSR,
+                    "init script must be user-executable",
+                )
             finally:
                 platform.DEFAULT_MUOS_STARTUP_SCRIPT = original_muos_startup
+                platform.MUOS_USER_INIT_CONFIG = original_user_init_config
 
     def test_muos_disable_autostart_removes_init_script(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             startup_script = Path(temp_dir) / "raofflineproxy.sh"
+            user_init_config = Path(temp_dir) / "user_init"
+            user_init_config.write_text("0\n", encoding="utf-8")
             config_data = {"startup_script": str(startup_script)}
 
             original_muos_startup = platform.DEFAULT_MUOS_STARTUP_SCRIPT
+            original_user_init_config = platform.MUOS_USER_INIT_CONFIG
             try:
                 platform.DEFAULT_MUOS_STARTUP_SCRIPT = startup_script
+                platform.MUOS_USER_INIT_CONFIG = user_init_config
                 platform.enable_autostart(config_data)
                 platform.disable_autostart(config_data)
 
@@ -145,6 +160,7 @@ class LinuxAutostartTests(unittest.TestCase):
                 self.assertFalse(platform.autostart_enabled(config_data))
             finally:
                 platform.DEFAULT_MUOS_STARTUP_SCRIPT = original_muos_startup
+                platform.MUOS_USER_INIT_CONFIG = original_user_init_config
 
 
 if __name__ == "__main__":
