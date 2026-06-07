@@ -284,7 +284,7 @@ def list_archive_rom_entries(path: Path) -> list[zipfile.ZipInfo]:
 
 def hash_candidates_for_manual_cache(path: Path) -> list[str]:
     if path.suffix.lower() not in SUPPORTED_ARCHIVE_EXTENSIONS:
-        if path.suffix.lower() == ".chd":
+        if path.suffix.lower() in (".chd", ".cue", ".m3u"):
             result = hash_rom_candidates_result(path)
             if result.error is not None:
                 raise ValueError(result.error)
