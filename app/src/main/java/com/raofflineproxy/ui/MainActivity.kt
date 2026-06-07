@@ -494,7 +494,7 @@ class MainActivity : AppCompatActivity() {
             SafGrantTarget.SmartCacheRetroArch -> R.string.smart_cache_retroarch_access_message
             SafGrantTarget.Dolphin -> R.string.dolphin_saf_dialog_message
             SafGrantTarget.Ppsspp -> R.string.ppsspp_saf_dialog_message
-            SafGrantTarget.AllFilesAccess -> R.string.smart_cache_all_files_access_message
+            SafGrantTarget.AllFilesAccess -> R.string.all_files_access_message
             SafGrantTarget.SmartCacheRom -> R.string.smart_cache_rom_saf_dialog_message
         }
         AlertDialog.Builder(this)
