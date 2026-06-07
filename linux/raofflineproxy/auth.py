@@ -5,6 +5,7 @@ from . import cache_keys
 from .config import FALLBACK_USER_AGENT, detect_retroarch_cfg, upstream_host
 from .network import build_api_url, http_get
 from .retroarch_cfg import (
+    cheevos_append_cfg_path,
     load_retroarch_password_credentials,
     load_retroarch_token_credentials,
 )
@@ -21,7 +22,13 @@ def resolve_credentials(
 ) -> dict | None:
     config_data = config_data or {}
     cfg_path = str(config_data.get("retroarch_cfg") or detect_retroarch_cfg())
-    token_credentials = load_retroarch_token_credentials(cfg_path)
+    # Also check the cheevos appendconfig — muOS stores credentials there
+    cheevos_cfg = str(cheevos_append_cfg_path(cfg_path)) if cfg_path else None
+
+    token_credentials = (
+        load_retroarch_token_credentials(cfg_path)
+        or load_retroarch_token_credentials(cheevos_cfg)
+    )
     if token_credentials is not None:
         return cache_token_credentials(storage, token_credentials)
 
@@ -29,7 +36,10 @@ def resolve_credentials(
     if cached is not None:
         return cached
 
-    password_credentials = load_retroarch_password_credentials(cfg_path)
+    password_credentials = (
+        load_retroarch_password_credentials(cfg_path)
+        or load_retroarch_password_credentials(cheevos_cfg)
+    )
     if password_credentials is None:
         return None
 
