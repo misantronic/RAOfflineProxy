@@ -16,6 +16,7 @@ from .storage import Storage
 
 SMART_CACHE_LIMIT = MAX_CACHED_GAMES
 SMART_CACHE_DELAY_SECONDS = 0.5
+MUOS_HISTORY_DIR = Path("/run/muos/storage/info/history")
 
 
 @dataclass
@@ -57,8 +58,8 @@ def should_offer_smart_cache(
             reason="offline" if not is_online else "missing_credentials",
         )
 
-    history_path = find_content_history_lpl(config_data)
-    if history_path is None:
+    history_source = _find_history_source(config_data)
+    if history_source is None:
         return SmartCacheStatus(
             found_history=False,
             total_candidates=0,
@@ -83,13 +84,13 @@ def should_offer_smart_cache(
                 if all_paths and len(paths) == 0
                 else "no_valid_history_entries"
             ),
-            history_path=str(history_path),
+            history_path=str(history_source),
         )
 
     return SmartCacheStatus(
         found_history=total_candidates > 0,
         total_candidates=total_candidates,
-        history_path=str(history_path),
+        history_path=str(history_source),
     )
 
 
@@ -189,6 +190,11 @@ def run_cache_paths(
 
 
 def load_content_history_paths(config_data: dict) -> list[Path]:
+    if MUOS_HISTORY_DIR.exists():
+        return _load_muos_history_paths()
+    return _load_retroarch_history_paths(config_data)
+
+def _load_retroarch_history_paths(config_data: dict) -> list[Path]:
     history_path = find_content_history_lpl(config_data)
     if history_path is None or not history_path.exists():
         return []
@@ -218,6 +224,45 @@ def load_content_history_paths(config_data: dict) -> list[Path]:
         seen.add(normalized)
         unique_paths.append(path)
 
+    return unique_paths
+
+
+def _find_history_source(config_data: dict) -> Path | None:
+    """Returns the muOS history dir, or the content_history.lpl path, whichever is available."""
+    if MUOS_HISTORY_DIR.exists():
+        return MUOS_HISTORY_DIR
+    return find_content_history_lpl(config_data)
+
+
+def _load_muos_history_paths() -> list[Path]:
+    """Read ROM paths from muOS per-game history cfg files in MUOS_HISTORY_DIR.
+
+    Each .cfg file has three lines:
+        line 1 — absolute path to the ROM file
+        line 2 — platform/system name (e.g. "gba")
+        line 3 — display name (no trailing newline)
+    """
+    unique_paths: list[Path] = []
+    seen: set[str] = set()
+    try:
+        entries = sorted(MUOS_HISTORY_DIR.iterdir())
+    except OSError:
+        return []
+    for cfg_file in entries:
+        if not cfg_file.name.endswith(".cfg"):
+            continue
+        try:
+            lines = cfg_file.read_text(encoding="utf-8", errors="replace").splitlines()
+        except OSError:
+            continue
+        if not lines:
+            continue
+        path = Path(lines[0].strip())
+        normalized = str(path)
+        if normalized in seen or not path.exists() or not path.is_file():
+            continue
+        seen.add(normalized)
+        unique_paths.append(path)
     return unique_paths
 
 
