@@ -57,6 +57,8 @@ import com.raofflineproxy.proxy.loadUserAgent
 import com.raofflineproxy.proxy.compactCachedRawResponse
 import com.raofflineproxy.proxy.normalizeCachedResponse
 import com.raofflineproxy.proxy.resolveCachedGameIconPath
+import androidx.documentfile.provider.DocumentFile
+import com.raofflineproxy.proxy.hash.hasExtension
 import com.raofflineproxy.proxy.scanRomFolder
 import com.raofflineproxy.proxy.shouldCompactAchievementSets
 import com.raofflineproxy.proxy.WARNING_ACHIEVEMENT_ID
@@ -165,6 +167,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private var pendingSmartCacheGrantTargets = emptyList<SafGrantTarget>()
     private var pendingPpssppShizukuRootModePrompt = false
     private var smartCacheAllFilesRejectedThisRun = false
+    private var pendingAddRomUris = emptyList<Uri>()
     private fun str(resId: Int): String = getApplication<Application>().getString(resId)
     private fun str(resId: Int, vararg args: Any): String = getApplication<Application>().getString(resId, *args)
 
@@ -632,6 +635,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             needsSafGrant = remaining.isNotEmpty(),
             safGrantTarget = remaining.firstOrNull()
         )
+        if (pendingAddRomUris.isNotEmpty() && remaining.isEmpty()) {
+            val uris = pendingAddRomUris
+            pendingAddRomUris = emptyList()
+            addRom(uris)
+            return
+        }
         if (pendingSmartCacheStart && remaining.isEmpty()) {
             pendingSmartCacheGrantTargets = emptyList()
             pendingSmartCacheStart = false
@@ -720,6 +729,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         SnackbarManager.showMessage(str(R.string.smart_cache_requires_ppsspp_access), SnackbarDuration.Indefinite)
                     }
                     SafGrantTarget.AllFilesAccess -> {
+                        pendingAddRomUris = emptyList()
                         SnackbarManager.showMessage(str(R.string.smart_cache_requires_all_files_access), SnackbarDuration.Indefinite)
                     }
                     SafGrantTarget.SmartCacheRom -> {
@@ -782,6 +792,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 SnackbarManager.showMessage(str(R.string.proxy_start_aborted_ppsspp_saf_rejected), SnackbarDuration.Indefinite)
             }
             SafGrantTarget.AllFilesAccess -> {
+                pendingAddRomUris = emptyList()
                 pendingSmartCacheGrantTargets = emptyList()
                 pendingSmartCacheRomGrantPaths = emptyList()
                 SnackbarManager.showMessage(str(R.string.smart_cache_requires_all_files_access), SnackbarDuration.Indefinite)
@@ -1378,6 +1389,21 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 SnackbarManager.showMessage(str(R.string.cached_games_limit_reached, MAX_CACHED_GAMES), SnackbarDuration.Indefinite)
                 return@launch
             }
+
+            val hasPlaylistFile = fileUris.any { uri ->
+                val name = DocumentFile.fromSingleUri(app, uri)?.name ?: ""
+                hasExtension(name, "cue", "m3u")
+            }
+            if (hasPlaylistFile && !hasAllFilesAccess()) {
+                pendingAddRomUris = fileUris
+                _state.value = _state.value.copy(
+                    needsSafGrant = true,
+                    safGrantTarget = SafGrantTarget.AllFilesAccess,
+                    pendingSafGrantTargets = listOf(SafGrantTarget.AllFilesAccess)
+                )
+                return@launch
+            }
+
             val credentials = requireCredentials() ?: return@launch
             val total = fileUris.size
             var matched = 0

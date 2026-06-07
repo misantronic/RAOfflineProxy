@@ -1,8 +1,12 @@
 package com.raofflineproxy.proxy.hash
 
 import android.content.Context
+import android.os.Build
+import android.os.Environment
 import android.os.ParcelFileDescriptor
 import androidx.documentfile.provider.DocumentFile
+import com.raofflineproxy.proxy.resolveDocumentRelativePath
+import com.raofflineproxy.proxy.storageRoots
 import java.io.Closeable
 import java.io.File
 import java.io.FileInputStream
@@ -84,11 +88,153 @@ private val romHashStrategies: List<RomHashStrategy> = listOf(
     GameBoyRomHashStrategy
 )
 
+internal fun parseCueDataBinFileName(content: String): String? {
+    var currentFile: String? = null
+    for (line in content.lines()) {
+        val trimmed = line.trim()
+        if (trimmed.startsWith("FILE ", ignoreCase = true)) {
+            val parts = trimmed.split('"')
+            if (parts.size >= 3) currentFile = parts[1]
+        } else if (trimmed.startsWith("TRACK ", ignoreCase = true)) {
+            if (!trimmed.contains("AUDIO", ignoreCase = true) && currentFile != null) {
+                return currentFile
+            }
+        }
+    }
+    return null
+}
+
+internal fun parseM3uFirstEntry(content: String): String? =
+    content.lines()
+        .map { it.trim() }
+        .firstOrNull { it.isNotEmpty() && !it.startsWith("#") }
+
+private fun hashPlaylistSibling(context: Context, file: DocumentFile, siblingName: String): String? {
+    val fileName = file.name ?: "playlist"
+
+    // Folder-scan case: the sibling is reachable through the same SAF tree.
+    file.parentFile?.findFile(siblingName)?.let { return hashRom(context, it) }
+
+    // Single-file case: we only have a document URI with no parent, so fall back to
+    // the real filesystem path. This requires all-files access on Android 11+.
+    val hasAllFilesAccess = Build.VERSION.SDK_INT < Build.VERSION_CODES.R || Environment.isExternalStorageManager()
+    if (!hasAllFilesAccess) {
+        logWarn(TAG, "Cannot access sibling $siblingName for $fileName — scan a folder or grant all-files access")
+        return null
+    }
+
+    val relativePath = resolveDocumentRelativePath(file)
+    if (relativePath == null) {
+        logWarn(TAG, "Could not resolve a storage-relative path for $fileName (uri=${file.uri})")
+        return null
+    }
+    val relativeParent = relativePath.substringBeforeLast('/', missingDelimiterValue = "")
+
+    // ROMs may live on internal storage or an SD card, so try every mounted root.
+    for (root in storageRoots()) {
+        val parentDir = if (relativeParent.isEmpty()) root else File(root, relativeParent)
+        val siblingFile = findSiblingFileOnDisk(parentDir, siblingName)
+        if (siblingFile != null) {
+            logInfo(TAG, "Hashing playlist sibling directly from filesystem: ${siblingFile.path}")
+            return hashRomFile(context, siblingFile)
+        }
+    }
+
+    logWarn(TAG, "Sibling $siblingName not found under any storage root for relativeParent=$relativeParent")
+    for (root in storageRoots()) {
+        val parentDir = if (relativeParent.isEmpty()) root else File(root, relativeParent)
+        val listing = parentDir.listFiles()
+        logWarn(
+            TAG,
+            "  tried ${parentDir.path} (exists=${parentDir.exists()} canRead=${parentDir.canRead()} entries=${listing?.size ?: -1})"
+        )
+    }
+    return null
+}
+
+private fun findSiblingFileOnDisk(parentDir: File, siblingName: String): File? {
+    val direct = parentDir.resolve(siblingName)
+    if (direct.exists()) return direct
+    // Some rips reference the BIN with different casing than the file on disk.
+    return parentDir.listFiles()?.firstOrNull { it.name.equals(siblingName, ignoreCase = true) }
+}
+
+internal fun hashRomFile(context: Context, file: File): String? {
+    val fileName = file.name
+
+    if (hasExtension(fileName, "m3u")) {
+        val firstEntry = parseM3uFirstEntry(file.readText()) ?: return null
+        val entryName = firstEntry.substringAfterLast('/').substringAfterLast('\\')
+        val entry = file.parentFile?.resolve(entryName)
+        if (entry == null || !entry.exists()) {
+            logWarn(TAG, "Resolved M3U entry not found: $entryName")
+            return null
+        }
+        return hashRomFile(context, entry)
+    }
+
+    if (hasExtension(fileName, "cue")) {
+        val binFileName = parseCueDataBinFileName(file.readText())
+        if (binFileName == null) {
+            logWarn(TAG, "No data track found in CUE file $fileName")
+            return null
+        }
+        val bin = file.parentFile?.resolve(binFileName)
+        if (bin == null || !bin.exists()) {
+            logWarn(TAG, "Resolved CUE data track not found: $binFileName")
+            return null
+        }
+        return hashRomFile(context, bin)
+    }
+
+    if (hasExtension(fileName, "zip")) {
+        return hashZipRom(
+            tempDir = context.cacheDir,
+            openArchiveStream = { file.inputStream() }
+        )
+    }
+
+    return hashRom(
+        RomHashInput(
+            fileName = fileName,
+            fileSize = file.length(),
+            openStream = { file.inputStream() },
+            openDataSource = { FileRomDataSource(file) },
+            openPspChdDataSource = {
+                if (!hasExtension(fileName, "chd")) null else PspChdRomDataSource.open(file)
+            },
+            openPsxChdDataSource = {
+                if (!hasExtension(fileName, "chd")) null else PsxChdRomDataSource.open(file)
+            }
+        )
+    )
+}
+
 internal fun hashRom(
     context: Context,
     file: DocumentFile
 ): String? {
     val fileName = file.name ?: return null
+
+    if (hasExtension(fileName, "m3u")) {
+        val content = context.contentResolver.openInputStream(file.uri)
+            ?.bufferedReader()?.use { it.readText() } ?: return null
+        val firstEntry = parseM3uFirstEntry(content) ?: return null
+        val entryName = firstEntry.substringAfterLast('/').substringAfterLast('\\')
+        return hashPlaylistSibling(context, file, entryName)
+    }
+
+    if (hasExtension(fileName, "cue")) {
+        val content = context.contentResolver.openInputStream(file.uri)
+            ?.bufferedReader()?.use { it.readText() } ?: return null
+        val binFileName = parseCueDataBinFileName(content)
+        if (binFileName == null) {
+            logWarn(TAG, "No data track found in CUE file $fileName")
+            return null
+        }
+        return hashPlaylistSibling(context, file, binFileName)
+    }
+
     if (hasExtension(fileName, "zip")) {
         return hashZipRom(
             tempDir = context.cacheDir,
