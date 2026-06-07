@@ -3,7 +3,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
-from .platform import resolve_retroarch_cfg
+from .platform import read_retroarch_cfg_values, resolve_retroarch_cfg
 from .rom_browser import (
     MAX_CACHED_GAMES,
     add_rom_to_cache,
@@ -223,7 +223,17 @@ def load_content_history_paths(config_data: dict) -> list[Path]:
 
 def find_content_history_lpl(config_data: dict) -> Path | None:
     cfg_path = Path(resolve_retroarch_cfg(config_data))
-    candidates = [
+    cfg_values = read_retroarch_cfg_values(cfg_path)
+
+    candidates: list[Path] = []
+
+    # Honour the explicit path RetroArch writes in its own config (e.g. muOS sets
+    # content_history_path = "/opt/muos/share/emulator/retroarch/content_history.lpl")
+    explicit = cfg_values.get("content_history_path", "").strip().strip('"')
+    if explicit and explicit != "default":
+        candidates.append(Path(explicit))
+
+    candidates += [
         cfg_path.parent / "content_history.lpl",
         cfg_path.parent / "playlists" / "content_history.lpl",
         cfg_path.parent / "playlists" / "builtin" / "content_history.lpl",
@@ -234,6 +244,7 @@ def find_content_history_lpl(config_data: dict) -> Path | None:
         / "lists"
         / "content_history.lpl",
     ]
+
     for candidate in candidates:
         if candidate.exists():
             return candidate
