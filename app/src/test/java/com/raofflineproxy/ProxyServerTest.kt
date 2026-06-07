@@ -25,6 +25,9 @@ import com.raofflineproxy.proxy.proxyHttpResponse
 import com.raofflineproxy.proxy.proxyIsHardcoreRequest
 import com.raofflineproxy.proxy.readChunkedBody
 import com.raofflineproxy.proxy.filterWarningAchievementIds
+import com.raofflineproxy.proxy.filterWarningAchievementFromPatchResponse
+import com.raofflineproxy.proxy.filterWarningAchievementFromAchievementSetsResponse
+import com.raofflineproxy.proxy.filterWarningAchievementForOnline
 import com.raofflineproxy.proxy.normalizedCacheKey
 import com.raofflineproxy.proxy.sanitizeHttpReasonPhrase
 import com.raofflineproxy.proxy.shouldCacheResponse
@@ -238,6 +241,55 @@ class ProxyServerTest {
         val filtered = filterWarningAchievementIds(listOf(-1, 0, 101000001, 2))
 
         assertEquals(listOf(2), filtered)
+    }
+
+    // ── filterWarningAchievementFromPatchResponse() ──
+
+    @Test
+    fun filterWarningAchievementFromPatchResponse_noopOnMalformedJson() {
+        val body = "not json"
+        assertEquals(body, filterWarningAchievementFromPatchResponse(body))
+    }
+
+    @Test
+    fun filterWarningAchievementFromPatchResponse_noopWhenNoPatchData() {
+        val body = """{"Success":false,"Error":"not found"}"""
+        assertEquals(body, filterWarningAchievementFromPatchResponse(body))
+    }
+
+    // ── filterWarningAchievementFromAchievementSetsResponse() ──
+
+    @Test
+    fun filterWarningAchievementFromAchievementSetsResponse_noopOnMalformedJson() {
+        val body = "not json"
+        assertEquals(body, filterWarningAchievementFromAchievementSetsResponse(body))
+    }
+
+    @Test
+    fun filterWarningAchievementFromAchievementSetsResponse_noopWhenNoSets() {
+        val body = """{"Success":true,"GameId":1}"""
+        assertEquals(body, filterWarningAchievementFromAchievementSetsResponse(body))
+    }
+
+    // ── filterWarningAchievementForOnline() ──
+
+    @Test
+    fun filterWarningAchievementForOnline_dispatchesToPatchFilter() {
+        val body = """{"Success":true,"PatchData":{"ID":1}}"""
+        assertEquals(filterWarningAchievementFromPatchResponse(body), filterWarningAchievementForOnline("patch", body))
+    }
+
+    @Test
+    fun filterWarningAchievementForOnline_dispatchesToAchievementSetsFilter() {
+        val body = """{"Success":true,"GameId":1,"Sets":[]}"""
+        assertEquals(filterWarningAchievementFromAchievementSetsResponse(body), filterWarningAchievementForOnline("achievementsets", body))
+    }
+
+    @Test
+    fun filterWarningAchievementForOnline_passthroughForOtherActions() {
+        val body = """{"Success":true}"""
+        assertEquals(body, filterWarningAchievementForOnline("login2", body))
+        assertEquals(body, filterWarningAchievementForOnline(null, body))
     }
 
     // ── proxyIsHardcoreRequest() ──
