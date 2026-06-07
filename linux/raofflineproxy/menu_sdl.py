@@ -85,7 +85,7 @@ FPS = 60
 LEFT_MARGIN = 32
 GROUP_GAP = 14
 MAIN_MENU_STATE_REFRESH_SECONDS = 1.0
-FONT_CANDIDATES = [
+KNULLI_FONT_CANDIDATES = [
     "DejaVu Sans Mono",
     "Monospace",
     "DejaVu Sans",
@@ -96,6 +96,8 @@ FONT_CANDIDATES = [
     "Noto Sans TC",
     "Noto Sans HK",
 ]
+MUOS_FONT_REGULAR = Path("/usr/share/fonts/liberation/LiberationSans-Regular.ttf")
+MUOS_FONT_BOLD = Path("/usr/share/fonts/liberation/LiberationSans-Bold.ttf")
 LOGO_PATH = Path(__file__).resolve().parent / "logo-320.png"
 CALIBRATION_FACE_BUTTONS = {BTN_SOUTH, BTN_EAST}
 
@@ -284,11 +286,16 @@ class MenuSdlSession:
 
     def load_font(self, size: int, bold: bool = False):
         if Path("/opt/muos/script/archive").exists():
+            muos_font_path = MUOS_FONT_BOLD if bold else MUOS_FONT_REGULAR
+            if not muos_font_path.exists():
+                muos_font_path = MUOS_FONT_REGULAR
+            if muos_font_path.exists():
+                return self.pygame.font.Font(str(muos_font_path), size)
             font = self.pygame.font.Font(None, size)
             font.set_bold(bold)
             return font
 
-        for font_name in FONT_CANDIDATES:
+        for font_name in KNULLI_FONT_CANDIDATES:
             font_path = self.pygame.font.match_font(font_name)
             if font_path is None:
                 continue
