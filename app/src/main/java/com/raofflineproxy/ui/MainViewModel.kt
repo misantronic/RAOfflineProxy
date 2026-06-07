@@ -59,6 +59,8 @@ import com.raofflineproxy.proxy.normalizeCachedResponse
 import com.raofflineproxy.proxy.resolveCachedGameIconPath
 import com.raofflineproxy.proxy.scanRomFolder
 import com.raofflineproxy.proxy.shouldCompactAchievementSets
+import com.raofflineproxy.proxy.WARNING_ACHIEVEMENT_ID
+import com.raofflineproxy.proxy.RC_ACHIEVEMENT_FLAG_CORE
 import com.raofflineproxy.proxy.SmartCacheEmulator
 import com.raofflineproxy.service.ProxyService
 import com.raofflineproxy.update.AppUpdateChecker
@@ -284,7 +286,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                             }
                         }.getOrDefault(emptySet())
                         val unlockedCount = unlockedIds.size
-                        val totalAchievements = patchData?.optJSONArray("Achievements")?.length() ?: 0
+                        val totalAchievements = patchData?.optJSONArray("Achievements")?.let { arr ->
+                            var count = 0
+                            for (i in 0 until arr.length()) {
+                                val a = arr.optJSONObject(i) ?: continue
+                                val id = a.optInt("ID", 0)
+                                if (id > 0 && id != WARNING_ACHIEVEMENT_ID && a.optInt("Flags", RC_ACHIEVEMENT_FLAG_CORE) == RC_ACHIEVEMENT_FLAG_CORE) count++
+                            }
+                            count
+                        } ?: 0
                         val unlockedAchievements = buildUnlockedAchievements(patchData, unlockedIds)
                         CachedGame(
                             gameId = gameId,
