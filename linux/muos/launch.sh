@@ -33,4 +33,11 @@ if [ "$#" -eq 0 ]; then
     set -- menu-sdl
 fi
 
-exec /usr/bin/python -m raofflineproxy.main "$@" >>"$PYTHON_STDOUT_FILE" 2>>"$PYTHON_STDERR_FILE"
+case "$1" in
+    menu-sdl)
+        exec /usr/bin/python -m raofflineproxy.main "$@" >>"$PYTHON_STDOUT_FILE" 2>>"$PYTHON_STDERR_FILE"
+        ;;
+    *)
+        exec /usr/bin/python -m raofflineproxy.main "$@"
+        ;;
+esac
