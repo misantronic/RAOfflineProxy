@@ -1,6 +1,8 @@
 package com.raofflineproxy
 
 import com.github.luben.zstd.Zstd
+import com.raofflineproxy.proxy.hash.parseCueDataBinFileName
+import com.raofflineproxy.proxy.hash.parseM3uFirstEntry
 import com.raofflineproxy.proxy.hash.FdsRomHashStrategy
 import com.raofflineproxy.proxy.hash.GameCubeRomHashStrategy
 import com.raofflineproxy.proxy.hash.N64ByteOrder
@@ -1356,5 +1358,73 @@ class RomScannerHashTest {
     }
 
     private fun tempDir(): File = File(requireNotNull(System.getProperty("java.io.tmpdir")))
+
+    @Test
+    fun parseCueDataBinFileName_returnsFirstDataTrack() {
+        val cue = """
+            FILE "game (Track 1).bin" BINARY
+              TRACK 01 MODE2/2352
+                INDEX 01 00:00:00
+            FILE "game (Track 2).bin" BINARY
+              TRACK 02 AUDIO
+                INDEX 01 00:00:00
+        """.trimIndent()
+        assertEquals("game (Track 1).bin", parseCueDataBinFileName(cue))
+    }
+
+    @Test
+    fun parseCueDataBinFileName_skipsAudioTracksBeforeDataTrack() {
+        val cue = """
+            FILE "audio.bin" BINARY
+              TRACK 01 AUDIO
+                INDEX 01 00:00:00
+            FILE "data.bin" BINARY
+              TRACK 02 MODE2/2352
+                INDEX 01 00:00:00
+        """.trimIndent()
+        assertEquals("data.bin", parseCueDataBinFileName(cue))
+    }
+
+    @Test
+    fun parseCueDataBinFileName_returnsNullWhenOnlyAudioTracks() {
+        val cue = """
+            FILE "audio.bin" BINARY
+              TRACK 01 AUDIO
+                INDEX 01 00:00:00
+        """.trimIndent()
+        assertNull(parseCueDataBinFileName(cue))
+    }
+
+    @Test
+    fun parseCueDataBinFileName_returnsNullForEmptyCue() {
+        assertNull(parseCueDataBinFileName(""))
+    }
+
+    @Test
+    fun parseM3uFirstEntry_skipsCommentsAndBlankLines() {
+        val m3u = """
+            # EXTM3U
+
+            # disc 1
+            disc1.cue
+            disc2.cue
+        """.trimIndent()
+        assertEquals("disc1.cue", parseM3uFirstEntry(m3u))
+    }
+
+    @Test
+    fun parseM3uFirstEntry_returnsNullForEmptyFile() {
+        assertNull(parseM3uFirstEntry(""))
+    }
+
+    @Test
+    fun parseM3uFirstEntry_returnsNullForOnlyComments() {
+        assertNull(parseM3uFirstEntry("# EXTM3U\n# comment\n\n"))
+    }
+
+    @Test
+    fun parseM3uFirstEntry_returnsSingleEntry() {
+        assertEquals("game.cue", parseM3uFirstEntry("game.cue"))
+    }
 
 }
