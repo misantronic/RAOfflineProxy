@@ -1,6 +1,6 @@
 #!/bin/sh
 # HELP: RAOfflineProxy
-# ICON: retroarch
+# ICON: raofflineproxy
 # GRID: RAOfflineProxy
 
 . /opt/muos/script/var/func.sh
