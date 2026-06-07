@@ -96,8 +96,8 @@ KNULLI_FONT_CANDIDATES = [
     "Noto Sans TC",
     "Noto Sans HK",
 ]
-MUOS_FONT_REGULAR = Path("/usr/share/fonts/liberation/LiberationSans-Regular.ttf")
-MUOS_FONT_BOLD = Path("/usr/share/fonts/liberation/LiberationSans-Bold.ttf")
+MUOS_FONT_REGULAR = Path("/usr/share/fonts/liberation/LiberationMono-Regular.ttf")
+MUOS_FONT_BOLD = Path("/usr/share/fonts/liberation/LiberationMono-Bold.ttf")
 LOGO_PATH = Path(__file__).resolve().parent / "logo-320.png"
 CALIBRATION_FACE_BUTTONS = {BTN_SOUTH, BTN_EAST}
 
