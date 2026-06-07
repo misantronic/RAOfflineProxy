@@ -79,11 +79,22 @@ def detect_hardcore_enabled(content: str) -> bool:
 
 
 def load_retroarch_credentials(cfg_path: str | None) -> dict | None:
+    # Try main cfg first, then the cheevos appendconfig (muOS stores credentials there)
+    cheevos_cfg = str(cheevos_append_cfg_path(cfg_path)) if cfg_path else None
+
     token_credentials = load_retroarch_token_credentials(cfg_path)
     if token_credentials is not None:
         return token_credentials
 
-    return load_retroarch_password_credentials(cfg_path)
+    token_credentials = load_retroarch_token_credentials(cheevos_cfg)
+    if token_credentials is not None:
+        return token_credentials
+
+    password_credentials = load_retroarch_password_credentials(cfg_path)
+    if password_credentials is not None:
+        return password_credentials
+
+    return load_retroarch_password_credentials(cheevos_cfg)
 
 
 def load_retroarch_token_credentials(cfg_path: str | None) -> dict | None:
