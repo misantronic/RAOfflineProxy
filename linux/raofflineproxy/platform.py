@@ -3,6 +3,7 @@ from pathlib import Path
 from .config import (
     DEFAULT_MUOS_INIT_DIR,
     DEFAULT_ONION_STARTUP_SCRIPT,
+    MUOS_USER_INIT_CONFIG,
     detect_retroarch_cfg,
 )
 
@@ -73,6 +74,12 @@ def autostart_enabled(config_data: dict) -> bool:
         return True
 
     if startup_script == DEFAULT_MUOS_STARTUP_SCRIPT:
+        if MUOS_USER_INIT_CONFIG.exists():
+            try:
+                if MUOS_USER_INIT_CONFIG.read_text(encoding="utf-8").strip() != "1":
+                    return False
+            except OSError:
+                pass
         return True
 
     content = startup_script.read_text(encoding="utf-8", errors="replace")
@@ -92,6 +99,8 @@ def enable_autostart(config_data: dict) -> None:
     if startup_script == DEFAULT_MUOS_STARTUP_SCRIPT:
         startup_script.parent.mkdir(parents=True, exist_ok=True)
         startup_script.write_text(muos_autostart_script(config_data), encoding="utf-8")
+        startup_script.chmod(0o755)
+        _muos_enable_user_init()
         return
 
     startup_script.parent.mkdir(parents=True, exist_ok=True)
@@ -200,6 +209,11 @@ def onion_autostart_script() -> str:
             "",
         ]
     )
+
+
+def _muos_enable_user_init() -> None:
+    if MUOS_USER_INIT_CONFIG.parent.exists():
+        MUOS_USER_INIT_CONFIG.write_text("1\n", encoding="utf-8")
 
 
 def muos_autostart_script(config_data: dict) -> str:

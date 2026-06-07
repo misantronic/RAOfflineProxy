@@ -9,6 +9,7 @@ DEFAULT_ONION_STARTUP_SCRIPT = Path("/mnt/SDCARD/.tmp_update/startup/raofflinepr
 DEFAULT_MUOS_APPLICATION_DIR = Path("/run/muos/storage/application/RAOfflineProxy")
 DEFAULT_MUOS_INIT_DIR = Path("/run/muos/storage/init")
 DEFAULT_MUOS_RETROARCH_CFG = Path("/opt/muos/share/info/config/retroarch.cfg")
+MUOS_USER_INIT_CONFIG = Path("/opt/muos/config/settings/advanced/user_init")
 DEFAULT_BATOCERA_CONF = Path("/userdata/system/batocera.conf")
 DEFAULT_KNULLI_CONF = Path("/userdata/system/knulli.conf")
 
