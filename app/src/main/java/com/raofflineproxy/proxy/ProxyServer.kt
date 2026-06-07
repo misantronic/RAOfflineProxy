@@ -391,7 +391,7 @@ class ProxyServer(
                     }
                 }
             }
-            return okJson(upstream)
+            return okJson(filterWarningAchievementForOnline(action, upstream))
         }
         if (upstream != null) {
             Log.i(TAG, "Forwarded (not cached) action=$action")
@@ -418,7 +418,7 @@ class ProxyServer(
                 ensureOfflineStartSessionCache(path, rawBody)
             }
             Log.i(TAG, "Cache HIT: $key (${cached!!.responseBody.length} bytes)")
-            okJson(cached!!.responseBody)
+            okJson(filterWarningAchievementForOnline(action, cached!!.responseBody))
         } else {
             Log.e(TAG, "Cache MISS: $key")
             if (action == "gameid") {
@@ -947,6 +947,8 @@ private fun JSONObject.stringOrDefault(name: String, default: String): String = 
 
 private fun JSONObject.arrayOrNull(name: String): JSONArray? = runCatching { getJSONArray(name) }.getOrNull()
 
+private fun JSONObject.objectOrNull(name: String): JSONObject? = runCatching { getJSONObject(name) }.getOrNull()
+
 private fun JSONObject.valueOrNull(name: String): Any? = runCatching { get(name) }.getOrNull()
 
 internal fun normalizeCachedResponse(action: String?, path: String, body: String, responseBody: String): String =
@@ -954,6 +956,8 @@ internal fun normalizeCachedResponse(action: String?, path: String, body: String
         normalizeAchievementSetsResponse(path, body, responseBody)
     } else if (action == "unlocks") {
         filterWarningAchievementFromUnlocksResponse(responseBody)
+    } else if (action == "patch") {
+        filterWarningAchievementFromPatchResponse(responseBody)
     } else {
         responseBody
     }
@@ -983,6 +987,7 @@ internal fun isPpssppUserAgent(userAgent: String): Boolean =
     userAgent.contains("ppsspp", ignoreCase = true)
 
 internal const val WARNING_ACHIEVEMENT_ID = 101000001
+internal const val RC_ACHIEVEMENT_FLAG_CORE = 3  // rcheevos: official/core achievements only
 
 internal fun filterWarningAchievementIds(ids: Iterable<Int>): List<Int> =
     ids.filter { it > 0 && it != WARNING_ACHIEVEMENT_ID }
@@ -994,7 +999,7 @@ internal fun filterWarningAchievementFromUnlocksResponse(responseBody: String): 
         return responseBody
     }
 
-    val unlocks = source.optJSONArray("UserUnlocks") ?: return responseBody
+    val unlocks = source.arrayOrNull("UserUnlocks") ?: return responseBody
     val filteredUnlocks = JSONArray().apply {
         for (id in filterWarningAchievementIds((0 until unlocks.length()).map { unlocks.optInt(it) })) {
             put(id)
@@ -1003,6 +1008,32 @@ internal fun filterWarningAchievementFromUnlocksResponse(responseBody: String): 
 
     source.put("UserUnlocks", filteredUnlocks)
     return source.toString()
+}
+
+internal fun filterWarningAchievementFromPatchResponse(responseBody: String): String {
+    val source = try { JSONObject(responseBody) } catch (_: Exception) { return responseBody }
+    val patchData = source.objectOrNull("PatchData") ?: return responseBody
+    val achievements = patchData.arrayOrNull("Achievements") ?: return responseBody
+    patchData.put("Achievements", filterWarningAchievementDefinitions(achievements))
+    return source.toString()
+}
+
+internal fun filterWarningAchievementFromAchievementSetsResponse(responseBody: String): String {
+    val source = try { JSONObject(responseBody) } catch (_: Exception) { return responseBody }
+    val sets = source.arrayOrNull("Sets") ?: return responseBody
+    for (i in 0 until sets.length()) {
+        val set = runCatching { sets.getJSONObject(i) }.getOrNull() ?: continue
+        val achievements = set.arrayOrNull("Achievements") ?: continue
+        set.put("Achievements", filterWarningAchievementDefinitions(achievements))
+    }
+    return source.toString()
+}
+
+internal fun filterWarningAchievementForOnline(action: String?, responseBody: String): String = when (action) {
+    "patch"           -> filterWarningAchievementFromPatchResponse(responseBody)
+    "achievementsets" -> filterWarningAchievementFromAchievementSetsResponse(responseBody)
+    "unlocks"         -> filterWarningAchievementFromUnlocksResponse(responseBody)
+    else              -> responseBody
 }
 
 private fun buildAchievementGameIds(patchEntries: List<CacheEntry>): Map<Int, Int> = buildMap {
@@ -1022,13 +1053,14 @@ private fun buildAchievementGameIds(patchEntries: List<CacheEntry>): Map<Int, In
     }
 }
 
-private fun filterWarningAchievementDefinitions(achievements: JSONArray?): JSONArray {
+internal fun filterWarningAchievementDefinitions(achievements: JSONArray?): JSONArray {
     if (achievements == null) return JSONArray()
 
     return JSONArray().apply {
         for (index in 0 until achievements.length()) {
             val achievement = achievements.optJSONObject(index) ?: continue
             if (achievement.optInt("ID") == WARNING_ACHIEVEMENT_ID) continue
+            if (achievement.intOrDefault("Flags", RC_ACHIEVEMENT_FLAG_CORE) != RC_ACHIEVEMENT_FLAG_CORE) continue
             put(achievement)
         }
     }
@@ -1087,6 +1119,7 @@ private fun compactAchievementDefinitions(achievements: JSONArray?): JSONArray {
         for (index in 0 until achievements.length()) {
             val achievement = runCatching { achievements.getJSONObject(index) }.getOrNull() ?: continue
             if (achievement.intOrDefault("ID", 0) == WARNING_ACHIEVEMENT_ID) continue
+            if (achievement.intOrDefault("Flags", RC_ACHIEVEMENT_FLAG_CORE) != RC_ACHIEVEMENT_FLAG_CORE) continue
             put(
                 JSONObject().apply {
                     put("ID", achievement.intOrDefault("ID", 0))
