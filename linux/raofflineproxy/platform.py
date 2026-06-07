@@ -8,7 +8,7 @@ from .config import (
 )
 
 DEFAULT_KNULLI_ROMS_ROOT = Path("/userdata/roms")
-DEFAULT_MUOS_ROMS_ROOT = Path("/roms")
+DEFAULT_MUOS_ROMS_ROOT = Path("/mnt/mmc/ROMS")
 DEFAULT_ONION_ROMS_ROOT = Path("/mnt/SDCARD/Roms")
 DEFAULT_KNULLI_STARTUP_SCRIPT = Path("/userdata/system/custom.sh")
 DEFAULT_MUOS_STARTUP_SCRIPT = DEFAULT_MUOS_INIT_DIR / "raofflineproxy.sh"
@@ -25,6 +25,9 @@ def resolve_retroarch_cfg(config_data: dict) -> str:
 
 
 def resolve_rom_root(config_data: dict) -> Path:
+    if DEFAULT_MUOS_ROMS_ROOT.exists() and DEFAULT_MUOS_ROMS_ROOT.is_dir():
+        return DEFAULT_MUOS_ROMS_ROOT
+
     cfg_path = Path(resolve_retroarch_cfg(config_data))
     values = read_retroarch_cfg_values(cfg_path)
     for key in ROM_DIRECTORY_KEYS:
@@ -37,9 +40,6 @@ def resolve_rom_root(config_data: dict) -> Path:
 
     if DEFAULT_KNULLI_ROMS_ROOT.exists() and DEFAULT_KNULLI_ROMS_ROOT.is_dir():
         return DEFAULT_KNULLI_ROMS_ROOT
-
-    if DEFAULT_MUOS_ROMS_ROOT.exists() and DEFAULT_MUOS_ROMS_ROOT.is_dir():
-        return DEFAULT_MUOS_ROMS_ROOT
 
     if DEFAULT_ONION_ROMS_ROOT.exists() and DEFAULT_ONION_ROMS_ROOT.is_dir():
         return DEFAULT_ONION_ROMS_ROOT
