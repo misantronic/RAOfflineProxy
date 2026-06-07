@@ -3,10 +3,12 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LINUX_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+VERSION="${RAOFFLINEPROXY_APP_VERSION:-1.3.1-alpha1}"
 DIST_DIR="${SCRIPT_DIR}/dist/RAOfflineProxy"
 APP_DIR="${DIST_DIR}/app"
 PYGAME_DIR="${DIST_DIR}/pygame"
 PYGAME_LIBS_DIR="${DIST_DIR}/pygame.libs"
+MUXAPP_PATH="${SCRIPT_DIR}/dist/RAOfflineProxy-muOS-v${VERSION}.muxapp"
 
 rm -rf "${DIST_DIR}"
 mkdir -p "${APP_DIR}" "${PYGAME_DIR}" "${PYGAME_LIBS_DIR}" "${DIST_DIR}/data"
@@ -26,3 +28,10 @@ chmod +x "${DIST_DIR}/launch.sh"
 chmod +x "${DIST_DIR}/mux_launch.sh"
 
 printf '%s\n' "Created ${DIST_DIR}"
+
+# Build .muxapp archive — a zip containing RAOfflineProxy/ extracted by muOS
+# Archive Manager directly into MUOS/application/ on the SD card.
+rm -f "${MUXAPP_PATH}"
+export COPYFILE_DISABLE=1  # suppress macOS ._* metadata files in the zip
+(cd "${SCRIPT_DIR}/dist" && zip -r "${MUXAPP_PATH}" "RAOfflineProxy" --exclude "RAOfflineProxy/data/*")
+printf '%s\n' "Created ${MUXAPP_PATH}"
