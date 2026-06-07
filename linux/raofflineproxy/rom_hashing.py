@@ -560,6 +560,39 @@ ROM_HASH_STRATEGIES = [
 ]
 
 
+def _parse_cue_data_bin(cue_path: Path) -> str | None:
+    try:
+        text = cue_path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+    current_file: str | None = None
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped.upper().startswith("FILE "):
+            parts = stripped.split('"')
+            if len(parts) >= 3:
+                current_file = parts[1]
+        elif stripped.upper().startswith("TRACK "):
+            if "AUDIO" not in stripped.upper() and current_file is not None:
+                return current_file
+    return None
+
+
+def _parse_m3u_first_path(m3u_path: Path) -> Path | None:
+    try:
+        text = m3u_path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped and not stripped.startswith("#"):
+            entry = Path(stripped)
+            if not entry.is_absolute():
+                entry = m3u_path.parent / entry
+            return entry
+    return None
+
+
 def hash_rom(path: Path) -> str | None:
     candidates = hash_rom_candidates(path)
     return candidates[0] if candidates else None
@@ -570,6 +603,21 @@ def hash_rom_candidates(path: Path) -> list[str]:
 
 
 def hash_rom_candidates_result(path: Path) -> RomHashResult:
+    if has_extension(path.name, "m3u"):
+        resolved = _parse_m3u_first_path(path)
+        if resolved is None:
+            return RomHashResult([], "Could not parse M3U or file is empty")
+        path = resolved
+
+    if has_extension(path.name, "cue"):
+        bin_name = _parse_cue_data_bin(path)
+        if bin_name is None:
+            return RomHashResult([], "Could not find data track in CUE file")
+        bin_path = path.parent / bin_name
+        if not bin_path.exists():
+            return RomHashResult([], f"BIN file not found: {bin_name}")
+        path = bin_path
+
     rom_input = RomHashInput(
         file_name=path.name,
         file_size=path.stat().st_size,
@@ -623,6 +671,8 @@ def supported_rom_extensions() -> set[str]:
         ".bin",
         ".chd",
         ".pbp",
+        ".cue",
+        ".m3u",
     }
 
 

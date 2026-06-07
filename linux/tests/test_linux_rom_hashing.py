@@ -288,5 +288,104 @@ def make_directory_record(
     return bytes(record)
 
 
+class CueAndM3uHashingTests(unittest.TestCase):
+    def test_cue_resolves_to_data_bin_and_hashes(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            bin_path = Path(temp_dir) / "game (Track 1).bin"
+            bin_data = b"BINDATA"
+            bin_path.write_bytes(bin_data)
+
+            cue_path = Path(temp_dir) / "game.cue"
+            cue_path.write_text(
+                'FILE "game (Track 1).bin" BINARY\n'
+                "  TRACK 01 MODE2/2352\n"
+                "    INDEX 01 00:00:00\n"
+            )
+
+            result = rom_hashing.hash_rom_candidates_result(cue_path)
+            self.assertIn(hashlib.md5(bin_data).hexdigest(), result.candidates)
+
+    def test_cue_skips_audio_tracks_before_data_track(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            data_bin = Path(temp_dir) / "data.bin"
+            data_bin.write_bytes(b"DATATRACK")
+
+            cue_path = Path(temp_dir) / "game.cue"
+            cue_path.write_text(
+                'FILE "audio.bin" BINARY\n'
+                "  TRACK 01 AUDIO\n"
+                "    INDEX 01 00:00:00\n"
+                'FILE "data.bin" BINARY\n'
+                "  TRACK 02 MODE2/2352\n"
+                "    INDEX 01 00:00:00\n"
+            )
+
+            result = rom_hashing.hash_rom_candidates_result(cue_path)
+            self.assertIn(hashlib.md5(b"DATATRACK").hexdigest(), result.candidates)
+
+    def test_cue_missing_bin_returns_empty_with_error(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            cue_path = Path(temp_dir) / "game.cue"
+            cue_path.write_text(
+                'FILE "missing.bin" BINARY\n'
+                "  TRACK 01 MODE2/2352\n"
+                "    INDEX 01 00:00:00\n"
+            )
+
+            result = rom_hashing.hash_rom_candidates_result(cue_path)
+            self.assertEqual(result.candidates, [])
+            self.assertIsNotNone(result.error)
+
+    def test_m3u_relative_path_resolves_to_cue_and_hashes(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            bin_path = Path(temp_dir) / "disc1 (Track 1).bin"
+            bin_path.write_bytes(b"DISC1DATA")
+
+            cue_path = Path(temp_dir) / "disc1.cue"
+            cue_path.write_text(
+                'FILE "disc1 (Track 1).bin" BINARY\n'
+                "  TRACK 01 MODE2/2352\n"
+                "    INDEX 01 00:00:00\n"
+            )
+
+            m3u_path = Path(temp_dir) / "game.m3u"
+            m3u_path.write_text("disc1.cue\n")
+
+            result = rom_hashing.hash_rom_candidates_result(m3u_path)
+            self.assertIn(hashlib.md5(b"DISC1DATA").hexdigest(), result.candidates)
+
+    def test_m3u_skips_comments_and_blank_lines(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            bin_path = Path(temp_dir) / "game (Track 1).bin"
+            bin_path.write_bytes(b"GAMEDATA")
+
+            cue_path = Path(temp_dir) / "game.cue"
+            cue_path.write_text(
+                'FILE "game (Track 1).bin" BINARY\n'
+                "  TRACK 01 MODE2/2352\n"
+                "    INDEX 01 00:00:00\n"
+            )
+
+            m3u_path = Path(temp_dir) / "game.m3u"
+            m3u_path.write_text(
+                "# EXTM3U\n"
+                "\n"
+                "# disc 1\n"
+                "game.cue\n"
+            )
+
+            result = rom_hashing.hash_rom_candidates_result(m3u_path)
+            self.assertIn(hashlib.md5(b"GAMEDATA").hexdigest(), result.candidates)
+
+    def test_m3u_empty_returns_error(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            m3u_path = Path(temp_dir) / "game.m3u"
+            m3u_path.write_text("# only comments\n\n")
+
+            result = rom_hashing.hash_rom_candidates_result(m3u_path)
+            self.assertEqual(result.candidates, [])
+            self.assertIsNotNone(result.error)
+
+
 if __name__ == "__main__":
     unittest.main()
