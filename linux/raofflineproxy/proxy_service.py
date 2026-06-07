@@ -32,6 +32,7 @@ from .rom_cache import (
     cache_session,
     cache_unlocks,
     filter_warning_achievement_ids,
+    filter_warning_achievements_for_action,
     merged_unlock_ids,
     refresh_game_patch,
 )
@@ -453,6 +454,8 @@ class ProxyRuntimeServer(ThreadingTCPServer):
         if response_body is None:
             return error_json(503, "invalid upstream response")
 
+        response_body = filter_warning_achievements_for_action(action, response_body)
+
         if action == "startsession" and should_cache_response(response_body):
             game_id = extract_request_param(path, raw_body, "g")
             user = extract_request_param(path, raw_body, "u")
@@ -530,7 +533,7 @@ class ProxyRuntimeServer(ThreadingTCPServer):
             f"{key}:"
         )
         if cached is not None:
-            return ok_json(cached["responseBody"])
+            return ok_json(filter_warning_achievements_for_action(action, cached["responseBody"]))
 
         if action == "gameid":
             LOGGER.warning(
@@ -556,13 +559,13 @@ class ProxyRuntimeServer(ThreadingTCPServer):
                     cache_keys.achievementsets(hash_value, user)
                 )
                 if cached is not None:
-                    return ok_json(cached["responseBody"])
+                    return ok_json(filter_warning_achievements_for_action(action, cached["responseBody"]))
             if fallback_game_id and user:
                 cached = self.storage.get_cache(
                     cache_keys.achievementsets(fallback_game_id, user)
                 )
                 if cached is not None:
-                    return ok_json(cached["responseBody"])
+                    return ok_json(filter_warning_achievements_for_action(action, cached["responseBody"]))
 
         return error_json(503, "no cached response")
 

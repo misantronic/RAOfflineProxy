@@ -11,6 +11,7 @@ from .utils import is_hardcore_request, parse_form_params
 
 LOGGER = logging.getLogger("raofflineproxy")
 WARNING_ACHIEVEMENT_ID = 101000001
+RC_ACHIEVEMENT_FLAG_CORE = 3  # rcheevos: official/core achievements only
 
 
 class CacheGameError(RuntimeError):
@@ -40,6 +41,7 @@ def filter_warning_achievement_definitions(payload: dict) -> dict:
                 for achievement in achievements
                 if isinstance(achievement, dict)
                 and achievement.get("ID") != WARNING_ACHIEVEMENT_ID
+                and achievement.get("Flags", RC_ACHIEVEMENT_FLAG_CORE) == RC_ACHIEVEMENT_FLAG_CORE
             ]
         elif isinstance(achievements, dict):
             patch_data["Achievements"] = {
@@ -47,6 +49,7 @@ def filter_warning_achievement_definitions(payload: dict) -> dict:
                 for key, achievement in achievements.items()
                 if isinstance(achievement, dict)
                 and achievement.get("ID") != WARNING_ACHIEVEMENT_ID
+                and achievement.get("Flags", RC_ACHIEVEMENT_FLAG_CORE) == RC_ACHIEVEMENT_FLAG_CORE
             }
 
     sets = filtered_payload.get("Sets")
@@ -64,9 +67,24 @@ def filter_warning_achievement_definitions(payload: dict) -> dict:
                 for achievement in achievements
                 if isinstance(achievement, dict)
                 and achievement.get("ID") != WARNING_ACHIEVEMENT_ID
+                and achievement.get("Flags", RC_ACHIEVEMENT_FLAG_CORE) == RC_ACHIEVEMENT_FLAG_CORE
             ]
 
     return filtered_payload
+
+
+def filter_warning_achievements_for_action(action: str | None, response_body: str) -> str:
+    if action not in ("patch", "achievementsets", "unlocks"):
+        return response_body
+    try:
+        payload = json.loads(response_body)
+    except Exception:
+        return response_body
+    if action == "unlocks":
+        payload = filter_warning_achievement_from_unlocks_payload(payload)
+    else:
+        payload = filter_warning_achievement_definitions(payload)
+    return json.dumps(payload, separators=(",", ":"))
 
 
 def filter_warning_achievement_from_unlocks_payload(payload: dict) -> dict:
