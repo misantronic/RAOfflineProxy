@@ -27,6 +27,7 @@ import com.raofflineproxy.proxy.readChunkedBody
 import com.raofflineproxy.proxy.filterWarningAchievementIds
 import com.raofflineproxy.proxy.filterWarningAchievementFromPatchResponse
 import com.raofflineproxy.proxy.filterWarningAchievementFromAchievementSetsResponse
+import com.raofflineproxy.proxy.filterWarningAchievementFromStartSessionResponse
 import com.raofflineproxy.proxy.filterWarningAchievementForOnline
 import com.raofflineproxy.proxy.normalizedCacheKey
 import com.raofflineproxy.proxy.sanitizeHttpReasonPhrase
@@ -290,6 +291,19 @@ class ProxyServerTest {
         val body = """{"Success":true}"""
         assertEquals(body, filterWarningAchievementForOnline("login2", body))
         assertEquals(body, filterWarningAchievementForOnline(null, body))
+    }
+
+    // ── filterWarningAchievementFromStartSessionResponse() ──
+
+    @Test
+    fun filterWarningAchievementFromStartSessionResponse_noopOnMalformedJson() {
+        assertEquals("not json", filterWarningAchievementFromStartSessionResponse("not json"))
+    }
+
+    @Test
+    fun filterWarningAchievementForOnline_dispatchesToStartSessionFilter() {
+        val body = """{"Success":true}"""
+        assertEquals(filterWarningAchievementFromStartSessionResponse(body), filterWarningAchievementForOnline("startsession", body))
     }
 
     // ── proxyIsHardcoreRequest() ──

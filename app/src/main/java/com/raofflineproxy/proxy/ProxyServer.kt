@@ -340,7 +340,7 @@ class ProxyServer(
 
         return if (cached != null) {
             Log.i(TAG, "Served synthetic startsession for gameId=$gameId user=$user")
-            okJson(cached!!.responseBody)
+            okJson(filterWarningAchievementForOnline("startsession", cached!!.responseBody))
         } else {
             Log.e(TAG, "Failed to synthesize startsession for gameId=$gameId user=$user")
             errorJson(503, "no cached response")
@@ -395,7 +395,7 @@ class ProxyServer(
         }
         if (upstream != null) {
             Log.i(TAG, "Forwarded (not cached) action=$action")
-            return okJson(upstream)
+            return okJson(filterWarningAchievementForOnline(action, upstream))
         }
         return errorJson(503, "upstream unavailable")
     }
@@ -1029,10 +1029,28 @@ internal fun filterWarningAchievementFromAchievementSetsResponse(responseBody: S
     return source.toString()
 }
 
+internal fun filterWarningAchievementFromStartSessionResponse(responseBody: String): String {
+    return try {
+        val source = JSONObject(responseBody)
+        val unlocks = source.arrayOrNull("Unlocks") ?: return responseBody
+        val filtered = JSONArray()
+        for (i in 0 until unlocks.length()) {
+            val entry = runCatching { unlocks.getJSONObject(i) }.getOrNull() ?: continue
+            if (entry.optInt("ID") == WARNING_ACHIEVEMENT_ID) continue
+            filtered.put(entry)
+        }
+        source.put("Unlocks", filtered)
+        source.toString()
+    } catch (_: Exception) {
+        responseBody
+    }
+}
+
 internal fun filterWarningAchievementForOnline(action: String?, responseBody: String): String = when (action) {
     "patch"           -> filterWarningAchievementFromPatchResponse(responseBody)
     "achievementsets" -> filterWarningAchievementFromAchievementSetsResponse(responseBody)
     "unlocks"         -> filterWarningAchievementFromUnlocksResponse(responseBody)
+    "startsession"    -> filterWarningAchievementFromStartSessionResponse(responseBody)
     else              -> responseBody
 }
 
@@ -1059,7 +1077,6 @@ internal fun filterWarningAchievementDefinitions(achievements: JSONArray?): JSON
     return JSONArray().apply {
         for (index in 0 until achievements.length()) {
             val achievement = achievements.optJSONObject(index) ?: continue
-            if (achievement.optInt("ID") == WARNING_ACHIEVEMENT_ID) continue
             if (achievement.intOrDefault("Flags", RC_ACHIEVEMENT_FLAG_CORE) != RC_ACHIEVEMENT_FLAG_CORE) continue
             put(achievement)
         }
@@ -1118,7 +1135,6 @@ private fun compactAchievementDefinitions(achievements: JSONArray?): JSONArray {
     return JSONArray().apply {
         for (index in 0 until achievements.length()) {
             val achievement = runCatching { achievements.getJSONObject(index) }.getOrNull() ?: continue
-            if (achievement.intOrDefault("ID", 0) == WARNING_ACHIEVEMENT_ID) continue
             if (achievement.intOrDefault("Flags", RC_ACHIEVEMENT_FLAG_CORE) != RC_ACHIEVEMENT_FLAG_CORE) continue
             put(
                 JSONObject().apply {

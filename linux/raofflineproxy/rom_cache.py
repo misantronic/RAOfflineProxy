@@ -40,7 +40,6 @@ def filter_warning_achievement_definitions(payload: dict) -> dict:
                 achievement
                 for achievement in achievements
                 if isinstance(achievement, dict)
-                and achievement.get("ID") != WARNING_ACHIEVEMENT_ID
                 and achievement.get("Flags", RC_ACHIEVEMENT_FLAG_CORE) == RC_ACHIEVEMENT_FLAG_CORE
             ]
         elif isinstance(achievements, dict):
@@ -48,7 +47,6 @@ def filter_warning_achievement_definitions(payload: dict) -> dict:
                 key: achievement
                 for key, achievement in achievements.items()
                 if isinstance(achievement, dict)
-                and achievement.get("ID") != WARNING_ACHIEVEMENT_ID
                 and achievement.get("Flags", RC_ACHIEVEMENT_FLAG_CORE) == RC_ACHIEVEMENT_FLAG_CORE
             }
 
@@ -66,15 +64,27 @@ def filter_warning_achievement_definitions(payload: dict) -> dict:
                 achievement
                 for achievement in achievements
                 if isinstance(achievement, dict)
-                and achievement.get("ID") != WARNING_ACHIEVEMENT_ID
                 and achievement.get("Flags", RC_ACHIEVEMENT_FLAG_CORE) == RC_ACHIEVEMENT_FLAG_CORE
             ]
 
     return filtered_payload
 
 
+def filter_warning_achievement_from_start_session_payload(payload: dict) -> dict:
+    filtered_payload = json.loads(json.dumps(payload))
+    unlocks = filtered_payload.get("Unlocks")
+    if not isinstance(unlocks, list):
+        return filtered_payload
+    filtered_payload["Unlocks"] = [
+        entry
+        for entry in unlocks
+        if isinstance(entry, dict) and entry.get("ID") != WARNING_ACHIEVEMENT_ID
+    ]
+    return filtered_payload
+
+
 def filter_warning_achievements_for_action(action: str | None, response_body: str) -> str:
-    if action not in ("patch", "achievementsets", "unlocks"):
+    if action not in ("patch", "achievementsets", "unlocks", "startsession"):
         return response_body
     try:
         payload = json.loads(response_body)
@@ -82,6 +92,8 @@ def filter_warning_achievements_for_action(action: str | None, response_body: st
         return response_body
     if action == "unlocks":
         payload = filter_warning_achievement_from_unlocks_payload(payload)
+    elif action == "startsession":
+        payload = filter_warning_achievement_from_start_session_payload(payload)
     else:
         payload = filter_warning_achievement_definitions(payload)
     return json.dumps(payload, separators=(",", ":"))
