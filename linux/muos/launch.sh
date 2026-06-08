@@ -27,6 +27,16 @@ export HOME="/root"
 export XDG_CONFIG_HOME="/root/.config"
 export RAOFFLINEPROXY_CONFIG_DIR="$DATA_DIR"
 export RAOFFLINEPROXY_RETROARCH_CFG="/opt/muos/share/info/config/retroarch.cfg"
+
+# build_bundle.sh substitutes the placeholder with the bundle version so the
+# running app (and its update check) reports the version it was packaged as.
+# Left unsubstituted in the source tree, where config.py's default is used.
+APP_VERSION="__RAOFFLINEPROXY_APP_VERSION__"
+case "$APP_VERSION" in
+    __RAOFFLINEPROXY_APP_VERSION__) ;;
+    *) export RAOFFLINEPROXY_APP_VERSION="$APP_VERSION" ;;
+esac
+
 export SDL_VIDEODRIVER="evdev"
 export PYTHONPATH="${APP_DIR}:${BASE_DIR}"
 export LD_LIBRARY_PATH="${PYGAME_LIBS_DIR}:/usr/lib/gl4es:/opt/muos/frontend/lib:/usr/lib"

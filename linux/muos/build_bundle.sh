@@ -22,7 +22,8 @@ cp "${LINUX_DIR}/../docs/public/logo-320.png" "${APP_DIR}/raofflineproxy/logo-32
 cp "${SCRIPT_DIR}/native/libchdr.so" "${LIB_DIR}/libchdr.so"
 cp -R "${SCRIPT_DIR}/vendor/pygame/." "${PYGAME_DIR}/"
 cp -R "${SCRIPT_DIR}/vendor/pygame.libs/." "${PYGAME_LIBS_DIR}/"
-cp "${SCRIPT_DIR}/launch.sh" "${DIST_DIR}/launch.sh"
+# Inject the bundle version so the running app reports the version it was packaged as.
+sed "s|__RAOFFLINEPROXY_APP_VERSION__|${VERSION}|g" "${SCRIPT_DIR}/launch.sh" > "${DIST_DIR}/launch.sh"
 cp "${SCRIPT_DIR}/mux_launch.sh" "${DIST_DIR}/mux_launch.sh"
 cp "${SCRIPT_DIR}/mux_lang.ini" "${DIST_DIR}/mux_lang.ini"
 cp "${SCRIPT_DIR}/uninstall.sh" "${DIST_DIR}/uninstall.sh"
