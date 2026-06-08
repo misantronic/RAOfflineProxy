@@ -46,7 +46,12 @@ from .smart_cache import (
 )
 from .state import load_patch_state, save_patch_state
 from .storage import Storage
-from .update import download_knulli_update_installer, update_status
+from .update import (
+    download_knulli_update_installer,
+    download_muos_update_archive,
+    install_muos_update_archive,
+    update_status,
+)
 from .menu_input import (
     BTN_DPAD_DOWN,
     BTN_DPAD_LEFT,
@@ -838,6 +843,9 @@ class MenuSdlSession:
     def is_knulli_platform(self) -> bool:
         return Path("/userdata/system").exists()
 
+    def update_platform(self) -> str:
+        return "muos" if running_on_muos() else "knulli"
+
     def calibration_complete(self) -> bool:
         return (
             self.configured_confirm_button() is not None
@@ -1555,7 +1563,7 @@ class MenuSdlSession:
         )
         if force:
             try:
-                update = update_status("knulli")
+                update = update_status(self.update_platform())
                 self.main_update_available = update.update_available
                 self.main_update_version = update.latest_version
                 self.main_update_asset_url = update.asset_url
@@ -1768,14 +1776,22 @@ class MenuSdlSession:
                 time.monotonic() + ERROR_SECONDS,
             )
 
-    def install_update(self) -> None:
+    def resolve_update_asset_url(self) -> str | None:
         asset_url = getattr(self, "main_update_asset_url", None)
-        if not asset_url:
-            update = update_status("knulli", force=True)
-            asset_url = update.asset_url
-            self.main_update_asset_url = asset_url
-            self.main_update_version = update.latest_version
-            self.main_update_available = update.update_available
+        if asset_url:
+            return asset_url
+        update = update_status(self.update_platform(), force=True)
+        self.main_update_asset_url = update.asset_url
+        self.main_update_version = update.latest_version
+        self.main_update_available = update.update_available
+        return update.asset_url
+
+    def install_update(self) -> None:
+        if running_on_muos():
+            self.install_update_muos()
+            return
+
+        asset_url = self.resolve_update_asset_url()
         if not asset_url:
             self.message = ("Update install failed: no installer URL", time.monotonic() + ERROR_SECONDS)
             self.dismiss_update_prompt()
@@ -1788,6 +1804,30 @@ class MenuSdlSession:
             close_input_devices(self.input_handles)
             self.pygame.quit()
             os.execv(str(installer_path), [str(installer_path)])
+        except Exception as exc:
+            self.message = (f"Update install failed: {exc}", time.monotonic() + ERROR_SECONDS)
+            self.dismiss_update_prompt()
+
+    def install_update_muos(self) -> None:
+        asset_url = self.resolve_update_asset_url()
+        if not asset_url:
+            self.message = ("Update install failed: no installer URL", time.monotonic() + ERROR_SECONDS)
+            self.dismiss_update_prompt()
+            return
+
+        app_dir = Path("/run/muos/storage/application/RAOfflineProxy")
+        try:
+            stop_proxy_inline()
+            # Download outside app_dir so the in-place swap never touches the archive.
+            archive_dest = app_dir.parent / ".raofflineproxy-update.muxapp"
+            archive_path = download_muos_update_archive(asset_url, archive_dest)
+            install_muos_update_archive(archive_path, app_dir)
+            self.storage.close()
+            close_input_devices(self.input_handles)
+            self.pygame.quit()
+            # Relaunch the updated menu; the muOS frontend stays stopped (we are in-app).
+            launch_script = str(app_dir / "launch.sh")
+            os.execv("/bin/sh", ["/bin/sh", launch_script, "menu-sdl"])
         except Exception as exc:
             self.message = (f"Update install failed: {exc}", time.monotonic() + ERROR_SECONDS)
             self.dismiss_update_prompt()
