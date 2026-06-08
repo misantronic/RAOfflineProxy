@@ -441,7 +441,7 @@ class MenuSdlSession:
                 if self.main_autostart_enabled
                 else "Enable autostart"
             )
-        if self.is_knulli_platform():
+        if self.is_knulli_platform() or running_on_muos():
             labels.append("Uninstall")
         labels.append("Exit Menu")
         return labels
@@ -1796,11 +1796,14 @@ class MenuSdlSession:
             self.dismiss_update_prompt()
 
     def uninstall(self) -> None:
-        if not self.is_knulli_platform():
+        if running_on_muos():
+            launcher = "/run/muos/storage/application/RAOfflineProxy/uninstall.sh"
+        elif self.is_knulli_platform():
+            launcher = "/userdata/system/raofflineproxy/bin/raofflineproxy-uninstall"
+        else:
             self.message = ("Uninstall is not available on this platform", time.monotonic() + ERROR_SECONDS)
             return
 
-        launcher = "/userdata/system/raofflineproxy/bin/raofflineproxy-uninstall"
         try:
             self.storage.close()
         except Exception:

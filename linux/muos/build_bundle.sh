@@ -20,12 +20,14 @@ cp -R "${SCRIPT_DIR}/vendor/pygame.libs/." "${PYGAME_LIBS_DIR}/"
 cp "${SCRIPT_DIR}/launch.sh" "${DIST_DIR}/launch.sh"
 cp "${SCRIPT_DIR}/mux_launch.sh" "${DIST_DIR}/mux_launch.sh"
 cp "${SCRIPT_DIR}/mux_lang.ini" "${DIST_DIR}/mux_lang.ini"
+cp "${SCRIPT_DIR}/uninstall.sh" "${DIST_DIR}/uninstall.sh"
 
 find "${APP_DIR}" -name "__pycache__" -type d -prune -exec rm -rf {} +
 find "${APP_DIR}" -name "*.pyc" -delete
 
 chmod +x "${DIST_DIR}/launch.sh"
 chmod +x "${DIST_DIR}/mux_launch.sh"
+chmod +x "${DIST_DIR}/uninstall.sh"
 
 # Bundle the icon inside the app dir; launch.sh installs it into theme dirs on first run.
 cp "${SCRIPT_DIR}/raofflineproxy.png" "${DIST_DIR}/raofflineproxy.png"
