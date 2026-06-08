@@ -691,6 +691,7 @@ def load_libchdr() -> ctypes.CDLL | None:
         "/userdata/system/lib/libchdr.so",
         "/userdata/system/raofflineproxy/lib/libchdr.so",
         "/mnt/SDCARD/App/RAOfflineProxy/lib/libchdr.so",
+        "/run/muos/storage/application/RAOfflineProxy/lib/libchdr.so",
     ]
     for candidate in candidates:
         if not candidate:
