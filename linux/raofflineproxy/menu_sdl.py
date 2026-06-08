@@ -753,13 +753,10 @@ class MenuSdlSession:
             return
 
         if selected_label == "Clear cache":
-            if self.is_knulli_platform():
-                self.save_view_position("cached_games")
-                self.clear_cache_return_view = "cached_games"
-                self.view = "clear_cache_confirm"
-                self.reset_selection()
-            else:
-                self.clear_cache_and_return()
+            self.save_view_position("cached_games")
+            self.clear_cache_return_view = "cached_games"
+            self.view = "clear_cache_confirm"
+            self.reset_selection()
             return
 
         if selected_label == "Back":
