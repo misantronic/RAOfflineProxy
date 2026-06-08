@@ -19,6 +19,7 @@ docs/.vitepress/cache
 keystore.properties
 AGENTS.md
 CLAUDE.md
+RELEASING.md
 .agents/
 linux/knulli/dist/
 linux/knulli/native/
