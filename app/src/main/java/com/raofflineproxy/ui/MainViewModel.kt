@@ -1168,7 +1168,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun maybePromptSmartCacheAfterProxyStart() {
         if (!pendingSmartCachePromptAfterProxyStart) return
-        pendingSmartCachePromptAfterProxyStart = false
         val currentState = _state.value
         if (!currentState.proxyRunning) return
         if (isSmartCacheDisabledForShizuku(currentState)) {
@@ -1180,6 +1179,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         if (currentState.cachedGames.isNotEmpty()) return
         if (!currentState.isOnline) return
         if (!currentState.hasLoginCredentials) return
+        pendingSmartCachePromptAfterProxyStart = false
         _events.tryEmit(MainUiEvent.PromptSmartCacheAfterProxyStart)
     }
 
