@@ -49,6 +49,10 @@ Smart Cache can use recent activity from:
 
 If Smart Cache does not find anything new, it simply finishes without adding more games.
 
+::: warning ARMSX2 (PS2) is not a Smart Cache source
+Smart Cache cannot pull recent activity from **ARMSX2**. The underlying PS2 core can track play history (a `playtime.dat` file keyed by game serial), but the Android build does not produce it, so there is no recent-games list to read. To cache PS2 games, use **Scan ROM Folder** or **Add Individual ROM(s)** instead.
+:::
+
 ### Scan ROM Folder
 
 1. Make sure the proxy is running and you are online
