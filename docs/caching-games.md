@@ -45,6 +45,7 @@ Smart Cache can use recent activity from:
 
 - **RetroArch** recent history
 - **Dolphin** recent GameCube and Wii save data
+- **PPSSPP** recent games list
 
 If Smart Cache does not find anything new, it simply finishes without adding more games.
 
