@@ -27,7 +27,6 @@ export HOME="/root"
 export XDG_CONFIG_HOME="/root/.config"
 export RAOFFLINEPROXY_CONFIG_DIR="$DATA_DIR"
 export RAOFFLINEPROXY_RETROARCH_CFG="/opt/muos/share/info/config/retroarch.cfg"
-export RAOFFLINEPROXY_CACHE_IMAGES=0
 export SDL_VIDEODRIVER="evdev"
 export PYTHONPATH="${APP_DIR}:${BASE_DIR}"
 export LD_LIBRARY_PATH="${PYGAME_LIBS_DIR}:/usr/lib/gl4es:/opt/muos/frontend/lib:/usr/lib"
