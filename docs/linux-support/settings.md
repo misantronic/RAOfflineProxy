@@ -34,6 +34,22 @@ That startup script calls the app's headless launcher:
 /App/RAOfflineProxy/autostart-launch.sh
 ```
 
+== muOS
+
+muOS autostart is available from the app menu.
+
+If you enable it, RAOfflineProxy installs a startup script under the muOS init directory:
+
+```text
+/run/muos/storage/init/raofflineproxy.sh
+```
+
+It also enables muOS user init so that script runs on boot:
+
+```text
+/opt/muos/config/settings/advanced/user_init
+```
+
 :::
 
 ## Start / Stop Behavior

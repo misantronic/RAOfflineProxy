@@ -21,6 +21,12 @@ Before using `RAOfflineProxy` on Linux:
   - Stop proxy in the app
   - Delete the old `/App/RAOfflineProxy` folder before copying a new version
 
+== muOS
+
+- Enter your RetroAchievements account details in RetroArch<br>
+  > muOS stores these credentials in the `retroarch.cheevos.cfg` appendconfig, which RAOfflineProxy reads automatically.
+- Make sure the system clock is correct so award timestamps are accurate
+
 :::
 
 ::: warning RetroArch config is patched automatically
@@ -65,6 +71,26 @@ RAOfflineProxy patches the RetroArch config it needs in order to redirect RetroA
 3. Launch **RAOfflineProxy** from Onion's Apps section
 4. Start the proxy while online
 5. Launch a game once so its data is cached
+
+== muOS
+
+> muOS support is currently in alpha.
+>
+> Compatible with [MustardOS 2601.1 Funky Jacaranda](https://muos.dev/release/current/2601_1).
+
+1. Download the latest `RAOfflineProxy-muOS-*.muxapp` from [GitHub Releases](https://github.com/misantronic/RAOfflineProxy/releases)
+2. Copy the `.muxapp` into your muOS `ARCHIVE` folder on the SD card
+3. Open **Archive Manager** (under **Applications**) and install the RAOfflineProxy archive
+4. Launch **RAOfflineProxy** from the **Applications** menu
+
+   The app payload is installed under:
+
+```text
+/run/muos/storage/application/RAOfflineProxy
+```
+
+5. Start the proxy while online
+6. Launch a game once so its data is cached
 
 :::
 
