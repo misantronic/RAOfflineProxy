@@ -925,8 +925,8 @@ class PeriodicRefresh(threading.Thread):
     def __init__(
         self,
         server: ProxyRuntimeServer,
-        interval_seconds: int = 3600,
-        cache_ttl_seconds: int = 7 * 24 * 3600,
+        interval_seconds: int = 3600,  # 1 hour
+        cache_ttl_seconds: int = 60 * 24 * 3600,  # 60 days (matches Android)
     ):
         super().__init__(daemon=True)
         self.server = server
