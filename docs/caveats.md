@@ -31,6 +31,14 @@ On Android 15 and 16, the current blocker is the system folder picker: it does n
 - On some devices, swiping the app away or crashing while the proxy is active does not reliably revert the patched emulator config immediately.
 - If the app was killed or crashed during sync, reopen RAOfflineProxy once so it can restore the config on launch.
 
+## Achievement Counter Shows One Extra
+
+RetroArch's in-game achievement counter may show one more than expected — for example **0/15** instead of **0/14**.
+
+---
+
+This is caused by a softcore-mode warning that RetroAchievements includes for unrecognised emulators. The warning counts toward RetroArch's total but does not affect the count shown inside the RAOfflineProxy app. A popup will still appear in-game to let you know softcore mode is active.
+
 ## Playtime
 
 While you play offline, playtime cannot be tracked.
