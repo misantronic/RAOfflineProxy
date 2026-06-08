@@ -4,11 +4,13 @@
 
 ## Current Layout
 
-- `build_bundle.sh`: builds a deployable `dist/RAOfflineProxy/` payload
+- `build_bundle.sh`: builds a deployable `dist/RAOfflineProxy/` payload and packages it as a `.muxapp`
+- `build_libchdr.sh`: cross-compiles the aarch64 `libchdr.so` used for CHD disc-image hashing
 - `launch.sh`: starts the bundled app with the muOS runtime environment
 - `mux_launch.sh`: muOS Applications entrypoint
 - `mux_lang.ini`: muOS app metadata
 - `vendor/pygame` and `vendor/pygame.libs`: bundled `pygame` runtime for stock muOS Python
+- `native/libchdr.so` (build output): bundled to `lib/libchdr.so` in the payload
 
 ## Runtime Assumptions
 
@@ -18,6 +20,15 @@
 - app payload lives under `/run/muos/storage/application/RAOfflineProxy`
 - visible Applications entries live under `/opt/muos/share/application`
 - autostart/init scripts live under `/run/muos/storage/init`
+
+## Updates
+
+- the SDL menu checks GitHub Releases for the `*muos*.muxapp` asset (platform `muos`)
+- when a newer version is found, "Update Available" is shown in the menu
+- installing downloads the `.muxapp`, extracts it in place over
+  `/run/muos/storage/application/RAOfflineProxy`, always preserves `data/`
+  (config, database, queued awards, secrets), then relaunches the menu
+- the GitHub release asset name must contain `muos` and end in `.muxapp` to be detected
 
 ## Notes
 

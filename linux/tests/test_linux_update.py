@@ -66,6 +66,27 @@ class LinuxUpdateTests(unittest.TestCase):
 
         self.assertEqual(asset_url, "https://example.com/onion.zip")
 
+    def test_find_platform_asset_url_matches_muos_muxapp_asset(self) -> None:
+        asset_url = update.find_platform_asset_url(
+            "muos",
+            [
+                {"name": "RAOfflineProxy-Onion-v1.4.0-alpha1.zip", "browser_download_url": "https://example.com/onion.zip"},
+                {"name": "RAOfflineProxy-muOS-v1.4.0-alpha1.muxapp", "browser_download_url": "https://example.com/muos.muxapp"},
+            ],
+        )
+
+        self.assertEqual(asset_url, "https://example.com/muos.muxapp")
+
+    def test_find_platform_asset_url_rejects_muos_wrong_asset_type(self) -> None:
+        asset_url = update.find_platform_asset_url(
+            "muos",
+            [
+                {"name": "RAOfflineProxy-muOS-v1.4.0-alpha1.zip", "browser_download_url": "https://example.com/muos.zip"}
+            ],
+        )
+
+        self.assertIsNone(asset_url)
+
     def test_find_platform_asset_url_rejects_wrong_asset_type(self) -> None:
         onion_asset_url = update.find_platform_asset_url(
             "onion",
@@ -403,6 +424,86 @@ class LinuxUpdateTests(unittest.TestCase):
                 update.current_version = original_current_version
 
             self.assertEqual((app_dir / "data" / "proxy.sqlite3").read_text(encoding="utf-8"), "fresh-db")
+
+    def test_install_muos_update_archive_replaces_app_dir_and_preserves_data(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            app_dir = root / "RAOfflineProxy"
+            app_dir.mkdir(parents=True)
+            (app_dir / "old.txt").write_text("old", encoding="utf-8")
+            data_dir = app_dir / "data"
+            data_dir.mkdir()
+            (data_dir / "proxy.sqlite3").write_text("cached-db", encoding="utf-8")
+
+            archive_path = root / "update.muxapp"
+            with zipfile.ZipFile(archive_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+                archive.writestr("RAOfflineProxy/app/raofflineproxy/__init__.py", "new")
+                launch_info = zipfile.ZipInfo("RAOfflineProxy/launch.sh")
+                launch_info.external_attr = 0o755 << 16
+                archive.writestr(launch_info, "#!/bin/sh\nexit 0\n")
+
+            update.install_muos_update_archive(archive_path, app_dir)
+
+            self.assertFalse((app_dir / "old.txt").exists())
+            self.assertEqual(
+                (app_dir / "app" / "raofflineproxy" / "__init__.py").read_text(encoding="utf-8"),
+                "new",
+            )
+            # data/ is always preserved across a muOS update
+            self.assertEqual(
+                (app_dir / "data" / "proxy.sqlite3").read_text(encoding="utf-8"),
+                "cached-db",
+            )
+            self.assertEqual((app_dir / "launch.sh").stat().st_mode & 0o777, 0o755)
+            # the downloaded archive is cleaned up
+            self.assertFalse(archive_path.exists())
+
+    def test_install_muos_update_archive_clears_stale_update_status(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            app_dir = root / "RAOfflineProxy"
+            data_dir = app_dir / "data"
+            data_dir.mkdir(parents=True)
+            (data_dir / "update_status.json").write_text("stale", encoding="utf-8")
+
+            archive_path = root / "update.muxapp"
+            with zipfile.ZipFile(archive_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+                archive.writestr("RAOfflineProxy/launch.sh", "#!/bin/sh\nexit 0\n")
+
+            update.install_muos_update_archive(archive_path, app_dir)
+
+            self.assertFalse((app_dir / "data" / "update_status.json").exists())
+
+    def test_install_muos_update_archive_rejects_archive_missing_app_dir(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            app_dir = root / "RAOfflineProxy"
+            app_dir.mkdir(parents=True)
+            (app_dir / "keep.txt").write_text("keep", encoding="utf-8")
+
+            archive_path = root / "update.muxapp"
+            with zipfile.ZipFile(archive_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+                archive.writestr("WrongTopDir/launch.sh", "#!/bin/sh\nexit 0\n")
+
+            with self.assertRaises(RuntimeError):
+                update.install_muos_update_archive(archive_path, app_dir)
+
+            # original install is left intact on failure
+            self.assertEqual((app_dir / "keep.txt").read_text(encoding="utf-8"), "keep")
+
+    def test_download_muos_update_archive_writes_muxapp_non_executable(self) -> None:
+        update.read_update_asset = lambda _asset_url: b"muxapp-bytes"
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            destination = Path(temp_dir) / "update.muxapp"
+            written = update.download_muos_update_archive(
+                "https://example.com/muos.muxapp",
+                destination=destination,
+            )
+
+            self.assertEqual(written, destination)
+            self.assertEqual(destination.read_bytes(), b"muxapp-bytes")
+            self.assertEqual(destination.stat().st_mode & 0o777, 0o644)
 
     def test_download_onion_update_archive_writes_zip_non_executable(self) -> None:
         update.read_update_asset = lambda _asset_url: b"zip-bytes"
