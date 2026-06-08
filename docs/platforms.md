@@ -14,4 +14,5 @@ This page tracks which emulators and Linux handheld platforms `RAOfflineProxy` c
 
 - KNULLI
 - Onion
+- muOS
 - ROCKNIX (planned)

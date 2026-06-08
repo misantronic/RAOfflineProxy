@@ -2,12 +2,12 @@
 
 Devices confirmed working by either the developer or user reports.
 
-| Device                                                                 | Status                                                   | Notes                                                                                                                |
-| ---------------------------------------------------------------------- | -------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| <span style="white-space: nowrap;">Miyoo Mini Flip / Plus</span>       | <span style="white-space: nowrap;">✅ Working</span>     | Dev tested                                                                                                           |
-| <span style="white-space: nowrap;">Anbernic RG40XX H / RG35XX H</span> | <span style="white-space: nowrap;">✅ Working</span>     | Dev tested                                                                                                           |
-| <span style="white-space: nowrap;">TrimUI Smart Pro</span>             | <span style="white-space: nowrap;">✅ Working</span>     | User tested                                                                                                          |
-| <span style="white-space: nowrap;">TrimUI Brick</span>                 | <span style="white-space: nowrap;">❌ Not working</span> | User tested; Knulli crashes when starting. See [issue #18](https://github.com/misantronic/RAOfflineProxy/issues/18). |
+| Device                                                                 | Status                                               | Notes       |
+| ---------------------------------------------------------------------- | ---------------------------------------------------- | ----------- |
+| <span style="white-space: nowrap;">Miyoo Mini Flip / Plus</span>       | <span style="white-space: nowrap;">✅ Working</span> | Dev tested  |
+| <span style="white-space: nowrap;">Anbernic RG40XX H / RG35XX H</span> | <span style="white-space: nowrap;">✅ Working</span> | Dev tested  |
+| <span style="white-space: nowrap;">TrimUI Smart Pro</span>             | <span style="white-space: nowrap;">✅ Working</span> | User tested |
+| <span style="white-space: nowrap;">TrimUI Brick</span>                 | <span style="white-space: nowrap;">✅ Working</span> | User tested |
 
 ## Submit your device
 

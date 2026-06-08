@@ -69,6 +69,10 @@ features:
           <img src="/onion.svg" alt="Onion logo">
           <span>Onion</span>
         </div>
+        <div class="supported-platforms__item">
+          <img src="/muos.png" alt="muOS logo">
+          <span>muOS</span>
+        </div>
       </div>
     </div>
   </div>

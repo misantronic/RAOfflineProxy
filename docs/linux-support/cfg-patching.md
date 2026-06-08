@@ -18,6 +18,20 @@ You normally do not need to edit RetroArch config yourself. Starting the proxy p
 /mnt/SDCARD/RetroArch/.retroarch/retroarch.cfg
 ```
 
+== muOS
+
+```text
+/opt/muos/share/info/config/retroarch.cfg
+```
+
+muOS RetroArch also loads a separate cheevos appendconfig, which stores your RetroAchievements credentials:
+
+```text
+/opt/muos/share/info/config/retroarch.cheevos.cfg
+```
+
+RAOfflineProxy keeps both files in sync when patching and reverting.
+
 :::
 
 ## What Gets Patched
