@@ -11,15 +11,17 @@ PYGAME_DIR="${DIST_DIR}/pygame"
 PYGAME_LIBS_DIR="${DIST_DIR}/pygame.libs"
 MUXAPP_PATH="${SCRIPT_DIR}/dist/RAOfflineProxy-muOS-v${VERSION}.muxapp"
 
-# Build the aarch64 libchdr.so so CHD disc images can be hashed on-device.
-"${SCRIPT_DIR}/build_libchdr.sh"
+# Build the aarch64 libraproxy_rchash.so (rcheevos rc_hash + libchdr) used for
+# ROM/disc hashing on-device.
+TARGET="aarch64-linux-gnu.2.17" OUT_DIR="${SCRIPT_DIR}/native" \
+  "${LINUX_DIR}/build_rchash.sh"
 
 rm -rf "${DIST_DIR}"
 mkdir -p "${APP_DIR}" "${LIB_DIR}" "${PYGAME_DIR}" "${PYGAME_LIBS_DIR}" "${DIST_DIR}/data"
 
 cp -r "${LINUX_DIR}/raofflineproxy" "${APP_DIR}/raofflineproxy"
 cp "${LINUX_DIR}/../docs/public/logo-320.png" "${APP_DIR}/raofflineproxy/logo-320.png"
-cp "${SCRIPT_DIR}/native/libchdr.so" "${LIB_DIR}/libchdr.so"
+cp "${SCRIPT_DIR}/native/libraproxy_rchash.so" "${LIB_DIR}/libraproxy_rchash.so"
 cp -R "${SCRIPT_DIR}/vendor/pygame/." "${PYGAME_DIR}/"
 cp -R "${SCRIPT_DIR}/vendor/pygame.libs/." "${PYGAME_LIBS_DIR}/"
 cp "${SCRIPT_DIR}/launch.sh" "${DIST_DIR}/launch.sh"

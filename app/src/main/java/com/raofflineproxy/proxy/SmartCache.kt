@@ -1382,6 +1382,8 @@ private fun hashFile(file: File): String? {
     val fileName = file.name
     if (fileName.endsWith(".zip", ignoreCase = true)) {
         return com.raofflineproxy.proxy.hash.hashZipRom(
+            fileName = fileName,
+            sourcePath = file.absolutePath,
             tempDir = file.parentFile ?: file,
             openArchiveStream = { file.inputStream() }
         )
@@ -1392,7 +1394,9 @@ private fun hashFile(file: File): String? {
             fileName = fileName,
             fileSize = file.length(),
             openStream = { file.inputStream() },
-            openDataSource = { FileBackedRomDataSource(file) }
+            openDataSource = { FileBackedRomDataSource(file) },
+            // Real path: the native hasher reads it directly, no temp copy.
+            sourcePath = file.absolutePath
         )
     )
 }

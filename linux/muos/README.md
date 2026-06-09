@@ -5,12 +5,12 @@
 ## Current Layout
 
 - `build_bundle.sh`: builds a deployable `dist/RAOfflineProxy/` payload and packages it as a `.muxapp`
-- `build_libchdr.sh`: cross-compiles the aarch64 `libchdr.so` used for CHD disc-image hashing
+- `../build_rchash.sh`: cross-compiles the aarch64 `libraproxy_rchash.so` (rcheevos rc_hash + libchdr) used for ROM/disc hashing
 - `launch.sh`: starts the bundled app with the muOS runtime environment
 - `mux_launch.sh`: muOS Applications entrypoint
 - `mux_lang.ini`: muOS app metadata
 - `vendor/pygame` and `vendor/pygame.libs`: bundled `pygame` runtime for stock muOS Python
-- `native/libchdr.so` (build output): bundled to `lib/libchdr.so` in the payload
+- `native/libraproxy_rchash.so` (build output): bundled to `lib/libraproxy_rchash.so` in the payload
 
 ## Runtime Assumptions
 

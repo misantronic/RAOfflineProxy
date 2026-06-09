@@ -12,7 +12,8 @@ RUNTIME_ARCHIVE_NAME="cpython-3.10.20+20260510-armv7-unknown-linux-gnueabihf-ins
 RUNTIME_ARCHIVE_PATH="${RUNTIME_CACHE_DIR}/${RUNTIME_ARCHIVE_NAME}"
 ZIP_NAME="RAOfflineProxy-Onion-v1.4.0-alpha1.zip"
 
-"${SCRIPT_DIR}/build_libchdr.sh"
+TARGET="arm-linux-gnueabihf.2.17" OUT_DIR="${SCRIPT_DIR}/native" \
+  "${LINUX_DIR}/build_rchash.sh"
 
 rm -rf "${BUILD_DIR}"
 rm -f "${DIST_DIR}/${ZIP_NAME}"
@@ -25,7 +26,7 @@ export COPYFILE_DISABLE=1
 cp -R "${SCRIPT_DIR}/app/RAOfflineProxy/." "${APP_DIR}/"
 mkdir -p "${APP_DIR}/app"
 cp -R "${LINUX_DIR}/raofflineproxy" "${APP_DIR}/app/raofflineproxy"
-cp "${SCRIPT_DIR}/native/libchdr.so" "${LIB_DIR}/libchdr.so"
+cp "${SCRIPT_DIR}/native/libraproxy_rchash.so" "${LIB_DIR}/libraproxy_rchash.so"
 cp "${LINUX_DIR}/requirements.txt" "${APP_DIR}/app/requirements.txt"
 sips -z 74 74 "${LINUX_DIR}/../docs/public/logo.png" --out "${APP_DIR}/icon.png" >/dev/null
 mkdir -p "${APP_DIR}/data"
