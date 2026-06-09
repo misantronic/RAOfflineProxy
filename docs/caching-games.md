@@ -90,40 +90,6 @@ For each ROM file the following steps happen:
 
 There is a short delay between files to avoid overloading the RA servers.
 
-## Current Hashing Support
-
-Manual caching does not use one universal hashing rule for every system. Some systems need header stripping, byte-order normalization, or disc-image parsing before the hash is sent to RetroAchievements.
-
-The table below reflects the current app behavior.
-
-| System | Hashing method | Current status |
-|---|---|---|
-| **NES** | Ignores the 16-byte iNES header when present, then MD5s the remaining ROM data | **✅ Working** |
-| **SNES** | Ignores a 512-byte copier header when the file layout matches that format, then MD5s the ROM | **✅ Working** |
-| **Atari 2600**<br>**Game Boy**<br>**Game Boy Color**<br>**Game Boy Advance**<br>**Sega Master System**<br>**Sega Mega Drive / Genesis**<br>**Game Gear**<br>**SG-1000**<br>**Sega 32X**<br>**ColecoVision**<br>**Intellivision**<br>**Neo Geo Pocket**<br>**Pokemon Mini**<br>**Virtual Boy**<br>**WonderSwan** | Plain whole-file MD5 | **✅ Working** |
-| **Nintendo 64** | Normalizes ROM byte order to `.z64` format first, then MD5s up to the first 64 MiB | **✅ Working** |
-| **Nintendo DS** | Hashes the DS header, ARM9 code, ARM7 code, and icon/title block, while ignoring a 512-byte SuperCard header when present | **✅ Working** |
-| **PlayStation** | Parses the disc image, reads `SYSTEM.CNF`, finds the boot executable, and hashes the executable path plus executable contents | **✅ Working for `.bin` and `.chd` images**. `.iso` is implemented but not manually tested |
-| **PSP** | Parses the ISO and hashes `PSP_GAME\PARAM.SFO` followed by `PSP_GAME\SYSDIR\EBOOT.BIN` | **✅ Working** |
-| **GameCube** | Parses the disc image, hashes the disc header plus the `main.dol` sections the same way RetroAchievements expects for GameCube disc images, including supported container formats | **✅ Working for `.iso`, `.gcm`, `.rvz`, and `.ciso` images**. `.gcz` is implemented but not manually validated yet |
-| **Wii** | Supports Wii disc-image hashing plus WiiWare hashing for `.wad` packages, including supported container formats | **✅ Working for `.iso`, `.rvz`, `.ciso`, and `.wad`**. `.gcz` and `.wbfs` are implemented but not manually validated yet |
-| **Atari 7800** | Ignores the 128-byte A78 header when present, then MD5s the remaining ROM data | **Best effort only** |
-| **Atari Lynx** | Ignores the 64-byte LNX header when present, then MD5s the remaining ROM data | **Best effort only** |
-| **PC Engine**<br>**TurboGrafx-16**<br>**SuperGrafx** | Ignores a 512-byte header when the file size indicates one, then MD5s the ROM | **Best effort only** |
-| **Super Cassette Vision** | Ignores the 32-byte EmuSCV header when present, then MD5s the remaining ROM data | **Best effort only** |
-| **Other formats** | Falls back to plain whole-file MD5 | **Best effort only**. This may or may not match RetroAchievements depending on the system |
-| **Dreamcast**<br>**Sega CD**<br>**Saturn**<br>**3DO**<br>**Neo Geo CD**<br>**PC Engine CD**<br>**PC-FX**<br>**Jaguar CD**<br>**Nintendo 3DS**<br>**MS-DOS**<br>**Arcade** | No supported manual hashing path at the moment | **Not manually working** |
-
-::: warning Manual caching support is still format-dependent
-If a file format needs custom RetroAchievements hashing and that format is not explicitly listed above, manual caching may skip it even though launching the same game through a supported emulator works.
-:::
-
-::: tip A skipped ROM is not always a bug
-If the app computes a valid hash but RetroAchievements returns `GameID=0`, the file will still be skipped. That can mean the dump, region, revision, or container variant is not recognized by RA for manual lookup.
-:::
-
-If your system or file format is missing from this list, or if your results differ from the current status above, please use the [contact page](./contact).
-
 ## Viewing Cached Games
 
 The **Cached Games** screen shows a list of all games currently saved. For each game you can see:

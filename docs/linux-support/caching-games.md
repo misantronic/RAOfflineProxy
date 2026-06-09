@@ -16,15 +16,3 @@ The Linux menu now includes a ROM browser that can:
 2. Cache all ROMs in the current folder
 
 Smart Cache can also prefill recent games without browsing manually.
-
-Current manual hashing coverage includes:
-
-- Game Boy / Game Boy Color / Game Boy Advance
-- NES / FDS / SNES
-- PC Engine
-- Atari 7800 / Atari Lynx
-- Super Cassette Vision
-- Nintendo 64
-- Nintendo DS
-- PSP
-- PlayStation
