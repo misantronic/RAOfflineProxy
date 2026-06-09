@@ -21,10 +21,10 @@ When the proxy is running, the **Cached Games** header shows a counter such as `
 
 For each game, the proxy saves three types of data locally:
 
-| Data | Contents                                                              |
-|---|-----------------------------------------------------------------------|
-| **Game data** | Achievement list, game title, icon, descriptions, and point values    |
-| **Unlocks** | Which achievements you have already unlocked (softcore only)          |
+| Data             | Contents                                                              |
+| ---------------- | --------------------------------------------------------------------- |
+| **Game data**    | Achievement list, game title, icon, descriptions, and point values    |
+| **Unlocks**      | Which achievements you have already unlocked (softcore only)          |
 | **Session data** | Built from your cached unlocks - used to start a game session offline |
 
 ::: info Session data is built locally
@@ -105,15 +105,11 @@ Tap the **refresh icon** to re-fetch data for all cached games while online. Thi
 
 ## Cache Expiration
 
-Saved game data older than **7 days** is automatically removed during each background refresh cycle. If you plan to go offline for longer than a week, refresh your cache manually before disconnecting. Your login credentials are not affected by cache expiration.
+Saved game data older than **60 days** is automatically removed during each background refresh cycle. If you plan to go offline for longer than a week, refresh your cache manually before disconnecting. Your login credentials are not affected by cache expiration.
 
 ## Deleting a Cached Game
 
 Tap the **trash icon** next to a game to remove it from the cache.
-
-::: warning Known limitation
-Deleting a game removes its main game data but leaves behind some related entries (unlock and session data). They will not cause errors but will consume a small amount of storage until the database is cleared.
-:::
 
 ## Clearing All Cache
 
