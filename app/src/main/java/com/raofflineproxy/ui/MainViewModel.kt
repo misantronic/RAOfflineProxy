@@ -299,10 +299,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                             count
                         } ?: 0
                         val unlockedAchievements = buildUnlockedAchievements(patchData, unlockedIds)
+                        val consoleId = patchData?.optInt("ConsoleID", 0) ?: 0
                         CachedGame(
                             gameId = gameId,
                             title = title,
                             user = user,
+                            consoleId = consoleId,
                             sourceRomPath = entry.sourceRomPath,
                             cachedAt = entry.cachedAt,
                             imageIconUrl = imageIconUrl,
@@ -311,7 +313,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                             totalAchievements = totalAchievements,
                             unlockedAchievements = unlockedAchievements
                         )
-                    }.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.title })
+                    }.sortedWith(
+                        compareBy(
+                            { com.raofflineproxy.data.ConsoleNames.nameForId(it.consoleId) },
+                            { it.title.lowercase() }
+                        )
+                    )
                 }
                 Quadruple(resolvedAwards, resolvedHistoryAwards, games, hasLoginCredentials)
             }.collect { (resolvedAwards, resolvedHistoryAwards, games, hasLoginCredentials) ->

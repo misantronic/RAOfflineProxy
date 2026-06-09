@@ -12,6 +12,7 @@ import android.view.View
 import android.view.ViewGroup
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
+import androidx.core.content.edit
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.lifecycleScope
@@ -20,16 +21,24 @@ import androidx.recyclerview.widget.DividerItemDecoration
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.raofflineproxy.MAX_CACHED_GAMES
+import com.raofflineproxy.PrefsConstants
 import com.raofflineproxy.R
+import com.raofflineproxy.data.CachedGame
+import com.raofflineproxy.data.ConsoleNames
 import java.io.File
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 private const val TAG = "CachedGamesFragment"
+private const val KEY_COLLAPSED_CONSOLES = "collapsed_console_ids"
 
 class CachedGamesFragment : Fragment() {
     private val viewModel: MainViewModel by activityViewModels()
     private var romPickerUsed = false
+
+    private val collapsedConsoleIds = mutableSetOf<Int>()
+    private var currentGames: List<CachedGame> = emptyList()
+    private var gamesAdapter: CachedGamesAdapter? = null
 
     private val romFolderPickerLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -71,9 +80,18 @@ class CachedGamesFragment : Fragment() {
         inflater.inflate(R.layout.fragment_cached_games, container, false)
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
-        val gamesAdapter = CachedGamesAdapter(
+        loadCollapsedState()
+
+        val adapter = CachedGamesAdapter(
+            onHeaderClick = { consoleId ->
+                if (!collapsedConsoleIds.remove(consoleId)) collapsedConsoleIds.add(consoleId)
+                saveCollapsedState()
+                gamesAdapter?.submitList(buildGroupedList(currentGames, collapsedConsoleIds))
+            },
             onDelete = viewModel::deleteCachedGame
         )
+        gamesAdapter = adapter
+
         val headerAdapter = CachedGamesHeaderAdapter(
             onSmartCache = viewModel::startSmartCache,
             onScan = { romFolderPickerLauncher.launch(createRomFolderPickerIntent()) },
@@ -97,7 +115,7 @@ class CachedGamesFragment : Fragment() {
 
         view.findViewById<RecyclerView>(R.id.rv_cached_games).apply {
             layoutManager = LinearLayoutManager(requireContext())
-            adapter = ConcatAdapter(headerAdapter, gamesAdapter)
+            this.adapter = ConcatAdapter(headerAdapter, adapter)
             addItemDecoration(DividerItemDecoration(requireContext(), DividerItemDecoration.VERTICAL))
             itemAnimator = null
         }
@@ -105,7 +123,8 @@ class CachedGamesFragment : Fragment() {
         viewLifecycleOwner.lifecycleScope.launch {
             delay(300)
             viewModel.cachedGames.collect { games ->
-                gamesAdapter.submitList(games)
+                currentGames = games
+                gamesAdapter?.submitList(buildGroupedList(games, collapsedConsoleIds))
             }
         }
 
@@ -140,6 +159,26 @@ class CachedGamesFragment : Fragment() {
                 )
             }
         }
+    }
+
+    override fun onDestroyView() {
+        super.onDestroyView()
+        gamesAdapter = null
+    }
+
+    private fun loadCollapsedState() {
+        collapsedConsoleIds.clear()
+        requireContext()
+            .getSharedPreferences(PrefsConstants.PREFS_NAME, Context.MODE_PRIVATE)
+            .getStringSet(KEY_COLLAPSED_CONSOLES, emptySet())
+            .orEmpty()
+            .mapNotNullTo(collapsedConsoleIds) { it.toIntOrNull() }
+    }
+
+    private fun saveCollapsedState() {
+        requireContext()
+            .getSharedPreferences(PrefsConstants.PREFS_NAME, Context.MODE_PRIVATE)
+            .edit { putStringSet(KEY_COLLAPSED_CONSOLES, collapsedConsoleIds.mapTo(mutableSetOf()) { it.toString() }) }
     }
 
     private fun createRomFolderPickerIntent(): Intent =
@@ -209,4 +248,29 @@ class CachedGamesFragment : Fragment() {
 
         return roots.flatMap { root -> names.map { name -> "$root/$name" } }
     }
+}
+
+private fun buildGroupedList(
+    games: List<CachedGame>,
+    collapsedConsoleIds: Set<Int>
+): List<CachedGameListItem> {
+    if (games.isEmpty()) return emptyList()
+    val countByConsole = games.groupingBy { it.consoleId }.eachCount()
+    val result = mutableListOf<CachedGameListItem>()
+    var lastConsoleId: Int? = null
+    for (game in games) {
+        if (game.consoleId != lastConsoleId) {
+            result += CachedGameListItem.ConsoleHeader(
+                consoleId = game.consoleId,
+                consoleName = ConsoleNames.nameForId(game.consoleId),
+                gameCount = countByConsole[game.consoleId] ?: 0,
+                isCollapsed = game.consoleId in collapsedConsoleIds
+            )
+            lastConsoleId = game.consoleId
+        }
+        if (game.consoleId !in collapsedConsoleIds) {
+            result += CachedGameListItem.GameItem(game)
+        }
+    }
+    return result
 }

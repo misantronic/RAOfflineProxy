@@ -12,6 +12,7 @@ data class CachedGame(
     val gameId: String,
     val title: String,
     val user: String,
+    val consoleId: Int = 0,
     val sourceRomPath: String? = null,
     val cachedAt: Long,
     val imageIconUrl: String?,

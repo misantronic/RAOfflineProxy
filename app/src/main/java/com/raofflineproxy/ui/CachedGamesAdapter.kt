@@ -1,5 +1,6 @@
 package com.raofflineproxy.ui
 
+import android.annotation.SuppressLint
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -23,14 +24,38 @@ fun ImageView.loadOrClear(url: String?) {
     else setImageDrawable(null)
 }
 
+sealed interface CachedGameListItem {
+    data class ConsoleHeader(
+        val consoleId: Int,
+        val consoleName: String,
+        val gameCount: Int,
+        val isCollapsed: Boolean
+    ) : CachedGameListItem
+
+    data class GameItem(val game: CachedGame) : CachedGameListItem
+}
+
 class CachedGamesAdapter(
+    private val onHeaderClick: (consoleId: Int) -> Unit,
     private val onDelete: (CachedGame) -> Unit
-) : ListAdapter<CachedGame, CachedGamesAdapter.ViewHolder>(DIFF) {
+) : ListAdapter<CachedGameListItem, RecyclerView.ViewHolder>(DIFF) {
 
     private val dateFormat = SimpleDateFormat("MMM d, HH:mm", Locale.getDefault())
     private val expandedGameIds = mutableSetOf<String>()
 
-    inner class ViewHolder(private val binding: ItemCachedGameBinding) :
+    inner class HeaderViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
+        private val tvConsoleName: TextView = itemView.findViewById(R.id.tv_console_name)
+        private val ivChevron: ImageView = itemView.findViewById(R.id.iv_collapse_chevron)
+
+        @SuppressLint("SetTextI18n")
+        fun bind(header: CachedGameListItem.ConsoleHeader) {
+            tvConsoleName.text = "${header.consoleName} (${header.gameCount})"
+            ivChevron.rotation = if (header.isCollapsed) 0f else 180f
+            itemView.setOnClickListener { onHeaderClick(header.consoleId) }
+        }
+    }
+
+    inner class GameViewHolder(private val binding: ItemCachedGameBinding) :
         RecyclerView.ViewHolder(binding.root) {
 
         fun bind(game: CachedGame) {
@@ -124,17 +149,44 @@ class CachedGamesAdapter(
         }
     }
 
-    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int) = ViewHolder(
-        ItemCachedGameBinding.inflate(LayoutInflater.from(parent.context), parent, false)
-    )
+    override fun getItemViewType(position: Int): Int = when (getItem(position)) {
+        is CachedGameListItem.ConsoleHeader -> VIEW_TYPE_HEADER
+        is CachedGameListItem.GameItem -> VIEW_TYPE_GAME
+    }
 
-    override fun onBindViewHolder(holder: ViewHolder, position: Int) =
-        holder.bind(getItem(position))
+    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder =
+        when (viewType) {
+            VIEW_TYPE_HEADER -> HeaderViewHolder(
+                LayoutInflater.from(parent.context).inflate(R.layout.item_console_header, parent, false)
+            )
+            else -> GameViewHolder(
+                ItemCachedGameBinding.inflate(LayoutInflater.from(parent.context), parent, false)
+            )
+        }
+
+    override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
+        when (val item = getItem(position)) {
+            is CachedGameListItem.ConsoleHeader -> (holder as HeaderViewHolder).bind(item)
+            is CachedGameListItem.GameItem -> (holder as GameViewHolder).bind(item.game)
+        }
+    }
 
     companion object {
-        private val DIFF = object : DiffUtil.ItemCallback<CachedGame>() {
-            override fun areItemsTheSame(a: CachedGame, b: CachedGame) = a.gameId == b.gameId
-            override fun areContentsTheSame(a: CachedGame, b: CachedGame) = a == b
+        private const val VIEW_TYPE_HEADER = 0
+        private const val VIEW_TYPE_GAME = 1
+
+        private val DIFF = object : DiffUtil.ItemCallback<CachedGameListItem>() {
+            override fun areItemsTheSame(a: CachedGameListItem, b: CachedGameListItem): Boolean =
+                when {
+                    a is CachedGameListItem.ConsoleHeader && b is CachedGameListItem.ConsoleHeader ->
+                        a.consoleId == b.consoleId
+                    a is CachedGameListItem.GameItem && b is CachedGameListItem.GameItem ->
+                        a.game.gameId == b.game.gameId
+                    else -> false
+                }
+
+            override fun areContentsTheSame(a: CachedGameListItem, b: CachedGameListItem): Boolean =
+                a == b
         }
     }
 }
