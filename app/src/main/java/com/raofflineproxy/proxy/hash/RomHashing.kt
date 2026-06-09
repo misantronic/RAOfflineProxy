@@ -1,12 +1,9 @@
 package com.raofflineproxy.proxy.hash
 
 import android.content.Context
-import android.os.Build
-import android.os.Environment
 import android.os.ParcelFileDescriptor
 import androidx.documentfile.provider.DocumentFile
-import com.raofflineproxy.proxy.resolveDocumentRelativePath
-import com.raofflineproxy.proxy.storageRoots
+import com.raofflineproxy.proxy.resolveDocumentAbsolutePath
 import java.io.Closeable
 import java.io.File
 import java.io.FileInputStream
@@ -15,33 +12,32 @@ import java.util.zip.ZipInputStream
 
 private const val TAG = "RAProxy/Hash"
 
+/**
+ * ROM identification now delegates to the unified rcheevos rc_hash hasher
+ * ([RcHashNativeBridge] / libraproxy_rchash). One native call covers every
+ * supported format — cartridge, disc (incl. CHD via the bundled libchdr
+ * reader), `.cue`, `.m3u` — so the per-format Kotlin strategies are gone.
+ *
+ * The native library hashes a file by path, so callers that only have a SAF
+ * content stream (no real filesystem path) copy the bytes to a temp file
+ * first. Zipped console ROMs are extracted here before hashing, because
+ * rc_hash's own `.zip` path is for arcade/MAME images, not zipped cartridges.
+ *
+ * GameCube/Wii *container* formats (`.rvz`/`.ciso`/`.gcz`/`.wbfs`, and raw
+ * `.gcm`) are the one case rc_hash can't handle alone: it reads the raw disc
+ * layout, so we decompress on the fly via the [RomDataSource] readers and feed
+ * the bytes to rc_hash through [RcHashNativeBridge.hashDiscDataSource]. Plain
+ * `.iso` discs go straight through rc_hash by path.
+ *
+ * [RomHashInput] / [RomDataSource] are retained as a thin compatibility layer
+ * for existing callers (e.g. SmartCache); the result is the first hash
+ * candidate. Use the `*Candidates` variants to get the full ordered list.
+ */
+
 private val supportedArchiveRomExtensions = setOf(
-    "a78",
-    "bin",
-    "cart",
-    "ciso",
-    "fds",
-    "fig",
-    "gba",
-    "gb",
-    "gbc",
-    "gcm",
-    "gcz",
-    "iso",
-    "lnx",
-    "n64",
-    "nds",
-    "nes",
-    "pbp",
-    "pce",
-    "sfc",
-    "sgx",
-    "smc",
-    "swc",
-    "v64",
-    "wad",
-    "wbfs",
-    "z64"
+    "a78", "bin", "cart", "ciso", "fds", "fig", "gba", "gb", "gbc", "gcm",
+    "gcz", "iso", "lnx", "n64", "nds", "nes", "pbp", "pce", "sfc", "sgx",
+    "smc", "swc", "v64", "wad", "wbfs", "z64"
 )
 
 internal data class RomHashInput(
@@ -50,7 +46,9 @@ internal data class RomHashInput(
     val openStream: () -> InputStream?,
     val openDataSource: (() -> RomDataSource?)? = null,
     val openPspChdDataSource: (() -> RomDataSource?)? = null,
-    val openPsxChdDataSource: (() -> RomDataSource?)? = null
+    val openPsxChdDataSource: (() -> RomDataSource?)? = null,
+    /** Real filesystem path, when known, so we can hash without copying. */
+    val sourcePath: String? = null,
 )
 
 internal interface RomDataSource : Closeable {
@@ -58,35 +56,6 @@ internal interface RomDataSource : Closeable {
 
     fun read(offset: Long, buffer: ByteArray, length: Int = buffer.size): Int
 }
-
-internal interface RomHashStrategy {
-    fun matches(fileName: String): Boolean
-
-    fun hash(input: RomHashInput): String?
-}
-
-private val romHashStrategies: List<RomHashStrategy> = listOf(
-    RvzRomHashStrategy,
-    WiiWadRomHashStrategy,
-    GameCubeRomHashStrategy,
-    WiiDiscRomHashStrategy,
-    PspRomHashStrategy,
-    PsxRomHashStrategy,
-    PsxChdRomHashStrategy,
-    PspChdRomHashStrategy,
-    NintendoDsRomHashStrategy,
-    Nintendo64RomHashStrategy,
-    Atari7800RomHashStrategy,
-    AtariLynxRomHashStrategy,
-    NesRomHashStrategy,
-    FdsRomHashStrategy,
-    PcEngineRomHashStrategy,
-    SuperCassetteVisionRomHashStrategy,
-    SnesRomHashStrategy,
-    GameBoyAdvanceRomHashStrategy,
-    GameBoyColorRomHashStrategy,
-    GameBoyRomHashStrategy
-)
 
 internal fun parseCueDataBinFileName(content: String): String? {
     var currentFile: String? = null
@@ -109,258 +78,220 @@ internal fun parseM3uFirstEntry(content: String): String? =
         .map { it.trim() }
         .firstOrNull { it.isNotEmpty() && !it.startsWith("#") }
 
-private fun hashPlaylistSibling(context: Context, file: DocumentFile, siblingName: String): String? {
-    val fileName = file.name ?: "playlist"
+internal fun hasExtension(fileName: String, vararg extensions: String): Boolean =
+    extensions.any { extension -> fileName.endsWith(".$extension", ignoreCase = true) }
 
-    // Folder-scan case: the sibling is reachable through the same SAF tree.
-    file.parentFile?.findFile(siblingName)?.let { return hashRom(context, it) }
+// ---- GameCube/Wii container formats (rc_hash can't decompress these) ----
 
-    // Single-file case: we only have a document URI with no parent, so fall back to
-    // the real filesystem path. This requires all-files access on Android 11+.
-    val hasAllFilesAccess = Build.VERSION.SDK_INT < Build.VERSION_CODES.R || Environment.isExternalStorageManager()
-    if (!hasAllFilesAccess) {
-        logWarn(TAG, "Cannot access sibling $siblingName for $fileName — scan a folder or grant all-files access")
-        return null
-    }
+private fun isNintendoDiscContainer(fileName: String): Boolean =
+    hasExtension(fileName, "rvz", "ciso", "gcz", "wbfs", "gcm")
 
-    val relativePath = resolveDocumentRelativePath(file)
-    if (relativePath == null) {
-        logWarn(TAG, "Could not resolve a storage-relative path for $fileName (uri=${file.uri})")
-        return null
-    }
-    val relativeParent = relativePath.substringBeforeLast('/', missingDelimiterValue = "")
-
-    // ROMs may live on internal storage or an SD card, so try every mounted root.
-    for (root in storageRoots()) {
-        val parentDir = if (relativeParent.isEmpty()) root else File(root, relativeParent)
-        val siblingFile = findSiblingFileOnDisk(parentDir, siblingName)
-        if (siblingFile != null) {
-            logInfo(TAG, "Hashing playlist sibling directly from filesystem: ${siblingFile.path}")
-            return hashRomFile(context, siblingFile)
-        }
-    }
-
-    logWarn(TAG, "Sibling $siblingName not found under any storage root for relativeParent=$relativeParent")
-    for (root in storageRoots()) {
-        val parentDir = if (relativeParent.isEmpty()) root else File(root, relativeParent)
-        val listing = parentDir.listFiles()
-        logWarn(
-            TAG,
-            "  tried ${parentDir.path} (exists=${parentDir.exists()} canRead=${parentDir.canRead()} entries=${listing?.size ?: -1})"
-        )
-    }
-    return null
+/** Wraps [openBase] in the right decompressing reader for [fileName]'s container. */
+private fun openDiscDataSource(fileName: String, openBase: () -> RomDataSource?): RomDataSource? = when {
+    hasExtension(fileName, "rvz") -> RvzRomDataSource.open(openBase)
+    hasExtension(fileName, "ciso") -> CisoRomDataSource.open(openBase)
+    hasExtension(fileName, "gcz") -> GczRomDataSource.open(openBase)
+    hasExtension(fileName, "wbfs") -> WbfsRomDataSource.open(openBase)
+    hasExtension(fileName, "gcm") -> openBase() // already a raw GameCube image
+    else -> null
 }
 
-private fun findSiblingFileOnDisk(parentDir: File, siblingName: String): File? {
-    val direct = parentDir.resolve(siblingName)
-    if (direct.exists()) return direct
-    // Some rips reference the BIN with different casing than the file on disk.
-    return parentDir.listFiles()?.firstOrNull { it.name.equals(siblingName, ignoreCase = true) }
-}
-
-internal fun hashRomFile(context: Context, file: File): String? {
-    val fileName = file.name
-
-    if (hasExtension(fileName, "m3u")) {
-        val firstEntry = parseM3uFirstEntry(file.readText()) ?: return null
-        val entryName = firstEntry.substringAfterLast('/').substringAfterLast('\\')
-        val entry = file.parentFile?.resolve(entryName)
-        if (entry == null || !entry.exists()) {
-            logWarn(TAG, "Resolved M3U entry not found: $entryName")
-            return null
-        }
-        return hashRomFile(context, entry)
+private fun hashDiscCandidates(fileName: String, openBase: () -> RomDataSource?): List<String> {
+    if (!RcHashNativeBridge.isAvailable()) {
+        logWarn(TAG, "Native hasher unavailable; cannot hash $fileName")
+        return emptyList()
     }
-
-    if (hasExtension(fileName, "cue")) {
-        val binFileName = parseCueDataBinFileName(file.readText())
-        if (binFileName == null) {
-            logWarn(TAG, "No data track found in CUE file $fileName")
-            return null
-        }
-        val bin = file.parentFile?.resolve(binFileName)
-        if (bin == null || !bin.exists()) {
-            logWarn(TAG, "Resolved CUE data track not found: $binFileName")
-            return null
-        }
-        return hashRomFile(context, bin)
+    val dataSource = runCatching { openDiscDataSource(fileName, openBase) }.getOrNull()
+    if (dataSource == null) {
+        logWarn(TAG, "Could not open disc data source for $fileName")
+        return emptyList()
     }
-
-    if (hasExtension(fileName, "zip")) {
-        return hashZipRom(
-            tempDir = context.cacheDir,
-            openArchiveStream = { file.inputStream() }
-        )
-    }
-
-    return hashRom(
-        RomHashInput(
-            fileName = fileName,
-            fileSize = file.length(),
-            openStream = { file.inputStream() },
-            openDataSource = { FileRomDataSource(file) },
-            openPspChdDataSource = {
-                if (!hasExtension(fileName, "chd")) null else PspChdRomDataSource.open(file)
-            },
-            openPsxChdDataSource = {
-                if (!hasExtension(fileName, "chd")) null else PsxChdRomDataSource.open(file)
-            }
-        )
-    )
-}
-
-internal fun hashRom(
-    context: Context,
-    file: DocumentFile
-): String? {
-    val fileName = file.name ?: return null
-
-    if (hasExtension(fileName, "m3u")) {
-        val content = context.contentResolver.openInputStream(file.uri)
-            ?.bufferedReader()?.use { it.readText() } ?: return null
-        val firstEntry = parseM3uFirstEntry(content) ?: return null
-        val entryName = firstEntry.substringAfterLast('/').substringAfterLast('\\')
-        return hashPlaylistSibling(context, file, entryName)
-    }
-
-    if (hasExtension(fileName, "cue")) {
-        val content = context.contentResolver.openInputStream(file.uri)
-            ?.bufferedReader()?.use { it.readText() } ?: return null
-        val binFileName = parseCueDataBinFileName(content)
-        if (binFileName == null) {
-            logWarn(TAG, "No data track found in CUE file $fileName")
-            return null
-        }
-        return hashPlaylistSibling(context, file, binFileName)
-    }
-
-    if (hasExtension(fileName, "zip")) {
-        return hashZipRom(
-            tempDir = context.cacheDir,
-            openArchiveStream = { context.contentResolver.openInputStream(file.uri) }
-        )
-    }
-
-    return hashRom(
-        RomHashInput(
-            fileName = fileName,
-            fileSize = file.length(),
-            openStream = { context.contentResolver.openInputStream(file.uri) },
-            openDataSource = {
-                context.contentResolver.openFileDescriptor(file.uri, "r")?.let(::ParcelFileDescriptorRomDataSource)
-            },
-            openPspChdDataSource = {
-                if (!hasExtension(fileName, "chd")) {
-                    null
-                } else {
-                    openWrappedChdDataSource(
-                        tempDir = context.cacheDir,
-                        openInputStream = { context.contentResolver.openInputStream(file.uri) },
-                        openDataSource = PspChdRomDataSource::open
-                    )
-                }
-            },
-            openPsxChdDataSource = {
-                if (!hasExtension(fileName, "chd")) {
-                    null
-                } else {
-                    openWrappedChdDataSource(
-                        tempDir = context.cacheDir,
-                        openInputStream = { context.contentResolver.openInputStream(file.uri) },
-                        openDataSource = PsxChdRomDataSource::open
-                    )
-                }
-            }
-        )
-    )
-}
-
-private fun openWrappedChdDataSource(
-    tempDir: File,
-    openInputStream: () -> InputStream?,
-    openDataSource: (File) -> RomDataSource?
-): RomDataSource? {
-    val tempFile = File.createTempFile("romhash_", ".chd", tempDir)
-    val copied = runCatching {
-        openInputStream()?.use { input ->
-            tempFile.outputStream().use(input::copyTo)
-        }
-    }.getOrNull()
-    if (copied == null) {
-        tempFile.delete()
-        return null
-    }
-
-    openDataSource(tempFile)?.let { dataSource ->
-        return object : RomDataSource by dataSource {
-            override fun close() {
-                dataSource.close()
-                tempFile.delete()
-            }
-        }
-    }
-
-    tempFile.delete()
-    return null
-}
-
-internal fun hashRom(input: RomHashInput): String? {
-    val fileName = input.fileName
-    romHashStrategies.forEach { strategy ->
-        if (!strategy.matches(fileName)) return@forEach
-        logInfo(TAG, "Trying ${strategy.javaClass.simpleName} for $fileName size=${input.fileSize}")
-        val hash = strategy.hash(input)
-        if (hash != null) {
-            logInfo(TAG, "${strategy.javaClass.simpleName} produced hash=$hash for $fileName")
-            return hash
-        }
-        logInfo(TAG, "${strategy.javaClass.simpleName} could not hash $fileName")
-    }
-
-    if (hasExtension(fileName, "chd")) {
-        logWarn(TAG, "Refusing generic MD5 fallback for $fileName because CHD needs disc-aware hashing")
-        return null
-    }
-
-    val detectedNintendoFormat = detectNintendoDiscFormat(input)
-    if (detectedNintendoFormat != null) {
-        logWarn(TAG, "Refusing generic MD5 fallback for $fileName detectedFormat=$detectedNintendoFormat")
-        return null
-    }
-
-    val fallback = GenericMd5RomHashStrategy.hash(input)
-    if (fallback != null) {
-        logInfo(TAG, "GenericMd5RomHashStrategy produced hash=$fallback for $fileName")
+    val candidates = dataSource.use { RcHashNativeBridge.hashDiscDataSource(it) }
+    if (candidates.isEmpty()) {
+        logWarn(TAG, "No hash candidates for $fileName (disc)")
     } else {
-        logWarn(TAG, "No hash strategy could hash $fileName")
+        logInfo(TAG, "Hashed $fileName (disc) -> $candidates")
     }
-    return fallback
+    return candidates
 }
 
-internal fun hashZipRom(
-    tempDir: File,
-    openArchiveStream: () -> InputStream?
-): String? {
-    val romEntryName = findSingleSupportedZipEntryName(openArchiveStream) ?: return null
-    val tempFile = extractZipEntryToTempFile(openArchiveStream, romEntryName, tempDir) ?: return null
+/** Hashes a real filesystem path with the native hasher. */
+private fun hashCandidatesForPath(path: String): List<String> {
+    if (!RcHashNativeBridge.isAvailable()) {
+        logWarn(TAG, "Native hasher unavailable; cannot hash $path")
+        return emptyList()
+    }
+    val candidates = RcHashNativeBridge.hashFile(path)
+    if (candidates.isEmpty()) {
+        logWarn(TAG, "No hash candidates for $path")
+    } else {
+        logInfo(TAG, "Hashed $path -> $candidates")
+    }
+    return candidates
+}
 
+private fun extensionSuffix(fileName: String): String =
+    fileName.substringAfterLast('.', missingDelimiterValue = "")
+        .takeIf { it.isNotEmpty() }
+        ?.let { ".${it.lowercase()}" }
+        ?: ".rom"
+
+/** Copies a stream to a temp file (named with the right extension) and hashes it. */
+private fun hashCandidatesViaTempCopy(
+    fileName: String,
+    tempDir: File?,
+    openStream: () -> InputStream?,
+): List<String> {
+    val suffix = extensionSuffix(fileName)
+    val tempFile = if (tempDir != null) {
+        File.createTempFile("romhash_", suffix, tempDir)
+    } else {
+        File.createTempFile("romhash_", suffix)
+    }
     return try {
-        hashRom(
-            RomHashInput(
-                fileName = romEntryName.substringAfterLast('/').substringAfterLast('\\'),
-                fileSize = tempFile.length(),
-                openStream = { tempFile.inputStream() },
-                openDataSource = { FileRomDataSource(tempFile) }
-            )
-        )
+        val copied = runCatching {
+            openStream()?.use { input -> tempFile.outputStream().use(input::copyTo) }
+        }.getOrNull()
+        if (copied == null) {
+            logWarn(TAG, "Could not read bytes for $fileName")
+            emptyList()
+        } else {
+            hashCandidatesForPath(tempFile.absolutePath)
+        }
     } finally {
         tempFile.delete()
     }
 }
 
+// ---- Public entry points (compatibility surface) ----
+
+internal fun hashRom(input: RomHashInput): String? = hashRomCandidates(input).firstOrNull()
+
+internal fun hashRomCandidates(input: RomHashInput): List<String> {
+    val fileName = input.fileName
+    if (isNintendoDiscContainer(fileName)) {
+        return hashDiscCandidates(fileName) {
+            input.openDataSource?.invoke()
+                ?: input.sourcePath?.let { FileRomDataSource(File(it)) }
+        }
+    }
+    val realPath = input.sourcePath
+    if (realPath != null && File(realPath).isFile) {
+        return hashCandidatesForPath(realPath)
+    }
+    return hashCandidatesViaTempCopy(fileName, tempDir = null, openStream = input.openStream)
+}
+
+internal fun hashRomFile(context: Context, file: File): String? =
+    hashRomFileCandidates(context, file).firstOrNull()
+
+internal fun hashRomFileCandidates(context: Context, file: File): List<String> {
+    val fileName = file.name
+    if (hasExtension(fileName, "zip")) {
+        return hashZipRomCandidates(fileName, file.absolutePath, context.cacheDir) { file.inputStream() }
+    }
+    if (isNintendoDiscContainer(fileName)) {
+        return hashDiscCandidates(fileName) { FileRomDataSource(file) }
+    }
+    // rc_hash resolves .cue/.m3u (and everything else) directly from the path.
+    return hashCandidatesForPath(file.absolutePath)
+}
+
+internal fun hashRom(context: Context, file: DocumentFile): String? =
+    hashRomCandidates(context, file).firstOrNull()
+
+internal fun hashRomCandidates(context: Context, file: DocumentFile): List<String> {
+    val fileName = file.name ?: return emptyList()
+
+    if (hasExtension(fileName, "zip")) {
+        val zipSourcePath = resolveDocumentAbsolutePath(file)?.takeIf { File(it).isFile }
+        return hashZipRomCandidates(fileName, zipSourcePath, context.cacheDir) {
+            context.contentResolver.openInputStream(file.uri)
+        }
+    }
+
+    if (isNintendoDiscContainer(fileName)) {
+        return hashDiscCandidates(fileName) {
+            context.contentResolver.openFileDescriptor(file.uri, "r")
+                ?.let { ParcelFileDescriptorRomDataSource(it) }
+        }
+    }
+
+    // Prefer a real filesystem path: lets the native hasher read the file (and,
+    // for .cue/.m3u, its siblings) directly without copying.
+    val realPath = resolveDocumentAbsolutePath(file)
+    if (realPath != null && File(realPath).isFile) {
+        return hashCandidatesForPath(realPath)
+    }
+
+    // SAF-only fallback: copy the document's bytes to a temp file and hash that.
+    // (.cue/.m3u that reach here can't resolve siblings; folder scans normally
+    // resolve a real path above.)
+    return hashCandidatesViaTempCopy(fileName, context.cacheDir) {
+        context.contentResolver.openInputStream(file.uri)
+    }
+}
+
+internal fun hashZipRom(
+    fileName: String,
+    sourcePath: String?,
+    tempDir: File,
+    openArchiveStream: () -> InputStream?,
+): String? = hashZipRomCandidates(fileName, sourcePath, tempDir, openArchiveStream).firstOrNull()
+
+internal fun hashZipRomCandidates(
+    fileName: String,
+    sourcePath: String?,
+    tempDir: File,
+    openArchiveStream: () -> InputStream?,
+): List<String> {
+    val romEntryName = findSingleSupportedZipEntryName(openArchiveStream)
+    if (romEntryName != null) {
+        // A zipped single console ROM: extract and hash its actual content.
+        val tempFile = extractZipEntryToTempFile(openArchiveStream, romEntryName, tempDir)
+            ?: return emptyList()
+        return try {
+            hashCandidatesForPath(tempFile.absolutePath)
+        } finally {
+            tempFile.delete()
+        }
+    }
+
+    // Otherwise treat it as an arcade/MAME set. rc_hash's arcade hash is just
+    // MD5 of the zip's base filename (e.g. "aliens"), and it never reads the
+    // contents — so the *name* must be preserved. Use the real path when we have
+    // one; otherwise copy to a temp file that keeps the original name.
+    if (sourcePath != null && File(sourcePath).isFile) {
+        return hashCandidatesForPath(sourcePath)
+    }
+    return hashArcadeZipViaNamedTemp(fileName, tempDir, openArchiveStream)
+}
+
+/** Copies an archive to a temp file that keeps [fileName] so the arcade
+ * (filename-based) hash is computed correctly, then hashes and cleans up. */
+private fun hashArcadeZipViaNamedTemp(
+    fileName: String,
+    tempDir: File,
+    openArchiveStream: () -> InputStream?,
+): List<String> {
+    val safeName = fileName.substringAfterLast('/').substringAfterLast('\\')
+        .ifBlank { "archive.zip" }
+    val workDir = File(tempDir, "romhash_${System.nanoTime()}")
+    if (!workDir.mkdirs()) return emptyList()
+    val named = File(workDir, safeName)
+    return try {
+        val copied = runCatching {
+            openArchiveStream()?.use { input -> named.outputStream().use(input::copyTo) }
+        }.getOrNull()
+        if (copied == null) emptyList() else hashCandidatesForPath(named.absolutePath)
+    } finally {
+        named.delete()
+        workDir.delete()
+    }
+}
+
 private fun findSingleSupportedZipEntryName(
-    openArchiveStream: () -> InputStream?
+    openArchiveStream: () -> InputStream?,
 ): String? {
     var matchedEntryName: String? = null
 
@@ -387,7 +318,7 @@ private fun findSingleSupportedZipEntryName(
 private fun extractZipEntryToTempFile(
     openArchiveStream: () -> InputStream?,
     entryName: String,
-    tempDir: File
+    tempDir: File,
 ): File? {
     ZipInputStream(openArchiveStream() ?: return null).use { archive ->
         while (true) {
@@ -398,14 +329,8 @@ private fun extractZipEntryToTempFile(
             }
 
             val entryFileName = entryName.substringAfterLast('/').substringAfterLast('\\')
-            val suffix = entryFileName.substringAfterLast('.', missingDelimiterValue = "")
-                .takeIf { it.isNotEmpty() }
-                ?.let { ".${it.lowercase()}" }
-                ?: ".rom"
-            val tempFile = File.createTempFile("romhash_", suffix, tempDir)
-            tempFile.outputStream().use { output ->
-                archive.copyTo(output)
-            }
+            val tempFile = File.createTempFile("romhash_", extensionSuffix(entryFileName), tempDir)
+            tempFile.outputStream().use { output -> archive.copyTo(output) }
             archive.closeEntry()
             return tempFile
         }
@@ -424,11 +349,10 @@ private fun isSupportedArchiveRomEntry(entryName: String): Boolean {
     return extension in supportedArchiveRomExtensions
 }
 
-internal fun hasExtension(fileName: String, vararg extensions: String): Boolean =
-    extensions.any { extension -> fileName.endsWith(".$extension", ignoreCase = true) }
+// ---- Random-access sources backing the disc-container decompressors ----
 
-private class FileRomDataSource(
-    file: File
+internal class FileRomDataSource(
+    file: File,
 ) : RomDataSource {
     private val inputStream = FileInputStream(file)
     private val channel = inputStream.channel
@@ -454,8 +378,8 @@ private class FileRomDataSource(
     }
 }
 
-private class ParcelFileDescriptorRomDataSource(
-    private val fileDescriptor: ParcelFileDescriptor
+internal class ParcelFileDescriptorRomDataSource(
+    private val fileDescriptor: ParcelFileDescriptor,
 ) : RomDataSource {
     private val inputStream = FileInputStream(fileDescriptor.fileDescriptor)
     private val channel = inputStream.channel

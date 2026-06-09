@@ -10,7 +10,8 @@ LIB_DIR="${BUILD_DIR}/lib"
 INSTALLER_PATH="${DIST_DIR}/RAOfflineProxy-Knulli-v1.4.0-alpha1-Install.sh"
 TEMP_TARBALL="${DIST_DIR}/.raofflineproxy-knulli-bundle.tar.gz"
 
-"${SCRIPT_DIR}/build_libchdr.sh"
+TARGET="aarch64-linux-gnu.2.17" OUT_DIR="${SCRIPT_DIR}/native" \
+  "${LINUX_DIR}/build_rchash.sh"
 
 rm -rf "${BUILD_DIR}"
 rm -f "${DIST_DIR}/raofflineproxy-knulli-bundle.tar.gz"
@@ -23,7 +24,7 @@ cp -r "${LINUX_DIR}/raofflineproxy" "${APP_DIR}/raofflineproxy"
 cp "${LINUX_DIR}/requirements.txt" "${APP_DIR}/requirements.txt"
 cp "${LINUX_DIR}/../docs/public/logo-320.png" "${APP_DIR}/raofflineproxy/logo-320.png"
 cp -r "${SCRIPT_DIR}/scripts" "${BUILD_DIR}/scripts"
-cp "${SCRIPT_DIR}/native/libchdr.so" "${LIB_DIR}/libchdr.so"
+cp "${SCRIPT_DIR}/native/libraproxy_rchash.so" "${LIB_DIR}/libraproxy_rchash.so"
 cp "${SCRIPT_DIR}/scripts/install.sh" "${BUILD_DIR}/install.sh"
 cp "${SCRIPT_DIR}/scripts/uninstall.sh" "${BUILD_DIR}/uninstall.sh"
 

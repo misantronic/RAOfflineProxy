@@ -24,4 +24,5 @@ RELEASING.md
 linux/knulli/dist/
 linux/knulli/native/
 linux/onion/native/
+linux/muos/native/
 **/__pycache__
