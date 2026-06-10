@@ -38,6 +38,7 @@ printf '%s\n' "BASE_DIR=$BASE_DIR" >>"$LOG_FILE"
 printf '%s\n' "SDL_VIDEODRIVER=$SDL_VIDEODRIVER" >>"$LOG_FILE"
 printf '%s\n' "PYTHONPATH=$PYTHONPATH" >>"$LOG_FILE"
 printf '%s\n' "LD_LIBRARY_PATH=$LD_LIBRARY_PATH" >>"$LOG_FILE"
+printf 'PYTHON_VERSION=%s\n' "$(/usr/bin/python --version 2>&1)" >>"$LOG_FILE"
 
 if [ "$#" -eq 0 ]; then
     set -- menu-sdl

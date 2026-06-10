@@ -9,7 +9,8 @@
 - `launch.sh`: starts the bundled app with the muOS runtime environment
 - `mux_launch.sh`: muOS Applications entrypoint
 - `mux_lang.ini`: muOS app metadata
-- `vendor/pygame` and `vendor/pygame.libs`: bundled `pygame` runtime for stock muOS Python
+- `fetch_vendor.sh`: downloads the `vendor/` directory (pygame 2.6.1 for Python 3.11 + 3.12)
+- `vendor/pygame` and `vendor/pygame.libs`: bundled `pygame` runtime (multi-version; supports Python 3.11 and 3.12)
 - `native/libraproxy_rchash.so` (build output): bundled to `lib/libraproxy_rchash.so` in the payload
 
 ## Runtime Assumptions
@@ -33,5 +34,10 @@
 ## Notes
 
 - `pygame` is bundled because stock muOS does not ship it in site-packages
+- the vendor directory is not committed; run `fetch_vendor.sh` to (re)create it
+- `vendor/pygame` ships C extensions for **both Python 3.11 and 3.12** (`cpython-311` and `cpython-312`
+  ABI tags coexist in the same directory; Python picks the right one at import time)
+- `vendor/pygame.libs` is shared between both Python versions — the SDL2/image/ttf/mixer libraries
+  are identical across wheels for the same pygame release
 - the current target preserves the SDL menu UI rather than switching to a shell-only frontend
 - start/stop patching must update both `retroarch.cfg` and `retroarch.cheevos.cfg`

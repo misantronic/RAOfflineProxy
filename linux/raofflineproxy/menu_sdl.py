@@ -1,5 +1,6 @@
 import os
 import subprocess
+import sys
 import threading
 import traceback
 import time
@@ -108,12 +109,14 @@ CALIBRATION_FACE_BUTTONS = {BTN_SOUTH, BTN_EAST}
 
 
 def run_menu_sdl(command_runner: str) -> None:
-    import pygame
-
-    pygame.init()
-    pygame.font.init()
-
+    pygame = None
+    log_menu_sdl(f"run_menu_sdl start python={sys.version.split()[0]}")
     try:
+        import pygame
+
+        pygame.init()
+        pygame.font.init()
+
         try:
             surface = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
         except pygame.error as exc:
@@ -136,7 +139,8 @@ def run_menu_sdl(command_runner: str) -> None:
         raise
     finally:
         restart_muos_frontend()
-        pygame.quit()
+        if pygame is not None:
+            pygame.quit()
 
 
 def log_menu_sdl(message: str) -> None:
