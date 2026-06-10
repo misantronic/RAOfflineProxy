@@ -25,7 +25,7 @@ RAOfflineProxy runs a tiny local proxy on your device. It sits between supported
 
 ## Obtainium
 
-RAOfflineProxy is now listed in the [Obtainium Emulation Pack](https://github.com/RJNY/Obtainium-Emulation-Pack/releases/tag/v7.9.0).
+RAOfflineProxy is listed in the [Obtainium Emulation Pack](https://github.com/RJNY/Obtainium-Emulation-Pack/releases).
 
 If you use Obtainium on Android, you can add it from there instead of entering the GitHub repository manually.
 
