@@ -18,6 +18,7 @@ import com.raofflineproxy.data.CacheKeys
 import com.raofflineproxy.data.PendingAward
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.MediaType.Companion.toMediaType
@@ -47,6 +48,7 @@ private const val TAG = "RAProxy"
 private const val MAX_WORKER_THREADS = 8
 private const val SOCKET_TIMEOUT_MS = 30_000
 private const val MAX_REQUEST_BODY_BYTES = 1_048_576 // 1 MiB — rcheevos requests are small
+private const val POST_AWARD_REFRESH_DELAY_MS = 3_000L
 private const val DB_OPERATION_TIMEOUT_SECONDS = 3L
 private val SUCCESS_TRUE_REGEX = Regex("\"Success\"\\s*:\\s*true(?=\\s*[,}])")
 private val NORMALIZED_PATCH_ID_REGEX = Regex(""""ID"\s*:\s*(\d+)""")
@@ -305,7 +307,10 @@ class ProxyServer(
 
         if (isOnline()) {
             return when (val upstream = forwardToRAResult("POST", path, rawBody, headers)) {
-                is UpstreamResult.Success -> ProxyResponse.Json(upstream.statusCode, upstream.message, upstream.body)
+                is UpstreamResult.Success -> {
+                    schedulePostAwardCacheRefresh(path, rawBody, headers)
+                    ProxyResponse.Json(upstream.statusCode, upstream.message, upstream.body)
+                }
                 is UpstreamResult.HttpError -> {
                     Log.w(TAG, "Award request rejected by upstream: ${upstream.statusCode} ${upstream.message}")
                     ProxyResponse.Json(upstream.statusCode, upstream.message, upstream.body)
@@ -575,6 +580,21 @@ class ProxyServer(
                     result
                 }
             }
+        }
+    }
+
+    private fun schedulePostAwardCacheRefresh(path: String, rawBody: String, headers: Map<String, String>) {
+        val achievementId = extractParam("a", path, rawBody)?.toIntOrNull() ?: return
+        val user = extractParam("u", path, rawBody) ?: return
+        val token = extractParam("t", path, rawBody) ?: return
+        val userAgent = headers["user-agent"] ?: ""
+        scope.launch(Dispatchers.IO) {
+            val gameId = buildAchievementGameIds(db.cacheDao().getAllByPrefix(CacheKeys.PREFIX_PATCH))[achievementId]
+                ?: return@launch
+            Log.i(TAG, "Post-award cache refresh in ${POST_AWARD_REFRESH_DELAY_MS}ms for gameId=$gameId achievementId=$achievementId")
+            delay(POST_AWARD_REFRESH_DELAY_MS)
+            cacheUnlocks(context, gameId, LoginCredentials(user, token), userAgent, db)
+            cacheSession(gameId, LoginCredentials(user, token), db)
         }
     }
 

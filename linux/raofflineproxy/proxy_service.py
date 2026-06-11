@@ -368,6 +368,7 @@ class ProxyRuntimeServer(ThreadingTCPServer):
         if not game_id or not user or not token:
             return
 
+        time.sleep(3)
         user_agent = headers.get("User-Agent") or FALLBACK_USER_AGENT
         credentials = {"user": user, "token": token}
         cache_unlocks(
