@@ -57,16 +57,19 @@ class LinuxRomBrowserTests(unittest.TestCase):
 
             self.assertEqual([entry.name for entry in entries], ["pokemon.zip"])
 
-    def test_list_browser_entries_ignores_zip_without_supported_rom(self) -> None:
+    def test_list_browser_entries_includes_arcade_zip(self) -> None:
+        # Arcade/MAME sets (e.g. Neo Geo) have no console-extension files inside
+        # — they're hashed by filename — so they must still be listed.
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
-            zip_path = root / "notes.zip"
+            zip_path = root / "mslug.zip"
             with zipfile.ZipFile(zip_path, "w") as archive:
-                archive.writestr("notes.txt", b"skip")
+                archive.writestr("201-p1.p1", b"\x00" * 16)
+                archive.writestr("201-c1.c1", b"\x00" * 16)
 
             entries = rom_browser.list_browser_entries(root)
 
-            self.assertEqual(entries, [])
+            self.assertEqual(entries, [zip_path])
 
     def test_list_browser_entries_hides_empty_directory_trees(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

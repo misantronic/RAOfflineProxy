@@ -34,10 +34,25 @@ private const val TAG = "RAProxy/Hash"
  * candidate. Use the `*Candidates` variants to get the full ordered list.
  */
 
+// Extensions recognized as ROMs when picking a single file out of an archive.
+// rc_hash whole-file-hashes most cartridge systems, so even extensions it does
+// not map by name (e.g. .sms/.gen/.smd) still hash correctly. A single-file
+// archive is additionally treated as a ROM regardless of extension (see
+// findSingleSupportedZipEntryName), so this list need not be exhaustive.
 private val supportedArchiveRomExtensions = setOf(
-    "a78", "bin", "cart", "ciso", "fds", "fig", "gba", "gb", "gbc", "gcm",
-    "gcz", "iso", "lnx", "n64", "nds", "nes", "pbp", "pce", "sfc", "sgx",
-    "smc", "swc", "v64", "wad", "wbfs", "z64"
+    // Nintendo
+    "nes", "fds", "smc", "sfc", "fig", "swc", "bs", "gb", "gbc", "gba",
+    "nds", "n64", "z64", "v64", "ndd",
+    // Sega
+    "md", "gen", "smd", "32x", "sms", "gg", "sg", "gdi",
+    // NEC
+    "pce", "sgx",
+    // Atari
+    "a26", "a78", "lnx", "jag", "j64",
+    // Other cartridge consoles
+    "col", "int", "vec", "vb", "ws", "wsc", "ngp", "ngc", "min", "sv", "chf",
+    // Disc / container / misc
+    "iso", "bin", "cart", "ciso", "gcm", "gcz", "pbp", "wad", "wbfs"
 )
 
 internal data class RomHashInput(
@@ -293,26 +308,39 @@ private fun hashArcadeZipViaNamedTemp(
 private fun findSingleSupportedZipEntryName(
     openArchiveStream: () -> InputStream?,
 ): String? {
-    var matchedEntryName: String? = null
+    var supportedEntryName: String? = null
+    var supportedCount = 0
+    var totalFiles = 0
+    var soleFileName: String? = null
 
     ZipInputStream(openArchiveStream() ?: return null).use { archive ->
         while (true) {
             val entry = archive.nextEntry ?: break
             val entryName = entry.name
-            if (entry.isDirectory || !isSupportedArchiveRomEntry(entryName)) {
+            val baseName = entryName.substringAfterLast('/').substringAfterLast('\\')
+            if (entry.isDirectory || baseName.isBlank() || baseName.startsWith('.')) {
                 archive.closeEntry()
                 continue
             }
-            if (matchedEntryName != null) {
-                archive.closeEntry()
-                return null
+            totalFiles++
+            soleFileName = entryName
+            if (isSupportedArchiveRomEntry(entryName)) {
+                supportedCount++
+                supportedEntryName = entryName
             }
-            matchedEntryName = entryName
             archive.closeEntry()
         }
     }
 
-    return matchedEntryName
+    return when {
+        // Exactly one recognized console ROM inside.
+        supportedCount == 1 -> supportedEntryName
+        // No recognized extension but a single file: a zipped ROM of a system we
+        // don't enumerate (e.g. .gen). Multiple files with none recognized is an
+        // arcade/MAME set, handled by the caller's filename hash.
+        supportedCount == 0 && totalFiles == 1 -> soleFileName
+        else -> null
+    }
 }
 
 private fun extractZipEntryToTempFile(

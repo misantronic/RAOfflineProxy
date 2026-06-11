@@ -147,29 +147,26 @@ def hash_rom(path: Path) -> str | None:
 
 
 def supported_rom_extensions() -> set[str]:
+    # Extensions recognized as ROMs for browsing and for picking the file out of
+    # an archive. rc_hash hashes most cartridge systems as a plain whole-file
+    # MD5, so even extensions it doesn't map by name (e.g. .sms/.gen/.smd) still
+    # produce the correct RetroAchievements hash. A single-file archive is also
+    # treated as a ROM regardless of extension (see list_archive_rom_entries),
+    # so this list does not need to be exhaustive.
     return {
-        ".gb",
-        ".gbc",
-        ".gba",
-        ".nes",
-        ".fds",
-        ".smc",
-        ".sfc",
-        ".fig",
-        ".swc",
-        ".pce",
-        ".sgx",
-        ".a78",
-        ".lnx",
-        ".cart",
-        ".z64",
-        ".n64",
-        ".v64",
-        ".nds",
-        ".iso",
-        ".bin",
-        ".chd",
-        ".pbp",
-        ".cue",
-        ".m3u",
+        # Nintendo
+        ".nes", ".fds", ".smc", ".sfc", ".fig", ".swc", ".bs",
+        ".gb", ".gbc", ".gba", ".nds",
+        ".n64", ".z64", ".v64", ".ndd",
+        # Sega
+        ".md", ".gen", ".smd", ".32x", ".sms", ".gg", ".sg", ".gdi",
+        # NEC
+        ".pce", ".sgx",
+        # Atari
+        ".a26", ".a78", ".lnx", ".jag", ".j64",
+        # Other cartridge consoles
+        ".col", ".int", ".vec", ".vb", ".ws", ".wsc",
+        ".ngp", ".ngc", ".min", ".sv", ".chf",
+        # Disc / playlist / misc
+        ".iso", ".bin", ".chd", ".pbp", ".cue", ".m3u", ".cart",
     }

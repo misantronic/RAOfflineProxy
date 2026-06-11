@@ -11,9 +11,10 @@ than failing, so the suite stays green on machines without the native build.
 import hashlib
 import tempfile
 import unittest
+import zipfile
 from pathlib import Path
 
-from linux.raofflineproxy import rom_hashing
+from linux.raofflineproxy import rom_browser, rom_hashing
 
 
 def _library_available() -> bool:
@@ -69,6 +70,62 @@ class CartridgeHashingTests(unittest.TestCase):
             rom_path.write_bytes(body)
             result = rom_hashing.hash_rom_candidates_result(rom_path)
         self.assertEqual(result.candidates, [hashlib.md5(body).hexdigest()])
+
+
+@REQUIRE_LIB
+class ArcadeZipTests(unittest.TestCase):
+    def test_neogeo_set_hashes_by_filename(self) -> None:
+        # Neo Geo / MAME sets have no console-extension files inside, so manual
+        # caching must hash them by the zip's base filename (rc_hash arcade).
+        with tempfile.TemporaryDirectory() as temp_dir:
+            zip_path = Path(temp_dir) / "mslug.zip"
+            with zipfile.ZipFile(zip_path, "w") as archive:
+                archive.writestr("201-p1.p1", b"\x00" * 16)
+                archive.writestr("201-c1.c1", b"\x00" * 16)
+
+            candidates = rom_browser.hash_candidates_for_manual_cache(zip_path)
+
+        self.assertEqual(candidates, [hashlib.md5(b"mslug").hexdigest()])
+
+    def test_zipped_single_console_rom_hashes_by_content(self) -> None:
+        body = b"NESDATA" * 64
+        with tempfile.TemporaryDirectory() as temp_dir:
+            zip_path = Path(temp_dir) / "game.zip"
+            with zipfile.ZipFile(zip_path, "w") as archive:
+                archive.writestr("game.nes", b"NES\x1a" + b"\x00" * 12 + body)
+
+            candidates = rom_browser.hash_candidates_for_manual_cache(zip_path)
+
+        self.assertEqual(candidates, [hashlib.md5(body).hexdigest()])
+
+    def test_zipped_mega_drive_and_master_system_hash_by_content(self) -> None:
+        # Sega systems hash as a plain whole-file MD5; the zipped inner ROM must
+        # be hashed by content even though these extensions aren't enumerated by
+        # name everywhere.
+        for inner in ("Sonic.md", "Sonic.gen", "AlexKidd.sms"):
+            body = (inner.encode() * 256)
+            with tempfile.TemporaryDirectory() as temp_dir:
+                zip_path = Path(temp_dir) / "game.zip"
+                with zipfile.ZipFile(zip_path, "w") as archive:
+                    archive.writestr(inner, body)
+
+                candidates = rom_browser.hash_candidates_for_manual_cache(zip_path)
+
+            self.assertEqual(
+                candidates, [hashlib.md5(body).hexdigest()], f"failed for {inner}"
+            )
+
+    def test_single_file_archive_of_unenumerated_system_uses_content(self) -> None:
+        # A single-file archive is treated as a ROM regardless of extension.
+        body = b"WHATEVER" * 100
+        with tempfile.TemporaryDirectory() as temp_dir:
+            zip_path = Path(temp_dir) / "mystery.zip"
+            with zipfile.ZipFile(zip_path, "w") as archive:
+                archive.writestr("game.xyz", body)
+
+            candidates = rom_browser.hash_candidates_for_manual_cache(zip_path)
+
+        self.assertEqual(candidates, [hashlib.md5(body).hexdigest()])
 
 
 class SupportedExtensionsTests(unittest.TestCase):

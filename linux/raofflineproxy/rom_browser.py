@@ -256,8 +256,12 @@ def is_supported_browser_file(path: Path) -> bool:
     suffix = path.suffix.lower()
     if suffix in SUPPORTED_ROM_EXTENSIONS:
         return True
+    # Any .zip is a candidate: either a zipped single console ROM (hashed by
+    # content) or an arcade/MAME set such as Neo Geo (hashed by filename via
+    # rc_hash). Don't peek inside to decide — that excludes arcade sets, whose
+    # internal files use non-console extensions (.p1/.c1/.v1/...).
     if suffix in SUPPORTED_ARCHIVE_EXTENSIONS:
-        return archive_has_supported_roms(path)
+        return True
     return False
 
 
@@ -271,13 +275,25 @@ def list_archive_rom_entries(path: Path) -> list[zipfile.ZipInfo]:
 
     try:
         with zipfile.ZipFile(path) as archive:
-            return [
+            files = [
                 info
                 for info in archive.infolist()
                 if not info.is_dir()
                 and not Path(info.filename).name.startswith(".")
-                and Path(info.filename).suffix.lower() in SUPPORTED_ROM_EXTENSIONS
             ]
+            rom_entries = [
+                info
+                for info in files
+                if Path(info.filename).suffix.lower() in SUPPORTED_ROM_EXTENSIONS
+            ]
+            if rom_entries:
+                return rom_entries
+            # No recognized ROM extension, but a single-file archive is almost
+            # certainly a zipped ROM (a system we don't enumerate, e.g. .gen).
+            # Multi-file archives with no ROM extension are arcade/MAME sets.
+            if len(files) == 1:
+                return files
+            return []
     except Exception:
         return []
 
@@ -292,28 +308,34 @@ def hash_candidates_for_manual_cache(path: Path) -> list[str]:
         return hash_rom_candidates(path)
 
     rom_entries = list_archive_rom_entries(path)
-    if not rom_entries:
-        raise ValueError("archive has no supported ROMs")
+
     if len(rom_entries) > 1:
         raise ValueError("archive contains multiple supported ROMs")
 
-    rom_entry = rom_entries[0]
-    with zipfile.ZipFile(path) as archive:
-        with archive.open(rom_entry) as source:
-            rom_bytes = source.read()
+    # Exactly one inner console ROM: hash its extracted content.
+    if len(rom_entries) == 1:
+        rom_entry = rom_entries[0]
+        with zipfile.ZipFile(path) as archive:
+            with archive.open(rom_entry) as source:
+                rom_bytes = source.read()
 
-    suffix = Path(rom_entry.filename).suffix
-    entry_name = Path(rom_entry.filename).stem
-    with tempfile.TemporaryDirectory() as temp_dir:
-        temp_name = entry_name if suffix else Path(rom_entry.filename).name
-        temp_path = Path(temp_dir) / f"{temp_name}{suffix}"
-        temp_path.write_bytes(rom_bytes)
-        if temp_path.suffix.lower() == ".chd":
-            result = hash_rom_candidates_result(temp_path)
-            if result.error is not None:
-                raise ValueError(result.error)
-            return result.candidates
-        return hash_rom_candidates(temp_path)
+        suffix = Path(rom_entry.filename).suffix
+        entry_name = Path(rom_entry.filename).stem
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_name = entry_name if suffix else Path(rom_entry.filename).name
+            temp_path = Path(temp_dir) / f"{temp_name}{suffix}"
+            temp_path.write_bytes(rom_bytes)
+            if temp_path.suffix.lower() == ".chd":
+                result = hash_rom_candidates_result(temp_path)
+                if result.error is not None:
+                    raise ValueError(result.error)
+                return result.candidates
+            return hash_rom_candidates(temp_path)
+
+    # Zero or multiple inner console ROMs: treat as an arcade/MAME set (Neo Geo,
+    # CPS, etc.). rc_hash's arcade hash is MD5 of the zip's base filename, so we
+    # pass the archive path straight through.
+    return hash_rom_candidates(path)
 
 
 def fetch_game_id(
