@@ -164,7 +164,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         app.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
     private var pendingProxyStart = false
     private var pendingSmartCacheStart = false
-    private var pendingSmartCachePromptAfterProxyStart = false
     private var pendingSmartCacheRomGrantPaths = emptyList<String>()
     private var pendingSmartCacheGrantTargets = emptyList<SafGrantTarget>()
     private var pendingPpssppShizukuRootModePrompt = false
@@ -335,7 +334,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         cachedGames = games,
                         hasLoginCredentials = hasLoginCredentials
                     )
-                    maybePromptSmartCacheAfterProxyStart()
                     if (_state.value.proxyRunning && games.isNotEmpty() && _state.value.authState != AuthState.Valid) {
                         validateToken()
                     }
@@ -1043,11 +1041,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         pendingSafGrantTargets = emptyList(),
                         authState = AuthState.Unknown
                     )
-                    pendingSmartCachePromptAfterProxyStart = true
                     if (!alreadyRunning) {
                         SnackbarManager.showMessage(str(R.string.proxy_started_success))
                     }
-                    maybePromptSmartCacheAfterProxyStart()
+                    maybeShowSmartCachePrompt()
                     validateToken()
                     return@launch
                 }
@@ -1230,11 +1227,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     pendingSafGrantTargets = emptyList(),
                     authState = AuthState.Unknown
                 )
-                pendingSmartCachePromptAfterProxyStart = true
                 if (!alreadyRunning) {
                     SnackbarManager.showMessage(str(R.string.proxy_started_success))
                 }
-                maybePromptSmartCacheAfterProxyStart()
+                maybeShowSmartCachePrompt()
                 validateToken()
             } finally {
                 delay(250)
@@ -1243,20 +1239,19 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    private fun maybePromptSmartCacheAfterProxyStart() {
-        if (!pendingSmartCachePromptAfterProxyStart) return
+    /**
+     * Called once, synchronously, right after the user actively starts the proxy. Shows the
+     * smart cache prompt only when it makes sense to seed the cache for this session. No state
+     * is retained: if the conditions aren't met at start time, the prompt simply doesn't appear.
+     */
+    private fun maybeShowSmartCachePrompt() {
         val currentState = _state.value
         if (!currentState.proxyRunning) return
-        if (isSmartCacheDisabledForShizuku(currentState)) {
-            return
-        }
-        if (!currentState.smartCachingEnabled) {
-            return
-        }
+        if (isSmartCacheDisabledForShizuku(currentState)) return
+        if (!currentState.smartCachingEnabled) return
         if (currentState.cachedGames.isNotEmpty()) return
         if (!currentState.isOnline) return
         if (!currentState.hasLoginCredentials) return
-        pendingSmartCachePromptAfterProxyStart = false
         _events.tryEmit(MainUiEvent.PromptSmartCacheAfterProxyStart)
     }
 
@@ -1311,7 +1306,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         safGrantTarget = null,
                         cfgCopyBackPath = null
                     )
-                    pendingSmartCachePromptAfterProxyStart = false
                     if ((shizukuResult == null || shizukuResult.success) && armsx2Result.success && flycastResult.success) {
                         SnackbarManager.showMessage(str(R.string.proxy_stopped_success))
                     } else if (!armsx2Result.success) {
@@ -1415,7 +1409,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     safGrantTarget = if (result.needsSafGrant) SafGrantTarget.RetroArch else null,
                     cfgCopyBackPath = result.copyBackPath
                 )
-                pendingSmartCachePromptAfterProxyStart = false
 
                 if (result.needsSafGrant) {
                     PrefsConstants.clearSafUri(app)
@@ -1947,9 +1940,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun setSmartCachingEnabled(enabled: Boolean) {
         PrefsConstants.saveSmartCachingEnabled(getApplication(), enabled)
         _state.value = _state.value.copy(smartCachingEnabled = enabled)
-        if (!enabled) {
-            pendingSmartCachePromptAfterProxyStart = false
-        }
     }
 
     fun setAppUpdateCheckEnabled(enabled: Boolean) {
