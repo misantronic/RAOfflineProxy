@@ -72,34 +72,13 @@ internal interface RomDataSource : Closeable {
     fun read(offset: Long, buffer: ByteArray, length: Int = buffer.size): Int
 }
 
-internal fun parseCueDataBinFileName(content: String): String? {
-    var currentFile: String? = null
-    for (line in content.lines()) {
-        val trimmed = line.trim()
-        if (trimmed.startsWith("FILE ", ignoreCase = true)) {
-            val parts = trimmed.split('"')
-            if (parts.size >= 3) currentFile = parts[1]
-        } else if (trimmed.startsWith("TRACK ", ignoreCase = true)) {
-            if (!trimmed.contains("AUDIO", ignoreCase = true) && currentFile != null) {
-                return currentFile
-            }
-        }
-    }
-    return null
-}
-
-internal fun parseM3uFirstEntry(content: String): String? =
-    content.lines()
-        .map { it.trim() }
-        .firstOrNull { it.isNotEmpty() && !it.startsWith("#") }
-
 internal fun hasExtension(fileName: String, vararg extensions: String): Boolean =
     extensions.any { extension -> fileName.endsWith(".$extension", ignoreCase = true) }
 
 // ---- GameCube/Wii container formats (rc_hash can't decompress these) ----
 
 private fun isNintendoDiscContainer(fileName: String): Boolean =
-    hasExtension(fileName, "rvz", "ciso", "gcz", "wbfs", "gcm", "iso", "wad")
+    hasExtension(fileName, "rvz", "ciso", "gcz", "wbfs", "gcm", "wad")
 
 /** Wraps [openBase] in the right decompressing reader for [fileName]'s container. */
 private fun openDiscDataSource(fileName: String, openBase: () -> RomDataSource?): RomDataSource? = when {
@@ -199,21 +178,6 @@ internal fun hashRomCandidates(input: RomHashInput): List<String> {
     return hashCandidatesViaTempCopy(fileName, tempDir = null, openStream = input.openStream)
 }
 
-internal fun hashRomFile(context: Context, file: File): String? =
-    hashRomFileCandidates(context, file).firstOrNull()
-
-internal fun hashRomFileCandidates(context: Context, file: File): List<String> {
-    val fileName = file.name
-    if (hasExtension(fileName, "zip")) {
-        return hashZipRomCandidates(fileName, file.absolutePath, context.cacheDir) { file.inputStream() }
-    }
-    if (isNintendoDiscContainer(fileName)) {
-        return hashDiscCandidates(fileName) { FileRomDataSource(file) }
-    }
-    // rc_hash resolves .cue/.m3u (and everything else) directly from the path.
-    return hashCandidatesForPath(file.absolutePath)
-}
-
 internal fun hashRom(context: Context, file: DocumentFile): String? =
     hashRomCandidates(context, file).firstOrNull()
 
@@ -238,7 +202,15 @@ internal fun hashRomCandidates(context: Context, file: DocumentFile): List<Strin
     // for .cue/.m3u, its siblings) directly without copying.
     val realPath = resolveDocumentAbsolutePath(file)
     if (realPath != null && File(realPath).isFile) {
-        return hashCandidatesForPath(realPath)
+        val candidates = hashCandidatesForPath(realPath)
+        if (candidates.isNotEmpty()) return candidates
+        if (hasExtension(fileName, "iso")) {
+            val discCandidates = hashDiscCandidates(fileName) {
+                context.contentResolver.openFileDescriptor(file.uri, "r")
+                    ?.let { ParcelFileDescriptorRomDataSource(it) }
+            }
+            if (discCandidates.isNotEmpty()) return discCandidates
+        }
     }
 
     // SAF-only fallback: copy the document's bytes to a temp file and hash that.
