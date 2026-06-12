@@ -99,7 +99,7 @@ internal fun hasExtension(fileName: String, vararg extensions: String): Boolean 
 // ---- GameCube/Wii container formats (rc_hash can't decompress these) ----
 
 private fun isNintendoDiscContainer(fileName: String): Boolean =
-    hasExtension(fileName, "rvz", "ciso", "gcz", "wbfs", "gcm")
+    hasExtension(fileName, "rvz", "ciso", "gcz", "wbfs", "gcm", "iso", "wad")
 
 /** Wraps [openBase] in the right decompressing reader for [fileName]'s container. */
 private fun openDiscDataSource(fileName: String, openBase: () -> RomDataSource?): RomDataSource? = when {
@@ -107,7 +107,9 @@ private fun openDiscDataSource(fileName: String, openBase: () -> RomDataSource?)
     hasExtension(fileName, "ciso") -> CisoRomDataSource.open(openBase)
     hasExtension(fileName, "gcz") -> GczRomDataSource.open(openBase)
     hasExtension(fileName, "wbfs") -> WbfsRomDataSource.open(openBase)
-    hasExtension(fileName, "gcm") -> openBase() // already a raw GameCube image
+    hasExtension(fileName, "gcm") -> openBase() // raw GameCube image
+    hasExtension(fileName, "iso") -> openBase() // raw GameCube/Wii disc image
+    hasExtension(fileName, "wad") -> openBase() // WiiWare/VC package
     else -> null
 }
 

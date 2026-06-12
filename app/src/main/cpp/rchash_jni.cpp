@@ -92,11 +92,13 @@ Java_com_raofflineproxy_proxy_hash_RcHashNativeBridge_nativeHashDiscDataSource(
 
     jclass dsClass = env->GetObjectClass(dataSource);
     jmethodID readMethod = env->GetMethodID(dsClass, "read", "(J[BI)I");
+    if (readMethod == nullptr) {
+        if (env->ExceptionCheck()) env->ExceptionClear();
+        return buildHashArray(env, nullptr, 0);
+    }
     jmethodID lengthMethod = env->GetMethodID(dsClass, "getLength", "()J");
-    if (readMethod == nullptr || lengthMethod == nullptr) {
-        if (env->ExceptionCheck()) {
-            env->ExceptionClear();
-        }
+    if (lengthMethod == nullptr) {
+        if (env->ExceptionCheck()) env->ExceptionClear();
         return buildHashArray(env, nullptr, 0);
     }
 
