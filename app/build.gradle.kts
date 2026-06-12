@@ -19,8 +19,8 @@ android {
         applicationId = "com.raofflineproxy"
         minSdk = 26
         targetSdk = 36
-        versionCode = 16
-        versionName = "1.5.0-alpha1"
+        versionCode = 17
+        versionName = "1.5.1-alpha1"
     }
 
     signingConfigs {
