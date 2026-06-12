@@ -78,6 +78,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
+import kotlin.time.Duration.Companion.milliseconds
 
 enum class AuthState { Unknown, Valid, Invalid }
 
@@ -1233,7 +1234,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 maybeShowSmartCachePrompt()
                 validateToken()
             } finally {
-                delay(250)
+                delay(250.milliseconds)
                 _state.value = _state.value.copy(proxyToggleInProgress = false)
             }
         }
@@ -1452,7 +1453,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     SnackbarManager.showError(flycastResult.message)
                 }
             } finally {
-                delay(250)
+                delay(250.milliseconds)
                 _state.value = _state.value.copy(proxyToggleInProgress = false)
             }
         }
@@ -2004,6 +2005,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
             val loginCredentials = withContext(Dispatchers.IO) {
                 loginAndCacheToken(
+                    app,
                     db,
                     PasswordCredentials(normalizedUsername, normalizedPassword),
                     loadUserAgent(db)
@@ -2251,6 +2253,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             )
 
             is ImportedCredentials.Password -> loginAndCacheToken(
+                getApplication(),
                 db,
                 PasswordCredentials(credentials.username, credentials.password),
                 loadUserAgent(db)

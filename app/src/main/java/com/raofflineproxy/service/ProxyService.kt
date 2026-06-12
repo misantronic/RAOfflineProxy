@@ -52,6 +52,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.json.JSONObject
+import kotlin.time.Duration.Companion.milliseconds
 
 private const val TAG = "ProxyService"
 private const val CHANNEL_ID = "proxy_service"
@@ -187,12 +188,12 @@ class ProxyService : Service() {
 
     private suspend fun periodicRefreshLoop() {
         while (true) {
-            delay(REFRESH_INTERVAL_MS)
+            delay(REFRESH_INTERVAL_MS.milliseconds)
             if (!isServerReachable()) continue
             val idleDelayMs = onlineRefreshIdleDelayMs()
             if (idleDelayMs > 0) {
                 Log.i(TAG, "Periodic refresh deferred; proxy active recently")
-                delay(idleDelayMs)
+                delay(idleDelayMs.milliseconds)
                 if (!isServerReachable() || onlineRefreshIdleDelayMs() > 0) continue
             }
             Log.i(TAG, "Periodic refresh started")
@@ -217,7 +218,6 @@ class ProxyService : Service() {
                     db = db,
                     notificationMode = RefreshNotificationMode.Background,
                     cacheImages = false,
-                    cacheBadgeImages = false
                 )
             }
             db.cacheDao().evictOlderThan(System.currentTimeMillis() - CACHE_TTL_MS)
@@ -357,7 +357,7 @@ class ProxyService : Service() {
         if (expectedActivityAt == 0L) return
         offlineIdleTimeoutJob?.cancel()
         offlineIdleTimeoutJob = serviceScope.launch {
-            delay(OFFLINE_PING_IDLE_TIMEOUT_MS)
+            delay(OFFLINE_PING_IDLE_TIMEOUT_MS.milliseconds)
             if (!isServerReachable() && currentOfflineActivityAt() == expectedActivityAt) {
                 updateNotification()
             }

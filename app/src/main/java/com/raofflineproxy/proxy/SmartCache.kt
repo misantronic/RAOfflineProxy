@@ -1347,7 +1347,6 @@ private suspend fun executeResolvedSmartCacheCandidates(
             db = db,
             romHash = hash,
             sourceRomPath = candidate.path,
-            cacheBadgeImages = false
         )
         if (candidate.emulator == SmartCacheEmulator.Dolphin) {
             Log.i(

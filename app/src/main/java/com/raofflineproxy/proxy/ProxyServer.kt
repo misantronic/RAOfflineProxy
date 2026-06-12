@@ -3,6 +3,7 @@ package com.raofflineproxy.proxy
 import android.util.Log
 import com.raofflineproxy.R
 import com.raofflineproxy.RA_HOST
+import com.raofflineproxy.RA_MEDIA_HOST
 import com.raofflineproxy.RequestFailureNotifier
 import com.raofflineproxy.extractFormParam
 import com.raofflineproxy.proxyHost
@@ -43,6 +44,7 @@ import java.util.concurrent.ThreadPoolExecutor
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
+import kotlin.time.Duration.Companion.milliseconds
 
 private const val TAG = "RAProxy"
 private const val MAX_WORKER_THREADS = 8
@@ -251,14 +253,38 @@ class ProxyServer(
         if (isStaticAssetRequest(path)) {
             val cachedAsset = resolveCachedStaticAsset(context, path)
             if (cachedAsset != null) {
-                Log.d(TAG, "Static asset served from cache: ${redactTokens(path)}")
                 return ProxyResponse.Bytes(httpFile(cachedAsset))
             }
-            Log.d(TAG, "Static asset skipped: ${redactTokens(path)}")
+            if (isOnline()) {
+                return forwardStaticAsset(path, headers)
+            }
             return ProxyResponse.Bytes(httpNoContent().toHttpBytes())
         }
 
         return processApiRequest(method, path, rawBody, headers)
+    }
+
+    private fun forwardStaticAsset(path: String, headers: Map<String, String>): ProxyResponse {
+        val cleanPath = path.substringBefore('?')
+        val url = "$RA_MEDIA_HOST$cleanPath"
+        val userAgent = headers["user-agent"] ?: ""
+        return try {
+            val request = Request.Builder()
+                .url(url)
+                .header("User-Agent", proxyUserAgent(userAgent))
+                .build()
+            sharedHttpClient.newCall(request).execute().use { response ->
+                val bytes = response.body.bytes()
+                if (response.isSuccessful && bytes.isNotEmpty()) {
+                    scheduleImageDownload(context, url, cleanPath, userAgent)
+                }
+                val contentType = response.header("Content-Type") ?: "image/png"
+                ProxyResponse.Bytes(proxyHttpRawBytes(response.code, contentType, bytes))
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to forward static asset $cleanPath: ${e.message}")
+            ProxyResponse.Bytes(httpNoContent().toHttpBytes())
+        }
     }
 
     private fun processApiRequest(method: String, path: String, rawBody: String, headers: Map<String, String>): ProxyResponse {
@@ -370,10 +396,16 @@ class ProxyServer(
         val upstream = forwardToRA(method, path, rawBody, headers)
         val shouldCache = upstream != null && shouldCacheResponse(upstream)
         if (shouldCache && action in CACHEABLE_ACTIONS) {
+            val userAgent = headers["user-agent"] ?: ""
+            val proxyBaseUrl = "http://${proxyHost()}:$port"
+            val rewrittenForEmulator = rewriteImageUrls(action,
+                upstream, proxyBaseUrl) { originalUrl, imagePath ->
+                scheduleImageDownload(context, originalUrl, imagePath, userAgent)
+            }
+
             val normalizedBody = normalizeCachedResponse(action, path, rawBody, upstream)
             val rawKey = cacheKey(path, rawBody)
             val key = normalizedCacheKey(action, path, rawBody, normalizedBody)
-            val userAgent = headers["user-agent"] ?: ""
             val rawBodyToCache = compactCachedRawResponse(action, upstream)
             scope.launch(Dispatchers.IO) {
                 db.cacheDao().upsert(CacheEntry(cacheKey = rawKey, responseBody = rawBodyToCache))
@@ -387,16 +419,13 @@ class ProxyServer(
                         ?: extractNormalizedGameId(normalizedBody)
                     val user = extractParam("u", path, rawBody)
                     val token = extractParam("t", path, rawBody)
-                    if (gameId != null) {
-                        cachePatchImages(context, gameId, userAgent, normalizedBody)
-                    }
                     if (gameId != null && user != null && token != null) {
                         cacheUnlocks(context, gameId, LoginCredentials(user, token), userAgent, db)
                         cacheSession(gameId, LoginCredentials(user, token), db)
                     }
                 }
             }
-            return okJson(filterWarningAchievementForOnline(action, upstream))
+            return okJson(filterWarningAchievementForOnline(action, rewrittenForEmulator))
         }
         if (upstream != null) {
             Log.i(TAG, "Forwarded (not cached) action=$action")
@@ -423,7 +452,11 @@ class ProxyServer(
                 ensureOfflineStartSessionCache(path, rawBody)
             }
             Log.i(TAG, "Cache HIT: $key (${cached!!.responseBody.length} bytes)")
-            okJson(filterWarningAchievementForOnline(action, cached!!.responseBody))
+            // Rewrite original RA image URLs to the current proxy port so they resolve
+            // correctly even if the port has changed since the response was first cached.
+            val proxyBaseUrl = "http://${proxyHost()}:$port"
+            val rewritten = rewriteImageUrls(action, cached!!.responseBody, proxyBaseUrl)
+            okJson(filterWarningAchievementForOnline(action, rewritten))
         } else {
             Log.e(TAG, "Cache MISS: $key")
             if (action == "gameid") {
@@ -592,7 +625,7 @@ class ProxyServer(
             val gameId = buildAchievementGameIds(db.cacheDao().getAllByPrefix(CacheKeys.PREFIX_PATCH))[achievementId]
                 ?: return@launch
             Log.i(TAG, "Post-award cache refresh in ${POST_AWARD_REFRESH_DELAY_MS}ms for gameId=$gameId achievementId=$achievementId")
-            delay(POST_AWARD_REFRESH_DELAY_MS)
+            delay(POST_AWARD_REFRESH_DELAY_MS.milliseconds)
             cacheUnlocks(context, gameId, LoginCredentials(user, token), userAgent, db)
             cacheSession(gameId, LoginCredentials(user, token), db)
         }
@@ -941,6 +974,15 @@ internal fun proxyHttpNoContent(): String =
     "HTTP/1.1 204 No Content\r\n" +
         "Content-Length: 0\r\n" +
         "Connection: close\r\n\r\n"
+
+internal fun proxyHttpRawBytes(code: Int, contentType: String, bytes: ByteArray): ByteArray {
+    val reason = if (code == 200) "OK" else "Error"
+    val headers = "HTTP/1.1 $code $reason\r\n" +
+        "Content-Type: $contentType\r\n" +
+        "Content-Length: ${bytes.size}\r\n" +
+        "Connection: close\r\n\r\n"
+    return headers.toByteArray(Charsets.US_ASCII) + bytes
+}
 
 internal fun proxyHttpFile(file: File): ByteArray {
     val bytes = file.readBytes()

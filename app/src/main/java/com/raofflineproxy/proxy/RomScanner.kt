@@ -11,6 +11,8 @@ import com.raofflineproxy.RA_HOST
 import com.raofflineproxy.RequestFailureNotifier
 import com.raofflineproxy.buildApiUrl
 import com.raofflineproxy.proxy.hash.hashRom
+import com.raofflineproxy.proxyHost
+import com.raofflineproxy.proxyPort
 import com.raofflineproxy.redactTokens
 import com.raofflineproxy.throttleRetroAchievementsApiRequest
 import com.raofflineproxy.data.AppDatabase
@@ -141,6 +143,7 @@ fun cacheLoginCredentialsResponse(user: String, token: String): String =
     }.toString()
 
 suspend fun loginAndCacheToken(
+    context: Context,
     db: AppDatabase,
     credentials: PasswordCredentials,
     userAgent: String
@@ -162,6 +165,10 @@ suspend fun loginAndCacheToken(
             if (!json.optBoolean("Success", false)) return null
 
             db.cacheDao().upsert(CacheEntry(cacheKey = CacheKeys.login(user), responseBody = responseBody))
+            val proxyBaseUrl = "http://${proxyHost()}:${proxyPort(context)}"
+            rewriteImageUrls("login2", responseBody, proxyBaseUrl) { originalUrl, imagePath ->
+                scheduleImageDownload(context, originalUrl, imagePath, userAgent)
+            }
             LoginCredentials(user, token)
         }
 
@@ -179,7 +186,6 @@ suspend fun refreshGamePatch(
     userAgent: String,
     db: AppDatabase,
     cacheImages: Boolean = true,
-    cacheBadgeImages: Boolean = true
 ): String? {
     val url = buildApiUrl(
         RA_HOST,
@@ -213,10 +219,14 @@ suspend fun refreshGamePatch(
         cacheKey = CacheKeys.patch(gameId, creds.user),
         responseBody = normalizedBody
     ))
-    if (cacheImages) {
-        cachePatchImages(context, gameId, userAgent, normalizedBody, cacheBadges = cacheBadgeImages)
-    }
     Log.i(TAG, "refreshGamePatch: updated cache for gameId=$gameId")
+
+    if (cacheImages) {
+        val proxyBaseUrl = "http://${proxyHost()}:${proxyPort(context)}"
+        rewriteImageUrls("patch", normalizedBody, proxyBaseUrl) { originalUrl, imagePath ->
+            scheduleImageDownload(context, originalUrl, imagePath, userAgent, gameId)
+        }
+    }
     return normalizedBody
 }
 
@@ -260,7 +270,6 @@ internal suspend fun refreshCachedGameOfflineBundle(
     db: AppDatabase,
     notificationMode: RefreshNotificationMode,
     cacheImages: Boolean = true,
-    cacheBadgeImages: Boolean = true
 ): Boolean {
     val action = if (target.endpoint == RefreshEndpoint.AchievementSets && !target.romHash.isNullOrBlank()) {
         "achievementsets"
@@ -279,12 +288,8 @@ internal suspend fun refreshCachedGameOfflineBundle(
     val patchUrl = buildApiUrl(RA_HOST, action, requestParams)
     when (val result = httpGet(patchUrl, userAgent)) {
         is HttpGetResult.Success -> {
-            val normalizedBody = normalizeCachedResponse(
-                action,
-                "",
-                requestParams.entries.joinToString("&") { "${it.key}=${it.value}" },
-                result.body
-            )
+            val rawQuery = requestParams.entries.joinToString("&") { "${it.key}=${it.value}" }
+            val normalizedBody = normalizeCachedResponse(action, "", rawQuery, result.body)
             val normalizedJson = runCatching { JSONObject(normalizedBody) }.getOrNull()
             if (normalizedJson?.optBoolean("Success", false) != true) {
                 reportRefreshFailure(
@@ -297,6 +302,7 @@ internal suspend fun refreshCachedGameOfflineBundle(
                 return false
             }
 
+            // Write to DB first so the entry is visible in the UI immediately.
             if (action == "achievementsets") {
                 val achievementSetsKey = CacheKeys.achievementSets(target.romHash.orEmpty(), creds.user)
                 val rawBodyToCache = compactCachedRawResponse(action, result.body)
@@ -314,8 +320,12 @@ internal suspend fun refreshCachedGameOfflineBundle(
                     sourceRomPath = target.sourceRomPath
                 )
             )
+
             if (cacheImages) {
-                cachePatchImages(context, target.gameId, userAgent, normalizedBody, cacheBadges = cacheBadgeImages)
+                val proxyBaseUrl = "http://${proxyHost()}:${proxyPort(context)}"
+                rewriteImageUrls(action, result.body, proxyBaseUrl) { originalUrl, imagePath ->
+                    scheduleImageDownload(context, originalUrl, imagePath, userAgent, target.gameId)
+                }
             }
         }
         is HttpGetResult.Failure -> {
@@ -524,7 +534,6 @@ internal suspend fun cacheGame(
     romHash: String? = null,
     sourceRomPath: String? = null,
     cacheImages: Boolean = true,
-    cacheBadgeImages: Boolean = true
 ) {
     refreshCachedGameOfflineBundle(
         context = context,
@@ -540,7 +549,6 @@ internal suspend fun cacheGame(
         db = db,
         notificationMode = RefreshNotificationMode.Foreground,
         cacheImages = cacheImages,
-        cacheBadgeImages = cacheBadgeImages
     )
 }
 
