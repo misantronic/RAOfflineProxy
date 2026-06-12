@@ -13,6 +13,8 @@
         tools:ignore="AllFilesAccessPolicy,ScopedStorage" />
     <!-- Legacy storage read access for older Android versions -->
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"
+        tools:ignore="RequestInstallPackagesPolicy" />
 
     <queries>
         <package android:name="com.retroarch.aarch64" />
@@ -38,6 +40,16 @@
         android:theme="@style/Theme.RAOfflineProxy"
         tools:targetApi="33"
         >
+
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
 
         <provider
             android:name="rikka.shizuku.ShizukuProvider"

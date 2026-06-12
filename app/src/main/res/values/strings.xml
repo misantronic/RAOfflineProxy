@@ -168,10 +168,15 @@
     <string name="smart_cache_prompt_not_now">Not now</string>
     <string name="app_update_dialog_title">Update available</string>
     <string name="app_update_dialog_message">Version %1$s is available. You are currently using %2$s.</string>
-    <string name="app_update_action_download">Download update</string>
+    <string name="app_update_action_download">Install update</string>
     <string name="app_update_action_release_notes">View release notes</string>
     <string name="app_update_action_later">Not now</string>
     <string name="app_update_toolbar_action">Update available</string>
+    <string name="app_update_downloading">Downloading update…</string>
+    <string name="app_update_download_failed">Download failed. Opening in browser instead.</string>
+    <string name="app_update_allow_installs_title">Allow installs from this app</string>
+    <string name="app_update_allow_installs_message">To install the update directly, allow RAOfflineProxy to install apps. You will be taken to the system settings screen.</string>
+    <string name="app_update_allow_installs_open_settings">Open settings</string>
 
     <!-- Refresh messages -->
     <string name="refresh_progress">Refreshing %1$d/%2$d…</string>

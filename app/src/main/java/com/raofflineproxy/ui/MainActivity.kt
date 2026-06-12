@@ -30,7 +30,9 @@ import com.raofflineproxy.PrefsConstants
 import com.raofflineproxy.R
 import com.raofflineproxy.databinding.ActivityMainBinding
 import com.raofflineproxy.service.ProxyService
+import androidx.core.content.FileProvider
 import com.raofflineproxy.update.AppUpdateInfo
+import com.raofflineproxy.update.ApkDownloader
 import java.util.ArrayDeque
 import androidx.core.net.toUri
 import kotlinx.coroutines.Job
@@ -155,6 +157,16 @@ class MainActivity : AppCompatActivity() {
 
     private val notificationPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { /* no-op: notification is non-critical */ }
+
+    private var pendingApkUrl: String? = null
+
+    private val installUnknownAppsLauncher =
+        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+            val url = pendingApkUrl ?: return@registerForActivityResult
+            if (packageManager.canRequestPackageInstalls()) {
+                downloadAndInstallApk(url)
+            }
+        }
 
     private val backStackListener = androidx.fragment.app.FragmentManager.OnBackStackChangedListener {
         syncNavigationUi()
@@ -643,7 +655,7 @@ class MainActivity : AppCompatActivity() {
             .setTitle(R.string.app_update_dialog_title)
             .setMessage(getString(R.string.app_update_dialog_message, update.versionName, BuildConfig.VERSION_NAME))
             .setPositiveButton(R.string.app_update_action_download) { _, _ ->
-                openUrl(update.apkUrl)
+                requestApkInstall(update.apkUrl)
             }
             .setNeutralButton(R.string.app_update_action_release_notes) { _, _ ->
                 openUrl(update.releaseUrl)
@@ -652,6 +664,63 @@ class MainActivity : AppCompatActivity() {
             .create()
             .also { it.setCanceledOnTouchOutside(false) }
             .show()
+    }
+
+    private fun requestApkInstall(apkUrl: String) {
+        pendingApkUrl = apkUrl
+        if (packageManager.canRequestPackageInstalls()) {
+            downloadAndInstallApk(apkUrl)
+        } else {
+            AlertDialog.Builder(this)
+                .setTitle(R.string.app_update_allow_installs_title)
+                .setMessage(R.string.app_update_allow_installs_message)
+                .setPositiveButton(R.string.app_update_allow_installs_open_settings) { _, _ ->
+                    val intent = Intent(
+                        Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                        "package:$packageName".toUri()
+                    )
+                    installUnknownAppsLauncher.launch(intent)
+                }
+                .setNegativeButton(R.string.app_update_action_later, null)
+                .show()
+        }
+    }
+
+    private fun downloadAndInstallApk(apkUrl: String) {
+        val progressDialog = AlertDialog.Builder(this)
+            .setMessage(R.string.app_update_downloading)
+            .setCancelable(false)
+            .create()
+        progressDialog.show()
+
+        lifecycleScope.launch {
+            runCatching {
+                ApkDownloader.download(this@MainActivity, apkUrl) { percent ->
+                    progressDialog.setMessage(getString(R.string.app_update_downloading) + " $percent%")
+                }
+            }.onSuccess { apkFile ->
+                progressDialog.dismiss()
+                val apkUri = FileProvider.getUriForFile(
+                    this@MainActivity,
+                    "$packageName.fileprovider",
+                    apkFile
+                )
+                // ACTION_INSTALL_PACKAGE is deprecated in favour of PackageInstaller, but
+                // PackageInstaller is for silent/programmatic installs and requires the
+                // INSTALL_PACKAGES system permission. For a user-facing install prompt via a
+                // FileProvider URI, ACTION_INSTALL_PACKAGE is still the correct approach.
+                @Suppress("DEPRECATION")
+                val intent = Intent(Intent.ACTION_INSTALL_PACKAGE).apply {
+                    setDataAndType(apkUri, "application/vnd.android.package-archive")
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                startActivity(intent)
+            }.onFailure {
+                progressDialog.dismiss()
+                enqueueError(getString(R.string.app_update_download_failed))
+                openUrl(apkUrl)
+            }
+        }
     }
 
     private fun openUrl(url: String) {
