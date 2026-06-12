@@ -72,7 +72,7 @@ fun checkIsArmsx2Patched(context: Context): Boolean =
     context.getSharedPreferences(PrefsConstants.PREFS_NAME, Context.MODE_PRIVATE)
         .getBoolean(PrefsConstants.KEY_ARMSX2_PATCHED_THIS_RUN, false)
 
-private fun supportsArmsx2BroadcastOverride(context: Context, packageName: String): Boolean {
+internal fun supportsArmsx2BroadcastOverride(context: Context, packageName: String): Boolean {
     val receiverComponent = ComponentName(packageName, ARMSX2_RECEIVER_CLASS)
     return try {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {

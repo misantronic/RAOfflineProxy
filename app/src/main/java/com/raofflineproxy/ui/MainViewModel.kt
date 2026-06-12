@@ -107,10 +107,12 @@ data class MainUiState(
     val dolphinInstalled: Boolean = false,
     val ppssppInstalled: Boolean = false,
     val armsx2Installed: Boolean = false,
+    val flycastInstalled: Boolean = false,
     val retroArchEnabled: Boolean = false,
     val dolphinEnabled: Boolean = false,
     val ppssppEnabled: Boolean = false,
     val armsx2Enabled: Boolean = false,
+    val flycastEnabled: Boolean = false,
     val pendingAwards: List<PendingAwardUi> = emptyList(),
     val awardHistory: List<PendingAwardUi> = emptyList(),
     val cachedGames: List<CachedGame> = emptyList(),
@@ -129,7 +131,7 @@ data class MainUiState(
     val flushInProgress: Boolean = false,
     val availableAppUpdate: AppUpdateInfo? = null
 ) {
-    val hasEnabledEmulator: Boolean = retroArchEnabled || dolphinEnabled || ppssppEnabled || armsx2Enabled
+    val hasEnabledEmulator: Boolean = retroArchEnabled || dolphinEnabled || ppssppEnabled || armsx2Enabled || flycastEnabled
     val hasShizukuManagedEnabledEmulator: Boolean = hasEnabledEmulator && (retroArchEnabled || dolphinEnabled || ppssppEnabled)
 
     fun clearedPermissions(): MainUiState = copy(
@@ -208,7 +210,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val emulatorSupport = loadEmulatorSupport(app)
         Log.i(
             "RAProxy/Emulators",
-            "init support retroArchInstalled=${emulatorSupport.retroArchInstalled} dolphinInstalled=${emulatorSupport.dolphinInstalled} ppssppInstalled=${emulatorSupport.ppssppInstalled} armsx2Installed=${emulatorSupport.armsx2Installed} retroArchEnabled=${emulatorSupport.retroArchEnabled} dolphinEnabled=${emulatorSupport.dolphinEnabled} ppssppEnabled=${emulatorSupport.ppssppEnabled} armsx2Enabled=${emulatorSupport.armsx2Enabled}"
+            "init support retroArchInstalled=${emulatorSupport.retroArchInstalled} dolphinInstalled=${emulatorSupport.dolphinInstalled} ppssppInstalled=${emulatorSupport.ppssppInstalled} armsx2Installed=${emulatorSupport.armsx2Installed} flycastInstalled=${emulatorSupport.flycastInstalled} retroArchEnabled=${emulatorSupport.retroArchEnabled} dolphinEnabled=${emulatorSupport.dolphinEnabled} ppssppEnabled=${emulatorSupport.ppssppEnabled} armsx2Enabled=${emulatorSupport.armsx2Enabled} flycastEnabled=${emulatorSupport.flycastEnabled}"
         )
         _state.value = _state.value.copy(
             autostartProxy = loadAutostartPref(),
@@ -220,10 +222,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             dolphinInstalled = emulatorSupport.dolphinInstalled,
             ppssppInstalled = emulatorSupport.ppssppInstalled,
             armsx2Installed = emulatorSupport.armsx2Installed,
+            flycastInstalled = emulatorSupport.flycastInstalled,
             retroArchEnabled = emulatorSupport.retroArchEnabled,
             dolphinEnabled = emulatorSupport.dolphinEnabled,
             ppssppEnabled = emulatorSupport.ppssppEnabled,
             armsx2Enabled = emulatorSupport.armsx2Enabled,
+            flycastEnabled = emulatorSupport.flycastEnabled,
             shizukuStatus = resolveShizukuStatus(app),
             shizukuManualPatchingEnabled = loadShizukuManualPatchingEnabled(),
             ppssppShizukuRootModeUnknown = loadPpssppRootMode() == PrefsConstants.PpssppRootMode.Unknown
@@ -367,6 +371,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                             SnackbarManager.showError(armsx2Result.message)
                         }
                     }
+                    if (prefs.getBoolean(PrefsConstants.KEY_FLYCAST_PATCHED_THIS_RUN, false)) {
+                        val flycastResult = withContext(Dispatchers.IO) { revertFlycastCfg(app) }
+                        if (flycastResult.success) {
+                            prefs.edit { remove(PrefsConstants.KEY_FLYCAST_PATCHED_THIS_RUN) }
+                        } else {
+                            SnackbarManager.showError(flycastResult.message)
+                        }
+                    }
                 }
                 _state.value = _state.value.copy(
                     proxyRunning = proxyRunning,
@@ -385,13 +397,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             val dolphinPatched = withContext(Dispatchers.IO) { checkIsDolphinPatched(app, dolphinTreeUri) }
             val ppssppPatched = withContext(Dispatchers.IO) { checkIsPpssppPatched(app, ppssppTreeUri) }
             val armsx2Patched = withContext(Dispatchers.IO) { checkIsArmsx2Patched(app) }
-            val anyPatched = retroArchPatched || dolphinPatched || ppssppPatched || armsx2Patched
+            val flycastPatched = withContext(Dispatchers.IO) { checkIsFlycastPatched(app) }
+            val anyPatched = retroArchPatched || dolphinPatched || ppssppPatched || armsx2Patched || flycastPatched
             val proxyRunning = ProxyService.isRunning(app)
             val prefs = app.getSharedPreferences(PrefsConstants.PREFS_NAME, Context.MODE_PRIVATE)
             val retroArchPatchedThisRun = prefs.getBoolean(PrefsConstants.KEY_RETROARCH_PATCHED_THIS_RUN, false)
             val dolphinPatchedThisRun = prefs.getBoolean(PrefsConstants.KEY_DOLPHIN_PATCHED_THIS_RUN, false)
             val ppssppPatchedThisRun = prefs.getBoolean(PrefsConstants.KEY_PPSSPP_PATCHED_THIS_RUN, false)
             val armsx2PatchedThisRun = prefs.getBoolean(PrefsConstants.KEY_ARMSX2_PATCHED_THIS_RUN, false)
+            val flycastPatchedThisRun = prefs.getBoolean(PrefsConstants.KEY_FLYCAST_PATCHED_THIS_RUN, false)
 
             if (!proxyRunning && shouldKeepRunning) {
                 ProxyService.start(app)
@@ -405,7 +419,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 return@launch
             }
 
-            if ((!anyPatched && !retroArchPatchedThisRun && !dolphinPatchedThisRun && !ppssppPatchedThisRun && !armsx2PatchedThisRun) || proxyRunning) {
+            if ((!anyPatched && !retroArchPatchedThisRun && !dolphinPatchedThisRun && !ppssppPatchedThisRun && !armsx2PatchedThisRun && !flycastPatchedThisRun) || proxyRunning) {
                 _state.value = _state.value.copy(
                     proxyRunning = proxyRunning,
                     cfgIsPatched = anyPatched
@@ -452,6 +466,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             }
             val armsx2RevertedTarget = armsx2Result.success
 
+            val flycastResult = if (flycastPatchedThisRun || flycastPatched) {
+                withContext(Dispatchers.IO) {
+                    revertFlycastCfg(app)
+                }
+            } else {
+                FlycastPatchResult(success = true, message = "Flycast not patched this run.", skippedNotInstalled = true)
+            }
+            val flycastRevertedTarget = flycastResult.success
+
             if (retroArchRevertedTarget) {
                 prefs.edit {
                     remove(PrefsConstants.KEY_RETROARCH_HARDCORE_WAS_ENABLED)
@@ -479,6 +502,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 }
             }
 
+            if (flycastRevertedTarget) {
+                prefs.edit {
+                    remove(PrefsConstants.KEY_FLYCAST_PATCHED_THIS_RUN)
+                }
+            }
+
             val needsSafGrant = retroArchResult.needsSafGrant || dolphinResult.needsSafGrant || ppssppResult.needsSafGrant
             val safGrantTarget = when {
                 retroArchResult.needsSafGrant -> SafGrantTarget.RetroArch
@@ -490,7 +519,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
             _state.value = _state.value.copy(
                 proxyRunning = false,
-                cfgIsPatched = !(retroArchRevertedTarget && dolphinRevertedTarget && ppssppRevertedTarget && armsx2RevertedTarget),
+                cfgIsPatched = !(retroArchRevertedTarget && dolphinRevertedTarget && ppssppRevertedTarget && armsx2RevertedTarget && flycastRevertedTarget),
                 needsSafGrant = needsSafGrant,
                 safGrantTarget = safGrantTarget,
                 cfgCopyBackPath = cfgCopyBackPath
@@ -504,6 +533,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 SnackbarManager.showError(ppssppResult.message)
             } else if (!armsx2RevertedTarget) {
                 SnackbarManager.showError(armsx2Result.message)
+            } else if (!flycastRevertedTarget) {
+                SnackbarManager.showError(flycastResult.message)
             }
         }
     }
@@ -984,6 +1015,24 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         prefs.edit { remove(PrefsConstants.KEY_ARMSX2_PATCHED_THIS_RUN) }
                     }
 
+                    val flycastResult = if (emulatorSupport.flycastEnabled) {
+                        withContext(Dispatchers.IO) { patchFlycastCfg(app) }
+                    } else {
+                        FlycastPatchResult(success = true, message = "Flycast disabled.", skippedNotInstalled = true)
+                    }
+                    if (emulatorSupport.flycastEnabled) {
+                        if (!flycastResult.success && !flycastResult.skippedNotInstalled) {
+                            pendingProxyStart = false
+                            SnackbarManager.showError(flycastResult.message)
+                            return@launch
+                        }
+                        if (flycastResult.success && !flycastResult.skippedNotInstalled) {
+                            prefs.edit { putBoolean(PrefsConstants.KEY_FLYCAST_PATCHED_THIS_RUN, true) }
+                        }
+                    } else {
+                        prefs.edit { remove(PrefsConstants.KEY_FLYCAST_PATCHED_THIS_RUN) }
+                    }
+
                     ProxyService.start(app)
                     pendingProxyStart = false
                     _state.value = _state.value.copy(
@@ -1141,6 +1190,27 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     prefs.edit { remove(PrefsConstants.KEY_ARMSX2_PATCHED_THIS_RUN) }
                 }
 
+                val flycastResult = if (emulatorSupport.flycastEnabled) {
+                    withContext(Dispatchers.IO) {
+                        patchFlycastCfg(app)
+                    }
+                } else {
+                    FlycastPatchResult(success = true, message = "Flycast disabled.", skippedNotInstalled = true)
+                }
+                if (emulatorSupport.flycastEnabled) {
+                    if (!flycastResult.success && !flycastResult.skippedNotInstalled) {
+                        SnackbarManager.showError(flycastResult.message)
+                        pendingProxyStart = false
+                        return@launch
+                    } else if (flycastResult.success && !flycastResult.skippedNotInstalled) {
+                        prefs.edit {
+                            putBoolean(PrefsConstants.KEY_FLYCAST_PATCHED_THIS_RUN, true)
+                        }
+                    }
+                } else {
+                    prefs.edit { remove(PrefsConstants.KEY_FLYCAST_PATCHED_THIS_RUN) }
+                }
+
                 val credentialsToCache = selectImportedCredentials(
                     retroArch = result.credentials,
                     dolphin = dolphinResult.credentials,
@@ -1223,6 +1293,16 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         prefs.edit { remove(PrefsConstants.KEY_ARMSX2_PATCHED_THIS_RUN) }
                     }
 
+                    val flycastPatchedThisRun = prefs.getBoolean(PrefsConstants.KEY_FLYCAST_PATCHED_THIS_RUN, false)
+                    val flycastResult = if (flycastPatchedThisRun) {
+                        withContext(Dispatchers.IO) { revertFlycastCfg(app) }
+                    } else {
+                        FlycastPatchResult(success = true, message = "Flycast not patched this run.", skippedNotInstalled = true)
+                    }
+                    if (flycastResult.success) {
+                        prefs.edit { remove(PrefsConstants.KEY_FLYCAST_PATCHED_THIS_RUN) }
+                    }
+
                     ProxyService.stop(app)
                     _state.value = _state.value.copy(
                         proxyRunning = false,
@@ -1232,10 +1312,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         cfgCopyBackPath = null
                     )
                     pendingSmartCachePromptAfterProxyStart = false
-                    if ((shizukuResult == null || shizukuResult.success) && armsx2Result.success) {
+                    if ((shizukuResult == null || shizukuResult.success) && armsx2Result.success && flycastResult.success) {
                         SnackbarManager.showMessage(str(R.string.proxy_stopped_success))
                     } else if (!armsx2Result.success) {
                         SnackbarManager.showError(armsx2Result.message)
+                    } else if (!flycastResult.success) {
+                        SnackbarManager.showError(flycastResult.message)
                     } else {
                         SnackbarManager.showError(shizukuResult?.message ?: "Failed to stop proxy.")
                     }
@@ -1284,6 +1366,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     Armsx2PatchResult(success = true, message = "ARMSX2 not patched this run.", skippedNotInstalled = true)
                 }
 
+                val flycastPatchedThisRun = prefs.getBoolean(PrefsConstants.KEY_FLYCAST_PATCHED_THIS_RUN, false)
+                val flycastResult = if (flycastPatchedThisRun) {
+                    withContext(Dispatchers.IO) {
+                        revertFlycastCfg(app)
+                    }
+                } else {
+                    FlycastPatchResult(success = true, message = "Flycast not patched this run.", skippedNotInstalled = true)
+                }
+
                 if (revertedTarget) {
                     prefs.edit {
                         remove(PrefsConstants.KEY_RETROARCH_HARDCORE_WAS_ENABLED)
@@ -1306,6 +1397,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 if (armsx2Result.success) {
                     prefs.edit {
                         remove(PrefsConstants.KEY_ARMSX2_PATCHED_THIS_RUN)
+                    }
+                }
+
+                if (flycastResult.success) {
+                    prefs.edit {
+                        remove(PrefsConstants.KEY_FLYCAST_PATCHED_THIS_RUN)
                     }
                 }
 
@@ -1358,6 +1455,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     SnackbarManager.showError(ppssppResult.message)
                 } else if (!armsx2Result.success && !armsx2Result.skippedNotInstalled) {
                     SnackbarManager.showError(armsx2Result.message)
+                } else if (!flycastResult.success && !flycastResult.skippedNotInstalled) {
+                    SnackbarManager.showError(flycastResult.message)
                 }
             } finally {
                 delay(250)
@@ -1383,7 +1482,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 checkRetroArchIsPatched(app, treeUri) ||
                     checkIsDolphinPatched(app, loadDolphinSafUri()) ||
                     checkIsPpssppPatched(app, loadPpssppSafUri()) ||
-                    checkIsArmsx2Patched(app)
+                    checkIsArmsx2Patched(app) ||
+                    checkIsFlycastPatched(app)
             }
             _state.value = _state.value.copy(cfgIsPatched = patched)
         }
@@ -1964,7 +2064,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             retroArchEnabled = updated.retroArchEnabled,
             dolphinEnabled = updated.dolphinEnabled,
             ppssppEnabled = updated.ppssppEnabled,
-            armsx2Enabled = updated.armsx2Enabled
+            armsx2Enabled = updated.armsx2Enabled,
+            flycastEnabled = updated.flycastEnabled
         )
     }
 
@@ -1986,7 +2087,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             retroArchEnabled = updated.retroArchEnabled,
             dolphinEnabled = updated.dolphinEnabled,
             ppssppEnabled = updated.ppssppEnabled,
-            armsx2Enabled = updated.armsx2Enabled
+            armsx2Enabled = updated.armsx2Enabled,
+            flycastEnabled = updated.flycastEnabled
         )
     }
 
@@ -2008,7 +2110,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             retroArchEnabled = updated.retroArchEnabled,
             dolphinEnabled = updated.dolphinEnabled,
             ppssppEnabled = updated.ppssppEnabled,
-            armsx2Enabled = updated.armsx2Enabled
+            armsx2Enabled = updated.armsx2Enabled,
+            flycastEnabled = updated.flycastEnabled
         )
     }
 
@@ -2026,7 +2129,27 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             retroArchEnabled = updated.retroArchEnabled,
             dolphinEnabled = updated.dolphinEnabled,
             ppssppEnabled = updated.ppssppEnabled,
-            armsx2Enabled = updated.armsx2Enabled
+            armsx2Enabled = updated.armsx2Enabled,
+            flycastEnabled = updated.flycastEnabled
+        )
+    }
+
+    fun setFlycastEnabled(enabled: Boolean) {
+        val app = getApplication<Application>()
+        val support = loadEmulatorSupport(app)
+        if (!support.flycastInstalled || (support.installedCount == 1) || _state.value.proxyRunning) {
+            return
+        }
+
+        app.getSharedPreferences(PrefsConstants.PREFS_NAME, Context.MODE_PRIVATE)
+            .edit { putBoolean(PrefsConstants.KEY_ENABLE_FLYCAST, enabled) }
+        val updated = loadEmulatorSupport(app)
+        _state.value = _state.value.copy(
+            retroArchEnabled = updated.retroArchEnabled,
+            dolphinEnabled = updated.dolphinEnabled,
+            ppssppEnabled = updated.ppssppEnabled,
+            armsx2Enabled = updated.armsx2Enabled,
+            flycastEnabled = updated.flycastEnabled
         )
     }
 

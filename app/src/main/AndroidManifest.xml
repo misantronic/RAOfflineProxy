@@ -22,6 +22,7 @@
         <package android:name="org.ppsspp.ppssppgold" />
         <package android:name="come.nanodata.armsx2" />
         <package android:name="come.nanodata.armsx2.debug" />
+        <package android:name="com.flycast.emulator" />
     </queries>
 
     <application
