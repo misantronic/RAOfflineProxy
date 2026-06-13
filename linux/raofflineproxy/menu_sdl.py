@@ -498,7 +498,8 @@ class MenuSdlSession:
             )
         if self.is_knulli_platform() or running_on_muos():
             labels.append("Uninstall")
-        labels.append("Key Logger")
+        if os.environ.get("RAOFFLINEPROXY_DEBUG"):
+            labels.append("Key Logger")
         labels.append("Exit Menu")
         return labels
 
