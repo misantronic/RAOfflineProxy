@@ -52,6 +52,12 @@
         </provider>
 
         <provider
+            android:name=".ProxyConfigProvider"
+            android:authorities="${applicationId}.config"
+            android:exported="true"
+            android:readPermission="" />
+
+        <provider
             android:name="rikka.shizuku.ShizukuProvider"
             android:authorities="${applicationId}.shizuku"
             android:enabled="true"
