@@ -1,8 +1,6 @@
-import hashlib
 import json
 import logging
 import tempfile
-import urllib.request
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -10,11 +8,15 @@ from urllib.parse import urljoin
 
 from . import cache_keys
 from .auth import resolve_credentials
-from .config import CONFIG_DIR, FALLBACK_USER_AGENT, ensure_config_dir, image_caching_enabled, upstream_host
+from .config import FALLBACK_USER_AGENT, RA_MEDIA_HOST, image_caching_enabled, upstream_host
 from .image_cache import (
+    STATIC_DIR,
     clear_all_cached_images,
     delete_cached_images_for_game,
+    extract_image_path,
     game_image_dir,
+    resolve_cached_static_asset,
+    schedule_image_download,
 )
 from .network import build_api_url, http_get
 from .rom_cache import (
@@ -682,19 +684,21 @@ def parse_game_id_from_start_session_key(cache_key: str) -> int | None:
     return game_id if game_id > 0 else None
 
 
-def cached_unlock_badge_path(storage: Storage, game_id: int, title: str) -> Path | None:
+def cached_unlock_badge_paths(storage: Storage, game_id: int) -> dict[str, Path]:
+    result: dict[str, Path] = {}
     for achievement in cached_achievements_by_id(storage, game_id).values():
         if not isinstance(achievement, dict):
             continue
-        if achievement.get("Title") != title:
+        title = achievement.get("Title")
+        if not isinstance(title, str) or not title:
             continue
         badge_name = achievement.get("BadgeName")
         if not isinstance(badge_name, str) or not badge_name:
-            return None
-        badge_path = game_image_dir(game_id) / f"badge_{badge_name}.png"
-        return badge_path if badge_path.exists() else None
-
-    return None
+            continue
+        badge_path = STATIC_DIR / "Badge" / f"{badge_name}.png"
+        if badge_path.exists():
+            result[title] = badge_path
+    return result
 
 
 def cached_achievements_by_id(storage: Storage, game_id: int) -> dict[int, dict]:
@@ -789,32 +793,19 @@ def ensure_game_preview(
     if not game.image_url:
         return None
 
-    preview_path = preview_cache_path(game.image_url)
-    if preview_path.exists():
-        return preview_path
+    image_path = extract_image_path(game.image_url)
+    if image_path:
+        cached = resolve_cached_static_asset(image_path)
+        if cached is not None:
+            return cached
 
-    ensure_config_dir()
-    preview_path.parent.mkdir(parents=True, exist_ok=True)
     user_agent = proxy_user_agent(storage.load_user_agent(FALLBACK_USER_AGENT))
-    request = urllib.request.Request(
-        game.image_url,
-        headers={
-            "User-Agent": user_agent,
-            "Accept-Encoding": "identity",
-        },
-        method="GET",
-    )
 
-    with urllib.request.urlopen(request, timeout=10) as response:
-        preview_path.write_bytes(response.read())
+    if image_path:
+        media_url = f"{RA_MEDIA_HOST}{image_path}"
+        schedule_image_download(media_url, image_path, user_agent)
 
-    return preview_path
-
-
-def preview_cache_path(image_url: str) -> Path:
-    digest = hashlib.sha1(image_url.encode("utf-8")).hexdigest()
-    suffix = Path(image_url).suffix or ".img"
-    return CONFIG_DIR / "game-previews" / f"{digest}{suffix}"
+    return None
 
 
 def normalize_preview_url(image_path: str | None) -> str | None:

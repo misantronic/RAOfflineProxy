@@ -27,7 +27,7 @@ from .retroarch_cfg import (
 from .rom_browser import (
     MAX_CACHED_GAMES,
     add_rom_to_cache,
-    cached_unlock_badge_path,
+    cached_unlock_badge_paths,
     cached_unlock_count,
     cached_unlock_titles,
     clear_cached_games,
@@ -283,6 +283,8 @@ class MenuSdlSession:
         self.active_game_unlock_game_id = None
         self.active_game_unlock_count_cached = None
         self.active_game_unlock_titles_cached: list[str] = []
+        self._badge_path_cache: dict[str, object] = {}
+        self._badge_surface_cache: dict[str, object] = {}
         self.input_handles = open_input_devices()
         self.title_font = self.load_font(max(30, height // 19), bold=True)
         self.status_font = self.load_font(max(20, height // 30))
@@ -1391,9 +1393,13 @@ class MenuSdlSession:
         return self.achievement_preview_surface
 
     def load_achievement_preview_surface(self, game_id: int, title: str):
+        if title in self._badge_surface_cache:
+            return self._badge_surface_cache[title]
+
         try:
-            badge_path = cached_unlock_badge_path(self.storage, game_id, title)
+            badge_path = self._badge_path_cache.get(title)
             if badge_path is None:
+                self._badge_surface_cache[title] = None
                 return None
 
             image = self.pygame.image.load(str(badge_path))
@@ -1405,7 +1411,9 @@ class MenuSdlSession:
             scaled_size = self.fit_achievement_preview_size(
                 image.get_width(), image.get_height()
             )
-            return self.pygame.transform.smoothscale(image, scaled_size)
+            surface = self.pygame.transform.smoothscale(image, scaled_size)
+            self._badge_surface_cache[title] = surface
+            return surface
         except Exception as exc:
             log_menu_sdl(
                 f"achievement preview load failed gameId={game_id} title={title} error={exc}"
@@ -1604,6 +1612,8 @@ class MenuSdlSession:
         self.achievement_preview_surface = None
         self.achievement_preview_game_id = None
         self.achievement_preview_title = None
+        self._badge_path_cache = {}
+        self._badge_surface_cache = {}
 
     def refresh_active_game_unlocks(self) -> None:
         if self.active_game is None:
@@ -1617,6 +1627,10 @@ class MenuSdlSession:
         self.active_game_unlock_titles_cached = cached_unlock_titles(
             self.storage, self.active_game.game_id
         )
+        self._badge_path_cache = cached_unlock_badge_paths(
+            self.storage, self.active_game.game_id
+        )
+        self._badge_surface_cache = {}
 
     def save_view_position(self, view: str | None = None) -> None:
         key = view or self.view
