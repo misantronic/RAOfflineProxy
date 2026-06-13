@@ -328,6 +328,27 @@ class Storage:
                 ]
                 self._write_json_state_unlocked()
 
+    def rename_cache_key(self, old_key: str, new_key: str) -> None:
+        if self._use_sqlite:
+            assert self._connection is not None
+            with self._lock:
+                self._connection.execute(
+                    "UPDATE api_cache SET cacheKey = ? WHERE cacheKey = ?",
+                    (new_key, old_key),
+                )
+                self._connection.commit()
+            return
+
+        with self._lock:
+            with self._json_file_lock(exclusive=True):
+                self._reload_json_state_unlocked()
+                assert self._json_state is not None
+                for item in self._json_state["api_cache"]:
+                    if item["cacheKey"] == old_key:
+                        item["cacheKey"] = new_key
+                        break
+                self._write_json_state_unlocked()
+
     def delete_cache(self, cache_key: str) -> None:
         if self._use_sqlite:
             assert self._connection is not None
@@ -636,6 +657,47 @@ class Storage:
             return fallback
         user_agent = entry.get("responseBody", "")
         return user_agent if user_agent else fallback
+
+
+def migrate_user_case_in_cache_keys(store: Storage) -> None:
+    prefixes = [
+        cache_keys.PREFIX_PATCH,
+        cache_keys.PREFIX_ACHIEVEMENTSETS,
+        cache_keys.PREFIX_UNLOCKS,
+        cache_keys.PREFIX_STARTSESSION,
+    ]
+    for prefix in prefixes:
+        for entry in store.get_all_cache_by_prefix(prefix):
+            old_key = entry["cacheKey"]
+            new_key = _lowercased_user_key(old_key, prefix)
+            if new_key is None or new_key == old_key:
+                continue
+            if store.get_cache(new_key) is not None:
+                store.delete_cache(old_key)
+            else:
+                store.rename_cache_key(old_key, new_key)
+
+
+def _lowercased_user_key(key: str, prefix: str) -> str | None:
+    if prefix == cache_keys.PREFIX_ACHIEVEMENTSETS:
+        rest = key.removeprefix(prefix)
+        last_colon = rest.rfind(":")
+        if last_colon < 0:
+            return None
+        scope = rest[:last_colon]
+        user = rest[last_colon + 1:]
+        if not scope or not user:
+            return None
+        return f"{prefix}{scope}:{user.lower()}"
+
+    rest = key.removeprefix(prefix)
+    parts = rest.split(":")
+    if len(parts) < 2 or not parts[0] or not parts[1]:
+        return None
+    game_id = parts[0]
+    user = parts[1]
+    suffix = (":" + ":".join(parts[2:])) if len(parts) > 2 else ""
+    return f"{prefix}{game_id}:{user.lower()}{suffix}"
 
 
 def current_millis() -> int:

@@ -45,7 +45,7 @@ def normalize_achievementsets_scope(scope: int | str) -> str:
 
 
 def normalize_user(user: str) -> str:
-    return user.strip()
+    return user.strip().lower()
 
 
 def parse_game_id_from_patch_key(cache_key: str) -> int | None:

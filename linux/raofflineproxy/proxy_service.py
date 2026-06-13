@@ -42,7 +42,7 @@ from .rom_cache import (
     merged_unlock_ids,
     refresh_game_patch,
 )
-from .storage import Storage, current_millis
+from .storage import Storage, current_millis, migrate_user_case_in_cache_keys
 from .utils import (
     canonical_reason_phrase,
     extract_action,
@@ -90,7 +90,7 @@ def cache_key_for_request(path: str, body: str) -> str:
         or ""
     )
     hash_value = extract_request_param(path, body, "m") or ""
-    user = extract_request_param(path, body, "u") or ""
+    user = cache_keys.normalize_user(extract_request_param(path, body, "u") or "")
     hardcore = extract_request_param(path, body, "h") or ""
 
     if action == "gameid":
@@ -978,6 +978,7 @@ def run_proxy_service(
     config_data: dict, stop_event: threading.Event | None = None
 ) -> None:
     storage = Storage()
+    migrate_user_case_in_cache_keys(storage)
     server = ProxyRuntimeServer(config_data, storage)
     connectivity_monitor = ConnectivityMonitor(server)
     periodic_refresh = PeriodicRefresh(server)
