@@ -105,11 +105,20 @@ def build_patch_index(storage: Storage) -> dict[int, dict]:
             continue
 
         game_title = payload.get("Title") or f"Game {game_id}"
-        achievements = payload.get("Achievements", [])
-        entries = (
-            achievements.values() if isinstance(achievements, dict) else achievements
-        )
-        for achievement in entries:
+        direct = payload.get("Achievements")
+        if isinstance(direct, dict):
+            achievement_iter = direct.values()
+        elif isinstance(direct, list):
+            achievement_iter = direct
+        else:
+            achievement_iter = (
+                a
+                for s in (payload.get("Sets") or [])
+                if isinstance(s, dict)
+                for a in (s.get("Achievements") or [])
+                if isinstance(a, dict)
+            )
+        for achievement in achievement_iter:
             if not isinstance(achievement, dict):
                 continue
             achievement_id = achievement.get("ID")

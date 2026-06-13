@@ -501,7 +501,8 @@ def cached_unlock_count(storage: Storage, game_id: int) -> int | None:
 
 def cached_unlock_counts(storage: Storage) -> dict[int, int]:
     achievement_game_ids = build_achievement_game_ids(
-        storage.get_all_cache_by_prefix(cache_keys.PREFIX_PATCH)
+        storage.get_all_cache_by_prefix(cache_keys.PREFIX_PATCH),
+        storage.get_all_cache_by_prefix(cache_keys.PREFIX_ACHIEVEMENTSETS),
     )
     pending_awards = storage.get_pending_awards()
     counts: dict[int, int] = {}
@@ -625,7 +626,8 @@ def merged_unlock_ids(storage: Storage, game_id: int) -> list[int] | None:
         ])
 
     achievement_game_ids = build_achievement_game_ids(
-        storage.get_all_cache_by_prefix(cache_keys.PREFIX_PATCH)
+        storage.get_all_cache_by_prefix(cache_keys.PREFIX_PATCH),
+        storage.get_all_cache_by_prefix(cache_keys.PREFIX_ACHIEVEMENTSETS),
     )
     return merge_start_session_unlock_ids(
         cached_unlock_ids=cached_unlock_ids or [],

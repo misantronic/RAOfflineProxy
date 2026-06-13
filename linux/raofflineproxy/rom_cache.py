@@ -258,7 +258,8 @@ def merged_unlock_ids(storage: Storage, game_id: int, user: str) -> list[int]:
             cached_unlock_ids = []
 
     achievement_game_ids = build_achievement_game_ids(
-        storage.get_all_cache_by_prefix(cache_keys.PREFIX_PATCH)
+        storage.get_all_cache_by_prefix(cache_keys.PREFIX_PATCH),
+        storage.get_all_cache_by_prefix(cache_keys.PREFIX_ACHIEVEMENTSETS),
     )
     return merge_start_session_unlock_ids(
         cached_unlock_ids=cached_unlock_ids,
@@ -314,8 +315,31 @@ def merge_start_session_unlock_ids(
     return merged_ids
 
 
-def build_achievement_game_ids(patch_entries: list[dict]) -> dict[int, int]:
+def _iter_achievementsets_achievements(payload: dict):
+    direct = payload.get("Achievements")
+    if isinstance(direct, dict):
+        yield from (a for a in direct.values() if isinstance(a, dict))
+        return
+    if isinstance(direct, list):
+        yield from (a for a in direct if isinstance(a, dict))
+        return
+    sets = payload.get("Sets")
+    if not isinstance(sets, list):
+        return
+    for achievement_set in sets:
+        if not isinstance(achievement_set, dict):
+            continue
+        achievements = achievement_set.get("Achievements")
+        if isinstance(achievements, list):
+            yield from (a for a in achievements if isinstance(a, dict))
+
+
+def build_achievement_game_ids(
+    patch_entries: list[dict],
+    achievementsets_entries: list[dict] = (),
+) -> dict[int, int]:
     achievement_game_ids: dict[int, int] = {}
+
     for entry in patch_entries:
         game_id = cache_keys.parse_game_id_from_patch_key(entry.get("cacheKey", ""))
         if game_id is None:
@@ -335,6 +359,22 @@ def build_achievement_game_ids(patch_entries: list[dict]) -> dict[int, int]:
             achievement_id = achievement.get("ID")
             if isinstance(achievement_id, int) and achievement_id > 0:
                 achievement_game_ids.setdefault(achievement_id, game_id)
+
+    for entry in achievementsets_entries:
+        try:
+            payload = json.loads(entry["responseBody"])
+        except Exception:
+            continue
+
+        game_id = payload.get("GameId")
+        if not isinstance(game_id, int) or game_id <= 0:
+            continue
+
+        for achievement in _iter_achievementsets_achievements(payload):
+            achievement_id = achievement.get("ID")
+            if isinstance(achievement_id, int) and achievement_id > 0:
+                achievement_game_ids.setdefault(achievement_id, game_id)
+
     return achievement_game_ids
 
 

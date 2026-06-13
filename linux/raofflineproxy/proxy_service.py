@@ -1,6 +1,6 @@
 import json
 import logging
-from collections.abc import Iterable, Sequence
+from collections.abc import Sequence
 from pathlib import Path
 import socket
 import socketserver
@@ -424,7 +424,8 @@ class ProxyRuntimeServer(ThreadingTCPServer):
             return None
 
         achievement_game_ids = build_achievement_game_ids(
-            self.storage.get_all_cache_by_prefix(cache_keys.PREFIX_PATCH)
+            self.storage.get_all_cache_by_prefix(cache_keys.PREFIX_PATCH),
+            self.storage.get_all_cache_by_prefix(cache_keys.PREFIX_ACHIEVEMENTSETS),
         )
         resolved_game_id = achievement_game_ids.get(achievement_id)
         if resolved_game_id is None:
@@ -856,62 +857,10 @@ class ProxyRuntimeServer(ThreadingTCPServer):
         )
 
     def build_cached_achievement_game_ids(self) -> dict[int, int]:
-        achievement_game_ids = build_achievement_game_ids(
-            self.storage.get_all_cache_by_prefix(cache_keys.PREFIX_PATCH)
+        return build_achievement_game_ids(
+            self.storage.get_all_cache_by_prefix(cache_keys.PREFIX_PATCH),
+            self.storage.get_all_cache_by_prefix(cache_keys.PREFIX_ACHIEVEMENTSETS),
         )
-
-        for entry in self.storage.get_all_cache_by_prefix(cache_keys.PREFIX_ACHIEVEMENTSETS):
-            try:
-                payload = json.loads(entry["responseBody"])
-            except Exception:
-                continue
-
-            game_id = payload.get("GameId")
-            if not isinstance(game_id, int) or game_id <= 0:
-                continue
-
-            for achievement in self.achievementsets_payload_achievements(payload):
-                achievement_id = achievement.get("ID")
-                if isinstance(achievement_id, int) and achievement_id > 0:
-                    achievement_game_ids.setdefault(achievement_id, game_id)
-
-        return achievement_game_ids
-
-    def achievementsets_payload_achievements(self, payload: dict) -> list[dict]:
-        direct_achievements = payload.get("Achievements")
-        if isinstance(direct_achievements, dict):
-            values: Iterable = direct_achievements.values()
-        elif isinstance(direct_achievements, list):
-            values = direct_achievements
-        else:
-            values = []
-
-        achievements = [achievement for achievement in values if isinstance(achievement, dict)]
-        if achievements:
-            return achievements
-
-        sets = payload.get("Sets")
-        if not isinstance(sets, list):
-            return []
-
-        nested_achievements: list[dict] = []
-        for achievement_set in sets:
-            if not isinstance(achievement_set, dict):
-                continue
-
-            set_achievements = achievement_set.get("Achievements")
-            if isinstance(set_achievements, dict):
-                set_values: Iterable = set_achievements.values()
-            elif isinstance(set_achievements, list):
-                set_values = set_achievements
-            else:
-                continue
-
-            nested_achievements.extend(
-                achievement for achievement in set_values if isinstance(achievement, dict)
-            )
-
-        return nested_achievements
 
     def fetch_cached_score(self, path: str, raw_body: str) -> int:
         user = extract_request_param(path, raw_body, "u")
