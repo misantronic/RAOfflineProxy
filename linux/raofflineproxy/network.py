@@ -6,6 +6,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from pathlib import Path
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from .config import FALLBACK_USER_AGENT, upstream_host
@@ -165,6 +166,22 @@ def should_probe_retroachievements(
     return (current_time - checked_at) >= REACHABILITY_INTERVAL_SECONDS
 
 
+def has_active_network_interface() -> bool:
+    net_path = Path("/sys/class/net")
+    if not net_path.exists():
+        return True
+    for iface_path in net_path.iterdir():
+        if iface_path.name == "lo":
+            continue
+        try:
+            operstate = (iface_path / "operstate").read_text().strip()
+            if operstate == "up":
+                return True
+        except OSError:
+            continue
+    return False
+
+
 def probe_retroachievements(
     config_data: dict,
     user_agent: str | None = None,
@@ -174,6 +191,10 @@ def probe_retroachievements(
     current_time = now if now is not None else time.monotonic()
     if not should_probe_retroachievements(force=force, now=current_time):
         return is_retroachievements_reachable()
+
+    if not has_active_network_interface():
+        mark_retroachievements_unreachable(current_time)
+        return False
 
     upstream = upstream_host(config_data)
     parsed = urlsplit(upstream)
