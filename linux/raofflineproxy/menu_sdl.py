@@ -62,6 +62,8 @@ from .menu_input import (
     BTN_SELECT,
     BTN_SOUTH,
     BTN_START,
+    BTN_TL,
+    BTN_TR,
     KEY_BACKSPACE,
     KEY_DOWN,
     KEY_ENTER,
@@ -105,7 +107,39 @@ KNULLI_FONT_CANDIDATES = [
 MUOS_FONT_REGULAR = Path("/usr/share/fonts/liberation/LiberationMono-Regular.ttf")
 MUOS_FONT_BOLD = Path("/usr/share/fonts/liberation/LiberationMono-Bold.ttf")
 LOGO_PATH = Path(__file__).resolve().parent / "logo-320.png"
+MUOS_SDCARD_ROOT = Path("/mnt/sdcard/ROMS")
 CALIBRATION_FACE_BUTTONS = {BTN_SOUTH, BTN_EAST}
+KEY_NAMES = {
+    103: "KEY_UP",
+    108: "KEY_DOWN",
+    105: "KEY_LEFT",
+    106: "KEY_RIGHT",
+    28: "KEY_ENTER",
+    57: "KEY_SPACE",
+    1: "KEY_ESC",
+    14: "KEY_BACKSPACE",
+    16: "KEY_Q",
+    31: "KEY_S",
+    304: "BTN_SOUTH",
+    305: "BTN_EAST",
+    306: "BTN_C",
+    307: "BTN_NORTH",
+    308: "BTN_WEST",
+    309: "BTN_Z",
+    310: "BTN_TL (L1)",
+    311: "BTN_TR (R1)",
+    312: "BTN_TL2 (L2)",
+    313: "BTN_TR2 (R2)",
+    314: "BTN_SELECT",
+    315: "BTN_START",
+    316: "BTN_MODE",
+    317: "BTN_THUMBL",
+    318: "BTN_THUMBR",
+    544: "BTN_DPAD_UP",
+    545: "BTN_DPAD_DOWN",
+    546: "BTN_DPAD_LEFT",
+    547: "BTN_DPAD_RIGHT",
+}
 
 
 def run_menu_sdl(command_runner: str) -> None:
@@ -236,7 +270,9 @@ class MenuSdlSession:
         self.pending_awards = []
         self.active_game = None
         self.active_pending_award = None
+        self.key_log: list[int] = []
         self.browser_dir: Path | None = None
+        self.browser_root: Path | None = None
         self.browser_entries: list[Path] = []
         self.view_positions: dict[str, tuple[int, int]] = {}
         self.browser_positions: dict[str, tuple[int, int]] = {}
@@ -333,6 +369,11 @@ class MenuSdlSession:
     def render(self) -> None:
         self.surface.fill(BACKGROUND_COLOR)
 
+        if self.view == "key_logger":
+            self.render_key_logger_view()
+            self.pygame.display.flip()
+            return
+
         title_text = self.title_for_view()
         title = self.title_font.render(title_text, False, PRIMARY_COLOR)
         title_rect = title.get_rect(topleft=(LEFT_MARGIN, max(36, self.height // 12)))
@@ -395,6 +436,9 @@ class MenuSdlSession:
         if self.view == "controller_calibration":
             return []
 
+        if self.view == "key_logger":
+            return []
+
         if self.view == "cached_games":
             cached = [game.title for game in self.cached_games]
             return ["Add ROM", "Start Smart Cache", *cached, "Clear cache", "Back"]
@@ -432,8 +476,8 @@ class MenuSdlSession:
             labels = []
             if self.browser_has_cacheable_files():
                 labels.append("Add folder")
-            root = resolve_rom_root(load_config())
-            if self.browser_dir.parent != self.browser_dir and self.browser_dir != root:
+            effective_root = self.browser_root or resolve_rom_root(load_config())
+            if self.browser_dir.parent != self.browser_dir and self.browser_dir != effective_root:
                 labels.append("..")
             labels.extend(entry.name for entry in self.browser_entries)
             labels.append("Cancel")
@@ -454,6 +498,7 @@ class MenuSdlSession:
             )
         if self.is_knulli_platform() or running_on_muos():
             labels.append("Uninstall")
+        labels.append("Key Logger")
         labels.append("Exit Menu")
         return labels
 
@@ -473,6 +518,8 @@ class MenuSdlSession:
         return self.labels(self.proxy_running() if running is None else running)
 
     def title_for_view(self) -> str:
+        if self.view == "key_logger":
+            return "Key Logger"
         if self.view == "controller_calibration":
             return "Controller Setup"
         if self.view == "cached_games":
@@ -520,6 +567,8 @@ class MenuSdlSession:
         return list(getattr(self, "active_game_unlock_titles_cached", []))
 
     def status_text(self, running: bool) -> str:
+        if self.view == "key_logger":
+            return "Press any button to log its code"
         if self.view == "controller_calibration":
             if self.calibration_step == "confirm":
                 return "Press the button labeled A"
@@ -574,6 +623,9 @@ class MenuSdlSession:
         return status
 
     def bottom_hint_text(self) -> str | None:
+        if self.view == "key_logger":
+            return f"B/back to exit  |  log: {SDL_LOG_PATH}"
+
         if self.view == "controller_calibration":
             if self.calibration_step == "confirm":
                 return "Face buttons only. Press the labeled A button to continue."
@@ -590,6 +642,9 @@ class MenuSdlSession:
                 return None
             if self.view == "update_prompt":
                 return self.confirm_cancel_hint("install", None)
+            if self.view == "file_browser" and self.browser_at_switchable_root():
+                alt = resolve_rom_root(load_config()) if self.browser_root == MUOS_SDCARD_ROOT else MUOS_SDCARD_ROOT
+                return f"L/R: switch to {alt}"
             cache_result = getattr(self, "cache_result", None)
             if cache_result is not None:
                 text, expires_at = cache_result
@@ -633,12 +688,21 @@ class MenuSdlSession:
             if self.handle_calibration_key(key):
                 continue
 
+            if self.view == "key_logger":
+                self.handle_key_logger_input(key)
+                continue
+
             if key in {KEY_UP, KEY_LEFT, BTN_DPAD_UP, BTN_DPAD_LEFT}:
                 self.navigate(-1)
                 continue
 
             if key in {KEY_DOWN, KEY_RIGHT, BTN_DPAD_DOWN, BTN_DPAD_RIGHT}:
                 self.navigate(1)
+                continue
+
+            if key in {BTN_TL, BTN_TR}:
+                if self.browser_at_switchable_root():
+                    self.toggle_browser_root()
                 continue
 
             if self.is_confirm_key(key):
@@ -747,6 +811,13 @@ class MenuSdlSession:
 
         if selected_label == "Uninstall":
             self.uninstall()
+            return
+
+        if selected_label == "Key Logger":
+            self.save_view_position("main")
+            self.key_log = []
+            self.view = "key_logger"
+            self.reset_selection()
             return
 
         self.running = False
@@ -969,10 +1040,10 @@ class MenuSdlSession:
             self.reset_selection()
             return
 
-        root = resolve_rom_root(load_config())
+        effective_root = self.browser_root or resolve_rom_root(load_config())
         has_add_folder = self.browser_has_cacheable_files()
         has_parent = (
-            self.browser_dir.parent != self.browser_dir and self.browser_dir != root
+            self.browser_dir.parent != self.browser_dir and self.browser_dir != effective_root
         )
         first_entry_index = 1 if has_add_folder else 0
         parent_index = first_entry_index if has_parent else None
@@ -1005,10 +1076,72 @@ class MenuSdlSession:
         try:
             self.save_view_position("cached_games")
             root = resolve_rom_root(load_config())
+            self.browser_root = root
             self.set_browser_dir(root, restore=True)
             self.view = "file_browser"
         except Exception as exc:
             self.message = (f"Browse failed: {exc}", time.monotonic() + ERROR_SECONDS)
+
+    def handle_key_logger_input(self, key: int) -> None:
+        name = KEY_NAMES.get(key, "unknown")
+        entry = f"{key}  0x{key:03X}  {name}"
+        self.key_log.append(key)
+        if len(self.key_log) > 10:
+            self.key_log = self.key_log[-10:]
+        log_menu_sdl(f"key_logger {entry}")
+        if self.is_cancel_key(key):
+            self.view = "main"
+            self.restore_view_position("main")
+
+    def render_key_logger_view(self) -> None:
+        title_text = self.title_for_view()
+        title = self.title_font.render(title_text, False, PRIMARY_COLOR)
+        title_rect = title.get_rect(topleft=(LEFT_MARGIN, max(36, self.height // 12)))
+        self.surface.blit(title, title_rect)
+
+        status = self.status_font.render(self.status_text(False), False, STATUS_COLOR)
+        status_rect = status.get_rect(topleft=(LEFT_MARGIN, title_rect.bottom + 20))
+        self.surface.blit(status, status_rect)
+
+        gap = max(self.item_font.get_height() + 6, self.height // 18)
+        y = status_rect.bottom + 34
+        for key in self.key_log:
+            name = KEY_NAMES.get(key, "unknown")
+            line = f"  {key}  0x{key:03X}  {name}"
+            rendered = self.item_font.render(line, False, TEXT_COLOR)
+            self.surface.blit(rendered, rendered.get_rect(topleft=(LEFT_MARGIN, y)))
+            y += gap
+
+        hint = self.bottom_hint_text()
+        if hint is not None:
+            overlay = self.status_font.render(hint, False, SELECTED_COLOR)
+            self.surface.blit(overlay, overlay.get_rect(topleft=(LEFT_MARGIN, self.height - 56)))
+
+    def browser_at_switchable_root(self) -> bool:
+        if not running_on_muos():
+            return False
+        if self.view != "file_browser" or self.browser_dir is None or self.browser_root is None:
+            return False
+        if self.browser_dir != self.browser_root:
+            return False
+        if MUOS_SDCARD_ROOT == self.browser_root:
+            return resolve_rom_root(load_config()).exists()
+        return MUOS_SDCARD_ROOT.exists()
+
+    def toggle_browser_root(self) -> None:
+        if not self.browser_at_switchable_root():
+            return
+        current_root = self.browser_root
+        if current_root == MUOS_SDCARD_ROOT:
+            new_root = resolve_rom_root(load_config())
+        else:
+            new_root = MUOS_SDCARD_ROOT
+        if not new_root.exists():
+            self.message = (f"Not found: {new_root}", time.monotonic() + ERROR_SECONDS)
+            return
+        self.save_browser_position()
+        self.browser_root = new_root
+        self.set_browser_dir(new_root, restore=False)
 
     def set_browser_dir(self, path: Path, restore: bool = False) -> None:
         self.browser_dir = path
@@ -1186,6 +1319,11 @@ class MenuSdlSession:
         self.cache_progress_text = "Aborting..."
 
     def go_back(self) -> None:
+        if self.view == "key_logger":
+            self.view = "main"
+            self.restore_view_position("main")
+            return
+
         if self.view == "file_browser":
             if self.browser_dir is None:
                 self.view = "cached_games"
@@ -1193,8 +1331,8 @@ class MenuSdlSession:
                 self.refresh_cached_games()
                 return
 
-            root = resolve_rom_root(load_config())
-            if self.browser_dir == root:
+            effective_root = self.browser_root or resolve_rom_root(load_config())
+            if self.browser_dir == effective_root:
                 self.save_browser_position()
                 self.view = "cached_games"
                 self.restore_view_position("cached_games")
