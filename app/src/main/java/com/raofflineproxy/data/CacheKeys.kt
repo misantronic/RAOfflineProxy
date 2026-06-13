@@ -12,13 +12,13 @@ object CacheKeys {
 
     fun login(user: String) = "$PREFIX_LOGIN$user"
     fun gameId(hash: String) = "$PREFIX_GAMEID$hash"
-    fun patch(gameId: Int, user: String) = "$PREFIX_PATCH$gameId:$user"
+    fun patch(gameId: Int, user: String) = "$PREFIX_PATCH$gameId:${user.lowercase()}"
     fun patchPrefix(gameId: String) = "$PREFIX_PATCH$gameId:"
-    fun achievementSets(hash: String, user: String) = "$PREFIX_ACHIEVEMENTSETS$hash:$user"
-    fun unlocks(gameId: Int, user: String) = "$PREFIX_UNLOCKS$gameId:$user:0"
-    fun unlocks(gameId: String, user: String) = "$PREFIX_UNLOCKS$gameId:$user:0"
-    fun startSession(gameId: Int, user: String) = "$PREFIX_STARTSESSION$gameId:$user:0"
-    fun startSession(gameId: String, user: String) = "$PREFIX_STARTSESSION$gameId:$user:0"
+    fun achievementSets(hash: String, user: String) = "$PREFIX_ACHIEVEMENTSETS$hash:${user.lowercase()}"
+    fun unlocks(gameId: Int, user: String) = "$PREFIX_UNLOCKS$gameId:${user.lowercase()}:0"
+    fun unlocks(gameId: String, user: String) = "$PREFIX_UNLOCKS$gameId:${user.lowercase()}:0"
+    fun startSession(gameId: Int, user: String) = "$PREFIX_STARTSESSION$gameId:${user.lowercase()}:0"
+    fun startSession(gameId: String, user: String) = "$PREFIX_STARTSESSION$gameId:${user.lowercase()}:0"
 
     fun parseGameIdFromPatchKey(cacheKey: String): Int? =
         cacheKey.removePrefix(PREFIX_PATCH).split(":").firstOrNull()?.toIntOrNull()

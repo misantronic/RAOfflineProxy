@@ -61,6 +61,12 @@ interface CacheDao {
 
     @Query("DELETE FROM api_cache WHERE cacheKey LIKE :prefix || '%'")
     suspend fun deleteByKeyPrefix(prefix: String)
+
+    @Query("DELETE FROM api_cache WHERE cacheKey = :key")
+    suspend fun deleteByKey(key: String)
+
+    @Query("UPDATE api_cache SET cacheKey = :newKey WHERE cacheKey = :oldKey")
+    suspend fun updateCacheKey(oldKey: String, newKey: String)
 }
 
 private const val RESPONSE_BODY_CHUNK_SIZE = 32_768

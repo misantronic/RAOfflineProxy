@@ -206,6 +206,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
         checkCfgPatched(treeUri = loadSafUri())
         viewModelScope.launch(Dispatchers.IO) {
+            migrateUserCaseInCacheKeys()
             compactCachedShadowPatches()
             compactCachedRawAchievementSets()
         }
@@ -2393,6 +2394,27 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         )
     }
 
+    private suspend fun migrateUserCaseInCacheKeys() {
+        val prefixes = listOf(
+            CacheKeys.PREFIX_PATCH,
+            CacheKeys.PREFIX_ACHIEVEMENTSETS,
+            CacheKeys.PREFIX_UNLOCKS,
+            CacheKeys.PREFIX_STARTSESSION,
+        )
+        for (prefix in prefixes) {
+            val summaries = runCatching { db.cacheDao().getAllSummariesByPrefix(prefix) }.getOrDefault(emptyList())
+            for (summary in summaries) {
+                val newKey = lowercasedUserKey(summary.cacheKey, prefix) ?: continue
+                if (newKey == summary.cacheKey) continue
+                if (db.cacheDao().getSummary(newKey) != null) {
+                    db.cacheDao().deleteByKey(summary.cacheKey)
+                } else {
+                    db.cacheDao().updateCacheKey(summary.cacheKey, newKey)
+                }
+            }
+        }
+    }
+
     private suspend fun compactCachedShadowPatches() {
         val patchEntries = runCatching { db.cacheDao().getAllByPrefix(CacheKeys.PREFIX_PATCH) }.getOrDefault(emptyList())
         patchEntries.forEach { entry ->
@@ -2423,6 +2445,33 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 )
             )
         }
+    }
+}
+
+private fun lowercasedUserKey(key: String, prefix: String): String? {
+    return when (prefix) {
+        CacheKeys.PREFIX_PATCH -> {
+            val rest = key.removePrefix(prefix)
+            val parts = rest.split(":")
+            val gameId = parts.getOrNull(0)?.takeIf { it.isNotEmpty() } ?: return null
+            val user = parts.getOrNull(1)?.takeIf { it.isNotEmpty() } ?: return null
+            val suffix = if (parts.size > 2) ":${parts.drop(2).joinToString(":")}" else ""
+            "${prefix}$gameId:${user.lowercase()}$suffix"
+        }
+        CacheKeys.PREFIX_ACHIEVEMENTSETS -> {
+            val hash = CacheKeys.parseAchievementSetsHash(key) ?: return null
+            val user = CacheKeys.parseUserFromAchievementSetsKey(key) ?: return null
+            "${prefix}$hash:${user.lowercase()}"
+        }
+        CacheKeys.PREFIX_UNLOCKS, CacheKeys.PREFIX_STARTSESSION -> {
+            val rest = key.removePrefix(prefix)
+            val parts = rest.split(":")
+            val gameId = parts.getOrNull(0)?.takeIf { it.isNotEmpty() } ?: return null
+            val user = parts.getOrNull(1)?.takeIf { it.isNotEmpty() } ?: return null
+            val suffix = if (parts.size > 2) ":${parts.drop(2).joinToString(":")}" else ""
+            "${prefix}$gameId:${user.lowercase()}$suffix"
+        }
+        else -> null
     }
 }
 

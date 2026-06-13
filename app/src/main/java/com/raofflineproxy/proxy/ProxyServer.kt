@@ -814,7 +814,7 @@ internal fun proxyCacheKey(path: String, body: String): String {
     val action = proxyExtractAction(path, body) ?: "unknown"
     val gameId = proxyExtractParam("g", path, body) ?: proxyExtractParam("i", path, body) ?: ""
     val hash = proxyExtractParam("m", path, body) ?: ""
-    val user = proxyExtractParam("u", path, body) ?: ""
+    val user = proxyExtractParam("u", path, body)?.lowercase() ?: ""
     val hardcore = proxyExtractParam("h", path, body) ?: ""
     return when (action) {
         "gameid" -> "$action:$hash"
