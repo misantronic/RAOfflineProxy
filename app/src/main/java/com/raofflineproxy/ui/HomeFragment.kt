@@ -53,11 +53,13 @@ class HomeFragment : Fragment() {
         val ppssppToggle = bindToggle(view.findViewById(R.id.layout_ppsspp_toggle), R.string.emulator_ppsspp)
         val armsx2Toggle = bindToggle(view.findViewById(R.id.layout_armsx2_toggle), R.string.emulator_armsx2)
         val flycastToggle = bindToggle(view.findViewById(R.id.layout_flycast_toggle), R.string.emulator_flycast)
+        val melonDualDsToggle = bindToggle(view.findViewById(R.id.layout_melondualds_toggle), R.string.emulator_melondualds)
         val retroArchAppIcon = loadInstalledAppIcon(RETROARCH_PACKAGE_CANDIDATES)
         val dolphinAppIcon = loadInstalledAppIcon(DOLPHIN_PACKAGE_CANDIDATES)
         val ppssppAppIcon = loadInstalledAppIcon(UI_PPSSPP_PACKAGE_CANDIDATES)
         val armsx2AppIcon = loadInstalledAppIcon(UI_ARMSX2_PACKAGE_CANDIDATES)
         val flycastAppIcon = loadInstalledAppIcon(UI_FLYCAST_PACKAGE_CANDIDATES)
+        val melonDualDsAppIcon = loadInstalledAppIcon(UI_MELONDUALDS_PACKAGE_CANDIDATES)
         val activeBorderColor = requireContext().getColor(R.color.emulator_toggle_border_active)
         val activeBackgroundColor = requireContext().getColor(R.color.emulator_toggle_background_active)
         val defaultBorderColor = requireContext().getColor(R.color.emulator_toggle_border_default)
@@ -122,10 +124,15 @@ class HomeFragment : Fragment() {
                 viewModel.setFlycastEnabled(!viewModel.state.value.flycastEnabled)
             }
         }
+        melonDualDsToggle.row.setOnClickListener {
+            if (melonDualDsToggle.row.isEnabled) {
+                viewModel.setMelonDualDsEnabled(!viewModel.state.value.melonDualDsEnabled)
+            }
+        }
 
         viewLifecycleOwner.lifecycleScope.launch {
             viewModel.state.collect { state ->
-                val installedCount = listOf(state.retroArchInstalled, state.dolphinInstalled, state.ppssppInstalled, state.armsx2Installed, state.flycastInstalled).count { it }
+                val installedCount = listOf(state.retroArchInstalled, state.dolphinInstalled, state.ppssppInstalled, state.armsx2Installed, state.flycastInstalled, state.melonDualDsInstalled).count { it }
                 val noEmulatorInstalled = installedCount == 0
                 val onlyOneInstalled = installedCount == 1
                 val hasManualSetupManagedEmulator = state.retroArchInstalled || state.dolphinInstalled || state.ppssppInstalled
@@ -157,7 +164,7 @@ class HomeFragment : Fragment() {
 
                 btnStartProxy.visibility = if (shouldShowManualSetupButton) View.GONE else View.VISIBLE
                 btnStartProxy.text = getString(if (state.proxyRunning) R.string.proxy_stop else R.string.proxy_start)
-                btnStartProxy.isEnabled = if (state.proxyRunning) !proxyStartPending else !proxyStartPending && (state.retroArchEnabled || state.dolphinEnabled || state.ppssppEnabled || state.armsx2Enabled || state.flycastEnabled)
+                btnStartProxy.isEnabled = if (state.proxyRunning) !proxyStartPending else !proxyStartPending && (state.retroArchEnabled || state.dolphinEnabled || state.ppssppEnabled || state.armsx2Enabled || state.flycastEnabled || state.melonDualDsEnabled)
                 btnStartProxy.alpha = if (proxyStartPending) 0.45f else 1f
                 btnManualEmulatorSetup.visibility = if (shouldShowManualSetupButton) View.VISIBLE else View.GONE
                 btnGoToCachedGames.visibility = if (state.proxyRunning) View.VISIBLE else View.GONE
@@ -169,18 +176,21 @@ class HomeFragment : Fragment() {
                 ppssppToggle.row.visibility = if (state.ppssppInstalled) View.VISIBLE else View.GONE
                 armsx2Toggle.row.visibility = if (state.armsx2Installed) View.VISIBLE else View.GONE
                 flycastToggle.row.visibility = if (state.flycastInstalled) View.VISIBLE else View.GONE
+                melonDualDsToggle.row.visibility = if (state.melonDualDsInstalled) View.VISIBLE else View.GONE
 
                 retroArchToggle.row.isEnabled = state.retroArchInstalled && !state.proxyRunning && !onlyOneInstalled
                 dolphinToggle.row.isEnabled = state.dolphinInstalled && !state.proxyRunning && !onlyOneInstalled
                 ppssppToggle.row.isEnabled = state.ppssppInstalled && !state.proxyRunning && !onlyOneInstalled
                 armsx2Toggle.row.isEnabled = state.armsx2Installed && !state.proxyRunning && !onlyOneInstalled
                 flycastToggle.row.isEnabled = state.flycastInstalled && !state.proxyRunning && !onlyOneInstalled
+                melonDualDsToggle.row.isEnabled = state.melonDualDsInstalled && !state.proxyRunning && !onlyOneInstalled
 
                 retroArchToggle.icon.setImageDrawable(retroArchAppIcon)
                 dolphinToggle.icon.setImageDrawable(dolphinAppIcon)
                 ppssppToggle.icon.setImageDrawable(ppssppAppIcon)
                 armsx2Toggle.icon.setImageDrawable(armsx2AppIcon)
                 flycastToggle.icon.setImageDrawable(flycastAppIcon)
+                melonDualDsToggle.icon.setImageDrawable(melonDualDsAppIcon)
 
                 applyToggleRowStyle(
                     toggle = retroArchToggle,
@@ -221,6 +231,15 @@ class HomeFragment : Fragment() {
                 applyToggleRowStyle(
                     toggle = flycastToggle,
                     isSelected = state.flycastEnabled,
+                    activeBorderColor = activeBorderColor,
+                    activeBackgroundColor = activeBackgroundColor,
+                    defaultBorderColor = defaultBorderColor,
+                    activeTextColor = activeTextColor,
+                    defaultTextColor = defaultTextColor
+                )
+                applyToggleRowStyle(
+                    toggle = melonDualDsToggle,
+                    isSelected = state.melonDualDsEnabled,
                     activeBorderColor = activeBorderColor,
                     activeBackgroundColor = activeBackgroundColor,
                     defaultBorderColor = defaultBorderColor,

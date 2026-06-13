@@ -9,6 +9,7 @@ This page tracks which emulators and Linux handheld platforms `RAOfflineProxy` c
 - PPSSPP
 - ARMSX2
 - Flycast (planned, [pending release](https://github.com/flyinghead/flycast/pull/2371))
+- MelonDualDS (planned, pending release)
 - MelonDS ([planned](https://github.com/misantronic/RAOfflineProxy/issues/1), [PR created](https://github.com/rafaelvcaetano/melonDS-android/pull/1633))
 
 ## [Linux](/linux-support/)
