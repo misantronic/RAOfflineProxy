@@ -915,10 +915,10 @@ class MenuSdlSession:
         save_config(self.config_data)
 
     def confirm_button_name(self) -> str:
-        return "A" if self.calibration_confirm_button == BTN_SOUTH else "B"
+        return "A"
 
     def cancel_button_name(self) -> str:
-        return "A" if self.calibration_cancel_button == BTN_SOUTH else "B"
+        return "B"
 
     def confirm_cancel_hint(self, confirm_action: str, cancel_action: str | None) -> str:
         confirm_label = self.confirm_button_name()
