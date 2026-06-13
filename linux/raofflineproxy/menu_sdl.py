@@ -164,7 +164,7 @@ def restart_muos_frontend() -> None:
         return
 
     subprocess.Popen(
-        ["setsid", "-f", "/opt/muos/script/mux/frontend.sh"],
+        ["setsid", "-f", "/opt/muos/script/mux/frontend.sh", "appmenu"],
         stdin=subprocess.DEVNULL,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
