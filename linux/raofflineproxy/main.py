@@ -56,7 +56,7 @@ from .smart_cache import (
     should_offer_smart_cache,
 )
 from .storage import Storage
-from .state import load_patch_state, save_patch_state
+from .state import load_online_state, load_patch_state, save_patch_state, save_online_state
 from .ui import write_status_image, write_text_image
 from .update import update_status
 
@@ -146,6 +146,7 @@ def main() -> None:
             "text-image",
             "menu",
             "menu-sdl",
+            "probe-online",
         ],
         help="Action to perform",
     )
@@ -385,12 +386,17 @@ def main() -> None:
                             "service_running": bool(service.get("running")),
                             "service_pid": service.get("pid"),
                             "autostart_enabled": autostart_enabled(config_data),
+                            "is_online": bool(load_online_state()),
                         },
                         separators=(",", ":"),
                     )
                 )
             finally:
                 storage.close()
+            return
+
+        if args.command == "probe-online":
+            save_online_state(online_check(config_data))
             return
 
         if args.command == "browser-root":

@@ -441,7 +441,9 @@ class MenuSdlSession:
 
         if self.view == "cached_games":
             cached = [game.title for game in self.cached_games]
-            return ["Add ROM", "Start Smart Cache", *cached, "Clear cache", "Back"]
+            if getattr(self, "main_online", False):
+                return ["Add ROM", "Start Smart Cache", *cached, "Clear cache", "Back"]
+            return [*cached, "Clear cache", "Back"]
 
         if self.view == "pending_awards":
             labels = []
@@ -848,7 +850,8 @@ class MenuSdlSession:
             self.restore_view_position("main")
             return
 
-        game_index = self.selected_index - 2
+        header_count = 2 if getattr(self, "main_online", False) else 0
+        game_index = self.selected_index - header_count
         if 0 <= game_index < len(self.cached_games):
             self.save_view_position("cached_games")
             self.active_game = self.cached_games[game_index]
@@ -1825,17 +1828,18 @@ class MenuSdlSession:
     def item_positions(self, items: list[str], start_y: int, gap: int) -> list[int]:
         positions: list[int] = []
         current_y = start_y
-        clear_cache_index = len(self.cached_games) + 2
-        first_game_index = 2 if self.view == "cached_games" else 1
-        last_game_index = len(self.cached_games) + 1 if self.view == "cached_games" else len(self.cached_games)
+        online = getattr(self, "main_online", False)
+        header_count = 2 if (self.view == "cached_games" and online) else 0
+        first_game_index = header_count
+        last_game_index = len(self.cached_games) + header_count - 1
         for index, _label in enumerate(items):
             positions.append(current_y)
             current_y += gap
-            if self.view == "cached_games" and index == 1:
+            if self.view == "cached_games" and header_count > 0 and index == header_count - 1:
                 current_y += GROUP_GAP
             if self.view == "cached_games" and index == last_game_index and index >= first_game_index:
                 current_y += GROUP_GAP
-            if self.view == "cached_games" and clear_cache_index == first_game_index and index == 1:
+            if self.view == "cached_games" and len(self.cached_games) == 0 and header_count > 0 and index == header_count - 1:
                 current_y -= GROUP_GAP
             if self.view == "game_actions" and index == 0:
                 current_y += GROUP_GAP

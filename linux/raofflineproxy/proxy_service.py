@@ -42,6 +42,7 @@ from .rom_cache import (
     merged_unlock_ids,
     refresh_game_patch,
 )
+from .state import save_online_state
 from .storage import Storage, current_millis, migrate_user_case_in_cache_keys
 from .utils import (
     canonical_reason_phrase,
@@ -910,11 +911,14 @@ class ConnectivityMonitor(threading.Thread):
 
     def run(self) -> None:
         was_online = self.server.refresh_reachability(force_probe=True)
+        save_online_state(was_online)
         while not self.stop_event.wait(self.interval_seconds):
             is_online = self.server.refresh_reachability(force_probe=True)
             if is_online and not was_online:
                 LOGGER.info("Connectivity restored; attempting flush")
                 self.server.flush_pending_awards()
+            if is_online != was_online:
+                save_online_state(is_online)
             was_online = is_online
 
 
@@ -984,7 +988,9 @@ def run_proxy_service(
     periodic_refresh = PeriodicRefresh(server)
 
     try:
-        if server.refresh_reachability(force_probe=True):
+        initial_online = server.refresh_reachability(force_probe=True)
+        save_online_state(initial_online)
+        if initial_online:
             server.flush_pending_awards()
         connectivity_monitor.start()
         periodic_refresh.start()

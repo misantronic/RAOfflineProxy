@@ -52,6 +52,7 @@ DATABASE_FILE = CONFIG_DIR / "proxy.sqlite3"
 PID_FILE = CONFIG_DIR / "service.pid"
 LOG_FILE = CONFIG_DIR / "service.log"
 STATUS_FILE = CONFIG_DIR / "service_status.json"
+ONLINE_STATE_FILE = CONFIG_DIR / "online_state.json"
 AWARD_SECRET_FILE = CONFIG_DIR / "award_secret.key"
 UPDATE_STATUS_FILE = CONFIG_DIR / "update_status.json"
 

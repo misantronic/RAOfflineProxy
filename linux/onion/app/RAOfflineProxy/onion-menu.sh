@@ -39,6 +39,8 @@ fi
 
 PYTHON_BIN="$RESOLVED_PYTHON_BIN"
 
+run_backend_raw "$PYTHON_BIN" probe-online >/dev/null 2>&1 &
+
 install_onion_checkoff_script >/dev/null 2>&1 || true
 
 DPAD_SELECTION=0
@@ -560,6 +562,12 @@ pause_prompt() {
 }
 
 show_cached_games_view() {
+    local fresh_status
+    if fresh_status="$(home_status 2>/dev/null)"; then
+        MAIN_ONLINE="$(printf '%s' "$fresh_status" | sed -n 's/.*"is_online":\(true\|false\).*/\1/p' | sed 's/true/1/;s/false/0/')"
+        [ -n "$MAIN_ONLINE" ] || MAIN_ONLINE=0
+    fi
+
     cached_games_redraw=full
     set -- $(stty size < /dev/tty)
     BROWSER_TERM_COLUMNS=${2:-80}
@@ -596,22 +604,26 @@ show_cached_games_view() {
                 cached_games_redraw=full
                 ;;
             74)
-                run_smart_cache_flow "$APP_MAX_CACHED_GAMES" || true
-                if ! cached_games_reload; then
-                    stty "$saved_tty" < /dev/tty
-                    drain_tty "$saved_tty"
-                    return 0
+                if [ "$MAIN_ONLINE" -eq 1 ]; then
+                    run_smart_cache_flow "$APP_MAX_CACHED_GAMES" || true
+                    if ! cached_games_reload; then
+                        stty "$saved_tty" < /dev/tty
+                        drain_tty "$saved_tty"
+                        return 0
+                    fi
+                    cached_games_redraw=full
                 fi
-                cached_games_redraw=full
                 ;;
             08|7f)
-                open_rom_browser || true
-                if ! cached_games_reload; then
-                    stty "$saved_tty" < /dev/tty
-                    drain_tty "$saved_tty"
-                    return 0
+                if [ "$MAIN_ONLINE" -eq 1 ]; then
+                    open_rom_browser || true
+                    if ! cached_games_reload; then
+                        stty "$saved_tty" < /dev/tty
+                        drain_tty "$saved_tty"
+                        return 0
+                    fi
+                    cached_games_redraw=full
                 fi
-                cached_games_redraw=full
                 ;;
             09)
                 stty "$saved_tty" < /dev/tty
@@ -1049,8 +1061,10 @@ render_cached_games_help() {
     printf '\033[K\n'
     printf 'Use D-Pad up/down to move.\033[K\n'
     printf 'Press LEFT to go back.\033[K\n'
-    printf 'Press R to start Smart Cache...\033[K\n'
-    printf 'Press R2 to add ROMs.\033[K\n'
+    if [ "$MAIN_ONLINE" -eq 1 ]; then
+        printf 'Press R to start Smart Cache...\033[K\n'
+        printf 'Press R2 to add ROMs.\033[K\n'
+    fi
     printf 'Press L2 to clear cached games...\033[K\n'
     printf '\033[J'
 }
@@ -1638,6 +1652,7 @@ while :; do
     MAIN_PROXY_RUNNING="$(printf '%s' "$status_json" | sed -n 's/.*"service_running":\(true\|false\).*/\1/p' | sed 's/true/1/;s/false/0/')"
     MAIN_PROXY_PID="$(printf '%s' "$status_json" | sed -n 's/.*"service_pid":\([0-9][0-9]*\).*/\1/p')"
     MAIN_AUTOSTART_ENABLED="$(printf '%s' "$status_json" | sed -n 's/.*"autostart_enabled":\(true\|false\).*/\1/p' | sed 's/true/1/;s/false/0/')"
+    MAIN_ONLINE="$(printf '%s' "$status_json" | sed -n 's/.*"is_online":\(true\|false\).*/\1/p' | sed 's/true/1/;s/false/0/')"
     update_json="$(update_status)"
     update_available="$(printf '%s' "$update_json" | sed -n 's/.*"update_available":\(true\|false\).*/\1/p')"
     latest_version="$(printf '%s' "$update_json" | sed -n 's/.*"latest_version":"\([^"]*\)".*/\1/p')"
@@ -1646,6 +1661,7 @@ while :; do
     [ -n "$MAIN_PENDING_COUNT" ] || MAIN_PENDING_COUNT=0
     [ -n "$MAIN_PROXY_RUNNING" ] || MAIN_PROXY_RUNNING=0
     [ -n "$MAIN_AUTOSTART_ENABLED" ] || MAIN_AUTOSTART_ENABLED=0
+    [ -n "$MAIN_ONLINE" ] || MAIN_ONLINE=0
     if [ "$update_available" = "true" ] && [ -n "$latest_version" ] && [ "$latest_version" != "$DISMISSED_UPDATE_VERSION" ]; then
         MAIN_UPDATE_AVAILABLE=1
         MAIN_UPDATE_VERSION="$latest_version"
