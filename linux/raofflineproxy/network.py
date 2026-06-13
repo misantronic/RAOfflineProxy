@@ -268,6 +268,20 @@ def http_get(url: str, user_agent: str) -> str:
     raise RuntimeError("http_get exceeded retry loop")
 
 
+def http_get_bytes(url: str, user_agent: str) -> tuple[bytes, str] | None:
+    """Fetches url and returns (body_bytes, content_type), or None on failure."""
+    request = urllib.request.Request(
+        url,
+        headers={"User-Agent": user_agent},
+        method="GET",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=10, context=configured_ssl_context()) as response:
+            return response.read(), response_content_type(response) or "application/octet-stream"
+    except Exception:
+        return None
+
+
 def api_action_from_url(url: str) -> str | None:
     return (
         urlsplit(url).query.split("r=", 1)[1].split("&", 1)[0]

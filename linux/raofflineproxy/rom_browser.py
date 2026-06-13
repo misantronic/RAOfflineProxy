@@ -10,7 +10,7 @@ from urllib.parse import urljoin
 
 from . import cache_keys
 from .auth import resolve_credentials
-from .config import CONFIG_DIR, FALLBACK_USER_AGENT, ensure_config_dir, upstream_host
+from .config import CONFIG_DIR, FALLBACK_USER_AGENT, ensure_config_dir, image_caching_enabled, upstream_host
 from .image_cache import (
     clear_all_cached_images,
     delete_cached_images_for_game,
@@ -415,6 +415,7 @@ def add_rom_to_cache(path: Path, storage: Storage, config_data: dict) -> AddRomR
             proxy_user_agent(user_agent),
             storage,
             config_data,
+            cache_images=image_caching_enabled(config_data),
         )
     except Exception as exc:
         return AddRomResult(False, f"Caching failed: {exc}")

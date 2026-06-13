@@ -600,7 +600,7 @@ class LinuxProxyCacheKeyTests(unittest.TestCase):
                 store.close()
 
     def test_static_badge_request_serves_cached_asset(self) -> None:
-        badge_path = image_cache.static_asset_path("/Badge/test.png")
+        badge_path = image_cache.STATIC_DIR / "Badge" / "test.png"
         badge_path.parent.mkdir(parents=True, exist_ok=True)
         badge_path.write_bytes(b"png")
         runtime = object.__new__(proxy_service.ProxyRuntimeServer)

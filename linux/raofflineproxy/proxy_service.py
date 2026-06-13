@@ -13,12 +13,18 @@ from urllib.parse import urlsplit
 from . import cache_keys
 from .auth import resolve_credentials
 from .award_signing import sign_award
-from .config import FALLBACK_USER_AGENT, proxy_host, proxy_port, upstream_host
+from .config import FALLBACK_USER_AGENT, RA_MEDIA_HOST, image_caching_enabled, proxy_host, proxy_port, upstream_host
 from .flusher import flush_pending_awards
-from .image_cache import resolve_cached_static_asset
+from .image_cache import (
+    IMAGE_PATH_PREFIXES,
+    resolve_cached_static_asset,
+    rewrite_image_urls,
+    schedule_image_download,
+)
 from .network import (
     build_forward_headers,
     decode_response_body,
+    http_get_bytes,
     http_post,
     is_retroachievements_reachable,
     mark_retroachievements_unreachable,
@@ -60,7 +66,7 @@ ALWAYS_TRY_UPSTREAM_ACTIONS = {"login", "login2"}
 
 def is_static_asset_request(path: str) -> bool:
     clean_path = path.split("?", 1)[0]
-    return clean_path.startswith("/Badge/")
+    return any(clean_path.startswith(prefix) for prefix in IMAGE_PATH_PREFIXES)
 
 
 def guess_content_type(path: Path) -> str:
@@ -170,6 +176,16 @@ def game_id_cache_miss() -> bytes:
     )
 
 
+def _start_image_downloads(
+    downloads: list[tuple[str, str]],
+    user_agent: str | None,
+    game_id: int | None,
+) -> None:
+    ua = user_agent or FALLBACK_USER_AGENT
+    for orig_url, img_path in downloads:
+        schedule_image_download(orig_url, img_path, ua, game_id)
+
+
 class ThreadingTCPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
     allow_reuse_address = True
     daemon_threads = True
@@ -234,6 +250,10 @@ class ProxyRuntimeServer(ThreadingTCPServer):
         port = proxy_port(self.config_data)
         super().__init__((host, port), ProxyRequestHandler)
 
+    def _proxy_base_url(self) -> str:
+        cfg = getattr(self, "config_data", {})
+        return f"http://{proxy_host(cfg)}:{proxy_port(cfg)}"
+
     def is_online(self) -> bool:
         self.refresh_reachability(force_probe=False)
         return self.has_internet and is_retroachievements_reachable()
@@ -249,21 +269,29 @@ class ProxyRuntimeServer(ThreadingTCPServer):
             return False
         return is_retroachievements_reachable()
 
+    def _forward_static_asset(self, path: str, headers: dict[str, str]) -> bytes:
+        clean_path = path.split("?", 1)[0]
+        url = f"{RA_MEDIA_HOST}{clean_path}"
+        user_agent = headers.get("User-Agent") or headers.get("user-agent") or FALLBACK_USER_AGENT
+        result = http_get_bytes(url, user_agent)
+        if result is None:
+            return raw_response_bytes(204, b"", "application/octet-stream", "No Content")
+        body_bytes, content_type = result
+        if body_bytes:
+            schedule_image_download(url, clean_path, user_agent)
+        return raw_response_bytes(200, body_bytes, content_type, "OK")
+
     def process_proxy_request(
         self, method: str, path: str, raw_body: str, headers: dict[str, str]
     ) -> bytes:
         if is_static_asset_request(path):
-            cached_asset = resolve_cached_static_asset(path)
-            if cached_asset is not None:
-                return raw_response_bytes(
-                    200,
-                    cached_asset.read_bytes(),
-                    guess_content_type(cached_asset),
-                    "OK",
-                )
-            return raw_response_bytes(
-                204, b"", "application/octet-stream", "No Content"
-            )
+            if image_caching_enabled(getattr(self, "config_data", {})):
+                cached_asset = resolve_cached_static_asset(path)
+                if cached_asset is not None:
+                    return raw_response_bytes(200, cached_asset.read_bytes(), guess_content_type(cached_asset), "OK")
+                if self.is_online():
+                    return self._forward_static_asset(path, headers)
+            return raw_response_bytes(204, b"", "application/octet-stream", "No Content")
 
         user_agent = headers.get("User-Agent") or headers.get("user-agent")
         if user_agent:
@@ -299,8 +327,14 @@ class ProxyRuntimeServer(ThreadingTCPServer):
                 content_type = upstream[4]
                 response_body = upstream[5]
                 if response_body is not None and should_cache_response(response_body):
+                    proxy_base_url = self._proxy_base_url()
+                    rewritten_body, downloads = rewrite_image_urls(action, response_body, proxy_base_url)
+                    if image_caching_enabled(self.config_data):
+                        _start_image_downloads(downloads, user_agent, None)
                     key = cache_key_for_request(path, raw_body)
+                    # Store the original body — the DB stays port-agnostic.
                     self.storage.upsert_cache(key, response_body)
+                    response_body_bytes = rewritten_body.encode("utf-8")
                 return raw_response_bytes(
                     status_code, response_body_bytes, content_type, reason
                 )
@@ -435,6 +469,7 @@ class ProxyRuntimeServer(ThreadingTCPServer):
         action: str | None,
         headers: dict[str, str],
     ) -> bytes:
+        user_agent = headers.get("User-Agent") or headers.get("user-agent") or FALLBACK_USER_AGENT
         upstream = self.forward_to_upstream_result(method, path, raw_body, headers)
         if upstream[0] == "network_error":
             return self.handle_offline_request(path, raw_body, action)
@@ -469,20 +504,27 @@ class ProxyRuntimeServer(ThreadingTCPServer):
                 )
 
         if should_cache_response(response_body) and should_cache_action(action, path):
+            proxy_base_url = self._proxy_base_url()
+            game_id_str = extract_request_param(path, raw_body, "g")
+            game_id_int = int(game_id_str) if game_id_str and game_id_str.isdigit() else None
+            rewritten_body, downloads = rewrite_image_urls(action, response_body, proxy_base_url)
+            if image_caching_enabled(self.config_data):
+                _start_image_downloads(downloads, user_agent, game_id_int)
             key = cache_key_for_request(path, raw_body)
+
             self.storage.upsert_cache(key, response_body)
             if action == "patch":
-                game_id = extract_request_param(path, raw_body, "g")
                 user = extract_request_param(path, raw_body, "u")
                 token = extract_request_param(path, raw_body, "t")
-                if game_id and user and token:
+                if game_id_str and user and token:
                     cache_unlocks(
-                        int(game_id),
+                        int(game_id_str),
                         {"user": user, "token": token},
-                        headers.get("User-Agent") or FALLBACK_USER_AGENT,
+                        user_agent,
                         self.config_data,
                         self.storage,
                     )
+            response_body = rewritten_body
         return response_bytes(status_code, response_body, reason)
 
     def refresh_unlocks_from_start_session(
@@ -534,7 +576,9 @@ class ProxyRuntimeServer(ThreadingTCPServer):
             f"{key}:"
         )
         if cached is not None:
-            return ok_json(filter_warning_achievements_for_action(action, cached["responseBody"]))
+            proxy_base_url = self._proxy_base_url()
+            rewritten_body, _ = rewrite_image_urls(action, cached["responseBody"], proxy_base_url)
+            return ok_json(filter_warning_achievements_for_action(action, rewritten_body))
 
         if action == "gameid":
             LOGGER.warning(
@@ -555,18 +599,21 @@ class ProxyRuntimeServer(ThreadingTCPServer):
                 path, raw_body, "g"
             ) or extract_request_param(path, raw_body, "i")
             user = extract_request_param(path, raw_body, "u") or ""
+            proxy_base_url = self._proxy_base_url()
             if hash_value and user:
                 cached = self.storage.get_cache(
                     cache_keys.achievementsets(hash_value, user)
                 )
                 if cached is not None:
-                    return ok_json(filter_warning_achievements_for_action(action, cached["responseBody"]))
+                    rewritten_body, _ = rewrite_image_urls(action, cached["responseBody"], proxy_base_url)
+                    return ok_json(filter_warning_achievements_for_action(action, rewritten_body))
             if fallback_game_id and user:
                 cached = self.storage.get_cache(
                     cache_keys.achievementsets(fallback_game_id, user)
                 )
                 if cached is not None:
-                    return ok_json(filter_warning_achievements_for_action(action, cached["responseBody"]))
+                    rewritten_body, _ = rewrite_image_urls(action, cached["responseBody"], proxy_base_url)
+                    return ok_json(filter_warning_achievements_for_action(action, rewritten_body))
 
         return error_json(503, "no cached response")
 
@@ -963,6 +1010,7 @@ class PeriodicRefresh(threading.Thread):
                         user_agent,
                         self.server.storage,
                         self.server.config_data,
+                        cache_images=image_caching_enabled(self.server.config_data),
                     )
                     cache_unlocks(
                         game_id,

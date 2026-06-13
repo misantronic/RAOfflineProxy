@@ -3,8 +3,8 @@ import logging
 import time
 
 from . import cache_keys
-from .config import FALLBACK_USER_AGENT, image_caching_enabled, upstream_host
-from .image_cache import cache_patch_images
+from .config import FALLBACK_USER_AGENT, proxy_host, proxy_port, upstream_host
+from .image_cache import rewrite_image_urls, schedule_image_download
 from .network import build_api_url, http_get
 from .storage import PENDING_AWARD_STATUS_PENDING, Storage
 from .utils import is_hardcore_request, parse_form_params
@@ -117,6 +117,7 @@ def refresh_game_patch(
     user_agent: str,
     storage: Storage,
     config_data: dict,
+    cache_images: bool = True,
 ) -> str | None:
     url = build_api_url(
         upstream_host(config_data),
@@ -141,10 +142,13 @@ def refresh_game_patch(
     response_body = json.dumps(payload, separators=(",", ":"))
 
     storage.upsert_cache(cache_keys.patch(game_id, credentials["user"]), response_body)
-    if image_caching_enabled(config_data):
-        cache_patch_images(game_id, user_agent, response_body, config_data)
-    else:
-        LOGGER.info("Cache game images skipped gameId=%s", game_id)
+
+    if cache_images:
+        proxy_base_url = f"http://{proxy_host(config_data)}:{proxy_port(config_data)}"
+        _, downloads = rewrite_image_urls("patch", response_body, proxy_base_url)
+        for orig_url, img_path in downloads:
+            schedule_image_download(orig_url, img_path, user_agent, game_id)
+
     return response_body
 
 
@@ -192,6 +196,8 @@ def cache_achievementsets(
     user_agent: str,
     config_data: dict,
     storage: Storage | None = None,
+    game_id: int | None = None,
+    cache_images: bool = True,
 ) -> str | None:
     url = build_api_url(
         upstream_host(config_data),
@@ -219,6 +225,12 @@ def cache_achievementsets(
             cache_keys.achievementsets(hash_value, credentials["user"]),
             response_body,
         )
+
+    if cache_images:
+        proxy_base_url = f"http://{proxy_host(config_data)}:{proxy_port(config_data)}"
+        _, downloads = rewrite_image_urls("achievementsets", response_body, proxy_base_url)
+        for orig_url, img_path in downloads:
+            schedule_image_download(orig_url, img_path, user_agent, game_id)
 
     return response_body
 
@@ -361,6 +373,7 @@ def cache_game(
     user_agent: str,
     storage: Storage,
     config_data: dict,
+    cache_images: bool = True,
 ) -> None:
     patch_body = refresh_game_patch(
         game_id,
@@ -368,11 +381,12 @@ def cache_game(
         user_agent or FALLBACK_USER_AGENT,
         storage,
         config_data,
+        cache_images=cache_images,
     )
     if patch_body is None:
         raise CacheGameError("patch failed")
 
-    unlocks_body = cache_unlocks(
+    cache_unlocks(
         game_id,
         credentials,
         user_agent or FALLBACK_USER_AGENT,
@@ -385,5 +399,6 @@ def cache_game(
         user_agent or FALLBACK_USER_AGENT,
         config_data,
         storage,
+        cache_images=cache_images,
     )
     cache_session(game_id, credentials, storage)

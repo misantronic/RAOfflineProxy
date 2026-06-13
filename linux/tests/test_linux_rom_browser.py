@@ -294,6 +294,7 @@ class LinuxRomBrowserTests(unittest.TestCase):
                     _user_agent,
                     cache_store,
                     _config_data,
+                    cache_images=True,
                 ):
                     self.assertEqual(hash_value, "abcd")
                     cache_store.upsert_cache(
@@ -363,7 +364,7 @@ class LinuxRomBrowserTests(unittest.TestCase):
                 rom_browser.fetch_game_id = (
                     lambda _hash, _credentials, _user_agent, _config_data, _store: 10701
                 )
-                rom_browser.cache_game = lambda *_args: None
+                rom_browser.cache_game = lambda *_args, **_kwargs: None
 
                 result = rom_browser.add_rom_to_cache(
                     rom_path,
@@ -408,7 +409,7 @@ class LinuxRomBrowserTests(unittest.TestCase):
                 rom_browser.fetch_game_id = (
                     lambda _hash, _credentials, _user_agent, _config_data, _store: 10701
                 )
-                rom_browser.cache_game = lambda *args: (_ for _ in ()).throw(
+                rom_browser.cache_game = lambda *args, **kwargs: (_ for _ in ()).throw(
                     rom_cache.CacheGameError("patch failed: invalid credentials")
                 )
 
@@ -467,6 +468,7 @@ class LinuxRomBrowserTests(unittest.TestCase):
                     _user_agent,
                     cache_store,
                     _config_data,
+                    cache_images=True,
                 ):
                     self.assertEqual(hash_value, "5f397a1e588cfe96b4aa4bab7a5b1d44")
                     cache_store.upsert_cache(
@@ -1062,6 +1064,7 @@ class LinuxRomBrowserTests(unittest.TestCase):
                     _user_agent,
                     cache_store,
                     _config_data,
+                    cache_images=True,
                 ):
                     self.assertEqual(hash_value, "primary")
                     cache_store.upsert_cache(
@@ -1119,6 +1122,7 @@ class LinuxRomBrowserTests(unittest.TestCase):
                     _user_agent,
                     cache_store,
                     _config_data,
+                    cache_images=True,
                 ):
                     self.assertEqual(game_id, 10701)
                     self.assertEqual(hash_value, "3e399fdc568d0a0e140a5a277a5c32f3")
