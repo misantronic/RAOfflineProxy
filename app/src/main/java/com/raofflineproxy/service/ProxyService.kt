@@ -380,16 +380,23 @@ class ProxyService : Service() {
         if (!validated) {
             markRetroAchievementsUnreachable()
         } else {
+            val effectiveWasReachable = if (forceProbe) {
+                markRetroAchievementsUnreachable()
+                updateNotification()
+                false
+            } else {
+                wasReachable
+            }
             serviceScope.launch {
                 val userAgent = loadUserAgent(db)
                 val reachable = probeRetroAchievements(userAgent = userAgent, force = forceProbe)
                 val isReachableNow = hasInternet && reachable
-                if (isReachableNow && !wasReachable) {
+                if (isReachableNow && !effectiveWasReachable) {
                     Log.i(TAG, "RetroAchievements reachable")
                     lastOfflinePingAt = 0L
                     offlineIdleTimeoutJob?.cancel()
                     requestFlush()
-                } else if (!isReachableNow && wasReachable) {
+                } else if (!isReachableNow && effectiveWasReachable) {
                     Log.i(TAG, "RetroAchievements unreachable")
                     if (recentGameId != null) {
                         scheduleOfflineIdleTimeout(currentOfflineActivityAt())
