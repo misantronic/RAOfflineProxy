@@ -8,7 +8,7 @@ from .auth import resolve_credentials
 from .award_signing import public_key_base64, sign_award, verify_award
 from .config import FALLBACK_USER_AGENT, MAX_PROXY_PORT, upstream_host
 from .network import build_api_url, http_post
-from .rom_cache import cache_session, cache_unlocks, refresh_game_patch
+from .rom_cache import build_achievement_game_ids, cache_session, cache_unlocks, refresh_game_patch
 from .storage import (
     PENDING_AWARD_STATUS_DELETED,
     PENDING_AWARD_STATUS_FLUSHED,
@@ -172,26 +172,10 @@ def refresh_and_load_achievement_ids(
     user_agent: str,
     config_data: dict,
     awards: list[dict],
-) -> tuple[set[int], list[int]] | None:
+) -> tuple[set[int], list[int], dict[int, int]] | None:
     patch_entries = storage.get_all_cache_by_prefix(cache_keys.PREFIX_PATCH)
-    achievement_game_ids: dict[int, int] = {}
-    for entry in patch_entries:
-        game_id = cache_keys.parse_game_id_from_patch_key(entry["cacheKey"])
-        if game_id is None:
-            continue
-        try:
-            payload = json.loads(entry["responseBody"])
-            achievements = payload.get("PatchData", {}).get("Achievements", [])
-        except Exception:
-            continue
-
-        for achievement in achievements:
-            achievement_id = achievement.get("ID")
-            if (
-                isinstance(achievement_id, int)
-                and achievement_id not in achievement_game_ids
-            ):
-                achievement_game_ids[achievement_id] = game_id
+    achievementsets_entries = storage.get_all_cache_by_prefix(cache_keys.PREFIX_ACHIEVEMENTSETS)
+    achievement_game_ids = build_achievement_game_ids(patch_entries, achievementsets_entries)
 
     award_game_ids: dict[int, int] = {}
     game_ids: list[int] = []
@@ -204,7 +188,7 @@ def refresh_and_load_achievement_ids(
             game_ids.append(game_id)
 
     if not game_ids:
-        return set(), []
+        return set(), [], achievement_game_ids
 
     achievement_ids: set[int] = set()
     proxied_user_agent = proxy_user_agent(user_agent)
@@ -224,7 +208,7 @@ def refresh_and_load_achievement_ids(
         except Exception:
             return None
 
-    return achievement_ids, game_ids
+    return achievement_ids, game_ids, achievement_game_ids
 
 
 def send_award(award: dict, config_data: dict) -> tuple[str, str]:
@@ -368,7 +352,7 @@ def flush_pending_awards(storage: Storage, config_data: dict) -> FlushOutcome:
             last_error="Could not refresh achievement data from server",
         )
 
-    known_achievement_ids, game_ids = refreshed
+    known_achievement_ids, game_ids, cached_achievement_game_ids = refreshed
     flushed = 0
     skipped_deleted = 0
     skipped_stale = 0
@@ -401,7 +385,7 @@ def flush_pending_awards(storage: Storage, config_data: dict) -> FlushOutcome:
             skipped_stale += 1
             continue
 
-        if known_achievement_ids and achievement_id not in known_achievement_ids:
+        if known_achievement_ids and achievement_id in cached_achievement_game_ids and achievement_id not in known_achievement_ids:
             award["status"] = PENDING_AWARD_STATUS_STALE
             award["lastError"] = (
                 f"Achievement {achievement_id} not found in live server data"

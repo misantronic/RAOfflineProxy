@@ -228,7 +228,7 @@ class LinuxAwardParityTests(unittest.TestCase):
                     "token": "token",
                 }
                 flusher.refresh_and_load_achievement_ids = (
-                    lambda *_args, **_kwargs: ({12684, 12609}, [])
+                    lambda *_args, **_kwargs: ({12684, 12609}, [], {12684: 1, 12609: 1})
                 )
                 flusher.send_award = lambda *_args, **_kwargs: ("success", "")
 
