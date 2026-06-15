@@ -41,7 +41,9 @@ import com.raofflineproxy.proxy.AwardFlusher
 import com.raofflineproxy.proxy.FlushEvent
 import com.raofflineproxy.proxy.LoginCredentials
 import com.raofflineproxy.proxy.PasswordCredentials
+import com.raofflineproxy.proxy.patchImagePath
 import com.raofflineproxy.proxy.patchImageUrl
+import com.raofflineproxy.proxy.resolveCachedStaticAsset
 import com.raofflineproxy.proxy.cacheLoginCredentialsResponse
 import com.raofflineproxy.proxy.clearAllCachedImages
 import com.raofflineproxy.proxy.deleteCachedImagesForGame
@@ -286,7 +288,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         val title = patchData?.optString("Title") ?: gameId
                         val imageIconUrl = gameId.toIntOrNull()?.let {
                             resolveCachedGameIconPath(application, it)
-                        } ?: patchData?.let(::patchImageUrl)
+                        } ?: patchData?.let { pd ->
+                            patchImagePath(pd)?.let { resolveCachedStaticAsset(application, it)?.absolutePath }
+                                ?: patchImageUrl(pd)
+                        }
                         val unlocksBody = db.cacheDao().get(CacheKeys.unlocks(gameId, user))?.responseBody
                         val unlockedIds = runCatching {
                             val json = JSONObject(unlocksBody ?: return@runCatching emptySet())
@@ -1927,11 +1932,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         gameTitle = patchData.optString("Title", gameTitle)
                         gameIconUrl = gameId?.let {
                             resolveCachedGameIconPath(application, it)
-                        } ?: patchData.let(::patchImageUrl)
+                        } ?: patchImagePath(patchData)?.let { resolveCachedStaticAsset(application, it)?.absolutePath }
+                            ?: patchImageUrl(patchData)
                         achievementTitle = a.optString("Title", achievementTitle)
                         points = a.optInt("Points", 0)
                         val badgeName = a.optString("BadgeName").takeIf { it.isNotEmpty() }
-                        badgeUrl = badgeName?.let { "https://i.retroachievements.org/Badge/$it.png" }
+                        badgeUrl = badgeName?.let { name ->
+                            resolveCachedStaticAsset(application, "/Badge/$name.png")?.absolutePath
+                                ?: "https://i.retroachievements.org/Badge/$name.png"
+                        }
                         break
                     }
                 }
@@ -2025,7 +2034,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         ),
                         description = achievement.optString("Description").takeIf { it.isNotEmpty() },
                         points = achievement.optInt("Points", 0),
-                        badgeUrl = badgeName?.let { "https://i.retroachievements.org/Badge/$it.png" }
+                        badgeUrl = badgeName?.let { name ->
+                            resolveCachedStaticAsset(application, "/Badge/$name.png")?.absolutePath
+                                ?: "https://i.retroachievements.org/Badge/$name.png"
+                        }
                     )
                 )
             }
