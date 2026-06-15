@@ -8,7 +8,6 @@ import com.raofflineproxy.R
 import com.raofflineproxy.RA_HOST
 import com.raofflineproxy.RequestFailureNotifier
 import com.raofflineproxy.data.AppDatabase
-import com.raofflineproxy.data.CacheEntry
 import com.raofflineproxy.data.CacheKeys
 import com.raofflineproxy.data.PendingAward
 import com.raofflineproxy.data.PENDING_AWARD_STATUS_DELETED
@@ -256,12 +255,10 @@ class AwardFlusher(
     private suspend fun resolvePendingAwardGameTargets(
         awards: List<PendingAward>
     ): PendingAwardGameTargets {
-        val patchEntries = db.cacheDao().getAllByPrefix(CacheKeys.PREFIX_PATCH)
-        if (patchEntries.isEmpty()) {
-            return PendingAwardGameTargets(emptyMap(), emptyList())
-        }
-
-        val achievementGameIds = buildAchievementGameIds(patchEntries)
+        val achievementGameIds = buildAchievementGameIds(
+            db.cacheDao().getAllByPrefix(CacheKeys.PREFIX_PATCH),
+            db.cacheDao().getAllByPrefix(CacheKeys.PREFIX_ACHIEVEMENTSETS),
+        )
         if (achievementGameIds.isEmpty()) {
             return PendingAwardGameTargets(emptyMap(), emptyList())
         }
@@ -277,25 +274,6 @@ class AwardFlusher(
             awardGameIds = awardGameIds,
             gameIds = awardGameIds.values.distinct()
         )
-    }
-
-    private fun buildAchievementGameIds(
-        patchEntries: List<CacheEntry>
-    ): Map<Int, Int> = buildMap {
-        patchEntries.forEach { entry ->
-            val gameId = CacheKeys.parseGameIdFromPatchKey(entry.cacheKey) ?: return@forEach
-            val patchData = runCatching {
-                JSONObject(entry.responseBody).getJSONObject("PatchData")
-            }.getOrNull() ?: return@forEach
-            val achievements = patchData.optJSONArray("Achievements") ?: return@forEach
-            for (i in 0 until achievements.length()) {
-                val achievement = achievements.optJSONObject(i) ?: continue
-                val achievementId = achievement.optInt("ID")
-                if (achievementId != 0) {
-                    putIfAbsent(achievementId, gameId)
-                }
-            }
-        }
     }
 
     private suspend fun refreshAndLoadAchievementIds(

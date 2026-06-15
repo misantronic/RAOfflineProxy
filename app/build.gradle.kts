@@ -103,4 +103,5 @@ dependencies {
     implementation(variantOf(libs.zstd.jni) { artifactType("aar") })
     testImplementation(libs.junit)
     testImplementation(libs.zstd.jni)
+    testImplementation(libs.org.json)
 }

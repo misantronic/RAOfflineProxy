@@ -35,8 +35,11 @@ import com.raofflineproxy.proxy.shouldCacheResponse
 import com.raofflineproxy.proxy.shouldCompactAchievementSets
 import com.raofflineproxy.proxy.shouldQueueAward
 import com.raofflineproxy.proxy.UpstreamResult
+import com.raofflineproxy.proxy.buildAchievementGameIds
 import com.raofflineproxy.proxy.validateBodyRead
 import com.raofflineproxy.proxy.validateTransferEncoding
+import com.raofflineproxy.data.CacheEntry
+import com.raofflineproxy.data.CacheKeys
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -895,6 +898,134 @@ class ProxyServerTest {
     fun httpGameIdCacheMiss_containsErrorMessage() {
         val response = proxyHttpGameIdCacheMiss()
         assertTrue(response.contains("Game not cached"))
+    }
+
+    // ── buildAchievementGameIds() ──
+
+    private fun patchEntry(gameId: Int, vararg achievementIds: Int): CacheEntry {
+        val achievements = achievementIds.joinToString(",") { """{"ID":$it}""" }
+        return CacheEntry(
+            cacheKey = CacheKeys.patch(gameId, "user"),
+            responseBody = """{"PatchData":{"Achievements":[$achievements]}}"""
+        )
+    }
+
+    private fun achievementsetsEntry(hash: String, gameId: Int, vararg achievementIds: Int): CacheEntry {
+        val achievements = achievementIds.joinToString(",") { """{"ID":$it}""" }
+        return CacheEntry(
+            cacheKey = CacheKeys.achievementSets(hash, "user"),
+            responseBody = """{"GameId":$gameId,"Sets":[{"GameId":$gameId,"Achievements":[$achievements]}]}"""
+        )
+    }
+
+    private fun achievementsetsEntryNoSets(hash: String, gameId: Int, vararg achievementIds: Int): CacheEntry {
+        val achievements = achievementIds.joinToString(",") { """{"ID":$it}""" }
+        return CacheEntry(
+            cacheKey = CacheKeys.achievementSets(hash, "user"),
+            responseBody = """{"GameId":$gameId,"Achievements":[$achievements]}"""
+        )
+    }
+
+    @Test
+    fun buildAchievementGameIds_empty_returnsEmptyMap() {
+        val result = buildAchievementGameIds(emptyList(), emptyList())
+        assertTrue(result.isEmpty())
+    }
+
+    @Test
+    fun buildAchievementGameIds_patchOnly_mapsAchievementToGame() {
+        val result = buildAchievementGameIds(
+            patchEntries = listOf(patchEntry(379, 3024, 1282)),
+            achievementsetsEntries = emptyList()
+        )
+        assertEquals(379, result[3024])
+        assertEquals(379, result[1282])
+    }
+
+    @Test
+    fun buildAchievementGameIds_achievementsetsWithSets_mapsAchievementToGame() {
+        val result = buildAchievementGameIds(
+            patchEntries = emptyList(),
+            achievementsetsEntries = listOf(achievementsetsEntry("abc123", 11342, 120496))
+        )
+        assertEquals(11342, result[120496])
+    }
+
+    @Test
+    fun buildAchievementGameIds_achievementsetsWithoutSets_mapsAchievementToGame() {
+        val result = buildAchievementGameIds(
+            patchEntries = emptyList(),
+            achievementsetsEntries = listOf(achievementsetsEntryNoSets("abc123", 11342, 120496))
+        )
+        assertEquals(11342, result[120496])
+    }
+
+    @Test
+    fun buildAchievementGameIds_bothSources_allAchievementsMapped() {
+        val result = buildAchievementGameIds(
+            patchEntries = listOf(patchEntry(379, 3024)),
+            achievementsetsEntries = listOf(achievementsetsEntry("abc123", 11342, 120496))
+        )
+        assertEquals(379, result[3024])
+        assertEquals(11342, result[120496])
+    }
+
+    @Test
+    fun buildAchievementGameIds_patchTakesPrecedenceOverAchievementsets() {
+        val result = buildAchievementGameIds(
+            patchEntries = listOf(patchEntry(100, 9999)),
+            achievementsetsEntries = listOf(achievementsetsEntryNoSets("abc123", 200, 9999))
+        )
+        assertEquals(100, result[9999])
+    }
+
+    @Test
+    fun buildAchievementGameIds_achievementsetsWithPerSetGameId_usesSetGameId() {
+        val entry = CacheEntry(
+            cacheKey = CacheKeys.achievementSets("hash1", "user"),
+            responseBody = """{"GameId":500,"Sets":[{"GameId":501,"Achievements":[{"ID":1001}]},{"GameId":502,"Achievements":[{"ID":1002}]}]}"""
+        )
+        val result = buildAchievementGameIds(emptyList(), listOf(entry))
+        assertEquals(501, result[1001])
+        assertEquals(502, result[1002])
+    }
+
+    @Test
+    fun buildAchievementGameIds_achievementsetsSetWithNoGameId_fallsBackToTopLevel() {
+        val entry = CacheEntry(
+            cacheKey = CacheKeys.achievementSets("hash1", "user"),
+            responseBody = """{"GameId":500,"Sets":[{"Achievements":[{"ID":1001}]}]}"""
+        )
+        val result = buildAchievementGameIds(emptyList(), listOf(entry))
+        assertEquals(500, result[1001])
+    }
+
+    @Test
+    fun buildAchievementGameIds_malformedPatchEntry_skipped() {
+        val bad = CacheEntry(cacheKey = CacheKeys.patch(1, "user"), responseBody = "{not json}")
+        val good = patchEntry(379, 3024)
+        val result = buildAchievementGameIds(listOf(bad, good), emptyList())
+        assertNull(result[0])
+        assertEquals(379, result[3024])
+    }
+
+    @Test
+    fun buildAchievementGameIds_malformedAchievementsetsEntry_skipped() {
+        val bad = CacheEntry(cacheKey = CacheKeys.achievementSets("h1", "user"), responseBody = "garbage")
+        val good = achievementsetsEntry("h2", 11342, 120496)
+        val result = buildAchievementGameIds(emptyList(), listOf(bad, good))
+        assertEquals(11342, result[120496])
+    }
+
+    @Test
+    fun buildAchievementGameIds_multiplePatchEntries_allMapped() {
+        val result = buildAchievementGameIds(
+            patchEntries = listOf(patchEntry(379, 3024, 1282), patchEntry(11342, 120496)),
+            achievementsetsEntries = emptyList()
+        )
+        assertEquals(379, result[3024])
+        assertEquals(379, result[1282])
+        assertEquals(11342, result[120496])
     }
 
 }

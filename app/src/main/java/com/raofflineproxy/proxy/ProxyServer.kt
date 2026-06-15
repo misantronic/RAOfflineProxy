@@ -622,8 +622,10 @@ class ProxyServer(
         val token = extractParam("t", path, rawBody) ?: return
         val userAgent = headers["user-agent"] ?: ""
         scope.launch(Dispatchers.IO) {
-            val gameId = buildAchievementGameIds(db.cacheDao().getAllByPrefix(CacheKeys.PREFIX_PATCH))[achievementId]
-                ?: return@launch
+            val gameId = buildAchievementGameIds(
+                db.cacheDao().getAllByPrefix(CacheKeys.PREFIX_PATCH),
+                db.cacheDao().getAllByPrefix(CacheKeys.PREFIX_ACHIEVEMENTSETS),
+            )[achievementId] ?: return@launch
             Log.i(TAG, "Post-award cache refresh in ${POST_AWARD_REFRESH_DELAY_MS}ms for gameId=$gameId achievementId=$achievementId")
             delay(POST_AWARD_REFRESH_DELAY_MS.milliseconds)
             cacheUnlocks(context, gameId, LoginCredentials(user, token), userAgent, db)
@@ -634,8 +636,10 @@ class ProxyServer(
     private suspend fun isAchievementAlreadyUnlocked(achievementId: Int, user: String?): Boolean {
         if (achievementId <= 0 || user.isNullOrEmpty()) return false
 
-        val gameId = buildAchievementGameIds(db.cacheDao().getAllByPrefix(CacheKeys.PREFIX_PATCH))[achievementId]
-            ?: return false
+        val gameId = buildAchievementGameIds(
+            db.cacheDao().getAllByPrefix(CacheKeys.PREFIX_PATCH),
+            db.cacheDao().getAllByPrefix(CacheKeys.PREFIX_ACHIEVEMENTSETS),
+        )[achievementId] ?: return false
         val unlocksBody = db.cacheDao().get(CacheKeys.unlocks(gameId, user))?.responseBody ?: return false
         val unlocks = runCatching {
             JSONObject(unlocksBody).optJSONArray("UserUnlocks")
@@ -1116,7 +1120,10 @@ internal fun filterWarningAchievementForOnline(action: String?, responseBody: St
     else              -> responseBody
 }
 
-private fun buildAchievementGameIds(patchEntries: List<CacheEntry>): Map<Int, Int> = buildMap {
+internal fun buildAchievementGameIds(
+    patchEntries: List<CacheEntry>,
+    achievementsetsEntries: List<CacheEntry> = emptyList(),
+): Map<Int, Int> = buildMap {
     patchEntries.forEach { entry ->
         val gameId = CacheKeys.parseGameIdFromPatchKey(entry.cacheKey) ?: return@forEach
         val patchData = runCatching {
@@ -1126,8 +1133,28 @@ private fun buildAchievementGameIds(patchEntries: List<CacheEntry>): Map<Int, In
         for (index in 0 until achievements.length()) {
             val achievement = achievements.optJSONObject(index) ?: continue
             val achievementId = achievement.optInt("ID")
-            if (achievementId > 0) {
-                putIfAbsent(achievementId, gameId)
+            if (achievementId > 0) putIfAbsent(achievementId, gameId)
+        }
+    }
+    achievementsetsEntries.forEach { entry ->
+        val payload = runCatching { JSONObject(entry.responseBody) }.getOrNull() ?: return@forEach
+        val topLevelGameId = payload.optInt("GameId").takeIf { it > 0 } ?: return@forEach
+        val sets = payload.optJSONArray("Sets")
+        if (sets != null) {
+            for (i in 0 until sets.length()) {
+                val set = sets.optJSONObject(i) ?: continue
+                val setGameId = set.optInt("GameId").takeIf { it > 0 } ?: topLevelGameId
+                val achievements = set.optJSONArray("Achievements") ?: continue
+                for (j in 0 until achievements.length()) {
+                    val achievementId = achievements.optJSONObject(j)?.optInt("ID") ?: continue
+                    if (achievementId > 0) putIfAbsent(achievementId, setGameId)
+                }
+            }
+        } else {
+            val achievements = payload.optJSONArray("Achievements") ?: return@forEach
+            for (i in 0 until achievements.length()) {
+                val achievementId = achievements.optJSONObject(i)?.optInt("ID") ?: continue
+                if (achievementId > 0) putIfAbsent(achievementId, topLevelGameId)
             }
         }
     }
@@ -1181,7 +1208,12 @@ private fun compactAchievementSets(sets: JSONArray, gameId: Int, source: JSONObj
             JSONObject().apply {
                 put("AchievementSetId", set.intOrDefault("AchievementSetId", 0))
                 put("GameId", set.intOrDefault("GameId", gameId))
-                put("Title", set.stringOrDefault("Title", source.stringOrDefault("Title", "")))
+                val titleRaw = set.valueOrNull("Title")
+                put("Title", when {
+                    titleRaw === JSONObject.NULL -> JSONObject.NULL
+                    titleRaw != null -> titleRaw.toString()
+                    else -> source.stringOrDefault("Title", "")
+                })
                 put("Type", set.stringOrDefault("Type", "core"))
                 put("ImageIconUrl", set.stringOrDefault("ImageIconUrl", source.stringOrDefault("ImageIconUrl", "")))
                 put("Achievements", compactAchievementDefinitions(set.arrayOrNull("Achievements")))
@@ -1211,7 +1243,11 @@ private fun compactAchievementDefinitions(achievements: JSONArray?): JSONArray {
                     put("Created", achievement.longOrDefault("Created", 0L))
                     put("Modified", achievement.longOrDefault("Modified", 0L))
 
-                    achievement.stringOrNull("Type")?.takeIf { it.isNotEmpty() }?.let { put("Type", it) }
+                    val typeRaw = achievement.valueOrNull("Type")
+                    when {
+                        typeRaw === JSONObject.NULL -> put("Type", JSONObject.NULL)
+                        typeRaw != null && typeRaw.toString().isNotEmpty() -> put("Type", typeRaw.toString())
+                    }
                     achievement.doubleOrNull("Rarity")?.let { put("Rarity", it) }
                     achievement.doubleOrNull("RarityHardcore")?.let { put("RarityHardcore", it) }
                     achievement.stringOrNull("BadgeURL")?.takeIf { it.isNotEmpty() }?.let { put("BadgeURL", it) }

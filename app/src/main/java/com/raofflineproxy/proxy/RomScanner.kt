@@ -637,7 +637,8 @@ private suspend fun buildUnlocksArray(db: AppDatabase, gameId: Int, user: String
     }
 
     val achievementGameIds = buildAchievementGameIds(
-        runCatching { db.cacheDao().getAllByPrefix(CacheKeys.PREFIX_PATCH) }.getOrDefault(emptyList())
+        runCatching { db.cacheDao().getAllByPrefix(CacheKeys.PREFIX_PATCH) }.getOrDefault(emptyList()),
+        runCatching { db.cacheDao().getAllByPrefix(CacheKeys.PREFIX_ACHIEVEMENTSETS) }.getOrDefault(emptyList()),
     )
 
     val unlockIds = mergeStartSessionUnlockIds(
@@ -677,23 +678,6 @@ internal fun mergeStartSessionUnlockIds(
         .forEach(mergedIds::add)
 
     return mergedIds.toList()
-}
-
-private fun buildAchievementGameIds(patchEntries: List<CacheEntry>): Map<Int, Int> = buildMap {
-    patchEntries.forEach { entry ->
-        val patchGameId = CacheKeys.parseGameIdFromPatchKey(entry.cacheKey) ?: return@forEach
-        val patchData = runCatching {
-            JSONObject(entry.responseBody).getJSONObject("PatchData")
-        }.getOrNull() ?: return@forEach
-        val achievements = patchData.optJSONArray("Achievements") ?: return@forEach
-        for (i in 0 until achievements.length()) {
-            val achievement = achievements.optJSONObject(i) ?: continue
-            val achievementId = achievement.optInt("ID")
-            if (achievementId != 0) {
-                putIfAbsent(achievementId, patchGameId)
-            }
-        }
-    }
 }
 
 private fun pendingAwardUser(award: PendingAward): String? {
