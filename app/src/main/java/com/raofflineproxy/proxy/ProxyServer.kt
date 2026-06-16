@@ -603,7 +603,24 @@ class ProxyServer(
                     return@withLock QueueAwardResult.Error("signing_failed")
                 }
 
-            when (val result = awaitPendingAwardWrite(scope, signedAward, db.pendingAwardDao()::upsert)) {
+            val snapshotLatch = CountDownLatch(1)
+            var snapshot: AwardSnapshot? = null
+            scope.launch(Dispatchers.IO) {
+                snapshot = resolveAwardSnapshot(db, context, signedAward.achievementId)
+                snapshotLatch.countDown()
+            }
+            snapshotLatch.await(DB_OPERATION_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+            val awardToWrite = snapshot?.let { s ->
+                signedAward.copy(
+                    snapshotGameTitle = s.gameTitle,
+                    snapshotAchievementTitle = s.achievementTitle,
+                    snapshotPoints = s.points,
+                    snapshotBadgeUrl = s.badgeUrl,
+                    snapshotGameIconUrl = s.gameIconUrl
+                )
+            } ?: signedAward
+
+            when (val result = awaitPendingAwardWrite(scope, awardToWrite, db.pendingAwardDao()::upsert)) {
                 QueueAwardResult.Queued -> {
                     Log.i(TAG, "Award queued and signed: achievementId=${signedAward.achievementId}")
                     QueueAwardResult.Queued
@@ -906,6 +923,58 @@ internal fun awaitPendingAwardWrite(
     }
 
     return QueueAwardResult.Queued
+}
+
+internal data class AwardSnapshot(
+    val gameTitle: String,
+    val achievementTitle: String,
+    val points: Int,
+    val badgeUrl: String?,
+    val gameIconUrl: String?
+)
+
+internal suspend fun resolveAwardSnapshot(
+    db: AppDatabase,
+    context: android.content.Context,
+    achievementId: Int
+): AwardSnapshot? {
+    for (entry in db.cacheDao().getAllByPrefix(CacheKeys.PREFIX_PATCH)) {
+        val snapshot = runCatching {
+            val gameId = CacheKeys.parseGameIdFromPatchKey(entry.cacheKey)
+            val patchData = JSONObject(entry.responseBody).getJSONObject("PatchData")
+            val arr = patchData.getJSONArray("Achievements")
+            for (i in 0 until arr.length()) {
+                val a = arr.getJSONObject(i)
+                if (a.getInt("ID") == achievementId) {
+                    val badgeName = a.optString("BadgeName").takeIf { it.isNotEmpty() }
+                    val badgeFile = badgeName?.let { name ->
+                        resolveCachedStaticAsset(context, "/Badge/$name.png")
+                    }
+                    val badgeUrl = badgeName?.let { name ->
+                        badgeFile?.let { persistAwardBadge(context, achievementId, it) }
+                            ?: "https://i.retroachievements.org/Badge/$name.png"
+                    }
+                    val gameIconRemoteUrl = patchImageUrl(patchData)
+                    val gameIconFile = gameId?.let { id ->
+                        resolveCachedGameIconPath(context, id)?.let { java.io.File(it) }
+                    } ?: gameIconRemoteUrl?.let { extractImagePath(it) }
+                        ?.let { resolveCachedStaticAsset(context, it) }
+                    val gameIconUrl = gameIconFile?.let { persistAwardGameIcon(context, achievementId, it) }
+                        ?: gameIconRemoteUrl
+                    return AwardSnapshot(
+                        gameTitle = patchData.optString("Title"),
+                        achievementTitle = a.optString("Title"),
+                        points = a.optInt("Points", 0),
+                        badgeUrl = badgeUrl,
+                        gameIconUrl = gameIconUrl
+                    )
+                }
+            }
+            null
+        }.getOrNull()
+        if (snapshot != null) return snapshot
+    }
+    return null
 }
 
 internal fun shouldQueueAward(result: UpstreamResult): Boolean = result is UpstreamResult.NetworkError

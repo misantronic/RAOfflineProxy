@@ -47,6 +47,7 @@ import com.raofflineproxy.proxy.resolveCachedStaticAsset
 import com.raofflineproxy.proxy.cacheLoginCredentialsResponse
 import com.raofflineproxy.proxy.clearAllCachedImages
 import com.raofflineproxy.proxy.deleteCachedImagesForGame
+import com.raofflineproxy.proxy.deleteAwardImages
 import com.raofflineproxy.proxy.HttpGetResult
 import com.raofflineproxy.proxy.httpGet
 import com.raofflineproxy.proxy.loginAndCacheToken
@@ -907,7 +908,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             if (db.pendingAwardDao().existsByStatus(PENDING_AWARD_STATUS_PENDING)) {
                 return@launch
             }
+            val flushed = db.pendingAwardDao().getAllByStatus(PENDING_AWARD_STATUS_FLUSHED)
             db.pendingAwardDao().deleteByStatuses(listOf(PENDING_AWARD_STATUS_FLUSHED))
+            flushed.forEach { deleteAwardImages(application, it.achievementId) }
         }
     }
 
@@ -1921,7 +1924,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         var achievementTitle = if (achievementId != null) str(R.string.achievement_fallback, achievementId) else str(R.string.unknown_game)
         var points = 0
         var badgeUrl: String? = null
+        var resolved = false
         for (entry in db.cacheDao().getAllByPrefix(CacheKeys.PREFIX_PATCH)) {
+            if (resolved) break
             runCatching {
                 val gameId = CacheKeys.parseGameIdFromPatchKey(entry.cacheKey)
                 val patchData = JSONObject(entry.responseBody).getJSONObject("PatchData")
@@ -1941,10 +1946,18 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                             resolveCachedStaticAsset(application, "/Badge/$name.png")?.absolutePath
                                 ?: "https://i.retroachievements.org/Badge/$name.png"
                         }
+                        resolved = true
                         break
                     }
                 }
             }
+        }
+        if (!resolved) {
+            gameTitle = award.snapshotGameTitle ?: gameTitle
+            achievementTitle = award.snapshotAchievementTitle ?: achievementTitle
+            points = award.snapshotPoints
+            badgeUrl = award.snapshotBadgeUrl
+            gameIconUrl = award.snapshotGameIconUrl
         }
         return PendingAwardUi(
             id = award.id,

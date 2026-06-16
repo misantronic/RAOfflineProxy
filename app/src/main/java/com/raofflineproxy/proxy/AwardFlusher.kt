@@ -490,17 +490,21 @@ class AwardFlusher(
     }
 
     private suspend fun purgeProcessedAwardsIfSafe() {
-        db.withTransaction {
+        val purged = db.withTransaction {
             if (db.pendingAwardDao().existsByStatus(PENDING_AWARD_STATUS_PENDING)) {
-                return@withTransaction
+                return@withTransaction emptyList()
             }
+            val toDelete = db.pendingAwardDao().getAllByStatus(PENDING_AWARD_STATUS_DELETED) +
+                db.pendingAwardDao().getAllByStatus(PENDING_AWARD_STATUS_STALE)
             db.pendingAwardDao().deleteByStatuses(
                 listOf(
                     PENDING_AWARD_STATUS_DELETED,
                     PENDING_AWARD_STATUS_STALE
                 )
             )
+            toDelete
         }
+        purged.forEach { deleteAwardImages(context, it.achievementId) }
     }
 
     private fun sendAward(award: PendingAward): FlushResult {

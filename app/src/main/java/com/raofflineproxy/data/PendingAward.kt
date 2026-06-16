@@ -23,5 +23,11 @@ data class PendingAward(
     val payloadHash: String = "",
     val prevHash: String = "",
     val signature: String = "",
-    val signedAt: Long = 0L
+    val signedAt: Long = 0L,
+    // Display metadata snapshot — populated at queue time so history survives cache clears
+    val snapshotGameTitle: String? = null,
+    val snapshotAchievementTitle: String? = null,
+    val snapshotPoints: Int = 0,
+    val snapshotBadgeUrl: String? = null,
+    val snapshotGameIconUrl: String? = null
 )
