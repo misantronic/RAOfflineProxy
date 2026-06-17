@@ -1,5 +1,6 @@
 import json
 import logging
+import logging.handlers
 import os
 from pathlib import Path
 
@@ -64,12 +65,14 @@ def ensure_config_dir() -> Path:
 
 def configure_logging() -> None:
     ensure_config_dir()
-    logging.basicConfig(
-        filename=str(LOG_FILE),
-        level=logging.INFO,
-        format="%(asctime)s %(levelname)s %(name)s %(message)s",
-        force=True,
+    handler = logging.handlers.RotatingFileHandler(
+        str(LOG_FILE),
+        maxBytes=2 * 1024 * 1024,
+        backupCount=1,
+        encoding="utf-8",
     )
+    handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s %(message)s"))
+    logging.basicConfig(handlers=[handler], level=logging.INFO, force=True)
 
 
 def load_config() -> dict:
