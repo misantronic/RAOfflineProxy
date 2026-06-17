@@ -130,19 +130,16 @@ class CachedGamesFragment : Fragment() {
 
         viewLifecycleOwner.lifecycleScope.launch {
             viewModel.state.collect { state ->
-                val actionsEnabled = state.hasLoginCredentials
-                    && state.isOnline
+                val actionsEnabled = state.isOnline
                     && !state.scanInProgress
                 val showSmartCache = !viewModel.isSmartCacheDisabledForShizuku(state)
                 val smartCacheEnabled = actionsEnabled
                     && showSmartCache
                     && state.cachedGames.size < MAX_CACHED_GAMES
-                val scanEnabled = state.hasLoginCredentials
-                    && state.isOnline
+                val scanEnabled = state.isOnline
                     && !state.scanInProgress
                     && state.cachedGames.size < MAX_CACHED_GAMES
                 val statusText = when {
-                    !state.hasLoginCredentials -> getString(R.string.cached_games_credentials_hint)
                     !state.isOnline -> getString(R.string.cached_games_offline_hint)
                     else -> getString(R.string.cached_games_counter, state.cachedGames.size, MAX_CACHED_GAMES)
                 }

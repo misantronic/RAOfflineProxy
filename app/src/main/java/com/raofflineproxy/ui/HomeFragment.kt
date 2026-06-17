@@ -145,15 +145,8 @@ class HomeFragment : Fragment() {
                     !state.shizukuManualPatchingEnabled
                 val shouldShowManualSetupButton = !state.proxyRunning &&
                     (shouldRecommendManualSetup || manualSetupNeedsShizuku)
-                tokenWarning.text = when {
-                    noEmulatorInstalled -> getString(R.string.home_no_emulator_warning)
-                    else -> getString(R.string.home_token_warning)
-                }
-                tokenWarning.visibility = when {
-                    noEmulatorInstalled -> View.VISIBLE
-                    state.proxyRunning && state.authState == AuthState.Invalid -> View.VISIBLE
-                    else -> View.GONE
-                }
+                tokenWarning.text = getString(R.string.home_no_emulator_warning)
+                tokenWarning.visibility = if (noEmulatorInstalled) View.VISIBLE else View.GONE
                 manualSetupWarning.text = getString(R.string.home_manual_setup_warning, androidVersionLabel())
                 manualSetupWarning.visibility = if (shouldRecommendManualSetup) View.VISIBLE else View.GONE
                 shizukuInfo.visibility = if (state.manualEmulatorPatchingEnabled && state.shizukuManualPatchingEnabled) {

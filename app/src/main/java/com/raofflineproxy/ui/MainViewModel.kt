@@ -90,10 +90,18 @@ enum class SafGrantTarget { RetroArch, SmartCacheRetroArch, Dolphin, Ppsspp, Sma
 sealed interface MainUiEvent {
     data object PromptSmartCacheAfterProxyStart : MainUiEvent
     data object PromptManualCredentials : MainUiEvent
+    data object PromptCredentialsForCaching : MainUiEvent
     data object OpenShizukuGuide : MainUiEvent
     data class ShowAppUpdate(val update: AppUpdateInfo) : MainUiEvent
     data object RequestShizukuPermission : MainUiEvent
     data object PromptPpssppShizukuRootMode : MainUiEvent
+}
+
+private sealed interface PendingCredentialAction {
+    data object SmartCache : PendingCredentialAction
+    data object RefreshGames : PendingCredentialAction
+    data class AddRom(val uris: List<Uri>) : PendingCredentialAction
+    data class ScanRoms(val treeUri: Uri) : PendingCredentialAction
 }
 
 data class MainUiState(
@@ -175,6 +183,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private var pendingPpssppShizukuRootModePrompt = false
     private var smartCacheAllFilesRejectedThisRun = false
     private var pendingAddRomUris = emptyList<Uri>()
+    private var pendingCredentialAction: PendingCredentialAction? = null
     private fun str(resId: Int): String = getApplication<Application>().getString(resId)
     private fun str(resId: Int, vararg args: Any): String = getApplication<Application>().getString(resId, *args)
 
@@ -588,10 +597,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    private suspend fun requireCredentials(): LoginCredentials? {
+    private suspend fun requireCredentials(pendingAction: PendingCredentialAction): LoginCredentials? {
         val credentials = withContext(Dispatchers.IO) { loadLoginCredentials(db) }
         if (credentials == null) {
-            SnackbarManager.showError(str(R.string.scan_no_login))
+            pendingCredentialAction = pendingAction
+            _events.tryEmit(MainUiEvent.PromptCredentialsForCaching)
         }
         return credentials
     }
@@ -1614,7 +1624,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 return@launch
             }
 
-            val credentials = requireCredentials() ?: return@launch
+            val credentials = requireCredentials(PendingCredentialAction.AddRom(fileUris)) ?: return@launch
             val total = fileUris.size
             var matched = 0
             var skipped = 0
@@ -1719,7 +1729,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 SnackbarManager.showMessage(str(R.string.cached_games_limit_reached, MAX_CACHED_GAMES), SnackbarDuration.Indefinite)
                 return@launch
             }
-            val credentials = requireCredentials() ?: return@launch
+            val credentials = requireCredentials(PendingCredentialAction.ScanRoms(treeUri)) ?: return@launch
             val startingMessage = str(R.string.scan_starting)
             _state.value = _state.value.copy(scanInProgress = true, scanProgress = startingMessage)
             SnackbarManager.showProgress(startingMessage)
@@ -1764,7 +1774,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun refreshGames() {
         val app = getApplication<Application>()
         viewModelScope.launch {
-            val credentials = requireCredentials() ?: return@launch
+            val credentials = requireCredentials(PendingCredentialAction.RefreshGames) ?: return@launch
             val refreshTargets = withContext(Dispatchers.IO) { loadCachedGameRefreshTargets(db) }
             val startingMessage = str(R.string.refresh_progress, 0, refreshTargets.size)
             _state.value = _state.value.copy(scanInProgress = true, scanProgress = startingMessage)
@@ -1804,7 +1814,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 SnackbarManager.showMessage(str(R.string.cached_games_limit_reached, MAX_CACHED_GAMES), SnackbarDuration.Indefinite)
                 return@launch
             }
-            val credentials = requireCredentials() ?: return@launch
+            val credentials = requireCredentials(PendingCredentialAction.SmartCache) ?: return@launch
             val romTreeUris = loadSmartCacheRomSafUris()
             val startingMessage = str(R.string.smart_cache_starting)
             _state.value = _state.value.copy(scanInProgress = true, scanProgress = startingMessage)
@@ -2165,6 +2175,51 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 authState = AuthState.Unknown
             )
             validateToken()
+        }
+    }
+
+    fun saveCredentialsForCaching(username: String, password: String) {
+        val app = getApplication<Application>()
+        val normalizedUsername = username.trim()
+        val normalizedPassword = password.trim()
+
+        viewModelScope.launch {
+            val loginCredentials = withContext(Dispatchers.IO) {
+                loginAndCacheToken(
+                    app,
+                    db,
+                    PasswordCredentials(normalizedUsername, normalizedPassword),
+                    loadUserAgent(db)
+                )
+            }
+
+            if (loginCredentials == null) {
+                SnackbarManager.showError(str(R.string.manual_credentials_invalid))
+                return@launch
+            }
+
+            withContext(Dispatchers.IO) {
+                db.cacheDao().deleteByKeyPrefix(CacheKeys.PREFIX_LOGIN)
+                db.cacheDao().upsert(
+                    CacheEntry(
+                        cacheKey = CacheKeys.login(loginCredentials.user),
+                        responseBody = cacheLoginCredentialsResponse(loginCredentials.user, loginCredentials.token)
+                    )
+                )
+            }
+
+            _state.value = _state.value.copy(hasLoginCredentials = true, authState = AuthState.Unknown)
+            validateToken()
+
+            val action = pendingCredentialAction
+            pendingCredentialAction = null
+            when (action) {
+                PendingCredentialAction.SmartCache -> startSmartCache()
+                PendingCredentialAction.RefreshGames -> refreshGames()
+                is PendingCredentialAction.AddRom -> addRom(action.uris)
+                is PendingCredentialAction.ScanRoms -> scanRoms(action.treeUri)
+                null -> Unit
+            }
         }
     }
 

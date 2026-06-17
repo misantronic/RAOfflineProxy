@@ -49,7 +49,6 @@ class MainActivity : AppCompatActivity() {
     private var updateMenuItem: MenuItem? = null
     private var snackbar: Snackbar? = null
     private var pendingSnackbarJob: Job? = null
-    private var pendingStartTokenWarning = false
     private val pendingErrors = ArrayDeque<QueuedError>()
     private var pendingMessage: SnackbarEvent.Message? = null
     private var progressMessage: String? = null
@@ -240,8 +239,6 @@ class MainActivity : AppCompatActivity() {
                 updateNavBadge(navView, R.id.nav_cached_games, state.cachedGames.size)
                 updateNavBadge(navView, R.id.nav_pending_awards, state.pendingAwards.size)
                 updateNavBadge(navView, R.id.nav_awards_history, state.awardHistory.size)
-                maybeShowStartTokenWarning(state)
-
                 if (state.needsSafGrant) {
                     val target = state.safGrantTarget ?: SafGrantTarget.RetroArch
                     if (activeSafGrantTarget != target) {
@@ -273,6 +270,7 @@ class MainActivity : AppCompatActivity() {
                 when (event) {
                     MainUiEvent.PromptSmartCacheAfterProxyStart -> showSmartCacheAfterProxyStartDialog()
                     MainUiEvent.PromptManualCredentials -> showManualCredentialsDialog()
+                    MainUiEvent.PromptCredentialsForCaching -> showCredentialsForCachingDialog()
                     MainUiEvent.PromptPpssppShizukuRootMode -> showPpssppShizukuRootModeDialog()
                     MainUiEvent.OpenShizukuGuide -> openUrl(getString(R.string.manual_patching_shizuku_guide_url))
                     MainUiEvent.RequestShizukuPermission -> Shizuku.requestPermission(SHIZUKU_PERMISSION_REQUEST_CODE)
@@ -448,7 +446,6 @@ class MainActivity : AppCompatActivity() {
         if (viewModel.state.value.proxyRunning) {
             requestStopProxy()
         } else {
-            pendingStartTokenWarning = true
             requestStartProxy()
         }
     }
@@ -458,7 +455,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     fun requestStopProxy() {
-        pendingStartTokenWarning = false
         viewModel.stopProxy(treeUri = PrefsConstants.loadSafUri(this))
     }
 
@@ -473,29 +469,6 @@ class MainActivity : AppCompatActivity() {
 
         pendingQuit = true
         requestStopProxy()
-    }
-
-    private fun maybeShowStartTokenWarning(state: MainUiState) {
-        if (!pendingStartTokenWarning || !state.proxyRunning) return
-
-        when (state.authState) {
-            AuthState.Invalid -> {
-                pendingStartTokenWarning = false
-                showTokenWarningDialog()
-            }
-            AuthState.Valid -> pendingStartTokenWarning = false
-            AuthState.Unknown -> Unit
-        }
-    }
-
-    private fun showTokenWarningDialog() {
-        AlertDialog.Builder(this)
-            .setTitle(R.string.proxy_started_dialog_title)
-            .setMessage(R.string.home_token_warning)
-            .setPositiveButton(R.string.action_ok, null)
-            .create()
-            .also { it.setCanceledOnTouchOutside(false) }
-            .show()
     }
 
     private fun showSafGrantDialog(target: SafGrantTarget) {
@@ -640,6 +613,45 @@ class MainActivity : AppCompatActivity() {
                     password.isBlank() -> passwordInput.error = getString(R.string.manual_credentials_password_required)
                     else -> {
                         viewModel.saveManualLoginCredentials(username, password)
+                        dialog.dismiss()
+                    }
+                }
+            }
+        }
+
+        dialog.setCanceledOnTouchOutside(false)
+        dialog.show()
+    }
+
+    private fun showCredentialsForCachingDialog() {
+        val dialogView = LayoutInflater.from(this)
+            .inflate(R.layout.dialog_manual_credentials, binding.fragmentContainer, false)
+        val messageView = dialogView.findViewById<android.widget.TextView>(R.id.tv_manual_credentials_message)
+        val usernameInput = dialogView.findViewById<TextInputLayout>(R.id.input_manual_credentials_username)
+        val passwordInput = dialogView.findViewById<TextInputLayout>(R.id.input_manual_credentials_password)
+        val usernameEdit = dialogView.findViewById<TextInputEditText>(R.id.et_manual_credentials_username)
+        val passwordEdit = dialogView.findViewById<TextInputEditText>(R.id.et_manual_credentials_password)
+        messageView.setText(R.string.credentials_for_caching_message)
+
+        val dialog = AlertDialog.Builder(this)
+            .setTitle(R.string.manual_credentials_dialog_title)
+            .setView(dialogView)
+            .setPositiveButton(R.string.manual_credentials_save, null)
+            .setNegativeButton(android.R.string.cancel, null)
+            .create()
+
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                val username = usernameEdit.text?.toString()?.trim().orEmpty()
+                val password = passwordEdit.text?.toString()?.trim().orEmpty()
+                usernameInput.error = null
+                passwordInput.error = null
+
+                when {
+                    username.isBlank() -> usernameInput.error = getString(R.string.manual_credentials_username_required)
+                    password.isBlank() -> passwordInput.error = getString(R.string.manual_credentials_password_required)
+                    else -> {
+                        viewModel.saveCredentialsForCaching(username, password)
                         dialog.dismiss()
                     }
                 }
