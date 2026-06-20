@@ -18,7 +18,7 @@ enum class ShizukuStatus {
 }
 
 internal fun resolveShizukuStatus(context: Context): ShizukuStatus {
-    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
         return ShizukuStatus.Unsupported
     }
 
