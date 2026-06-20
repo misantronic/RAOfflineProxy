@@ -18,7 +18,7 @@
             android:background="@drawable/bg_warning_box"
             android:lineSpacingMultiplier="1.15"
             android:padding="16dp"
-            android:text="@string/home_token_warning"
+            android:text="@string/home_no_emulator_warning"
             android:textColor="@color/warning_text"
             android:textSize="14sp"
             android:textStyle="bold"
