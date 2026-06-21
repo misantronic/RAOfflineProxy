@@ -26,6 +26,7 @@
         <package android:name="come.nanodata.armsx2.debug" />
         <package android:name="com.flycast.emulator" />
         <package android:name="me.magnum.melondualds" />
+        <package android:name="moe.shizuku.privileged.api" />
     </queries>
 
     <application

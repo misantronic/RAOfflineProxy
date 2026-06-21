@@ -22,20 +22,16 @@ internal fun resolveShizukuStatus(context: Context): ShizukuStatus {
         return ShizukuStatus.Unsupported
     }
 
+    if (Shizuku.pingBinder() && !Shizuku.isPreV11()) {
+        return if (Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED) {
+            ShizukuStatus.Ready
+        } else {
+            ShizukuStatus.PermissionDenied
+        }
+    }
+
     val installed = runCatching { context.packageManager.getPackageInfo(SHIZUKU_PACKAGE, 0) }.isSuccess
-    if (!installed) {
-        return ShizukuStatus.NotInstalled
-    }
-
-    if (!Shizuku.pingBinder() || Shizuku.isPreV11()) {
-        return ShizukuStatus.NotRunning
-    }
-
-    return if (Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED) {
-        ShizukuStatus.Ready
-    } else {
-        ShizukuStatus.PermissionDenied
-    }
+    return if (installed) ShizukuStatus.NotRunning else ShizukuStatus.NotInstalled
 }
 
 internal fun shizukuStatusLabel(context: Context, status: ShizukuStatus): String = when (status) {
