@@ -56,6 +56,10 @@ features:
           <img class="supported-platforms__logo--rounded" src="/armsx2.webp" alt="ARMSX2 logo">
           <span>ARMSX2</span>
         </div>
+        <div class="supported-platforms__item">
+          <img class="supported-platforms__logo--rounded" src="/armsx2.webp" alt="ARMSX2 Refresh logo">
+          <span>ARMSX2 Refresh</span>
+        </div>
       </div>
     </div>
     <div class="supported-platforms__group">

@@ -18,7 +18,7 @@ Tested RAOfflineProxy on a device not listed here? [Fill out the Device Compatib
 
 ## Which emulators are supported on Android?
 
-RAOfflineProxy currently supports **RetroArch, Dolphin, PPSSPP, and ARMSX2 on Android**.
+RAOfflineProxy currently supports **RetroArch, Dolphin, PPSSPP, ARMSX2, and ARMSX2 Refresh on Android**.
 
 That support depends on emulator-specific behavior:
 
@@ -31,7 +31,7 @@ Other emulators are not just a different frontend. They may use different config
 
 That means support for another emulator would require emulator-specific implementation, testing, and maintenance rather than a simple toggle.
 
-For that reason, emulators beyond RetroArch, Dolphin, PPSSPP, and ARMSX2 are currently **not supported**, even if they also expose RetroAchievements features.
+For that reason, emulators beyond RetroArch, Dolphin, PPSSPP, ARMSX2, and ARMSX2 Refresh are currently **not supported**, even if they also expose RetroAchievements features.
 
 Experimental Linux work in this repository is also centered around **RetroArch**.
 

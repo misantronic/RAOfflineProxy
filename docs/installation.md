@@ -19,7 +19,7 @@ Install the APK on your Android device. You can download the latest alpha prerel
 ## Step 2: Start the Proxy
 
 ::: warning Fully quit emulators first
-Before pressing **Start proxy**, fully close RetroArch, Dolphin, PPSSPP, ARMSX2, or any other supported emulator you were using. Start them again only after RAOfflineProxy finishes patching and the proxy is running.
+Before pressing **Start proxy**, fully close RetroArch, Dolphin, PPSSPP, ARMSX2, ARMSX2 Refresh, or any other supported emulator you were using. Start them again only after RAOfflineProxy finishes patching and the proxy is running.
 :::
 
 Start the proxy. RAOfflineProxy will import your saved RetroAchievements login automatically. On some devices, you may also need to grant folder access.
@@ -38,7 +38,7 @@ You can cache games in either of these ways:
 
 2. **Cache them automatically by launching them in a supported emulator**
    - Keep the proxy running while you are online
-   - Open the game once in RetroArch, Dolphin, PPSSPP, or ARMSX2
+   - Open the game once in RetroArch, Dolphin, PPSSPP, ARMSX2, or ARMSX2 Refresh
    - RAOfflineProxy will save the game data in the background
 
 The app will identify each ROM, look it up on RetroAchievements, and save all the achievement data for that game.
@@ -51,7 +51,7 @@ See [Caching Games](./caching-games) for full details.
 
 1. Fully quit all supported emulators
 2. Start the proxy service (press **Start proxy** in the action bar, or enable auto-start)
-3. Launch RetroArch, Dolphin, PPSSPP, or ARMSX2 and load a cached game
+3. Launch RetroArch, Dolphin, PPSSPP, ARMSX2, or ARMSX2 Refresh and load a cached game
 4. Earn achievements - they will queue locally when offline
 5. When you reconnect, the proxy automatically sends queued awards to RA
 
@@ -63,7 +63,7 @@ The [SNES Burn-in Test Cartridge Test Kit](https://retroachievements.org/game/10
 
 ```
 1. Install APK
-2. Enter RA credentials in RetroArch, Dolphin, PPSSPP, or ARMSX2
+2. Enter RA credentials in RetroArch, Dolphin, PPSSPP, ARMSX2, or ARMSX2 Refresh
 3. Fully quit emulators → Open RAOfflineProxy → Start proxy while online
 4. Cache your games from **Cached Games** or just start them while online to cache them automatically
 5. Play!
