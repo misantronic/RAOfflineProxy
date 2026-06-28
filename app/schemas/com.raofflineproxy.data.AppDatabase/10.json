@@ -1,0 +1,186 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 10,
+    "identityHash": "1ba2650009c028a55bda3b43bae2a4d7",
+    "entities": [
+      {
+        "tableName": "api_cache",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `cacheKey` TEXT NOT NULL, `responseBody` TEXT NOT NULL, `sourceRomPath` TEXT, `cachedAt` INTEGER NOT NULL, `firstCachedAt` INTEGER NOT NULL)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "cacheKey",
+            "columnName": "cacheKey",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "responseBody",
+            "columnName": "responseBody",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sourceRomPath",
+            "columnName": "sourceRomPath",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "cachedAt",
+            "columnName": "cachedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "firstCachedAt",
+            "columnName": "firstCachedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_api_cache_cacheKey",
+            "unique": true,
+            "columnNames": [
+              "cacheKey"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_api_cache_cacheKey` ON `${TABLE_NAME}` (`cacheKey`)"
+          }
+        ]
+      },
+      {
+        "tableName": "pending_awards",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `achievementId` INTEGER NOT NULL, `queryString` TEXT NOT NULL, `requestBody` TEXT NOT NULL, `userAgent` TEXT NOT NULL, `queuedAt` INTEGER NOT NULL, `retryCount` INTEGER NOT NULL, `lastError` TEXT, `status` TEXT NOT NULL, `payloadHash` TEXT NOT NULL, `prevHash` TEXT NOT NULL, `signature` TEXT NOT NULL, `signedAt` INTEGER NOT NULL, `snapshotGameTitle` TEXT, `snapshotAchievementTitle` TEXT, `snapshotPoints` INTEGER NOT NULL, `snapshotBadgeUrl` TEXT, `snapshotGameIconUrl` TEXT)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "achievementId",
+            "columnName": "achievementId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "queryString",
+            "columnName": "queryString",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "requestBody",
+            "columnName": "requestBody",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "userAgent",
+            "columnName": "userAgent",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "queuedAt",
+            "columnName": "queuedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "retryCount",
+            "columnName": "retryCount",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastError",
+            "columnName": "lastError",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "status",
+            "columnName": "status",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "payloadHash",
+            "columnName": "payloadHash",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "prevHash",
+            "columnName": "prevHash",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "signature",
+            "columnName": "signature",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "signedAt",
+            "columnName": "signedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "snapshotGameTitle",
+            "columnName": "snapshotGameTitle",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "snapshotAchievementTitle",
+            "columnName": "snapshotAchievementTitle",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "snapshotPoints",
+            "columnName": "snapshotPoints",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "snapshotBadgeUrl",
+            "columnName": "snapshotBadgeUrl",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "snapshotGameIconUrl",
+            "columnName": "snapshotGameIconUrl",
+            "affinity": "TEXT"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        }
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '1ba2650009c028a55bda3b43bae2a4d7')"
+    ]
+  }
+}
