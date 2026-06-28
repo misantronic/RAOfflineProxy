@@ -11,12 +11,10 @@ import com.raofflineproxy.proxyBase
 import com.raofflineproxy.proxyPort
 
 internal const val UI_ARMSX2_PACKAGE = "come.nanodata.armsx2"
-internal const val UI_ARMSX2_DEBUG_PACKAGE = "come.nanodata.armsx2.debug"
 internal const val UI_ARMSX2_REFRESH_PACKAGE = "com.armsx2"
 
 internal val UI_ARMSX2_PACKAGE_CANDIDATES = listOf(
     UI_ARMSX2_PACKAGE,
-    UI_ARMSX2_DEBUG_PACKAGE,
     UI_ARMSX2_REFRESH_PACKAGE
 )
 
