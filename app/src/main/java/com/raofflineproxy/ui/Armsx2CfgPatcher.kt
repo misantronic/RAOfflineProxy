@@ -12,16 +12,25 @@ import com.raofflineproxy.proxyPort
 
 internal const val UI_ARMSX2_PACKAGE = "come.nanodata.armsx2"
 internal const val UI_ARMSX2_DEBUG_PACKAGE = "come.nanodata.armsx2.debug"
+internal const val UI_ARMSX2_REFRESH_PACKAGE = "com.armsx2"
 
 internal val UI_ARMSX2_PACKAGE_CANDIDATES = listOf(
     UI_ARMSX2_PACKAGE,
-    UI_ARMSX2_DEBUG_PACKAGE
+    UI_ARMSX2_DEBUG_PACKAGE,
+    UI_ARMSX2_REFRESH_PACKAGE
 )
 
-private const val ARMSX2_RECEIVER_CLASS = "kr.co.iefriends.pcsx2.utils.RetroAchievementsHostOverrideReceiver"
+// The Refresh line (com.armsx2) ships the receiver in its own namespace; the
+// legacy line (come.nanodata.armsx2) keeps the upstream kr.co.iefriends path.
+private const val ARMSX2_LEGACY_RECEIVER_CLASS = "kr.co.iefriends.pcsx2.utils.RetroAchievementsHostOverrideReceiver"
+private const val ARMSX2_REFRESH_RECEIVER_CLASS = "com.armsx2.RetroAchievementsHostOverrideReceiver"
 private const val ARMSX2_SET_ACTION_SUFFIX = ".action.SET_RETROACHIEVEMENTS_HOST_OVERRIDE"
 private const val ARMSX2_CLEAR_ACTION_SUFFIX = ".action.CLEAR_RETROACHIEVEMENTS_HOST_OVERRIDE"
 private const val ARMSX2_HOST_OVERRIDE_EXTRA = "host"
+
+private fun armsx2ReceiverClass(packageName: String): String =
+    if (packageName == UI_ARMSX2_REFRESH_PACKAGE) ARMSX2_REFRESH_RECEIVER_CLASS
+    else ARMSX2_LEGACY_RECEIVER_CLASS
 
 data class Armsx2PatchResult(
     val success: Boolean,
@@ -73,7 +82,7 @@ fun checkIsArmsx2Patched(context: Context): Boolean =
         .getBoolean(PrefsConstants.KEY_ARMSX2_PATCHED_THIS_RUN, false)
 
 internal fun supportsArmsx2BroadcastOverride(context: Context, packageName: String): Boolean {
-    val receiverComponent = ComponentName(packageName, ARMSX2_RECEIVER_CLASS)
+    val receiverComponent = ComponentName(packageName, armsx2ReceiverClass(packageName))
     return try {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             context.packageManager.getReceiverInfo(
@@ -98,7 +107,7 @@ private fun sendArmsx2Broadcast(
 ) {
     val intent = Intent(action)
         .setPackage(packageName)
-        .setComponent(ComponentName(packageName, ARMSX2_RECEIVER_CLASS))
+        .setComponent(ComponentName(packageName, armsx2ReceiverClass(packageName)))
         .addFlags(Intent.FLAG_RECEIVER_FOREGROUND)
 
     if (hostOverride != null) {
