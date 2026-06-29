@@ -28,6 +28,7 @@ add_library(raproxy_rchash SHARED
     # libchdr-backed CHD cooked-sector reader + glue
     ${RCHASH_GLUE_ROOT}/chd_stream.c
     ${RCHASH_GLUE_ROOT}/cdfs_chd.c
+    ${RCHASH_GLUE_ROOT}/cdfs_pbp.c
     ${RCHASH_GLUE_ROOT}/strl_compat.c
     ${RCHASH_GLUE_ROOT}/rchash_glue.c
     # libchdr

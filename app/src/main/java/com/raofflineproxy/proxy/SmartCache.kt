@@ -11,7 +11,8 @@ import com.raofflineproxy.MAX_CACHED_GAMES
 import com.raofflineproxy.PrefsConstants
 import com.raofflineproxy.data.AppDatabase
 import com.raofflineproxy.proxy.hash.RomHashInput
-import com.raofflineproxy.proxy.hash.hashRom
+import com.raofflineproxy.proxy.hash.hashRomCandidates
+import com.raofflineproxy.proxy.hash.hashZipRomCandidates
 import com.raofflineproxy.ui.DOLPHIN_PACKAGE_CANDIDATES
 import com.raofflineproxy.ui.EmulatorSupport
 import com.raofflineproxy.ui.RETROARCH_PACKAGE_CANDIDATES
@@ -1285,8 +1286,8 @@ private suspend fun executeResolvedSmartCacheCandidates(
         val label = candidate.title?.takeIf { it.isNotBlank() } ?: candidate.path.substringAfterLast('/')
         onProgress(index + 1, total, label)
 
-        val hash = hashResolvedCandidate(context, resolvedCandidate)
-        if (hash == null) {
+        val candidateHashes = hashResolvedCandidate(context, resolvedCandidate)
+        if (candidateHashes.isEmpty()) {
             if (candidate.emulator == SmartCacheEmulator.Dolphin) {
                 Log.i(
                     TAG,
@@ -1303,23 +1304,24 @@ private suspend fun executeResolvedSmartCacheCandidates(
             continue
         }
 
-        val gameId = fetchGameId(context, hash, credentials, userAgent, db)
-        if (gameId == null) {
+        val resolved = resolveGameId(context, candidateHashes, credentials, userAgent, db)
+        if (resolved == null) {
             if (candidate.emulator == SmartCacheEmulator.Dolphin) {
                 Log.i(
                     TAG,
-                    "Dolphin candidate skipped title=${candidate.title} reason=no-gameid path=${candidate.path} hash=$hash lastModifiedAt=${candidate.lastModifiedAt} lastModifiedText=${candidate.lastModifiedAt?.let(::formatSmartCacheTimestamp)}"
+                    "Dolphin candidate skipped title=${candidate.title} reason=no-gameid path=${candidate.path} hashes=$candidateHashes lastModifiedAt=${candidate.lastModifiedAt} lastModifiedText=${candidate.lastModifiedAt?.let(::formatSmartCacheTimestamp)}"
                 )
             } else {
                 Log.i(
                     TAG,
-                    "RetroArch candidate skipped title=${candidate.title} reason=no-gameid path=${candidate.path} hash=$hash lastModifiedAt=${candidate.lastModifiedAt} lastModifiedText=${candidate.lastModifiedAt?.let(::formatSmartCacheTimestamp)}"
+                    "RetroArch candidate skipped title=${candidate.title} reason=no-gameid path=${candidate.path} hashes=$candidateHashes lastModifiedAt=${candidate.lastModifiedAt} lastModifiedText=${candidate.lastModifiedAt?.let(::formatSmartCacheTimestamp)}"
                 )
             }
             Log.d(TAG, "Skipping candidate path=${candidate.path} because gameid lookup returned null")
             skipped++
             continue
         }
+        val (hash, gameId) = resolved
 
         val gameIdString = gameId.toString()
         if (gameIdString in cachedGameIds) {
@@ -1371,16 +1373,16 @@ private suspend fun executeResolvedSmartCacheCandidates(
     )
 }
 
-private fun hashResolvedCandidate(context: Context, candidate: ResolvedSmartCacheCandidate): String? = when {
+private fun hashResolvedCandidate(context: Context, candidate: ResolvedSmartCacheCandidate): List<String> = when {
     candidate.directFile != null -> hashFile(candidate.directFile)
-    candidate.documentFile != null -> hashRom(context, candidate.documentFile)
-    else -> null
+    candidate.documentFile != null -> hashRomCandidates(context, candidate.documentFile)
+    else -> emptyList()
 }
 
-private fun hashFile(file: File): String? {
+private fun hashFile(file: File): List<String> {
     val fileName = file.name
     if (fileName.endsWith(".zip", ignoreCase = true)) {
-        return com.raofflineproxy.proxy.hash.hashZipRom(
+        return com.raofflineproxy.proxy.hash.hashZipRomCandidates(
             fileName = fileName,
             sourcePath = file.absolutePath,
             tempDir = file.parentFile ?: file,
@@ -1388,7 +1390,7 @@ private fun hashFile(file: File): String? {
         )
     }
 
-    return hashRom(
+    return hashRomCandidates(
         RomHashInput(
             fileName = fileName,
             fileSize = file.length(),

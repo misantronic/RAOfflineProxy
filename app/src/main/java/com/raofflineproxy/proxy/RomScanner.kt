@@ -10,7 +10,7 @@ import com.raofflineproxy.R
 import com.raofflineproxy.RA_HOST
 import com.raofflineproxy.RequestFailureNotifier
 import com.raofflineproxy.buildApiUrl
-import com.raofflineproxy.proxy.hash.hashRom
+import com.raofflineproxy.proxy.hash.hashRomCandidates
 import com.raofflineproxy.proxyHost
 import com.raofflineproxy.proxyPort
 import com.raofflineproxy.redactTokens
@@ -398,16 +398,13 @@ suspend fun scanRomFolder(
                 skipped++
                 continue
             }
-            val hash = hashRom(context, file)
-            if (hash == null) {
+            val candidates = hashRomCandidates(context, file)
+            val resolved = resolveGameId(context, candidates, credentials, userAgent, db)
+            if (resolved == null) {
                 skipped++
                 continue
             }
-            val gameId = fetchGameId(context, hash, credentials, userAgent, db)
-            if (gameId == null) {
-                skipped++
-                continue
-            }
+            val (hash, gameId) = resolved
             val gameIdString = gameId.toString()
             if (gameIdString in cachedGameIds) {
                 skipped++
@@ -469,6 +466,24 @@ private fun shouldScanFile(file: DocumentFile): Boolean {
         && !name.startsWith(".")
         && !name.endsWith(".txt", ignoreCase = true)
         && !name.endsWith(".xml", ignoreCase = true)
+}
+
+/** Tries each candidate hash in order, returning the first that resolves to a
+ * RetroAchievements game id along with that matching hash. One ROM can produce
+ * several candidates (e.g. a .pbp yields both a PSP whole-file hash and a PS1
+ * executable hash; a .chd yields one per possible console). */
+internal suspend fun resolveGameId(
+    context: Context,
+    candidates: List<String>,
+    creds: LoginCredentials,
+    userAgent: String,
+    db: AppDatabase
+): Pair<String, Int>? {
+    for (hash in candidates) {
+        val gameId = fetchGameId(context, hash, creds, userAgent, db)
+        if (gameId != null) return hash to gameId
+    }
+    return null
 }
 
 internal suspend fun fetchGameId(

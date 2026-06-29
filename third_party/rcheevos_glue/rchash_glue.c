@@ -6,6 +6,7 @@
 #include "rc_hash.h"
 
 #include "cdfs_chd.h"
+#include "cdfs_pbp.h"
 
 /* ---- CHD cdreader hooks (mirrors RetroArch cheevos.c rc_hash_handle_chd_*) ---- */
 
@@ -18,6 +19,35 @@ static int rao_path_is_chd(const char* path)
        && (dot[2] == 'h' || dot[2] == 'H')
        && (dot[3] == 'd' || dot[3] == 'D')
        &&  dot[4] == '\0';
+}
+
+static int rao_path_is_pbp(const char* path)
+{
+   const char* dot = path ? strrchr(path, '.') : NULL;
+   if (!dot)
+      return 0;
+   return (dot[1] == 'p' || dot[1] == 'P')
+       && (dot[2] == 'b' || dot[2] == 'B')
+       && (dot[3] == 'p' || dot[3] == 'P')
+       &&  dot[4] == '\0';
+}
+
+/* ---- PBP cdreader hooks (PS1 disc embedded in a POPS PBP, see cdfs_pbp) ---- */
+
+static size_t rao_pbp_read_sector(void* track_handle, uint32_t sector,
+      void* buffer, size_t requested_bytes)
+{
+   return pbp_read_sector((pbp_disc_t*)track_handle, sector, buffer, requested_bytes);
+}
+
+static uint32_t rao_pbp_first_track_sector(void* track_handle)
+{
+   return pbp_first_sector((pbp_disc_t*)track_handle);
+}
+
+static void rao_pbp_close_track(void* track_handle)
+{
+   pbp_close((pbp_disc_t*)track_handle);
 }
 
 static void* rao_chd_open_track(const char* path, uint32_t track)
@@ -96,6 +126,13 @@ static void* rao_cd_open_track(const char* path, uint32_t track,
       callbacks->cdreader.close_track        = rao_chd_close_track;
       callbacks->cdreader.first_track_sector = rao_chd_first_track_sector;
       return rao_chd_open_track(path, track);
+   }
+   else if (rao_path_is_pbp(path))
+   {
+      callbacks->cdreader.read_sector        = rao_pbp_read_sector;
+      callbacks->cdreader.close_track        = rao_pbp_close_track;
+      callbacks->cdreader.first_track_sector = rao_pbp_first_track_sector;
+      return pbp_open(path);
    }
    else
    {
@@ -279,5 +316,36 @@ int raproxy_hash_file(const char* path, char* out_hashes, int max_hashes)
    }
 
    rc_hash_destroy_iterator(&iterator);
+
+   /* rc_hash's extension table maps .pbp to PSP only (a whole-file hash), so a
+    * PS1 game wrapped in a PBP never gets its executable-based PlayStation hash.
+    * Generate that candidate explicitly via the PBP-aware cdreader hook above. */
+   if (count < max_hashes && rao_path_is_pbp(path))
+   {
+      rc_hash_iterator_t psx_iterator;
+      char candidate[33];
+
+      rc_hash_initialize_iterator(&psx_iterator, path, NULL, 0);
+      if (rc_hash_generate(candidate, RC_CONSOLE_PLAYSTATION, &psx_iterator) && candidate[0] != '\0')
+      {
+         int duplicate = 0;
+         int i;
+         for (i = 0; i < count; ++i)
+         {
+            if (memcmp(out_hashes + i * 33, candidate, 33) == 0)
+            {
+               duplicate = 1;
+               break;
+            }
+         }
+         if (!duplicate)
+         {
+            memcpy(out_hashes + count * 33, candidate, 33);
+            ++count;
+         }
+      }
+      rc_hash_destroy_iterator(&psx_iterator);
+   }
+
    return count;
 }

@@ -51,6 +51,7 @@ mkdir -p "${OUT_DIR}"
   "${RC}/src/rc_compat.c" \
   "${GLUE}/chd_stream.c" \
   "${GLUE}/cdfs_chd.c" \
+  "${GLUE}/cdfs_pbp.c" \
   "${GLUE}/strl_compat.c" \
   "${GLUE}/rchash_glue.c" \
   "${CHDR}/src/libchdr_bitstream.c" \
