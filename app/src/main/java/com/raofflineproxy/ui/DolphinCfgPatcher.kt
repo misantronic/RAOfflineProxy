@@ -1,6 +1,8 @@
 package com.raofflineproxy.ui
 
 import android.content.Context
+import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.util.AtomicFile
@@ -9,6 +11,8 @@ import androidx.documentfile.provider.DocumentFile
 import com.raofflineproxy.PrefsConstants
 import com.raofflineproxy.R
 import com.raofflineproxy.proxy.LoginCredentials
+import com.raofflineproxy.proxyBase
+import com.raofflineproxy.proxyPort
 import com.raofflineproxy.proxyValue
 import org.json.JSONArray
 import org.json.JSONObject
@@ -25,6 +29,10 @@ internal val DOLPHIN_PACKAGE_CANDIDATES = listOf(
     "org.dolphinemu.dolphinemu.beta",
     "org.dolphinemu.dolphinemu.debug"
 )
+
+internal const val DOLPHIN_SET_HOST_OVERRIDE_ACTION_SUFFIX = ".action.SET_RETROACHIEVEMENTS_HOST_OVERRIDE"
+internal const val DOLPHIN_CLEAR_HOST_OVERRIDE_ACTION_SUFFIX = ".action.CLEAR_RETROACHIEVEMENTS_HOST_OVERRIDE"
+internal const val DOLPHIN_HOST_OVERRIDE_EXTRA = "host"
 private const val DOLPHIN_CFG_RELATIVE_PATH = "Config/RetroAchievements.ini"
 
 private val DOLPHIN_SOURCE_CANDIDATES by lazy {
@@ -130,6 +138,55 @@ internal fun isDolphinInstalled(context: Context): Boolean =
         runCatching { context.packageManager.getPackageInfo(packageName, 0) }.isSuccess
     } || DOLPHIN_SOURCE_CANDIDATES.any { File(it).exists() }
 
+internal fun supportsDolphinBroadcastOverride(context: Context): Boolean {
+    val packageName = resolveInstalledPackage(context, DOLPHIN_PACKAGE_CANDIDATES) ?: return false
+    return resolvesDolphinBroadcast(context, packageName, "$packageName$DOLPHIN_SET_HOST_OVERRIDE_ACTION_SUFFIX")
+        && resolvesDolphinBroadcast(context, packageName, "$packageName$DOLPHIN_CLEAR_HOST_OVERRIDE_ACTION_SUFFIX")
+}
+
+private fun broadcastDolphinHostOverride(context: Context): DolphinPatchResult? {
+    val packageName = resolveInstalledPackage(context, DOLPHIN_PACKAGE_CANDIDATES) ?: return null
+    if (!supportsDolphinBroadcastOverride(context)) {
+        return null
+    }
+
+    context.sendBroadcast(
+        Intent("$packageName$DOLPHIN_SET_HOST_OVERRIDE_ACTION_SUFFIX")
+            .setPackage(packageName)
+            .putExtra(DOLPHIN_HOST_OVERRIDE_EXTRA, proxyBase(proxyPort(context)))
+    )
+    return DolphinPatchResult(
+        success = true,
+        message = context.getString(R.string.dolphin_patch_success)
+    )
+}
+
+private fun clearDolphinHostOverride(context: Context): DolphinPatchResult? {
+    val packageName = resolveInstalledPackage(context, DOLPHIN_PACKAGE_CANDIDATES) ?: return null
+    if (!supportsDolphinBroadcastOverride(context)) {
+        return null
+    }
+
+    context.sendBroadcast(
+        Intent("$packageName$DOLPHIN_CLEAR_HOST_OVERRIDE_ACTION_SUFFIX")
+            .setPackage(packageName)
+    )
+    return DolphinPatchResult(
+        success = true,
+        message = context.getString(R.string.dolphin_revert_success)
+    )
+}
+
+private fun resolvesDolphinBroadcast(context: Context, packageName: String, action: String): Boolean {
+    val intent = Intent(action).setPackage(packageName)
+    return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        context.packageManager.queryBroadcastReceivers(intent, PackageManager.ResolveInfoFlags.of(0)).isNotEmpty()
+    } else {
+        @Suppress("DEPRECATION")
+        context.packageManager.queryBroadcastReceivers(intent, 0).isNotEmpty()
+    }
+}
+
 fun patchDolphinCfg(
     context: Context,
     treeUri: Uri?,
@@ -138,6 +195,11 @@ fun patchDolphinCfg(
     if (!isDolphinInstalled(context)) {
         Log.i(TAG, "patch: Dolphin not installed")
         return DolphinPatchResult(success = true, message = "Dolphin not installed.", skippedNotInstalled = true)
+    }
+
+    broadcastDolphinHostOverride(context)?.let {
+        Log.i(TAG, "patch: applied via broadcast override")
+        return it
     }
 
     Log.i(TAG, "patch: starting treeUri=$treeUri proxy=${proxyValue(context)}")
@@ -186,6 +248,11 @@ fun revertDolphinCfg(context: Context, treeUri: Uri?, restoreHardcore: Boolean =
     if (!isDolphinInstalled(context)) {
         Log.i(TAG, "revert: Dolphin not installed")
         return DolphinPatchResult(success = true, message = "Dolphin not installed.", skippedNotInstalled = true)
+    }
+
+    clearDolphinHostOverride(context)?.let {
+        Log.i(TAG, "revert: cleared via broadcast override")
+        return it
     }
 
     Log.i(TAG, "revert: starting treeUri=$treeUri restoreHardcore=$restoreHardcore")
@@ -704,6 +771,11 @@ internal fun isDolphinPatchedContent(content: String, proxyAddress: String): Boo
     extractDolphinAchievementValue(content, "HostUrl") == proxyAddress
 
 fun checkIsDolphinPatched(context: Context, treeUri: Uri?): Boolean {
+    if (supportsDolphinBroadcastOverride(context)) {
+        return context.getSharedPreferences(PrefsConstants.PREFS_NAME, Context.MODE_PRIVATE)
+            .getBoolean(PrefsConstants.KEY_DOLPHIN_PATCHED_THIS_RUN, false)
+    }
+
     val proxyAddress = proxyValue(context)
     Log.d(TAG, "checkIsDolphinPatched: treeUri=$treeUri proxy=$proxyAddress")
 
