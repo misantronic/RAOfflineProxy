@@ -109,3 +109,28 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+
+.VPHero .actions .VPButton[href="/installation"]::before,
+.VPHero .actions .VPButton[href="/installation.html"]::before,
+.VPHero .actions .VPButton[href="/linux-support/installation"]::before,
+.VPHero .actions .VPButton[href="/linux-support/installation.html"]::before {
+  content: '';
+  display: inline-block;
+  width: 20px;
+  height: 20px;
+  margin-right: 8px;
+  vertical-align: -4px;
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-position: center;
+}
+
+.VPHero .actions .VPButton[href="/installation"]::before,
+.VPHero .actions .VPButton[href="/installation.html"]::before {
+  background-image: url('/android.png');
+}
+
+.VPHero .actions .VPButton[href="/linux-support/installation"]::before,
+.VPHero .actions .VPButton[href="/linux-support/installation.html"]::before {
+  background-image: url('/linux.png');
+}

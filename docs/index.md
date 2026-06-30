@@ -13,11 +13,11 @@ hero:
       text: Get Started
       link: /introduction
     - theme: alt
-      text: Installation & Setup
+      text: Android Setup
       link: /installation
     - theme: alt
-      text: View on GitHub
-      link: https://github.com/misantronic/RAOfflineProxy
+      text: Linux Setup
+      link: /linux-support/installation
 
 features:
   - icon: ⚙️
@@ -54,11 +54,7 @@ features:
         </div>
         <div class="supported-platforms__item">
           <img class="supported-platforms__logo--rounded" src="/armsx2.webp" alt="ARMSX2 logo">
-          <span>ARMSX2</span>
-        </div>
-        <div class="supported-platforms__item">
-          <img class="supported-platforms__logo--rounded" src="/armsx2.webp" alt="ARMSX2 Refresh logo">
-          <span>ARMSX2 Refresh</span>
+          <span>ARMSX2 / Refresh</span>
         </div>
       </div>
     </div>
