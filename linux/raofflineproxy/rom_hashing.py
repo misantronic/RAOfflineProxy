@@ -47,13 +47,20 @@ def _candidate_library_paths() -> list[str | None]:
     if override:
         paths.append(override)
 
-    paths.append(ctypes.util.find_library("raproxy_rchash"))
-
-    # Bundled next to this module (how the distro packages ship it).
+    # Bundled relative to this module. Distro bundles nest the package under
+    # <base>/app/raofflineproxy/ with the native lib at <base>/lib/, so search
+    # alongside the module and up at the bundle's lib/ directory.
     here = Path(__file__).resolve().parent
-    for name in names:
-        paths.append(str(here / name))
-        paths.append(str(here / "lib" / name))
+    module_dirs = (here, here / "lib", here.parent / "lib", here.parent.parent / "lib")
+    for directory in module_dirs:
+        for name in names:
+            paths.append(str(directory / name))
+
+    # Bare sonames let the dynamic linker resolve via LD_LIBRARY_PATH, which the
+    # device launchers point at the bundle's lib/ regardless of install path.
+    paths.extend(names)
+
+    paths.append(ctypes.util.find_library("raproxy_rchash"))
 
     # Standard + device install locations (mirrors load paths used for libchdr).
     bases = (

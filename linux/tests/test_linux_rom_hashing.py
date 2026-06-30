@@ -135,5 +135,23 @@ class SupportedExtensionsTests(unittest.TestCase):
             self.assertIn(ext, extensions)
 
 
+class LibraryDiscoveryTests(unittest.TestCase):
+    """Distro bundles nest the package at <base>/app/raofflineproxy/ with the
+    native lib at <base>/lib/, and the device launchers add that lib dir to
+    LD_LIBRARY_PATH. Discovery must not depend on a single hardcoded install
+    path (regression: Onion PS1 hashing failed when installed off the canonical
+    /mnt/SDCARD/App/RAOfflineProxy path)."""
+
+    def test_searches_bundle_lib_two_levels_up(self) -> None:
+        here = Path(rom_hashing.__file__).resolve().parent
+        bundle_lib = str(here.parent.parent / "lib" / "libraproxy_rchash.so")
+        self.assertIn(bundle_lib, rom_hashing._candidate_library_paths())
+
+    def test_includes_bare_sonames_for_ld_library_path(self) -> None:
+        candidates = rom_hashing._candidate_library_paths()
+        self.assertIn("libraproxy_rchash.so", candidates)
+        self.assertIn("libraproxy_rchash.dylib", candidates)
+
+
 if __name__ == "__main__":
     unittest.main()
