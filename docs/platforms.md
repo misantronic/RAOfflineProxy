@@ -11,7 +11,6 @@ This page tracks which emulators and Linux handheld platforms `RAOfflineProxy` c
 - ARMSX2 Refresh (requires [Refresh V15 (2.3.4)](https://github.com/ARMSX2/ARMSX2/releases/tag/2.3.4) or newer.)
 - Flycast (planned, [pending release](https://github.com/flyinghead/flycast/pull/2371))
 - MelonDualDS (planned, pending release)
-- MelonDS ([planned](https://github.com/misantronic/RAOfflineProxy/issues/1), [PR created](https://github.com/rafaelvcaetano/melonDS-android/pull/1633))
 
 ## [Linux](/linux-support/)
 
