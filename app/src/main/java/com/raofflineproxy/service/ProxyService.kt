@@ -58,6 +58,7 @@ private const val TAG = "ProxyService"
 private const val CHANNEL_ID = "proxy_service"
 private const val NOTIFICATION_ID = 1
 private const val REFRESH_INTERVAL_MS = 60L * 60 * 1000 // 1 hour
+private const val OFFLINE_REPROBE_INTERVAL_MS = 60_000L // self-heal cadence while offline
 private const val CACHE_TTL_MS = 60L * 24 * 60 * 60 * 1000 // 60 days
 private const val OFFLINE_PING_IDLE_TIMEOUT_MS = 150_000L
 private const val ONLINE_REFRESH_IDLE_DELAY_MS = 5L * 60 * 1000
@@ -73,6 +74,7 @@ class ProxyService : Service() {
     private var hasInternet = false
     private var networkCallbackRegistered = false
     private var refreshJob: Job? = null
+    private var reachabilityWatchdogJob: Job? = null
     private var flushJob: Job? = null
     private var pendingObserverJob: Job? = null
     private var offlineIdleTimeoutJob: Job? = null
@@ -160,6 +162,10 @@ class ProxyService : Service() {
             refreshJob = serviceScope.launch { periodicRefreshLoop() }
         }
 
+        if (reachabilityWatchdogJob?.isActive != true) {
+            reachabilityWatchdogJob = serviceScope.launch { reachabilityWatchdogLoop() }
+        }
+
         if (pendingObserverJob?.isActive != true) {
             pendingObserverJob = serviceScope.launch {
                 db.pendingAwardDao().observeByStatus().collect { awards ->
@@ -222,6 +228,14 @@ class ProxyService : Service() {
             }
             db.cacheDao().evictOlderThan(System.currentTimeMillis() - CACHE_TTL_MS)
             Log.i(TAG, "Periodic refresh complete")
+        }
+    }
+
+    private suspend fun reachabilityWatchdogLoop() {
+        while (true) {
+            delay(OFFLINE_REPROBE_INTERVAL_MS.milliseconds)
+            if (isServerReachable()) continue
+            refreshReachability(forceProbe = true)
         }
     }
 
