@@ -10,7 +10,7 @@ The core Linux flow already supports:
 
 - forwarding RetroAchievements traffic while online
 - serving cached game data while offline
-- queueing softcore achievements while offline
+- queueing casual achievements while offline
 - flushing queued achievements after reconnect
 - caching games from normal RetroArch launches
 - manual ROM adding for supported systems
@@ -35,7 +35,7 @@ The background service:
 - intercepts RetroAchievements API requests on the configured local port
 - caches successful `/dorequest.php` responses except live upstream `startsession`
 - serves cached responses while offline where possible
-- queues softcore award requests while offline or when upstream is unreachable
+- queues casual award requests while offline or when upstream is unreachable
 - flushes queued awards when connectivity returns
 
 Authentication is token-first:
@@ -211,7 +211,7 @@ The menu includes a `Cached games` flow with:
 - `Clear cache`
 - `Back`
 
-`Add ROM` identifies the ROM, stores the game lookup response, fetches patch metadata, fetches softcore unlock state, and builds a local synthetic session response for offline startup.
+`Add ROM` identifies the ROM, stores the game lookup response, fetches patch metadata, fetches casual unlock state, and builds a local synthetic session response for offline startup.
 
 Selecting a cached game opens a per-game action menu with:
 

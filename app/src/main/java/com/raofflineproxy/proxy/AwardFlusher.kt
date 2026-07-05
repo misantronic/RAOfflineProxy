@@ -379,11 +379,11 @@ class AwardFlusher(
             val awardGameId = pendingAwardGameTargets.awardGameIds[award.id]
 
             if (award.achievementId == WARNING_ACHIEVEMENT_ID) {
-                Log.i(TAG, "Skipping softcore warning award ${award.id}")
+                Log.i(TAG, "Skipping casual warning award ${award.id}")
                 db.pendingAwardDao().update(
                     award.copy(
                         status = PENDING_AWARD_STATUS_FLUSHED,
-                        lastError = "Softcore warning achievement is local-only and is not flushed"
+                        lastError = "Casual warning achievement is local-only and is not flushed"
                     )
                 )
                 flushed++

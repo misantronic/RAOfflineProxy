@@ -1,6 +1,6 @@
 # Pending Awards
 
-When you earn a softcore achievement while offline, `RAOfflineProxy`:
+When you earn a casual achievement while offline, `RAOfflineProxy`:
 
 1. Stores it in the local queue
 2. Returns success so the unlock registers immediately in RetroArch

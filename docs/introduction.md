@@ -28,7 +28,7 @@ RAOfflineProxy (local proxy)
 | ----------------------------------------------------- | ------------------------------------------------------------------------------ |
 | **Online: normal request** (game data, unlocks, etc.) | Forwards to RA, saves the response locally                                     |
 | **Offline: saved data available**                     | Serves the saved response as if you were online                                |
-| **Offline: achievement earned (softcore)**            | Queues the award locally, tells the emulator it succeeded                      |
+| **Offline: achievement earned (casual)**              | Queues the award locally, tells the emulator it succeeded                      |
 | **Back online**                                       | Automatically sends all queued awards to RA                                    |
 | **Start proxy**                                       | Updates the supported emulator config automatically so it uses the local proxy |
 | **Stop proxy**                                        | Reverts the config change so the emulator connects normally again              |

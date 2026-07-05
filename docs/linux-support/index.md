@@ -8,7 +8,7 @@ The Linux version is for handheld Linux devices where you want the same basic of
 
 - Start the proxy
 - Play a game online once so it is cached
-- Keep earning softcore achievements while offline
+- Keep earning casual achievements while offline
 - Let queued awards sync later when you reconnect
 
 Use the `KNULLI`, `Onion`, and `muOS` tabs throughout the Linux section to switch target-specific instructions.

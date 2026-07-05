@@ -3,7 +3,7 @@
   RAOfflineProxy
 </h1>
 
-RAOfflineProxy is a local proxy that lets you earn **softcore RetroAchievements** without an internet connection.
+RAOfflineProxy is a local proxy that lets you earn **casual RetroAchievements** without an internet connection.
 
 It currently supports **RetroArch and Dolphin on Android**, and **KNULLI** plus **Onion (alpha)** for Linux.
 
@@ -11,7 +11,7 @@ It currently supports **RetroArch and Dolphin on Android**, and **KNULLI** plus 
 
 RAOfflineProxy runs a tiny local proxy on your device. It sits between supported emulators and the RetroAchievements server, saving game and achievement data for offline use and queuing any achievements you unlock while offline. When you reconnect, queued awards are automatically sent to RetroAchievements.
 
-> **Hardcore mode is not supported.** The app only works with softcore achievements.
+> **Hardcore mode is not supported.** The app only works with casual achievements.
 
 ## Supported Platforms
 

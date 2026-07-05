@@ -37,10 +37,10 @@ RetroArch's in-game achievement counter may show one more than expected — for 
 
 ---
 
-This is caused by a softcore-mode warning that RetroAchievements includes for unrecognised emulators. The warning counts toward RetroArch's total but does not affect the count shown inside the RAOfflineProxy app. A popup will still appear in-game to let you know softcore mode is active.
+This is caused by a casual-mode warning that RetroAchievements includes for unrecognised emulators. The warning counts toward RetroArch's total but does not affect the count shown inside the RAOfflineProxy app. A popup will still appear in-game to let you know casual mode is active.
 
 ## Playtime
 
 While you play offline, playtime cannot be tracked.
 
-Achievements, unlock state, and queued softcore awards still work through the proxy, but RetroAchievements does not receive live session updates during offline play. That means any playtime normally recorded by RA will not be updated until you are back online, and offline playtime itself is not recovered later.
+Achievements, unlock state, and queued casual awards still work through the proxy, but RetroAchievements does not receive live session updates during offline play. That means any playtime normally recorded by RA will not be updated until you are back online, and offline playtime itself is not recovered later.

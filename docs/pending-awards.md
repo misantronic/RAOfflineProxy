@@ -2,7 +2,7 @@
 
 ## Overview
 
-When you earn a softcore achievement while offline, RAOfflineProxy intercepts the award request from the emulator and:
+When you earn a casual achievement while offline, RAOfflineProxy intercepts the award request from the emulator and:
 
 1. Stores it in a local queue
 2. Returns a success response to the emulator so the unlock registers in-game immediately

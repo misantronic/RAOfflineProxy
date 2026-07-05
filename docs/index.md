@@ -4,7 +4,7 @@ layout: home
 hero:
   name: RAOfflineProxy
   text: RetroAchievements - Offline
-  tagline: A local proxy that lets you earn softcore RetroAchievements without an internet connection.
+  tagline: A local proxy that lets you earn casual RetroAchievements without an internet connection.
   image:
     src: /logo.png
     alt: RAOfflineProxy

@@ -24,7 +24,7 @@ For each game, the proxy saves three types of data locally:
 | Data             | Contents                                                              |
 | ---------------- | --------------------------------------------------------------------- |
 | **Game data**    | Achievement list, game title, icon, descriptions, and point values    |
-| **Unlocks**      | Which achievements you have already unlocked (softcore only)          |
+| **Unlocks**      | Which achievements you have already unlocked (casual only)          |
 | **Session data** | Built from your cached unlocks - used to start a game session offline |
 
 ::: info Session data is built locally

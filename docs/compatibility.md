@@ -45,6 +45,6 @@ On Android, a native implementation would require separate emulator-specific bui
 
 The other complication is that RetroAchievements depends on live server communication for things like game data, unlock state, session handling, and award submission.
 
-RAOfflineProxy takes a different approach: it sits between the emulator and RetroAchievements, caches what is needed locally, and syncs queued softcore awards later when you are back online.
+RAOfflineProxy takes a different approach: it sits between the emulator and RetroAchievements, caches what is needed locally, and syncs queued casual awards later when you are back online.
 
 That means the extra app is a tradeoff. But it also makes this possible today across more devices, without requiring custom emulator builds or system-level changes.

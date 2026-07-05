@@ -558,7 +558,7 @@ class ProxyServer(
             val achievementId = extractParam("a", path, rawBody)?.toIntOrNull() ?: 0
             if (achievementId > 0) {
                 if (achievementId == WARNING_ACHIEVEMENT_ID) {
-                    Log.i(TAG, "Skipping softcore warning award: achievementId=$achievementId")
+                    Log.i(TAG, "Skipping casual warning award: achievementId=$achievementId")
                     return@withLock QueueAwardResult.Queued
                 }
 

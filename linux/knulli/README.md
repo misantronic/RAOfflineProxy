@@ -9,7 +9,7 @@ The alpha KNULLI flow is now working end to end in testing for the proxy path:
 - Start patches the required RetroArch and Batocera settings
 - RetroAchievements requests are intercepted locally
 - offline game launches still reach the proxy
-- offline softcore achievements can be queued
+- offline casual achievements can be queued
 - queued achievements can be flushed on reconnect
 
 This is still considered alpha and may need additional hardening across devices and KNULLI versions.
@@ -50,7 +50,7 @@ Manual ROM adding and online game launch caching are intended to produce the sam
 
 - `gameid:<hash>` game lookup entries
 - `patch:<gameId>:<user>` achievement metadata
-- `unlocks:<gameId>:<user>:0` softcore unlock state
+- `unlocks:<gameId>:<user>:0` casual unlock state
 - `startsession:<gameId>:<user>:0` synthetic offline session data built from cached unlocks
 
 Live upstream `startsession` responses are not cached. They are a special case so offline launches use the local synthetic response instead.
