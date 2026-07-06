@@ -559,7 +559,7 @@ class MenuLayoutTests(unittest.TestCase):
                 return_value=True,
             ),
             patch.object(menu_sdl, "autostart_supported", return_value=False),
-            patch.object(menu_sdl, "autostart_enabled", return_value=False),
+            patch.object(menu_sdl, "is_autostart_enabled", return_value=False),
             patch.object(
                 menu_sdl,
                 "update_status",
@@ -606,7 +606,7 @@ class MenuLayoutTests(unittest.TestCase):
                 return_value=True,
             ),
             patch.object(menu_sdl, "autostart_supported", return_value=False),
-            patch.object(menu_sdl, "autostart_enabled", return_value=False),
+            patch.object(menu_sdl, "is_autostart_enabled", return_value=False),
             patch.object(
                 menu_sdl,
                 "update_status",

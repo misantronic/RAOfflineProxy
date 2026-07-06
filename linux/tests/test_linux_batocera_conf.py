@@ -59,6 +59,53 @@ class LinuxBatoceraConfTests(unittest.TestCase):
             'global.retroarch.cheevos_custom_host="127.0.0.1:8080"', result
         )
 
+    def test_revert_strips_custom_host_when_previous_clobbered_with_proxy(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            original_knulli = config.DEFAULT_KNULLI_CONF
+            try:
+                knulli_conf = Path(temp_dir) / "knulli.conf"
+                knulli_conf.write_text(
+                    "global.retroachievements=1\n"
+                    'global.retroarch.cheevos_custom_host="127.0.0.1:8080"\n',
+                    encoding="utf-8",
+                )
+                config.DEFAULT_KNULLI_CONF = knulli_conf
+
+                # A re-patch captured the proxy host itself as the "previous" value.
+                clobbered_previous = {
+                    batocera_conf.CHEEVOS_CUSTOM_HOST_KEY: '"127.0.0.1:8080"'
+                }
+
+                batocera_conf.revert_batocera_conf({}, clobbered_previous)
+
+                self.assertNotIn(
+                    "cheevos_custom_host",
+                    knulli_conf.read_text(encoding="utf-8"),
+                )
+            finally:
+                config.DEFAULT_KNULLI_CONF = original_knulli
+
+    def test_store_batocera_previous_preserves_original_on_repatch(self) -> None:
+        patch_state: dict = {}
+
+        first = {
+            "already_patched": False,
+            "path": "/userdata/system/knulli.conf",
+            "previous": {batocera_conf.CHEEVOS_CUSTOM_HOST_KEY: None},
+        }
+        batocera_conf.store_batocera_previous(patch_state, first)
+
+        repatch = {
+            "already_patched": True,
+            "path": "/userdata/system/knulli.conf",
+            "previous": {batocera_conf.CHEEVOS_CUSTOM_HOST_KEY: '"127.0.0.1:8080"'},
+        }
+        batocera_conf.store_batocera_previous(patch_state, repatch)
+
+        self.assertIsNone(
+            patch_state["batocera_previous"][batocera_conf.CHEEVOS_CUSTOM_HOST_KEY]
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

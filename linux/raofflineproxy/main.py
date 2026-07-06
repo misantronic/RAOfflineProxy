@@ -14,12 +14,18 @@ from .config import (
     proxy_value,
 )
 from .platform import (
-    autostart_enabled,
     disable_autostart,
     enable_autostart,
+    ensure_boot_hook,
+    is_autostart_enabled,
+    remove_boot_hook,
     resolve_rom_root,
 )
-from .batocera_conf import patch_batocera_conf, revert_batocera_conf
+from .batocera_conf import (
+    patch_batocera_conf,
+    revert_batocera_conf,
+    store_batocera_previous,
+)
 from .retroarch_cfg import (
     enforce_patched_cfg,
     patch_retroarch_cfg,
@@ -74,22 +80,43 @@ def remove_stale_hook() -> None:
         STALE_HOOK_PATH.unlink()
 
 
-def safe_stop_proxy(config_data: dict, cfg_path: str | None) -> list[str]:
+def _apply_proxy(config_data: dict, cfg_path: str) -> list[str]:
+    output: list[str] = []
+
+    remove_stale_hook()
+    result = patch_retroarch_cfg(cfg_path, config_data)
+    enforce_patched_cfg(cfg_path, config_data)
+    batocera = patch_batocera_conf(config_data)
+    patch_state = load_patch_state() or {}
+    store_batocera_previous(patch_state, batocera)
+    save_patch_state(patch_state)
+    service = start_service_process(config_data)
+
+    if result["already_patched"]:
+        output.append("retroarch.cfg already patched")
+    elif result["changed"]:
+        output.append("Patched retroarch.cfg")
+    else:
+        output.append("retroarch.cfg already patched")
+
+    if batocera.get("exists"):
+        output.append(f"Patched batocera.conf at {batocera['path']}")
+
+    if service["already_running"]:
+        output.append(f"Service already running (pid {service['pid']})")
+    else:
+        output.append(f"Service started (pid {service['pid']})")
+
+    return output
+
+
+def _revert_proxy_config(config_data: dict, cfg_path: str | None) -> list[str]:
     output: list[str] = []
 
     remove_stale_hook()
     patch_state = load_patch_state() or {}
     revert_cfg_path = patch_state.get("cfg_path") or cfg_path
-    service = stop_service_process()
-    previous_batocera = patch_state.get("batocera_previous", {})
-    batocera = revert_batocera_conf(config_data, previous_batocera)
-
-    if service.get("already_stopped"):
-        output.append("Service already stopped")
-    elif service.get("forced"):
-        output.append(f"Service stopped forcefully (pid {service['pid']})")
-    else:
-        output.append(f"Service stopped (pid {service['pid']})")
+    batocera = revert_batocera_conf(config_data, patch_state.get("batocera_previous", {}))
 
     if batocera.get("exists"):
         output.append(f"Reverted batocera.conf at {batocera['path']}")
@@ -113,6 +140,19 @@ def safe_stop_proxy(config_data: dict, cfg_path: str | None) -> list[str]:
     return output
 
 
+def safe_stop_proxy(config_data: dict, cfg_path: str | None) -> list[str]:
+    service = stop_service_process()
+
+    if service.get("already_stopped"):
+        service_line = "Service already stopped"
+    elif service.get("forced"):
+        service_line = f"Service stopped forcefully (pid {service['pid']})"
+    else:
+        service_line = f"Service stopped (pid {service['pid']})"
+
+    return [service_line, *_revert_proxy_config(config_data, cfg_path)]
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="RAOfflineProxy Linux client")
     parser.add_argument(
@@ -120,6 +160,9 @@ def main() -> None:
         choices=[
             "start-proxy",
             "stop-proxy",
+            "boot-reconcile",
+            "ensure-boot-hook",
+            "remove-boot-hook",
             "enable-autostart",
             "disable-autostart",
             "autostart-status",
@@ -249,27 +292,27 @@ def main() -> None:
             return
 
         if args.command == "start-proxy":
-            remove_stale_hook()
-            result = patch_retroarch_cfg(cfg_path, config_data)
-            enforce_patched_cfg(cfg_path, config_data)
-            batocera = patch_batocera_conf(config_data)
-            patch_state = load_patch_state() or {}
-            patch_state["batocera_previous"] = batocera.get("previous", {})
-            patch_state["batocera_conf_path"] = batocera.get("path")
-            save_patch_state(patch_state)
-            service = start_service_process(config_data)
-            if result["already_patched"]:
-                print("retroarch.cfg already patched")
-            elif result["changed"]:
-                print("Patched retroarch.cfg")
+            for line in _apply_proxy(config_data, cfg_path):
+                print(line)
+            return
+
+        if args.command == "boot-reconcile":
+            if is_autostart_enabled(config_data):
+                for line in _apply_proxy(config_data, cfg_path):
+                    print(line)
             else:
-                print("retroarch.cfg already patched")
-            if batocera.get("exists"):
-                print(f"Patched batocera.conf at {batocera['path']}")
-            if service["already_running"]:
-                print(f"Service already running (pid {service['pid']})")
-            else:
-                print(f"Service started (pid {service['pid']})")
+                for line in _revert_proxy_config(config_data, args.retroarch_cfg or cfg_path):
+                    print(line)
+            return
+
+        if args.command == "ensure-boot-hook":
+            ensure_boot_hook(config_data)
+            print("Boot hook installed")
+            return
+
+        if args.command == "remove-boot-hook":
+            remove_boot_hook(config_data)
+            print("Boot hook removed")
             return
 
         if args.command == "stop-proxy":
@@ -288,7 +331,7 @@ def main() -> None:
             return
 
         if args.command == "autostart-status":
-            print("enabled" if autostart_enabled(config_data) else "disabled")
+            print("enabled" if is_autostart_enabled(config_data) else "disabled")
             return
 
         if args.command == "cached-games":
@@ -385,7 +428,7 @@ def main() -> None:
                             "pending_awards_count": len(list_pending_awards(storage)),
                             "service_running": bool(service.get("running")),
                             "service_pid": service.get("pid"),
-                            "autostart_enabled": autostart_enabled(config_data),
+                            "autostart_enabled": is_autostart_enabled(config_data),
                             "is_online": bool(load_online_state()),
                         },
                         separators=(",", ":"),

@@ -44,6 +44,10 @@ if [ "$#" -eq 0 ]; then
     set -- menu-sdl
 fi
 
+if [ "$1" = "menu-sdl" ]; then
+    /usr/bin/python -m raofflineproxy.main ensure-boot-hook >/dev/null 2>&1 || true
+fi
+
 case "$1" in
     menu-sdl)
         exec /usr/bin/python -m raofflineproxy.main "$@" >>"$PYTHON_STDOUT_FILE" 2>>"$PYTHON_STDERR_FILE"

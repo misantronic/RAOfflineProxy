@@ -11,4 +11,4 @@ fi
 
 PYTHON_BIN="$RESOLVED_PYTHON_BIN"
 
-run_backend "$PYTHON_BIN" start-proxy >/dev/null 2>&1 || true
+run_backend "$PYTHON_BIN" boot-reconcile >/dev/null 2>&1 || true

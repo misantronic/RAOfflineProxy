@@ -42,6 +42,8 @@ rm -f "${UPDATE_STATUS_FILE}"
 chmod +x "${BIN_DIR}/raofflineproxy"
 chmod +x "${BIN_DIR}/raofflineproxy-uninstall"
 
+"${BIN_DIR}/raofflineproxy" ensure-boot-hook >/dev/null 2>&1 || true
+
 if [ "${WAS_RUNNING}" -eq 1 ]; then
   if "${BIN_DIR}/raofflineproxy" start-proxy >/dev/null 2>&1; then
     RESTARTED=1

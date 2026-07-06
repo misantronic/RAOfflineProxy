@@ -2,12 +2,18 @@ import stat
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from linux.raofflineproxy import platform
 
 
 class LinuxAutostartTests(unittest.TestCase):
-    def test_enable_autostart_writes_wrapped_block(self) -> None:
+    def setUp(self) -> None:
+        patcher = patch.object(platform, "save_config", lambda *_a, **_k: None)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def test_enable_autostart_writes_boot_reconcile_block(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             startup_script = Path(temp_dir) / "custom.sh"
             config_data = {"startup_script": str(startup_script)}
@@ -17,9 +23,12 @@ class LinuxAutostartTests(unittest.TestCase):
             content = startup_script.read_text(encoding="utf-8")
             self.assertIn(platform.AUTOSTART_SENTINEL_START, content)
             self.assertIn("raofflineproxy/bin/raofflineproxy", content)
-            self.assertTrue(platform.autostart_enabled(config_data))
+            self.assertIn("boot-reconcile", content)
+            self.assertNotIn("start-proxy", content)
+            self.assertTrue(config_data[platform.AUTOSTART_CONFIG_KEY])
+            self.assertTrue(platform.is_autostart_enabled(config_data))
 
-    def test_enable_autostart_replaces_existing_block(self) -> None:
+    def test_ensure_boot_hook_replaces_existing_block(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             startup_script = Path(temp_dir) / "custom.sh"
             config_data = {"startup_script": str(startup_script)}
@@ -30,14 +39,14 @@ class LinuxAutostartTests(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            platform.enable_autostart(config_data)
+            platform.ensure_boot_hook(config_data)
 
             content = startup_script.read_text(encoding="utf-8")
             self.assertEqual(content.count(platform.AUTOSTART_SENTINEL_START), 1)
             self.assertIn("line1", content)
             self.assertIn("line2", content)
 
-    def test_disable_autostart_removes_block(self) -> None:
+    def test_disable_autostart_keeps_hook_clears_key(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             startup_script = Path(temp_dir) / "custom.sh"
             config_data = {"startup_script": str(startup_script)}
@@ -45,11 +54,61 @@ class LinuxAutostartTests(unittest.TestCase):
 
             platform.disable_autostart(config_data)
 
-            self.assertFalse(platform.autostart_enabled(config_data))
+            self.assertFalse(config_data[platform.AUTOSTART_CONFIG_KEY])
+            self.assertFalse(platform.is_autostart_enabled(config_data))
+            self.assertIn(
+                platform.AUTOSTART_SENTINEL_START,
+                startup_script.read_text(encoding="utf-8"),
+            )
+
+    def test_remove_boot_hook_strips_block(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            startup_script = Path(temp_dir) / "custom.sh"
+            config_data = {"startup_script": str(startup_script)}
+            platform.ensure_boot_hook(config_data)
+
+            platform.remove_boot_hook(config_data)
+
             self.assertNotIn(
                 platform.AUTOSTART_SENTINEL_START,
                 startup_script.read_text(encoding="utf-8"),
             )
+
+    def test_ensure_boot_hook_seeds_key_from_legacy_sentinel(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            startup_script = Path(temp_dir) / "custom.sh"
+            startup_script.write_text(
+                f"{platform.AUTOSTART_SENTINEL_START}\nold\n{platform.AUTOSTART_SENTINEL_END}\n",
+                encoding="utf-8",
+            )
+            config_data = {"startup_script": str(startup_script)}
+
+            platform.ensure_boot_hook(config_data)
+
+            self.assertTrue(config_data[platform.AUTOSTART_CONFIG_KEY])
+
+    def test_ensure_boot_hook_seeds_key_false_on_fresh_install(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            startup_script = Path(temp_dir) / "custom.sh"
+            config_data = {"startup_script": str(startup_script)}
+
+            platform.ensure_boot_hook(config_data)
+
+            self.assertFalse(config_data[platform.AUTOSTART_CONFIG_KEY])
+
+    def test_is_autostart_enabled_key_wins_over_legacy(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            startup_script = Path(temp_dir) / "custom.sh"
+            startup_script.write_text(
+                f"{platform.AUTOSTART_SENTINEL_START}\nold\n{platform.AUTOSTART_SENTINEL_END}\n",
+                encoding="utf-8",
+            )
+            config_data = {
+                "startup_script": str(startup_script),
+                platform.AUTOSTART_CONFIG_KEY: False,
+            }
+
+            self.assertFalse(platform.is_autostart_enabled(config_data))
 
     def test_autostart_command_uses_onion_headless_launcher(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -66,7 +125,7 @@ class LinuxAutostartTests(unittest.TestCase):
             finally:
                 platform.DEFAULT_ONION_STARTUP_SCRIPT = original_onion_startup
 
-    def test_onion_enable_autostart_writes_plain_startup_script(self) -> None:
+    def test_onion_ensure_boot_hook_writes_startup_script(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             startup_script = Path(temp_dir) / "raofflineproxy.sh"
             config_data = {"startup_script": str(startup_script)}
@@ -79,11 +138,11 @@ class LinuxAutostartTests(unittest.TestCase):
                 content = startup_script.read_text(encoding="utf-8")
                 self.assertIn("APP_DIR=/mnt/SDCARD/App/RAOfflineProxy", content)
                 self.assertIn('sh "$APP_DIR/autostart-launch.sh"', content)
-                self.assertTrue(platform.autostart_enabled(config_data))
+                self.assertTrue(platform.is_autostart_enabled(config_data))
             finally:
                 platform.DEFAULT_ONION_STARTUP_SCRIPT = original_onion_startup
 
-    def test_onion_disable_autostart_removes_startup_script(self) -> None:
+    def test_onion_disable_autostart_keeps_startup_script(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             startup_script = Path(temp_dir) / "raofflineproxy.sh"
             config_data = {"startup_script": str(startup_script)}
@@ -94,8 +153,8 @@ class LinuxAutostartTests(unittest.TestCase):
                 platform.enable_autostart(config_data)
                 platform.disable_autostart(config_data)
 
-                self.assertFalse(startup_script.exists())
-                self.assertFalse(platform.autostart_enabled(config_data))
+                self.assertTrue(startup_script.exists())
+                self.assertFalse(platform.is_autostart_enabled(config_data))
             finally:
                 platform.DEFAULT_ONION_STARTUP_SCRIPT = original_onion_startup
 
@@ -114,7 +173,7 @@ class LinuxAutostartTests(unittest.TestCase):
             finally:
                 platform.DEFAULT_MUOS_STARTUP_SCRIPT = original_muos_startup
 
-    def test_muos_enable_autostart_writes_plain_init_script(self) -> None:
+    def test_muos_ensure_boot_hook_writes_init_script(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             startup_script = Path(temp_dir) / "raofflineproxy.sh"
             user_init_config = Path(temp_dir) / "user_init"
@@ -130,9 +189,9 @@ class LinuxAutostartTests(unittest.TestCase):
 
                 content = startup_script.read_text(encoding="utf-8")
                 self.assertIn('"/run/muos/storage/application/RAOfflineProxy/launch.sh"', content)
-                self.assertIn('start-proxy >/dev/null 2>&1 || true', content)
+                self.assertIn('boot-reconcile >/dev/null 2>&1 || true', content)
                 self.assertEqual(user_init_config.read_text(encoding="utf-8").strip(), "1")
-                self.assertTrue(platform.autostart_enabled(config_data))
+                self.assertTrue(platform.is_autostart_enabled(config_data))
                 self.assertTrue(
                     startup_script.stat().st_mode & stat.S_IXUSR,
                     "init script must be user-executable",
@@ -141,7 +200,7 @@ class LinuxAutostartTests(unittest.TestCase):
                 platform.DEFAULT_MUOS_STARTUP_SCRIPT = original_muos_startup
                 platform.MUOS_USER_INIT_CONFIG = original_user_init_config
 
-    def test_muos_disable_autostart_removes_init_script(self) -> None:
+    def test_muos_disable_autostart_keeps_init_script_and_flag(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             startup_script = Path(temp_dir) / "raofflineproxy.sh"
             user_init_config = Path(temp_dir) / "user_init"
@@ -156,8 +215,9 @@ class LinuxAutostartTests(unittest.TestCase):
                 platform.enable_autostart(config_data)
                 platform.disable_autostart(config_data)
 
-                self.assertFalse(startup_script.exists())
-                self.assertFalse(platform.autostart_enabled(config_data))
+                self.assertTrue(startup_script.exists())
+                self.assertEqual(user_init_config.read_text(encoding="utf-8").strip(), "1")
+                self.assertFalse(platform.is_autostart_enabled(config_data))
             finally:
                 platform.DEFAULT_MUOS_STARTUP_SCRIPT = original_muos_startup
                 platform.MUOS_USER_INIT_CONFIG = original_user_init_config

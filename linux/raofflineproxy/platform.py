@@ -5,6 +5,7 @@ from .config import (
     DEFAULT_ONION_STARTUP_SCRIPT,
     MUOS_USER_INIT_CONFIG,
     detect_retroarch_cfg,
+    save_config,
 )
 
 DEFAULT_KNULLI_ROMS_ROOT = Path("/userdata/roms")
@@ -18,6 +19,7 @@ ROM_DIRECTORY_KEYS = [
 ]
 AUTOSTART_SENTINEL_START = "# RAOfflineProxy autostart start"
 AUTOSTART_SENTINEL_END = "# RAOfflineProxy autostart end"
+AUTOSTART_CONFIG_KEY = "autostart_enabled"
 
 
 def resolve_retroarch_cfg(config_data: dict) -> str:
@@ -65,7 +67,17 @@ def autostart_supported(config_data: dict) -> bool:
     return resolve_startup_script_path(config_data) is not None
 
 
+def is_autostart_enabled(config_data: dict) -> bool:
+    if AUTOSTART_CONFIG_KEY in config_data:
+        return bool(config_data[AUTOSTART_CONFIG_KEY])
+    return _legacy_autostart_present(config_data)
+
+
 def autostart_enabled(config_data: dict) -> bool:
+    return is_autostart_enabled(config_data)
+
+
+def _legacy_autostart_present(config_data: dict) -> bool:
     startup_script = resolve_startup_script_path(config_data)
     if startup_script is None or not startup_script.exists():
         return False
@@ -87,18 +99,36 @@ def autostart_enabled(config_data: dict) -> bool:
 
 
 def enable_autostart(config_data: dict) -> None:
+    if not autostart_supported(config_data):
+        raise ValueError("Autostart is not supported on this platform")
+
+    ensure_boot_hook(config_data)
+    config_data[AUTOSTART_CONFIG_KEY] = True
+    save_config(config_data)
+
+
+def disable_autostart(config_data: dict) -> None:
+    config_data[AUTOSTART_CONFIG_KEY] = False
+    save_config(config_data)
+
+
+def ensure_boot_hook(config_data: dict) -> None:
     startup_script = resolve_startup_script_path(config_data)
     if startup_script is None:
         raise ValueError("Autostart is not supported on this platform")
 
+    if AUTOSTART_CONFIG_KEY not in config_data:
+        config_data[AUTOSTART_CONFIG_KEY] = _legacy_autostart_present(config_data)
+        save_config(config_data)
+
     if startup_script == DEFAULT_ONION_STARTUP_SCRIPT:
         startup_script.parent.mkdir(parents=True, exist_ok=True)
-        startup_script.write_text(onion_autostart_script(), encoding="utf-8")
+        startup_script.write_text(onion_boot_hook_script(), encoding="utf-8")
         return
 
     if startup_script == DEFAULT_MUOS_STARTUP_SCRIPT:
         startup_script.parent.mkdir(parents=True, exist_ok=True)
-        startup_script.write_text(muos_autostart_script(config_data), encoding="utf-8")
+        startup_script.write_text(muos_boot_hook_script(config_data), encoding="utf-8")
         startup_script.chmod(0o755)
         _muos_enable_user_init()
         return
@@ -115,16 +145,12 @@ def enable_autostart(config_data: dict) -> None:
     startup_script.write_text(new_content, encoding="utf-8")
 
 
-def disable_autostart(config_data: dict) -> None:
+def remove_boot_hook(config_data: dict) -> None:
     startup_script = resolve_startup_script_path(config_data)
     if startup_script is None or not startup_script.exists():
         return
 
-    if startup_script == DEFAULT_ONION_STARTUP_SCRIPT:
-        startup_script.unlink()
-        return
-
-    if startup_script == DEFAULT_MUOS_STARTUP_SCRIPT:
+    if startup_script in (DEFAULT_ONION_STARTUP_SCRIPT, DEFAULT_MUOS_STARTUP_SCRIPT):
         startup_script.unlink()
         return
 
@@ -156,7 +182,7 @@ def autostart_block(config_data: dict) -> str:
         [
             AUTOSTART_SENTINEL_START,
             f'if [ -x "{startup_command[0]}" ]; then',
-            f"  {startup_command[0]} start-proxy >/dev/null 2>&1 || true",
+            f"  {startup_command[0]} boot-reconcile >/dev/null 2>&1 || true",
             "fi",
             AUTOSTART_SENTINEL_END,
         ]
@@ -196,7 +222,7 @@ def strip_autostart_block(content: str) -> str:
     return f"{content[:start]}{content[end:]}"
 
 
-def onion_autostart_script() -> str:
+def onion_boot_hook_script() -> str:
     return "\n".join(
         [
             "#!/bin/sh",
@@ -216,7 +242,7 @@ def _muos_enable_user_init() -> None:
         MUOS_USER_INIT_CONFIG.write_text("1\n", encoding="utf-8")
 
 
-def muos_autostart_script(config_data: dict) -> str:
+def muos_boot_hook_script(config_data: dict) -> str:
     launcher = autostart_command(config_data)[0]
     return "\n".join(
         [
@@ -224,7 +250,7 @@ def muos_autostart_script(config_data: dict) -> str:
             "set -eu",
             "",
             f'if [ -x "{launcher}" ]; then',
-            f'  exec "{launcher}" start-proxy >/dev/null 2>&1 || true',
+            f'  exec "{launcher}" boot-reconcile >/dev/null 2>&1 || true',
             "fi",
             "",
         ]

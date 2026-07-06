@@ -6,7 +6,13 @@ set -eu
 APP_DIR="/run/muos/storage/application/RAOfflineProxy"
 INIT_SCRIPT="/run/muos/storage/init/raofflineproxy.sh"
 
-# Remove autostart init script
+# Revert the retroarch.cfg patch and stop the service before removing anything,
+# so an uninstall while patched never strands RetroArch on the dead local port.
+if [ -x "$APP_DIR/launch.sh" ]; then
+    "$APP_DIR/launch.sh" stop-proxy >/dev/null 2>&1 || true
+fi
+
+# Remove autostart init script (boot hook)
 rm -f "$INIT_SCRIPT"
 
 # Remove icon from all theme dirs

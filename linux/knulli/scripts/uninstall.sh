@@ -17,7 +17,7 @@ mkdir -p "${BASE_DIR}"
 
 if [ -x "${BASE_DIR}/bin/raofflineproxy" ]; then
   "${BASE_DIR}/bin/raofflineproxy" stop-proxy || true
-  "${BASE_DIR}/bin/raofflineproxy" disable-autostart || true
+  "${BASE_DIR}/bin/raofflineproxy" remove-boot-hook || true
 fi
 
 if command -v pkill >/dev/null 2>&1; then

@@ -6,13 +6,17 @@ import traceback
 import time
 from pathlib import Path
 
-from .batocera_conf import patch_batocera_conf, revert_batocera_conf
+from .batocera_conf import (
+    patch_batocera_conf,
+    revert_batocera_conf,
+    store_batocera_previous,
+)
 from .config import APP_VERSION, CONFIG_DIR, load_config, save_config
 from .platform import (
-    autostart_enabled,
     autostart_supported,
     disable_autostart,
     enable_autostart,
+    is_autostart_enabled,
     resolve_retroarch_cfg,
     resolve_rom_root,
 )
@@ -218,8 +222,7 @@ def start_proxy_inline() -> None:
     enforce_patched_cfg(cfg_path, config_data)
     batocera = patch_batocera_conf(config_data)
     patch_state = load_patch_state() or {}
-    patch_state["batocera_previous"] = batocera.get("previous", {})
-    patch_state["batocera_conf_path"] = batocera.get("path")
+    store_batocera_previous(patch_state, batocera)
     save_patch_state(patch_state)
     start_service_process(config_data)
 
@@ -1713,7 +1716,7 @@ class MenuSdlSession:
         self.main_logged_in = self.is_logged_in(self.config_data)
         self.main_autostart_supported = autostart_supported(self.config_data)
         self.main_autostart_enabled = (
-            self.main_autostart_supported and autostart_enabled(self.config_data)
+            self.main_autostart_supported and is_autostart_enabled(self.config_data)
         )
         if force:
             try:
@@ -1924,7 +1927,7 @@ class MenuSdlSession:
 
     def toggle_autostart(self, config_data: dict) -> None:
         try:
-            if autostart_enabled(config_data):
+            if is_autostart_enabled(config_data):
                 disable_autostart(config_data)
                 self.message = ("Autostart disabled", time.monotonic() + 1.2)
             else:

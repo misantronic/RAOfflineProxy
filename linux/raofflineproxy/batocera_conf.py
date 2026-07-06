@@ -39,12 +39,28 @@ def patch_batocera_conf(config_data: dict) -> dict:
     if transformed != original:
         target.write_text(transformed, encoding="utf-8")
 
+    already_patched = transformed == original and previous[
+        CHEEVOS_CUSTOM_HOST_KEY
+    ] == f'"{proxy_value(config_data)}"'
+
     return {
         "exists": True,
         "changed": transformed != original,
+        "already_patched": already_patched,
         "path": str(target),
         "previous": previous,
     }
+
+
+def store_batocera_previous(patch_state: dict, batocera: dict) -> None:
+    """Record the pre-patch conf values without poisoning them on re-patch.
+
+    Re-running the patch while the conf is already patched would otherwise
+    capture the proxy's own values as "previous"; keep the first-captured set.
+    """
+    if not (batocera.get("already_patched") and "batocera_previous" in patch_state):
+        patch_state["batocera_previous"] = batocera.get("previous", {})
+    patch_state["batocera_conf_path"] = batocera.get("path")
 
 
 def revert_batocera_conf(config_data: dict, previous: dict | None = None) -> dict:
@@ -57,7 +73,9 @@ def revert_batocera_conf(config_data: dict, previous: dict | None = None) -> dic
         return {"exists": False, "changed": False, "path": str(target)}
 
     current = target.read_text(encoding="utf-8", errors="replace")
-    transformed = build_reverted_batocera_conf(current, previous or {})
+    transformed = build_reverted_batocera_conf(
+        current, _sanitize_previous(config_data, previous or {})
+    )
     if transformed != current:
         target.write_text(transformed, encoding="utf-8")
 
@@ -94,6 +112,20 @@ def build_patched_batocera_conf(content: str, config_data: dict) -> str:
         updated, CHEEVOS_CUSTOM_HOST_KEY, f'"{proxy_value(config_data)}"'
     )
     return _upsert_value(updated, CHEEVOS_HARDCORE_KEY, '"false"')
+
+
+def _sanitize_previous(config_data: dict, previous: dict) -> dict:
+    """Drop a captured custom-host value that is actually the proxy address.
+
+    Re-patching an already-patched conf (e.g. autostart re-running on every boot)
+    records the proxy host itself as the "previous" value. Restoring that would
+    re-point RetroArch at the dead local proxy, so treat it as unset instead.
+    """
+    proxy_quoted = f'"{proxy_value(config_data)}"'
+    sanitized = dict(previous)
+    if sanitized.get(CHEEVOS_CUSTOM_HOST_KEY) == proxy_quoted:
+        sanitized[CHEEVOS_CUSTOM_HOST_KEY] = None
+    return sanitized
 
 
 def build_reverted_batocera_conf(content: str, previous: dict) -> str:

@@ -42,6 +42,7 @@ PYTHON_BIN="$RESOLVED_PYTHON_BIN"
 run_backend_raw "$PYTHON_BIN" probe-online >/dev/null 2>&1 &
 
 install_onion_checkoff_script >/dev/null 2>&1 || true
+run_backend "$PYTHON_BIN" ensure-boot-hook >/dev/null 2>&1 || true
 
 DPAD_SELECTION=0
 MENU_ITEM_COUNT=4
