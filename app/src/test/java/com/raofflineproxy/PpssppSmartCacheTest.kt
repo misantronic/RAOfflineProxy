@@ -25,7 +25,7 @@ class PpssppSmartCacheTest {
         assertEquals("God of War.iso", candidates[0].title)
         assertEquals(0, candidates[0].priority)
         assertEquals("content://com.android.externalstorage.documents/tree/3432-3530%3ARoms%2Fpsp/document/3432-3530%3ARoms%2Fpsp%2Fcvn-gtj.iso", candidates[1].path)
-        assertEquals("3432-3530:Roms/psp/cvn-gtj.iso", candidates[1].title)
+        assertEquals("cvn-gtj.iso", candidates[1].title)
         assertEquals(1, candidates[1].priority)
     }
 

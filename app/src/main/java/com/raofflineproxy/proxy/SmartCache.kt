@@ -567,12 +567,16 @@ internal suspend fun runSmartCache(
         )
     }
 
+    discoveredCandidates.values.forEach { candidate ->
+        Log.i(TAG, "${candidate.emulator} candidate discovered title=${candidate.title} path=${candidate.path} source=${candidate.sourceLabel}")
+    }
+
     val candidates = discoveredCandidates.values.toList()
         .filterNot { candidate ->
             val normalizedPath = candidate.path.normalizeCachedRomPath()
             val alreadyCached = normalizedPath in cachedRomPaths
             if (alreadyCached) {
-                Log.d(TAG, "Prefiltering candidate path=${candidate.path} because source path is already cached")
+                Log.i(TAG, "${candidate.emulator} candidate dropped title=${candidate.title} reason=already-cached-path path=${candidate.path}")
             }
             alreadyCached
         }
@@ -608,22 +612,17 @@ internal suspend fun runSmartCache(
 
     val candidateCap = minOf(remainingSlots, MAX_SMART_CACHE_FILES)
     val resolvedCandidates = selectSmartCacheCandidates(preflight.resolved, candidateCap)
-    resolvedCandidates.filter { it.candidate.emulator == SmartCacheEmulator.Dolphin }.forEach { resolvedCandidate ->
+    val droppedByCap = preflight.resolved.filterNot { it in resolvedCandidates }
+    resolvedCandidates.forEach { resolvedCandidate ->
         Log.i(
             TAG,
-            "Dolphin candidate selected title=${resolvedCandidate.candidate.title} path=${resolvedCandidate.candidate.path} lastModifiedAt=${resolvedCandidate.candidate.lastModifiedAt} lastModifiedText=${resolvedCandidate.candidate.lastModifiedAt?.let(::formatSmartCacheTimestamp)}"
+            "${resolvedCandidate.candidate.emulator} candidate selected title=${resolvedCandidate.candidate.title} path=${resolvedCandidate.candidate.path} lastModifiedAt=${resolvedCandidate.candidate.lastModifiedAt} lastModifiedText=${resolvedCandidate.candidate.lastModifiedAt?.let(::formatSmartCacheTimestamp)}"
         )
     }
-    resolvedCandidates.filter { it.candidate.emulator == SmartCacheEmulator.RetroArch }.forEach { resolvedCandidate ->
+    droppedByCap.forEach { resolvedCandidate ->
         Log.i(
             TAG,
-            "RetroArch candidate selected title=${resolvedCandidate.candidate.title} path=${resolvedCandidate.candidate.path} lastModifiedAt=${resolvedCandidate.candidate.lastModifiedAt} lastModifiedText=${resolvedCandidate.candidate.lastModifiedAt?.let(::formatSmartCacheTimestamp)}"
-        )
-    }
-    resolvedCandidates.filter { it.candidate.emulator == SmartCacheEmulator.Ppsspp }.forEach { resolvedCandidate ->
-        Log.i(
-            TAG,
-            "PPSSPP candidate selected title=${resolvedCandidate.candidate.title} path=${resolvedCandidate.candidate.path} lastModifiedAt=${resolvedCandidate.candidate.lastModifiedAt}"
+            "${resolvedCandidate.candidate.emulator} candidate dropped title=${resolvedCandidate.candidate.title} reason=candidate-cap path=${resolvedCandidate.candidate.path}"
         )
     }
     Log.i(
@@ -791,7 +790,7 @@ private fun sanitizeDolphinRomLocator(locator: String): String? {
 }
 
 private fun deriveSmartCacheTitle(path: String): String? =
-    decodePathSegment(path.substringAfterLast('/')).takeIf { it.isNotBlank() }
+    decodePathSegment(path).substringAfterLast('/').takeIf { it.isNotBlank() }
 
 private fun decodePathSegment(segment: String): String =
     runCatching { URLDecoder.decode(segment, StandardCharsets.UTF_8.name()) }
@@ -1056,9 +1055,7 @@ private fun resolveSmartCacheCandidates(
         val directDocument = resolveDocumentByStoredUri(context, candidate.path)
         if (directDocument != null) {
             resolved += ResolvedSmartCacheCandidate(candidate = candidate, documentFile = directDocument)
-            if (candidate.emulator == SmartCacheEmulator.Dolphin) {
-                Log.i(TAG, "Dolphin candidate resolved title=${candidate.title} via=storedUri path=${candidate.path}")
-            }
+            Log.i(TAG, "${candidate.emulator} candidate resolved title=${candidate.title} via=storedUri path=${candidate.path}")
             return@forEach
         }
 
@@ -1066,16 +1063,12 @@ private fun resolveSmartCacheCandidates(
         val directFile = File(absolutePath)
         if (directFile.isFile && directFile.canRead()) {
             resolved += ResolvedSmartCacheCandidate(candidate = candidate, directFile = directFile)
-            if (candidate.emulator == SmartCacheEmulator.Dolphin) {
-                Log.i(TAG, "Dolphin candidate resolved title=${candidate.title} via=directFile path=${candidate.path} absolutePath=$absolutePath")
-            }
+            Log.i(TAG, "${candidate.emulator} candidate resolved title=${candidate.title} via=directFile path=${candidate.path} absolutePath=$absolutePath")
             return@forEach
         }
 
         if (hasAllFilesAccess) {
-            if (candidate.emulator == SmartCacheEmulator.Dolphin) {
-                Log.i(TAG, "Dolphin candidate unreadable title=${candidate.title} via=allFiles path=${candidate.path} absolutePath=$absolutePath")
-            }
+            Log.i(TAG, "${candidate.emulator} candidate unreadable title=${candidate.title} via=allFiles path=${candidate.path} absolutePath=$absolutePath")
             unreadableCount++
             return@forEach
         }
@@ -1085,17 +1078,13 @@ private fun resolveSmartCacheCandidates(
         }
         if (document != null) {
             resolved += ResolvedSmartCacheCandidate(candidate = candidate, documentFile = document)
-            if (candidate.emulator == SmartCacheEmulator.Dolphin) {
-                Log.i(TAG, "Dolphin candidate resolved title=${candidate.title} via=romSaf path=${candidate.path} absolutePath=$absolutePath")
-            }
+            Log.i(TAG, "${candidate.emulator} candidate resolved title=${candidate.title} via=romSaf path=${candidate.path} absolutePath=$absolutePath")
         } else {
             val unresolvedPath = absolutePath.takeIf { it.startsWith("/storage/", ignoreCase = true) }
             if (unresolvedPath != null && grantedRomRoots.none { grantedRoot -> grantedRoot.coversPath(unresolvedPath) }) {
                 uncoveredUnreadablePaths += unresolvedPath
             }
-            if (candidate.emulator == SmartCacheEmulator.Dolphin) {
-                Log.i(TAG, "Dolphin candidate unresolved title=${candidate.title} path=${candidate.path} absolutePath=$absolutePath")
-            }
+            Log.i(TAG, "${candidate.emulator} candidate unresolved title=${candidate.title} path=${candidate.path} absolutePath=$absolutePath")
             unreadableCount++
         }
     }
@@ -1288,36 +1277,20 @@ private suspend fun executeResolvedSmartCacheCandidates(
 
         val candidateHashes = hashResolvedCandidate(context, resolvedCandidate)
         if (candidateHashes.isEmpty()) {
-            if (candidate.emulator == SmartCacheEmulator.Dolphin) {
-                Log.i(
-                    TAG,
-                    "Dolphin candidate skipped title=${candidate.title} reason=hash-null path=${candidate.path} lastModifiedAt=${candidate.lastModifiedAt} lastModifiedText=${candidate.lastModifiedAt?.let(::formatSmartCacheTimestamp)}"
-                )
-            } else {
-                Log.i(
-                    TAG,
-                    "RetroArch candidate skipped title=${candidate.title} reason=hash-null path=${candidate.path} lastModifiedAt=${candidate.lastModifiedAt} lastModifiedText=${candidate.lastModifiedAt?.let(::formatSmartCacheTimestamp)}"
-                )
-            }
-            Log.d(TAG, "Skipping candidate path=${candidate.path} because hashing returned null")
+            Log.i(
+                TAG,
+                "${candidate.emulator} candidate dropped title=${candidate.title} reason=hash-null path=${candidate.path} lastModifiedAt=${candidate.lastModifiedAt} lastModifiedText=${candidate.lastModifiedAt?.let(::formatSmartCacheTimestamp)}"
+            )
             skipped++
             continue
         }
 
         val resolved = resolveGameId(context, candidateHashes, credentials, userAgent, db)
         if (resolved == null) {
-            if (candidate.emulator == SmartCacheEmulator.Dolphin) {
-                Log.i(
-                    TAG,
-                    "Dolphin candidate skipped title=${candidate.title} reason=no-gameid path=${candidate.path} hashes=$candidateHashes lastModifiedAt=${candidate.lastModifiedAt} lastModifiedText=${candidate.lastModifiedAt?.let(::formatSmartCacheTimestamp)}"
-                )
-            } else {
-                Log.i(
-                    TAG,
-                    "RetroArch candidate skipped title=${candidate.title} reason=no-gameid path=${candidate.path} hashes=$candidateHashes lastModifiedAt=${candidate.lastModifiedAt} lastModifiedText=${candidate.lastModifiedAt?.let(::formatSmartCacheTimestamp)}"
-                )
-            }
-            Log.d(TAG, "Skipping candidate path=${candidate.path} because gameid lookup returned null")
+            Log.i(
+                TAG,
+                "${candidate.emulator} candidate dropped title=${candidate.title} reason=no-gameid path=${candidate.path} hashes=$candidateHashes lastModifiedAt=${candidate.lastModifiedAt} lastModifiedText=${candidate.lastModifiedAt?.let(::formatSmartCacheTimestamp)}"
+            )
             skipped++
             continue
         }
@@ -1325,18 +1298,10 @@ private suspend fun executeResolvedSmartCacheCandidates(
 
         val gameIdString = gameId.toString()
         if (gameIdString in cachedGameIds) {
-            if (candidate.emulator == SmartCacheEmulator.Dolphin) {
-                Log.i(
-                    TAG,
-                    "Dolphin candidate skipped title=${candidate.title} reason=already-cached path=${candidate.path} gameId=$gameId lastModifiedAt=${candidate.lastModifiedAt} lastModifiedText=${candidate.lastModifiedAt?.let(::formatSmartCacheTimestamp)}"
-                )
-            } else {
-                Log.i(
-                    TAG,
-                    "RetroArch candidate skipped title=${candidate.title} reason=already-cached path=${candidate.path} gameId=$gameId lastModifiedAt=${candidate.lastModifiedAt} lastModifiedText=${candidate.lastModifiedAt?.let(::formatSmartCacheTimestamp)}"
-                )
-            }
-            Log.d(TAG, "Skipping candidate path=${candidate.path} because gameId=$gameId became cached during smart cache")
+            Log.i(
+                TAG,
+                "${candidate.emulator} candidate dropped title=${candidate.title} reason=already-cached path=${candidate.path} gameId=$gameId lastModifiedAt=${candidate.lastModifiedAt} lastModifiedText=${candidate.lastModifiedAt?.let(::formatSmartCacheTimestamp)}"
+            )
             skipped++
             continue
         }
@@ -1350,17 +1315,10 @@ private suspend fun executeResolvedSmartCacheCandidates(
             romHash = hash,
             sourceRomPath = candidate.path,
         )
-        if (candidate.emulator == SmartCacheEmulator.Dolphin) {
-            Log.i(
-                TAG,
-                "Dolphin candidate cached title=${candidate.title} path=${candidate.path} gameId=$gameId hash=$hash lastModifiedAt=${candidate.lastModifiedAt} lastModifiedText=${candidate.lastModifiedAt?.let(::formatSmartCacheTimestamp)}"
-            )
-        } else {
-            Log.i(
-                TAG,
-                "RetroArch candidate cached title=${candidate.title} path=${candidate.path} gameId=$gameId hash=$hash lastModifiedAt=${candidate.lastModifiedAt} lastModifiedText=${candidate.lastModifiedAt?.let(::formatSmartCacheTimestamp)}"
-            )
-        }
+        Log.i(
+            TAG,
+            "${candidate.emulator} candidate cached title=${candidate.title} path=${candidate.path} gameId=$gameId hash=$hash lastModifiedAt=${candidate.lastModifiedAt} lastModifiedText=${candidate.lastModifiedAt?.let(::formatSmartCacheTimestamp)}"
+        )
         cachedGameIds.add(gameIdString)
         matched++
     }
@@ -1452,14 +1410,13 @@ private fun String.toAbsoluteStoragePath(): String? {
         return null
     }
 
-    val encodedPath = uri.path
-        ?.substringAfter("/tree/", missingDelimiterValue = "")
-        ?.takeIf { it.isNotBlank() }
+    // A tree+document URI (.../tree/<treeDocId>/document/<docId>) encodes the
+    // real file under <docId>, not <treeDocId>; DocumentsContract.getDocumentId
+    // extracts that correctly. Fall back to the tree doc id for bare tree URIs.
+    val documentId = runCatching { DocumentsContract.getDocumentId(uri) }.getOrNull()
+        ?: runCatching { DocumentsContract.getTreeDocumentId(uri) }.getOrNull()
         ?: return null
-    val decodedPath = Uri.decode(encodedPath)
-        .substringBefore('?')
-        .trim('/')
-    return documentIdToAbsoluteStoragePath(decodedPath)
+    return documentIdToAbsoluteStoragePath(documentId)
 }
 
 private fun documentIdToAbsoluteStoragePath(documentId: String): String {
