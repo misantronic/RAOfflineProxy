@@ -11,7 +11,7 @@ The Linux version is for handheld Linux devices where you want the same basic of
 - Keep earning casual achievements while offline
 - Let queued awards sync later when you reconnect
 
-Use the `KNULLI`, `Onion`, `muOS`, `ROCKNIX`, `spruce`, and `Allium` tabs throughout the Linux section to switch target-specific instructions.
+Use the `KNULLI`, `Onion`, `muOS`, `ROCKNIX`, `spruce`, `Allium`, and `dArkOS` tabs throughout the Linux section to switch target-specific instructions.
 
 ## Supported Targets
 
@@ -21,6 +21,7 @@ Use the `KNULLI`, `Onion`, `muOS`, `ROCKNIX`, `spruce`, and `Allium` tabs throug
 - ROCKNIX
 - spruce (experimental)
 - Allium (experimental)
+- dArkOS (community-contributed, unverified by the developer)
 
 ## Specifics
 
@@ -62,10 +63,20 @@ Allium support is experimental. It is currently compatible with [Allium v1.0.1](
 
 Allium is a Miyoo-only launcher, so this target covers exactly the devices Allium itself runs on: the Miyoo Mini, Mini Plus and Mini Flip.
 
+== dArkOS
+
+Community-contributed target for [dArkOS](https://github.com/christianhaitian/dArkOS) ("Debian based ArkOS"). Not yet verified against real hardware by the developer — please report issues.
+
+Current rough edges:
+
+- dArkOS is systemd-native (no `custom.sh`-style startup hook), so autostart installs a systemd unit instead — this step needs root and is skipped with an on-screen hint if the installer runs unprivileged
+- `pygame` comes from `apt` rather than a bundled runtime; the installer installs it automatically when run as root, otherwise install it manually if the menu fails to launch
+- No known equivalent of `batocera.conf`/`knulli.conf`, so only the RetroArch-side patch applies
+
 :::
 
 ## Important Notes
 
 - Linux support is currently in alpha and should still be treated as a prerelease feature.
 - Linux install, startup, and UI behavior can vary a lot by firmware and frontend.
-- Always check the correct tab for your device instead of assuming KNULLI, Onion, muOS, ROCKNIX, and spruce behave the same way.
+- Always check the correct tab for your device instead of assuming KNULLI, Onion, muOS, ROCKNIX, spruce, Allium, and dArkOS behave the same way.

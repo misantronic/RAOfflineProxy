@@ -27,6 +27,7 @@ PLATFORM_SPRUCE = "spruce"
 PLATFORM_MUOS = "muos"
 PLATFORM_ROCKNIX = "rocknix"
 PLATFORM_ALLIUM = "allium"
+PLATFORM_DARKOS = "darkos"
 KNULLI_UPDATE_INSTALLER_PATH = CONFIG_DIR / "update-installer.sh"
 ONION_UPDATE_ARCHIVE_PATH = CONFIG_DIR / "update-onion.zip"
 MUOS_UPDATE_ARCHIVE_PATH = CONFIG_DIR / "update-muos.muxapp"
@@ -260,6 +261,9 @@ def find_platform_asset_url(platform: str, assets: list[dict]) -> str | None:
                 continue
         elif platform == PLATFORM_ALLIUM:
             if "allium" not in lower_name or not lower_name.endswith(".zip"):
+                continue
+        elif platform == PLATFORM_DARKOS:
+            if "darkos" not in lower_name or not lower_name.endswith(".sh"):
                 continue
         else:
             continue
@@ -658,6 +662,7 @@ def validate_platform(platform: str) -> str:
         PLATFORM_MUOS,
         PLATFORM_ROCKNIX,
         PLATFORM_ALLIUM,
+        PLATFORM_DARKOS,
     }:
         raise ValueError(f"Unsupported update platform: {platform}")
     return lowered
