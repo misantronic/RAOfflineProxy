@@ -71,6 +71,38 @@ class LinuxConfigPathTests(unittest.TestCase):
             else:
                 os.environ["XDG_CONFIG_HOME"] = original_xdg
 
+    def test_resolve_config_dir_uses_darkos_home(self) -> None:
+        original_override = os.environ.get("RAOFFLINEPROXY_CONFIG_DIR")
+        original_xdg = os.environ.get("XDG_CONFIG_HOME")
+        original_onion = config.DEFAULT_ONION_APP_DIR
+        original_muos = config.DEFAULT_MUOS_APPLICATION_DIR
+        original_darkos = config.DEFAULT_DARKOS_HOME
+        try:
+            with tempfile.TemporaryDirectory() as temp_dir:
+                os.environ.pop("RAOFFLINEPROXY_CONFIG_DIR", None)
+                os.environ.pop("XDG_CONFIG_HOME", None)
+                config.DEFAULT_ONION_APP_DIR = Path(temp_dir) / "missing-onion"
+                config.DEFAULT_MUOS_APPLICATION_DIR = Path(temp_dir) / "missing-muos"
+                config.DEFAULT_DARKOS_HOME = Path(temp_dir) / "ark"
+                config.DEFAULT_DARKOS_HOME.mkdir(parents=True)
+
+                self.assertEqual(
+                    config.resolve_config_dir(),
+                    config.DEFAULT_DARKOS_HOME / ".config" / "raofflineproxy",
+                )
+        finally:
+            config.DEFAULT_ONION_APP_DIR = original_onion
+            config.DEFAULT_MUOS_APPLICATION_DIR = original_muos
+            config.DEFAULT_DARKOS_HOME = original_darkos
+            if original_override is None:
+                os.environ.pop("RAOFFLINEPROXY_CONFIG_DIR", None)
+            else:
+                os.environ["RAOFFLINEPROXY_CONFIG_DIR"] = original_override
+            if original_xdg is None:
+                os.environ.pop("XDG_CONFIG_HOME", None)
+            else:
+                os.environ["XDG_CONFIG_HOME"] = original_xdg
+
     def test_detect_retroarch_cfg_prefers_muos_path(self) -> None:
         original_override = os.environ.get("RAOFFLINEPROXY_RETROARCH_CFG")
         original_muos = config.DEFAULT_MUOS_RETROARCH_CFG

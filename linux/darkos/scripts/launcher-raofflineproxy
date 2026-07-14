@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+BASE_DIR="/home/ark/raofflineproxy"
+PYTHONPATH_ENTRIES="${BASE_DIR}/app"
+
+export HOME="/home/ark"
+export XDG_CONFIG_HOME="/home/ark/.config"
+export PATH="/usr/local/bin:/usr/bin:/bin:/home/ark/raofflineproxy/bin:${PATH:-}"
+export LD_LIBRARY_PATH="${BASE_DIR}/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
+
+export PYTHONPATH="${PYTHONPATH_ENTRIES}${PYTHONPATH:+:${PYTHONPATH}}"
+
+exec /usr/bin/python3 -m raofflineproxy.main "$@"

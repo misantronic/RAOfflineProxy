@@ -32,6 +32,7 @@ from .config import (
     APP_VERSION,
     CONFIG_DIR,
     DEFAULT_ALLIUM_APP_DIR,
+    DEFAULT_DARKOS_HOME,
     DEFAULT_ONION_APP_DIR,
     load_config,
     running_on_allium,
@@ -788,7 +789,11 @@ class MenuSdlSession:
                 if self.main_autostart_enabled
                 else "Enable autostart"
             )
-        if (self.is_knulli_platform() and not service_mode) or running_on_muos() or running_on_rocknix():
+        if (
+            ((self.is_knulli_platform() or self.is_darkos_platform()) and not service_mode)
+            or running_on_muos()
+            or running_on_rocknix()
+        ):
             labels.append("Uninstall")
         labels.append("Support me")
         labels.append("Send Logs")
@@ -1382,6 +1387,9 @@ class MenuSdlSession:
     def is_knulli_platform(self) -> bool:
         return Path("/userdata/system").exists()
 
+    def is_darkos_platform(self) -> bool:
+        return DEFAULT_DARKOS_HOME.exists()
+
     def update_platform(self) -> str | None:
         """The release channel to check for updates, or None where there is none.
 
@@ -1399,6 +1407,8 @@ class MenuSdlSession:
             return "allium"
         if running_on_rocknix():
             return "rocknix"
+        if self.is_darkos_platform():
+            return "darkos"
         return "knulli"
 
     def calibration_complete(self) -> bool:
@@ -2871,6 +2881,8 @@ class MenuSdlSession:
     def uninstall(self) -> None:
         if running_on_muos():
             launcher = "/run/muos/storage/application/RAOfflineProxy/uninstall.sh"
+        elif self.is_darkos_platform():
+            launcher = "/home/ark/raofflineproxy/bin/raofflineproxy-uninstall"
         elif self.is_knulli_platform():
             launcher = "/userdata/system/raofflineproxy/bin/raofflineproxy-uninstall"
         elif running_on_rocknix():

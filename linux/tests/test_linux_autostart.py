@@ -7,6 +7,13 @@ from unittest.mock import patch
 from linux.raofflineproxy import platform
 
 
+def _stub_systemctl(*_args, **_kwargs):
+    class _Result:
+        returncode = 0
+
+    return _Result()
+
+
 class LinuxAutostartTests(unittest.TestCase):
     def setUp(self) -> None:
         patcher = patch.object(platform, "save_config", lambda *_a, **_k: None)
@@ -221,6 +228,103 @@ class LinuxAutostartTests(unittest.TestCase):
             finally:
                 platform.DEFAULT_MUOS_STARTUP_SCRIPT = original_muos_startup
                 platform.MUOS_USER_INIT_CONFIG = original_user_init_config
+
+    def test_autostart_command_uses_darkos_launcher(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            unit_path = Path(temp_dir) / "raofflineproxy-autostart.service"
+            config_data = {"startup_script": str(unit_path)}
+
+            original_unit = platform.DEFAULT_DARKOS_AUTOSTART_UNIT
+            try:
+                platform.DEFAULT_DARKOS_AUTOSTART_UNIT = unit_path
+                self.assertEqual(
+                    platform.autostart_command(config_data),
+                    ("/home/ark/raofflineproxy/bin/raofflineproxy",),
+                )
+            finally:
+                platform.DEFAULT_DARKOS_AUTOSTART_UNIT = original_unit
+
+    def test_darkos_ensure_boot_hook_writes_unit_file(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            unit_path = Path(temp_dir) / "raofflineproxy-autostart.service"
+            config_data = {"startup_script": str(unit_path)}
+
+            original_unit = platform.DEFAULT_DARKOS_AUTOSTART_UNIT
+            try:
+                platform.DEFAULT_DARKOS_AUTOSTART_UNIT = unit_path
+                with patch.object(platform.subprocess, "run", _stub_systemctl):
+                    platform.enable_autostart(config_data)
+
+                content = unit_path.read_text(encoding="utf-8")
+                self.assertIn("[Unit]", content)
+                self.assertIn(
+                    "ExecStart=/home/ark/raofflineproxy/bin/raofflineproxy boot-reconcile",
+                    content,
+                )
+                self.assertIn("WantedBy=multi-user.target", content)
+                self.assertTrue(platform.is_autostart_enabled(config_data))
+            finally:
+                platform.DEFAULT_DARKOS_AUTOSTART_UNIT = original_unit
+
+    def test_darkos_ensure_boot_hook_survives_missing_systemctl(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            unit_path = Path(temp_dir) / "raofflineproxy-autostart.service"
+            config_data = {"startup_script": str(unit_path)}
+
+            original_unit = platform.DEFAULT_DARKOS_AUTOSTART_UNIT
+            try:
+                platform.DEFAULT_DARKOS_AUTOSTART_UNIT = unit_path
+                platform.enable_autostart(config_data)
+
+                self.assertTrue(unit_path.exists())
+                self.assertTrue(platform.is_autostart_enabled(config_data))
+            finally:
+                platform.DEFAULT_DARKOS_AUTOSTART_UNIT = original_unit
+
+    def test_darkos_ensure_boot_hook_survives_permission_error(self) -> None:
+        unit_path = Path("/nonexistent-dir/raofflineproxy-autostart.service")
+        config_data = {"startup_script": str(unit_path)}
+
+        original_unit = platform.DEFAULT_DARKOS_AUTOSTART_UNIT
+        try:
+            platform.DEFAULT_DARKOS_AUTOSTART_UNIT = unit_path
+            platform.enable_autostart(config_data)
+
+            self.assertTrue(platform.is_autostart_enabled(config_data))
+        finally:
+            platform.DEFAULT_DARKOS_AUTOSTART_UNIT = original_unit
+
+    def test_darkos_disable_autostart_keeps_unit_file(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            unit_path = Path(temp_dir) / "raofflineproxy-autostart.service"
+            config_data = {"startup_script": str(unit_path)}
+
+            original_unit = platform.DEFAULT_DARKOS_AUTOSTART_UNIT
+            try:
+                platform.DEFAULT_DARKOS_AUTOSTART_UNIT = unit_path
+                platform.enable_autostart(config_data)
+                platform.disable_autostart(config_data)
+
+                self.assertTrue(unit_path.exists())
+                self.assertFalse(platform.is_autostart_enabled(config_data))
+            finally:
+                platform.DEFAULT_DARKOS_AUTOSTART_UNIT = original_unit
+
+    def test_darkos_remove_boot_hook_deletes_unit_file(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            unit_path = Path(temp_dir) / "raofflineproxy-autostart.service"
+            config_data = {"startup_script": str(unit_path)}
+
+            original_unit = platform.DEFAULT_DARKOS_AUTOSTART_UNIT
+            try:
+                platform.DEFAULT_DARKOS_AUTOSTART_UNIT = unit_path
+                platform.enable_autostart(config_data)
+
+                platform.remove_boot_hook(config_data)
+
+                self.assertFalse(unit_path.exists())
+            finally:
+                platform.DEFAULT_DARKOS_AUTOSTART_UNIT = original_unit
 
 
 if __name__ == "__main__":

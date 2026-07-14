@@ -57,6 +57,7 @@ DEFAULT_ROCKNIX_DOLPHIN_CONFIG_DIR = Path("/storage/.config/dolphin-emu")
 # the live values into this file instead. It is the only place those credentials exist.
 DEFAULT_ROCKNIX_APPEND_CFG = Path("/tmp/.retroarch.cfg")
 OS_RELEASE_PATH = Path("/etc/os-release")
+DEFAULT_DARKOS_HOME = Path("/home/ark")
 
 
 def running_on_rocknix() -> bool:
@@ -181,6 +182,9 @@ def resolve_config_dir() -> Path:
 
     if DEFAULT_MUOS_APPLICATION_DIR.exists():
         return DEFAULT_MUOS_APPLICATION_DIR / "data"
+
+    if DEFAULT_DARKOS_HOME.exists():
+        return DEFAULT_DARKOS_HOME / ".config" / "raofflineproxy"
 
     if Path("/userdata/system").exists():
         return Path("/userdata/system/.config/raofflineproxy")

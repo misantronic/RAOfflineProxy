@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+exec /home/ark/raofflineproxy-darkos-bundle/uninstall.sh
