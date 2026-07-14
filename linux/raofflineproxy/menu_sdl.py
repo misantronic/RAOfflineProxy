@@ -42,6 +42,14 @@ from .rom_browser import (
     remove_cached_game,
 )
 from .service import service_status, start_service_process, stop_service_process
+from .knulli_service import (
+    disable_service_autostart,
+    enable_service_autostart,
+    service_autostart_enabled,
+    service_mode_active,
+    start_service,
+    stop_service,
+)
 from .smart_cache import (
     SMART_CACHE_LIMIT,
     load_content_history_paths,
@@ -488,20 +496,22 @@ class MenuSdlSession:
             labels.append("Cancel")
             return labels
 
-        toggle = "Stop proxy" if running else "Start proxy"
-        labels = [toggle]
         self.refresh_main_menu_state()
+        service_mode = getattr(self, "main_service_mode", False)
+        labels = []
+        if not service_mode:
+            labels.append("Stop proxy" if running else "Start proxy")
         if self.main_logged_in:
             labels.append(f"Cached games ({len(self.cached_games)})")
         if self.pending_awards:
             labels.append(f"Pending awards ({len(self.pending_awards)})")
-        if self.main_autostart_supported:
+        if self.main_autostart_supported and not service_mode:
             labels.append(
                 "Disable autostart"
                 if self.main_autostart_enabled
                 else "Enable autostart"
             )
-        if self.is_knulli_platform() or running_on_muos():
+        if (self.is_knulli_platform() and not service_mode) or running_on_muos():
             labels.append("Uninstall")
         if os.environ.get("RAOFFLINEPROXY_DEBUG"):
             labels.append("Key Logger")
@@ -623,7 +633,10 @@ class MenuSdlSession:
         connectivity_status = (
             "ONLINE" if bool(getattr(self, "main_online", False)) else "OFFLINE"
         )
-        status = f"PROXY: {proxy_status} {connectivity_status}"
+        if getattr(self, "main_service_mode", False):
+            status = f"KNULLI SERVICE: {proxy_status} {connectivity_status}"
+        else:
+            status = f"PROXY: {proxy_status} {connectivity_status}"
         if not logged_in:
             status += ", LOGIN REQUIRED"
         return status
@@ -788,16 +801,15 @@ class MenuSdlSession:
 
         labels = self.current_labels()
         selected_label = labels[self.selected_index] if labels else ""
-        running = self.proxy_running()
-        if self.selected_index == 0:
-            if running:
+        if selected_label.startswith(("Start proxy", "Stop proxy")):
+            if self.proxy_running():
                 self.stop_proxy()
             else:
                 self.start_proxy()
             return
 
         config_data = getattr(self, "config_data", {})
-        if selected_label in {"Enable autostart", "Disable autostart"}:
+        if selected_label.startswith(("Enable autostart", "Disable autostart")):
             self.toggle_autostart(config_data)
             return
 
@@ -1714,10 +1726,16 @@ class MenuSdlSession:
         self.main_running = self.read_proxy_running()
         self.main_online = online_check(self.config_data)
         self.main_logged_in = self.is_logged_in(self.config_data)
-        self.main_autostart_supported = autostart_supported(self.config_data)
-        self.main_autostart_enabled = (
-            self.main_autostart_supported and is_autostart_enabled(self.config_data)
-        )
+        self.main_service_mode = service_mode_active()
+        if self.main_service_mode:
+            self.main_autostart_supported = True
+            self.main_autostart_enabled = service_autostart_enabled()
+        else:
+            self.main_autostart_supported = autostart_supported(self.config_data)
+            self.main_autostart_enabled = (
+                self.main_autostart_supported
+                and is_autostart_enabled(self.config_data)
+            )
         if force:
             try:
                 update = update_status(self.update_platform())
@@ -1909,7 +1927,10 @@ class MenuSdlSession:
 
     def start_proxy(self) -> None:
         try:
-            start_proxy_inline()
+            if service_mode_active():
+                start_service()
+            else:
+                start_proxy_inline()
             self.refresh_main_menu_state(force=True)
             self.maybe_offer_smart_cache()
             if self.view != "smart_cache_prompt":
@@ -1919,7 +1940,11 @@ class MenuSdlSession:
 
     def stop_proxy(self) -> None:
         try:
-            stop_proxy_inline()
+            if service_mode_active():
+                stop_service()
+                stop_service_process()
+            else:
+                stop_proxy_inline()
             self.refresh_main_menu_state(force=True)
             self.message = ("Proxy stopped", time.monotonic() + 1.2)
         except Exception as exc:
@@ -1927,7 +1952,14 @@ class MenuSdlSession:
 
     def toggle_autostart(self, config_data: dict) -> None:
         try:
-            if is_autostart_enabled(config_data):
+            if service_mode_active():
+                if service_autostart_enabled():
+                    disable_service_autostart()
+                    self.message = ("Autostart disabled", time.monotonic() + 1.2)
+                else:
+                    enable_service_autostart()
+                    self.message = ("Autostart enabled", time.monotonic() + 1.2)
+            elif is_autostart_enabled(config_data):
                 disable_autostart(config_data)
                 self.message = ("Autostart disabled", time.monotonic() + 1.2)
             else:

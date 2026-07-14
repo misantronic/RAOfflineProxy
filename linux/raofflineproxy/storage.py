@@ -5,7 +5,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from . import cache_keys
+from . import cache_keys, es_export
 from .config import DATABASE_FILE, ensure_config_dir
 
 try:
@@ -160,8 +160,13 @@ class Storage:
         now = cached_at or current_millis()
         if self._use_sqlite:
             self._upsert_cache_sqlite(cache_key, response_body, source_rom_path, now)
-            return
-        self._upsert_cache_json(cache_key, response_body, source_rom_path, now)
+        else:
+            self._upsert_cache_json(cache_key, response_body, source_rom_path, now)
+        self._after_cache_mutation(cache_key)
+
+    def _after_cache_mutation(self, *affected_keys: str | None) -> None:
+        if any(es_export.key_affects_cached_game_ids(key) for key in affected_keys):
+            es_export.export_cached_game_ids(self)
 
     def _upsert_cache_sqlite(
         self,
@@ -315,6 +320,7 @@ class Storage:
                     "DELETE FROM api_cache WHERE cacheKey LIKE ?", (f"{prefix}%",)
                 )
                 self._connection.commit()
+            self._after_cache_mutation(prefix)
             return
 
         with self._lock:
@@ -327,6 +333,7 @@ class Storage:
                     if not item["cacheKey"].startswith(prefix)
                 ]
                 self._write_json_state_unlocked()
+        self._after_cache_mutation(prefix)
 
     def rename_cache_key(self, old_key: str, new_key: str) -> None:
         if self._use_sqlite:
@@ -337,6 +344,7 @@ class Storage:
                     (new_key, old_key),
                 )
                 self._connection.commit()
+            self._after_cache_mutation(old_key, new_key)
             return
 
         with self._lock:
@@ -348,6 +356,7 @@ class Storage:
                         item["cacheKey"] = new_key
                         break
                 self._write_json_state_unlocked()
+        self._after_cache_mutation(old_key, new_key)
 
     def delete_cache(self, cache_key: str) -> None:
         if self._use_sqlite:
@@ -357,6 +366,7 @@ class Storage:
                     "DELETE FROM api_cache WHERE cacheKey = ?", (cache_key,)
                 )
                 self._connection.commit()
+            self._after_cache_mutation(cache_key)
             return
 
         with self._lock:
@@ -369,6 +379,7 @@ class Storage:
                     if item["cacheKey"] != cache_key
                 ]
                 self._write_json_state_unlocked()
+        self._after_cache_mutation(cache_key)
 
     def clear_cache(self) -> None:
         if self._use_sqlite:
@@ -385,6 +396,7 @@ class Storage:
                     """
                 )
                 self._connection.commit()
+            self._after_cache_mutation(None)
             return
 
         with self._lock:
@@ -405,6 +417,7 @@ class Storage:
                     )
                 ]
                 self._write_json_state_unlocked()
+        self._after_cache_mutation(None)
 
     def evict_cache_older_than(self, before: int) -> None:
         if self._use_sqlite:
@@ -420,6 +433,7 @@ class Storage:
                     (before, cache_keys.USER_AGENT),
                 )
                 self._connection.commit()
+            self._after_cache_mutation(None)
             return
 
         with self._lock:
@@ -434,6 +448,7 @@ class Storage:
                     or item["cacheKey"] == cache_keys.USER_AGENT
                 ]
                 self._write_json_state_unlocked()
+        self._after_cache_mutation(None)
 
     def get_pending_awards(self) -> list[dict]:
         if self._use_sqlite:
