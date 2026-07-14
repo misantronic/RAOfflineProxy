@@ -44,6 +44,12 @@ ROCKNIX also ships standalone PPSSPP with its own RetroAchievements support. Whe
 /storage/.config/ppsspp/PSP/SYSTEM/ppsspp.ini
 ```
 
+== dArkOS
+
+```text
+/home/ark/.config/retroarch/retroarch.cfg
+```
+
 :::
 
 ## What Gets Patched

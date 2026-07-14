@@ -19,6 +19,7 @@ DEFAULT_ROCKNIX_RETROARCH_CFG = Path("/storage/.config/retroarch/retroarch.cfg")
 DEFAULT_ROCKNIX_CONFIG_DIR = Path("/storage/.config/raofflineproxy")
 DEFAULT_ROCKNIX_PPSSPP_INI = Path("/storage/.config/ppsspp/PSP/SYSTEM/ppsspp.ini")
 OS_RELEASE_PATH = Path("/etc/os-release")
+DEFAULT_DARKOS_HOME = Path("/home/ark")
 
 
 def running_on_rocknix() -> bool:
@@ -47,6 +48,9 @@ def resolve_config_dir() -> Path:
 
     if DEFAULT_MUOS_APPLICATION_DIR.exists():
         return DEFAULT_MUOS_APPLICATION_DIR / "data"
+
+    if DEFAULT_DARKOS_HOME.exists():
+        return DEFAULT_DARKOS_HOME / ".config" / "raofflineproxy"
 
     if Path("/userdata/system").exists():
         return Path("/userdata/system/.config/raofflineproxy")

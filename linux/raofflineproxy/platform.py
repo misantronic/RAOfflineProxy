@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 
 from .config import (
+    DEFAULT_DARKOS_HOME,
     DEFAULT_MUOS_INIT_DIR,
     DEFAULT_ONION_STARTUP_SCRIPT,
     MUOS_USER_INIT_CONFIG,
@@ -15,12 +17,15 @@ DEFAULT_KNULLI_ROMS_ROOT = Path("/userdata/roms")
 DEFAULT_MUOS_ROMS_ROOT = Path("/mnt/mmc/ROMS")
 DEFAULT_ONION_ROMS_ROOT = Path("/mnt/SDCARD/Roms")
 DEFAULT_ROCKNIX_ROMS_ROOT = Path("/storage/roms")
+DEFAULT_DARKOS_ROMS_ROOT = Path("/roms")
 DEFAULT_KNULLI_STARTUP_SCRIPT = Path("/userdata/system/custom.sh")
 DEFAULT_MUOS_STARTUP_SCRIPT = DEFAULT_MUOS_INIT_DIR / "raofflineproxy.sh"
 DEFAULT_ROCKNIX_STARTUP_SCRIPT = Path("/storage/.config/autostart/raofflineproxy.sh")
 ROCKNIX_MODULES_DIR = Path("/storage/.config/modules")
 ROCKNIX_MODULES_LAUNCHER = ROCKNIX_MODULES_DIR / "RAOfflineProxy.sh"
 ROCKNIX_TOOL_SOURCE = Path("/storage/.local/share/raofflineproxy/RAOfflineProxy.sh")
+DEFAULT_DARKOS_AUTOSTART_UNIT = Path("/etc/systemd/system/raofflineproxy-autostart.service")
+DARKOS_SERVICE_NAME = "raofflineproxy-autostart.service"
 ROM_DIRECTORY_KEYS = [
     "content_directory",
 ]
@@ -59,6 +64,9 @@ def resolve_rom_root(config_data: dict) -> Path:
 
     if DEFAULT_ROCKNIX_ROMS_ROOT.exists() and DEFAULT_ROCKNIX_ROMS_ROOT.is_dir():
         return DEFAULT_ROCKNIX_ROMS_ROOT
+
+    if DEFAULT_DARKOS_ROMS_ROOT.exists() and DEFAULT_DARKOS_ROMS_ROOT.is_dir():
+        return DEFAULT_DARKOS_ROMS_ROOT
 
     return cfg_path.parent
 
@@ -153,6 +161,10 @@ def ensure_boot_hook(config_data: dict) -> None:
         startup_script.chmod(0o755)
         return
 
+    if startup_script == DEFAULT_DARKOS_AUTOSTART_UNIT:
+        _install_darkos_autostart_unit(config_data)
+        return
+
     startup_script.parent.mkdir(parents=True, exist_ok=True)
     existing = (
         startup_script.read_text(encoding="utf-8", errors="replace")
@@ -178,6 +190,10 @@ def remove_boot_hook(config_data: dict) -> None:
         startup_script.unlink()
         return
 
+    if startup_script == DEFAULT_DARKOS_AUTOSTART_UNIT:
+        _remove_darkos_autostart_unit(startup_script)
+        return
+
     existing = startup_script.read_text(encoding="utf-8", errors="replace")
     cleaned = strip_autostart_block(existing).strip()
     startup_script.write_text(f"{cleaned}\n" if cleaned else "", encoding="utf-8")
@@ -193,6 +209,9 @@ def resolve_startup_script_path(config_data: dict) -> Path | None:
 
     if Path("/opt/muos/script/archive").exists():
         return DEFAULT_MUOS_STARTUP_SCRIPT
+
+    if DEFAULT_DARKOS_HOME.exists():
+        return DEFAULT_DARKOS_AUTOSTART_UNIT
 
     if Path("/userdata/system").exists():
         return DEFAULT_KNULLI_STARTUP_SCRIPT
@@ -234,6 +253,14 @@ def autostart_command(config_data: dict) -> tuple[str]:
             str(
                 config_data.get("autostart_launcher")
                 or "/storage/.local/share/raofflineproxy/bin/raofflineproxy"
+            ),
+        )
+
+    if startup_script == DEFAULT_DARKOS_AUTOSTART_UNIT:
+        return (
+            str(
+                config_data.get("autostart_launcher")
+                or "/home/ark/raofflineproxy/bin/raofflineproxy"
             ),
         )
 
@@ -314,3 +341,56 @@ def rocknix_boot_hook_script(config_data: dict) -> str:
             "",
         ]
     )
+
+
+def darkos_boot_hook_script(config_data: dict) -> str:
+    launcher = autostart_command(config_data)[0]
+    return "\n".join(
+        [
+            "[Unit]",
+            "Description=RAOfflineProxy autostart reconcile",
+            "After=emulationstation.service network.target",
+            "",
+            "[Service]",
+            "Type=oneshot",
+            f"ExecStart={launcher} boot-reconcile",
+            "",
+            "[Install]",
+            "WantedBy=multi-user.target",
+            "",
+        ]
+    )
+
+
+def _install_darkos_autostart_unit(config_data: dict) -> None:
+    # boot-reconcile decides at runtime whether to apply/revert based on the
+    # config flag, so this unit is installed once and left permanently
+    # enabled — toggling autostart never needs to touch systemctl again.
+    # Called both from install.sh (root) and unprivileged from the SDL menu,
+    # so any failure here (e.g. no write access to /etc/systemd) is swallowed.
+    try:
+        DEFAULT_DARKOS_AUTOSTART_UNIT.write_text(
+            darkos_boot_hook_script(config_data), encoding="utf-8"
+        )
+        subprocess.run(["systemctl", "daemon-reload"], check=False, timeout=10)
+        subprocess.run(
+            ["systemctl", "enable", DARKOS_SERVICE_NAME], check=False, timeout=10
+        )
+    except OSError:
+        pass
+
+
+def _remove_darkos_autostart_unit(startup_script: Path) -> None:
+    try:
+        subprocess.run(
+            ["systemctl", "disable", "--now", DARKOS_SERVICE_NAME],
+            check=False,
+            timeout=10,
+        )
+    except OSError:
+        pass
+    startup_script.unlink(missing_ok=True)
+    try:
+        subprocess.run(["systemctl", "daemon-reload"], check=False, timeout=10)
+    except OSError:
+        pass

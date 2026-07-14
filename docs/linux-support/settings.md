@@ -62,6 +62,18 @@ If you enable it, RAOfflineProxy installs a boot hook under ROCKNIX's autostart 
 
 ROCKNIX runs every script in that directory on boot. The hook re-adds the **Tools** menu entry (ROCKNIX rebuilds that menu from a read-only source on each boot) and, when autostart is enabled, starts the proxy.
 
+== dArkOS
+
+dArkOS is systemd-native and has no `custom.sh`-style startup hook, so autostart works differently than on the other targets.
+
+If you enable it, RAOfflineProxy installs (and permanently enables) a systemd unit:
+
+```text
+/etc/systemd/system/raofflineproxy-autostart.service
+```
+
+That unit always runs the proxy's boot-reconcile step on boot; enabling/disabling autostart from the menu just flips a config flag that boot-reconcile checks, so toggling it doesn't need root once the unit is installed. Installing the unit itself does need root — if the installer ran unprivileged (e.g. from the ES Tools menu), re-run it once with `sudo` to enable autostart.
+
 :::
 
 ## Start / Stop Behavior

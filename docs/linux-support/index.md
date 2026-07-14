@@ -11,7 +11,7 @@ The Linux version is for handheld Linux devices where you want the same basic of
 - Keep earning casual achievements while offline
 - Let queued awards sync later when you reconnect
 
-Use the `KNULLI`, `Onion`, `muOS`, and `ROCKNIX` tabs throughout the Linux section to switch target-specific instructions.
+Use the `KNULLI`, `Onion`, `muOS`, `ROCKNIX`, and `dArkOS` tabs throughout the Linux section to switch target-specific instructions.
 
 ## Supported Targets
 
@@ -19,6 +19,7 @@ Use the `KNULLI`, `Onion`, `muOS`, and `ROCKNIX` tabs throughout the Linux secti
 - Onion (alpha)
 - muOS (alpha)
 - ROCKNIX (alpha)
+- dArkOS (community-contributed, unverified by the developer)
 
 ## Specifics
 
@@ -65,10 +66,20 @@ Current rough edges:
 
 - The bundled runtime (including `pygame`, which stock ROCKNIX does not ship) is larger than ideal
 
+== dArkOS
+
+Community-contributed target for [dArkOS](https://github.com/christianhaitian/dArkOS) ("Debian based ArkOS"). Not yet verified against real hardware by the developer — please report issues.
+
+Current rough edges:
+
+- dArkOS is systemd-native (no `custom.sh`-style startup hook), so autostart installs a systemd unit instead — this step needs root and is skipped with an on-screen hint if the installer runs unprivileged
+- `pygame` comes from `apt` rather than a bundled runtime; the installer installs it automatically when run as root, otherwise install it manually if the menu fails to launch
+- No known equivalent of `batocera.conf`/`knulli.conf`, so only the RetroArch-side patch applies
+
 :::
 
 ## Important Notes
 
 - Linux support is currently in alpha and should still be treated as a prerelease feature.
 - Linux install, startup, and UI behavior can vary a lot by firmware and frontend.
-- Always check the correct tab for your device instead of assuming KNULLI, Onion, muOS, and ROCKNIX behave the same way.
+- Always check the correct tab for your device instead of assuming KNULLI, Onion, muOS, ROCKNIX, and dArkOS behave the same way.

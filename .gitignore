@@ -27,6 +27,8 @@ linux/knulli/native/
 linux/onion/native/
 linux/muos/native/
 linux/rocknix/native/
+linux/darkos/dist/
+linux/darkos/native/
 **/__pycache__
 infra/dist/
 infra/cdk.out/
