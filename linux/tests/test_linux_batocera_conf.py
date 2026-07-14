@@ -109,3 +109,25 @@ class LinuxBatoceraConfTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class RevertNeverDisablesRetroachievementsTests(unittest.TestCase):
+    def test_revert_keeps_master_toggle_enabled_when_previous_was_absent(self) -> None:
+        content = (
+            "global.retroachievements=1\n"
+            'global.retroarch.cheevos_custom_host="127.0.0.1:8080"\n'
+        )
+        previous = {
+            batocera_conf.RETROACHIEVEMENTS_KEY: None,
+            batocera_conf.CHEEVOS_CUSTOM_HOST_KEY: None,
+        }
+        result = batocera_conf.build_reverted_batocera_conf(content, previous)
+        self.assertIn("global.retroachievements=1\n", result)
+        self.assertNotIn("cheevos_custom_host", result)
+
+    def test_revert_keeps_master_toggle_enabled_when_previous_was_disabled(self) -> None:
+        content = "global.retroachievements=1\n"
+        previous = {batocera_conf.RETROACHIEVEMENTS_KEY: "0"}
+        result = batocera_conf.build_reverted_batocera_conf(content, previous)
+        self.assertIn("global.retroachievements=1\n", result)
+        self.assertNotIn("global.retroachievements=0", result)

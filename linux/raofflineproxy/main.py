@@ -21,6 +21,7 @@ from .platform import (
     remove_boot_hook,
     resolve_rom_root,
 )
+from .es_export import CACHED_IDS_FILE, export_cached_game_ids
 from .batocera_conf import (
     patch_batocera_conf,
     revert_batocera_conf,
@@ -178,6 +179,8 @@ def main() -> None:
             "browser-list",
             "browser-list-fast",
             "cache-rom",
+            "cache-roms",
+            "export-cached-ids",
             "cache-folder-listing",
             "smart-cache-status",
             "run-smart-cache",
@@ -202,6 +205,11 @@ def main() -> None:
         "--path",
         dest="path",
         help="Filesystem path for browser and cache commands",
+    )
+    parser.add_argument(
+        "--paths-file",
+        dest="paths_file",
+        help="File containing one ROM path per line for cache-roms",
     )
     parser.add_argument(
         "--game-id",
@@ -490,6 +498,63 @@ def main() -> None:
                         ]
                     )
                 )
+            return
+
+        if args.command == "cache-roms":
+            if not args.paths_file:
+                raise ValueError("cache-roms requires --paths-file")
+
+            paths_file = Path(args.paths_file).expanduser()
+            if not paths_file.is_file():
+                raise ValueError(f"Invalid paths file: {paths_file}")
+
+            rom_paths = [
+                Path(line.strip()).expanduser()
+                for line in paths_file.read_text().splitlines()
+                if line.strip()
+            ]
+            if not rom_paths:
+                raise ValueError("cache-roms paths file is empty")
+
+            cached_count = 0
+            failed_count = 0
+            total = len(rom_paths)
+            storage = Storage()
+            try:
+                for index, rom_path in enumerate(rom_paths, start=1):
+                    label = rom_path.name
+                    if not rom_path.is_file():
+                        failed_count += 1
+                        print(f"FAIL {index}/{total} {label}: not found", flush=True)
+                        continue
+                    try:
+                        result = add_rom_to_cache(rom_path, storage, config_data)
+                    except Exception as error:
+                        failed_count += 1
+                        print(f"FAIL {index}/{total} {label}: {error}", flush=True)
+                        continue
+                    if result.success:
+                        cached_count += 1
+                        print(f"OK {index}/{total} {label}", flush=True)
+                    else:
+                        failed_count += 1
+                        print(
+                            f"FAIL {index}/{total} {label}: {result.message}",
+                            flush=True,
+                        )
+            finally:
+                storage.close()
+
+            print(f"DONE cached={cached_count} failed={failed_count}", flush=True)
+            return
+
+        if args.command == "export-cached-ids":
+            storage = Storage()
+            try:
+                export_cached_game_ids(storage)
+            finally:
+                storage.close()
+            print(str(CACHED_IDS_FILE))
             return
 
         if args.command == "cache-rom":

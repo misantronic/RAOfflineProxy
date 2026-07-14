@@ -328,7 +328,11 @@ def _extract_config_value(content: str, key: str) -> str | None:
 
 
 def _upsert_config_value(content: str, key: str, value: str) -> str:
-    pattern = re.compile(rf"^(\s*{re.escape(key)}\s*=\s*).*$", re.MULTILINE)
+    # [ \t] instead of \s: \s matches newlines, so an empty existing value
+    # (e.g. "key = " written by configgen) would swallow the next line
+    pattern = re.compile(
+        rf"^([ \t]*{re.escape(key)}[ \t]*=[ \t]*).*$", re.MULTILINE
+    )
     if pattern.search(content):
         return pattern.sub(lambda match: f'{match.group(1)}"{value}"', content)
 
@@ -341,7 +345,7 @@ def _upsert_config_value(content: str, key: str, value: str) -> str:
 def _remove_orphan_boolean_lines(content: str) -> str:
     lines = content.splitlines()
     orphan_pattern = re.compile(
-        r'^[\x00-\x1f\x7f\s]*"(?:true|false)"[\x00-\x1f\x7f\s]*$'
+        r'^[\x00-\x1f\x7f\s]*"(?:true|false)?"[\x00-\x1f\x7f\s]*$'
     )
     kept = [line for line in lines if not orphan_pattern.fullmatch(line)]
     result = "\n".join(kept)

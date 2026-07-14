@@ -129,10 +129,9 @@ def _sanitize_previous(config_data: dict, previous: dict) -> dict:
 
 
 def build_reverted_batocera_conf(content: str, previous: dict) -> str:
+    # global.retroachievements is the user's master toggle: the proxy may
+    # enable it on start but must never disable it on revert
     reverted = content
-    reverted = _restore_value(
-        reverted, RETROACHIEVEMENTS_KEY, previous.get(RETROACHIEVEMENTS_KEY)
-    )
     reverted = _restore_value(
         reverted,
         RETROACHIEVEMENTS_HARDCORE_KEY,

@@ -104,3 +104,28 @@ class LinuxRetroarchCfgTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class UpsertEmptyValueRegressionTests(unittest.TestCase):
+    def test_upsert_on_empty_unquoted_value_does_not_eat_next_line(self) -> None:
+        content = (
+            "menu_battery_level_enable = false\n"
+            "cheevos_custom_host = \n"
+            "input_libretro_device_p4 = 1\n"
+        )
+        result = retroarch_cfg._upsert_config_value(
+            content, "cheevos_custom_host", "127.0.0.1:8080"
+        )
+        self.assertIn('cheevos_custom_host = "127.0.0.1:8080"', result)
+        self.assertIn("input_libretro_device_p4 = 1", result)
+        self.assertNotIn('\n""\n', result)
+
+    def test_sanitizer_removes_orphan_empty_quote_lines(self) -> None:
+        content = (
+            "cheevos_custom_host = \n"
+            '""\n'
+            "input_libretro_device_p4 = 1\n"
+        )
+        result = retroarch_cfg._remove_orphan_boolean_lines(content)
+        self.assertNotIn('""', result)
+        self.assertIn("input_libretro_device_p4 = 1", result)
