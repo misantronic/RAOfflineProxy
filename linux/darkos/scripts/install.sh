@@ -43,15 +43,14 @@ rm -f "${UPDATE_STATUS_FILE}"
 chmod +x "${BIN_DIR}/raofflineproxy"
 chmod +x "${BIN_DIR}/raofflineproxy-uninstall"
 
+# ES Tools-menu scripts run unprivileged on dArkOS, so we rely on
+# passwordless sudo for the device user (the same mechanism dArkOS's own
+# Tools scripts use, e.g. "Enable Remote Services.sh" calling
+# `sudo systemctl ...` non-interactively). `sudo -n` fails fast instead of
+# hanging on a password prompt if that assumption doesn't hold here.
 if ! /usr/bin/python3 -c "import pygame" >/dev/null 2>&1; then
-  if [ "$(id -u)" -eq 0 ] && command -v apt-get >/dev/null 2>&1; then
-    echo "pygame is not installed for python3 -- installing python3-pygame via apt..."
-    if apt-get install -y python3-pygame >/dev/null 2>&1; then
-      echo "python3-pygame installed."
-    else
-      echo "Failed to install python3-pygame automatically."
-      echo "Run: sudo apt-get install -y python3-pygame"
-    fi
+  if command -v apt-get >/dev/null 2>&1 && sudo -n apt-get install -y python3-pygame >/dev/null 2>&1; then
+    echo "python3-pygame installed."
   else
     echo "pygame is not installed for python3 -- the RAOfflineProxy menu needs it."
     echo "Run: sudo apt-get install -y python3-pygame"
@@ -59,12 +58,13 @@ if ! /usr/bin/python3 -c "import pygame" >/dev/null 2>&1; then
 fi
 
 # Installs and enables the systemd boot-reconcile unit once; toggling
-# autostart afterwards only flips a config flag (no root needed at runtime).
-if [ "$(id -u)" -eq 0 ]; then
-  "${BIN_DIR}/raofflineproxy" ensure-boot-hook >/dev/null 2>&1 || true
+# autostart afterwards only flips a config flag (no sudo needed at runtime).
+"${BIN_DIR}/raofflineproxy" ensure-boot-hook >/dev/null 2>&1 || true
+if [ -f "${AUTOSTART_UNIT}" ]; then
+  echo "Autostart unit installed (${AUTOSTART_UNIT})."
 else
-  echo "Not running as root -- skipping autostart unit install (${AUTOSTART_UNIT})."
-  echo "Re-run this installer with sudo to enable autostart, or use the in-app menu once root has installed the unit."
+  echo "Could not install the autostart unit -- needs passwordless sudo for $(whoami)."
+  echo "Enable autostart from the menu once sudo access is available."
 fi
 
 if [ "${WAS_RUNNING}" -eq 1 ]; then
