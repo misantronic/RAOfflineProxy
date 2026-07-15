@@ -49,7 +49,7 @@ Before using `RAOfflineProxy` on Linux:
 == dArkOS
 
 - Enter your RetroAchievements account details in RetroArch
-- The installer installs `python3-pygame` via `apt` automatically when run as root; if it's run unprivileged, install it manually: `sudo apt-get install -y python3-pygame`
+- The installer installs `python3-pygame` via `apt` automatically using passwordless `sudo`; if that's not available on your setup, install it manually: `sudo apt-get install -y python3-pygame`
 
 :::
 
@@ -185,7 +185,7 @@ RAOfflineProxy patches the emulator configs it needs in order to redirect RetroA
 ```
 
 3. Refresh or update gamelists so **RAOfflineProxy Install** appears in the **Tools** menu
-4. Launch **RAOfflineProxy Install** from **Tools** — if the ES Tools menu doesn't run it with root, autostart will be skipped; run it once over SSH with `sudo` to enable autostart
+4. Launch **RAOfflineProxy Install** from **Tools** — no SSH or root needed; it uses passwordless `sudo` for the few steps that need it (same as dArkOS's own Tools scripts)
 5. Refresh or update gamelists again so the main **RAOfflineProxy** entry appears
 6. Launch **RAOfflineProxy** from the **Tools** menu
 7. Start the proxy while online

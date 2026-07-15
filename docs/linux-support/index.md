@@ -69,8 +69,8 @@ Community-contributed target for [dArkOS](https://github.com/christianhaitian/dA
 
 Current rough edges:
 
-- dArkOS is systemd-native (no `custom.sh`-style startup hook), so autostart installs a systemd unit instead — this step needs root and is skipped with an on-screen hint if the installer runs unprivileged
-- `pygame` comes from `apt` rather than a bundled runtime; the installer installs it automatically when run as root, otherwise install it manually if the menu fails to launch
+- dArkOS is systemd-native (no `custom.sh`-style startup hook), so autostart installs a systemd unit instead — this uses passwordless `sudo` for the device user (dArkOS's own Tools scripts rely on the same mechanism), and is silently skipped with an on-screen hint if that's not available
+- `pygame` comes from `apt` rather than a bundled runtime; the installer installs it automatically via `sudo`, otherwise install it manually if the menu fails to launch
 - No known equivalent of `batocera.conf`/`knulli.conf`, so only the RetroArch-side patch applies
 
 :::
