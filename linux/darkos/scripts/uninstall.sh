@@ -17,16 +17,14 @@ mkdir -p "${BASE_DIR}"
 
 if [ -x "${BASE_DIR}/bin/raofflineproxy" ]; then
   "${BASE_DIR}/bin/raofflineproxy" stop-proxy || true
+  # remove-boot-hook uses passwordless sudo internally (same as install.sh);
+  # falls back to a plain attempt here in case that binary is already gone.
   "${BASE_DIR}/bin/raofflineproxy" remove-boot-hook || true
 fi
 
-if command -v systemctl >/dev/null 2>&1; then
-  systemctl disable --now raofflineproxy-autostart.service >/dev/null 2>&1 || true
-fi
-rm -f "${AUTOSTART_UNIT}"
-if command -v systemctl >/dev/null 2>&1; then
-  systemctl daemon-reload >/dev/null 2>&1 || true
-fi
+sudo -n systemctl disable --now raofflineproxy-autostart.service >/dev/null 2>&1 || true
+sudo -n rm -f "${AUTOSTART_UNIT}" >/dev/null 2>&1 || rm -f "${AUTOSTART_UNIT}" >/dev/null 2>&1 || true
+sudo -n systemctl daemon-reload >/dev/null 2>&1 || true
 
 if command -v pkill >/dev/null 2>&1; then
   pkill -f 'raofflineproxy.main' >/dev/null 2>&1 || true

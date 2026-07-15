@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import subprocess
 from pathlib import Path
 
@@ -362,35 +363,65 @@ def darkos_boot_hook_script(config_data: dict) -> str:
     )
 
 
+def _run_privileged(args: list[str]) -> bool:
+    # dArkOS's own ES Tools scripts (e.g. "Enable Remote Services.sh") call
+    # `sudo systemctl ...` non-interactively from the same unprivileged Tools
+    # context RAOfflineProxy runs in, which only works with passwordless sudo
+    # configured for the device user. -n makes sudo fail fast instead of
+    # hanging on a password prompt if that assumption turns out to be wrong.
+    candidates = [["sudo", "-n", *args]]
+    if os.geteuid() == 0:
+        candidates.append(list(args))
+
+    for candidate in candidates:
+        try:
+            result = subprocess.run(candidate, capture_output=True, timeout=10)
+        except OSError:
+            continue
+        if result.returncode == 0:
+            return True
+    return False
+
+
+def _write_privileged(path: Path, content: str) -> bool:
+    try:
+        path.write_text(content, encoding="utf-8")
+        return True
+    except OSError:
+        pass
+
+    try:
+        result = subprocess.run(
+            ["sudo", "-n", "tee", str(path)],
+            input=content,
+            text=True,
+            capture_output=True,
+            timeout=10,
+        )
+        return result.returncode == 0
+    except OSError:
+        return False
+
+
 def _install_darkos_autostart_unit(config_data: dict) -> None:
     # boot-reconcile decides at runtime whether to apply/revert based on the
     # config flag, so this unit is installed once and left permanently
     # enabled — toggling autostart never needs to touch systemctl again.
-    # Called both from install.sh (root) and unprivileged from the SDL menu,
-    # so any failure here (e.g. no write access to /etc/systemd) is swallowed.
-    try:
-        DEFAULT_DARKOS_AUTOSTART_UNIT.write_text(
-            darkos_boot_hook_script(config_data), encoding="utf-8"
-        )
-        subprocess.run(["systemctl", "daemon-reload"], check=False, timeout=10)
-        subprocess.run(
-            ["systemctl", "enable", DARKOS_SERVICE_NAME], check=False, timeout=10
-        )
-    except OSError:
-        pass
+    # Called both from install.sh and unprivileged from the SDL menu, so any
+    # failure here (e.g. no sudo access) is swallowed rather than raised.
+    if not _write_privileged(
+        DEFAULT_DARKOS_AUTOSTART_UNIT, darkos_boot_hook_script(config_data)
+    ):
+        return
+    _run_privileged(["systemctl", "daemon-reload"])
+    _run_privileged(["systemctl", "enable", DARKOS_SERVICE_NAME])
 
 
 def _remove_darkos_autostart_unit(startup_script: Path) -> None:
-    try:
-        subprocess.run(
-            ["systemctl", "disable", "--now", DARKOS_SERVICE_NAME],
-            check=False,
-            timeout=10,
-        )
-    except OSError:
-        pass
-    startup_script.unlink(missing_ok=True)
-    try:
-        subprocess.run(["systemctl", "daemon-reload"], check=False, timeout=10)
-    except OSError:
-        pass
+    _run_privileged(["systemctl", "disable", "--now", DARKOS_SERVICE_NAME])
+    if not _run_privileged(["rm", "-f", str(startup_script)]):
+        try:
+            startup_script.unlink(missing_ok=True)
+        except OSError:
+            pass
+    _run_privileged(["systemctl", "daemon-reload"])

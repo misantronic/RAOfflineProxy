@@ -310,6 +310,55 @@ class LinuxAutostartTests(unittest.TestCase):
             finally:
                 platform.DEFAULT_DARKOS_AUTOSTART_UNIT = original_unit
 
+    def test_darkos_ensure_boot_hook_falls_back_to_sudo_tee(self) -> None:
+        # Simulates the real device case: direct write fails (unprivileged,
+        # /etc/systemd/system not writable), so it must fall back to
+        # `sudo -n tee`. dArkOS's own ES Tools scripts rely on the same
+        # passwordless-sudo assumption for the device user.
+        unit_path = Path("/nonexistent-dir/raofflineproxy-autostart.service")
+        config_data = {"startup_script": str(unit_path)}
+        written: dict[str, str] = {}
+
+        def fake_run(args, **kwargs):
+            class _Result:
+                returncode = 0
+
+            if args[:2] == ["sudo", "-n"] and args[2] == "tee":
+                written["content"] = kwargs.get("input", "")
+            return _Result()
+
+        original_unit = platform.DEFAULT_DARKOS_AUTOSTART_UNIT
+        try:
+            platform.DEFAULT_DARKOS_AUTOSTART_UNIT = unit_path
+            with patch.object(platform.subprocess, "run", fake_run):
+                platform.enable_autostart(config_data)
+
+            self.assertIn("ExecStart=", written.get("content", ""))
+            self.assertTrue(platform.is_autostart_enabled(config_data))
+        finally:
+            platform.DEFAULT_DARKOS_AUTOSTART_UNIT = original_unit
+
+    def test_darkos_ensure_boot_hook_survives_sudo_denied(self) -> None:
+        unit_path = Path("/nonexistent-dir/raofflineproxy-autostart.service")
+        config_data = {"startup_script": str(unit_path)}
+
+        def fake_run(args, **kwargs):
+            class _Result:
+                returncode = 1
+
+            return _Result()
+
+        original_unit = platform.DEFAULT_DARKOS_AUTOSTART_UNIT
+        try:
+            platform.DEFAULT_DARKOS_AUTOSTART_UNIT = unit_path
+            with patch.object(platform.subprocess, "run", fake_run):
+                platform.enable_autostart(config_data)
+
+            self.assertFalse(unit_path.exists())
+            self.assertTrue(platform.is_autostart_enabled(config_data))
+        finally:
+            platform.DEFAULT_DARKOS_AUTOSTART_UNIT = original_unit
+
     def test_darkos_remove_boot_hook_deletes_unit_file(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             unit_path = Path(temp_dir) / "raofflineproxy-autostart.service"

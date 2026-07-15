@@ -72,7 +72,7 @@ If you enable it, RAOfflineProxy installs (and permanently enables) a systemd un
 /etc/systemd/system/raofflineproxy-autostart.service
 ```
 
-That unit always runs the proxy's boot-reconcile step on boot; enabling/disabling autostart from the menu just flips a config flag that boot-reconcile checks, so toggling it doesn't need root once the unit is installed. Installing the unit itself does need root — if the installer ran unprivileged (e.g. from the ES Tools menu), re-run it once with `sudo` to enable autostart.
+That unit always runs the proxy's boot-reconcile step on boot; enabling/disabling autostart from the menu just flips a config flag that boot-reconcile checks, so toggling it doesn't need `sudo` once the unit is installed. Installing the unit itself is done automatically during install using passwordless `sudo` for the device user (the same mechanism dArkOS's own Tools scripts use). If that's not available on your setup, the installer prints an on-screen message instead of failing.
 
 :::
 
