@@ -939,7 +939,7 @@ internal suspend fun resolveAwardSnapshot(
     achievementId: Int
 ): AwardSnapshot? {
     for (entry in db.cacheDao().getAllByPrefix(CacheKeys.PREFIX_PATCH)) {
-        val snapshot = runCatching {
+        runCatching {
             val gameId = CacheKeys.parseGameIdFromPatchKey(entry.cacheKey)
             val patchData = JSONObject(entry.responseBody).getJSONObject("PatchData")
             val arr = patchData.getJSONArray("Achievements")
@@ -956,7 +956,7 @@ internal suspend fun resolveAwardSnapshot(
                     }
                     val gameIconRemoteUrl = patchImageUrl(patchData)
                     val gameIconFile = gameId?.let { id ->
-                        resolveCachedGameIconPath(context, id)?.let { java.io.File(it) }
+                        resolveCachedGameIconPath(context, id)?.let { File(it) }
                     } ?: gameIconRemoteUrl?.let { extractImagePath(it) }
                         ?.let { resolveCachedStaticAsset(context, it) }
                     val gameIconUrl = gameIconFile?.let { persistAwardGameIcon(context, achievementId, it) }
@@ -971,8 +971,7 @@ internal suspend fun resolveAwardSnapshot(
                 }
             }
             null
-        }.getOrNull()
-        if (snapshot != null) return snapshot
+        }
     }
     return null
 }
@@ -1117,9 +1116,6 @@ internal fun isGcAchievementSetsResponse(responseBody: String): Boolean =
 
 internal fun isWiiAchievementSetsResponse(responseBody: String): Boolean =
     Regex("\"ConsoleI[dD]\"\\s*:\\s*\"?$WII_CONSOLE_ID\"?").containsMatchIn(responseBody)
-
-internal fun isPpssppUserAgent(userAgent: String): Boolean =
-    userAgent.contains("ppsspp", ignoreCase = true)
 
 internal const val WARNING_ACHIEVEMENT_ID = 101000001
 internal const val RC_ACHIEVEMENT_FLAG_CORE = 3  // rcheevos: official/core achievements only

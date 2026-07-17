@@ -7,7 +7,6 @@ import com.raofflineproxy.proxy.compactAchievementSetsResponse
 import com.raofflineproxy.proxy.compactCachedRawResponse
 import com.raofflineproxy.proxy.isGcAchievementSetsResponse
 import com.raofflineproxy.proxy.isChunkedTransferEncoding
-import com.raofflineproxy.proxy.isPpssppUserAgent
 import com.raofflineproxy.proxy.isStaticAssetRequest
 import com.raofflineproxy.proxy.isWiiAchievementSetsResponse
 import com.raofflineproxy.proxy.parseContentLength
@@ -723,13 +722,6 @@ class ProxyServerTest {
     }
 
     @Test
-    fun isPpssppUserAgent_detectsPpsspp() {
-        assertTrue(isPpssppUserAgent("PPSSPP/v1.20.4"))
-        assertTrue(isPpssppUserAgent("ppsspp gold"))
-        assertFalse(isPpssppUserAgent("RetroArch/1.21.0"))
-    }
-
-    @Test
     fun isGcAchievementSetsResponse_trueForGcConsoleId() {
         assertTrue(isGcAchievementSetsResponse("""{"Success":true,"ConsoleId":16}"""))
     }
@@ -910,18 +902,16 @@ class ProxyServerTest {
         )
     }
 
-    private fun achievementsetsEntry(hash: String, gameId: Int, vararg achievementIds: Int): CacheEntry {
-        val achievements = achievementIds.joinToString(",") { """{"ID":$it}""" }
-        return CacheEntry(
+    private fun achievementsetsEntry(hash: String): CacheEntry =
+        CacheEntry(
             cacheKey = CacheKeys.achievementSets(hash, "user"),
-            responseBody = """{"GameId":$gameId,"Sets":[{"GameId":$gameId,"Achievements":[$achievements]}]}"""
+            responseBody = """{"GameId":11342,"Sets":[{"GameId":11342,"Achievements":[{"ID":120496}]}]}"""
         )
-    }
 
-    private fun achievementsetsEntryNoSets(hash: String, gameId: Int, vararg achievementIds: Int): CacheEntry {
+    private fun achievementsetsEntryNoSets(gameId: Int, vararg achievementIds: Int): CacheEntry {
         val achievements = achievementIds.joinToString(",") { """{"ID":$it}""" }
         return CacheEntry(
-            cacheKey = CacheKeys.achievementSets(hash, "user"),
+            cacheKey = CacheKeys.achievementSets("abc123", "user"),
             responseBody = """{"GameId":$gameId,"Achievements":[$achievements]}"""
         )
     }
@@ -946,7 +936,7 @@ class ProxyServerTest {
     fun buildAchievementGameIds_achievementsetsWithSets_mapsAchievementToGame() {
         val result = buildAchievementGameIds(
             patchEntries = emptyList(),
-            achievementsetsEntries = listOf(achievementsetsEntry("abc123", 11342, 120496))
+            achievementsetsEntries = listOf(achievementsetsEntry("abc123"))
         )
         assertEquals(11342, result[120496])
     }
@@ -955,7 +945,7 @@ class ProxyServerTest {
     fun buildAchievementGameIds_achievementsetsWithoutSets_mapsAchievementToGame() {
         val result = buildAchievementGameIds(
             patchEntries = emptyList(),
-            achievementsetsEntries = listOf(achievementsetsEntryNoSets("abc123", 11342, 120496))
+            achievementsetsEntries = listOf(achievementsetsEntryNoSets(11342, 120496))
         )
         assertEquals(11342, result[120496])
     }
@@ -964,7 +954,7 @@ class ProxyServerTest {
     fun buildAchievementGameIds_bothSources_allAchievementsMapped() {
         val result = buildAchievementGameIds(
             patchEntries = listOf(patchEntry(379, 3024)),
-            achievementsetsEntries = listOf(achievementsetsEntry("abc123", 11342, 120496))
+            achievementsetsEntries = listOf(achievementsetsEntry("abc123"))
         )
         assertEquals(379, result[3024])
         assertEquals(11342, result[120496])
@@ -974,7 +964,7 @@ class ProxyServerTest {
     fun buildAchievementGameIds_patchTakesPrecedenceOverAchievementsets() {
         val result = buildAchievementGameIds(
             patchEntries = listOf(patchEntry(100, 9999)),
-            achievementsetsEntries = listOf(achievementsetsEntryNoSets("abc123", 200, 9999))
+            achievementsetsEntries = listOf(achievementsetsEntryNoSets(200, 9999))
         )
         assertEquals(100, result[9999])
     }
@@ -1012,7 +1002,7 @@ class ProxyServerTest {
     @Test
     fun buildAchievementGameIds_malformedAchievementsetsEntry_skipped() {
         val bad = CacheEntry(cacheKey = CacheKeys.achievementSets("h1", "user"), responseBody = "garbage")
-        val good = achievementsetsEntry("h2", 11342, 120496)
+        val good = achievementsetsEntry("h2")
         val result = buildAchievementGameIds(emptyList(), listOf(bad, good))
         assertEquals(11342, result[120496])
     }
