@@ -55,6 +55,7 @@ class HomeFragment : Fragment() {
         val flycastToggle = bindToggle(view.findViewById(R.id.layout_flycast_toggle), R.string.emulator_flycast)
         val melonDualDsToggle = bindToggle(view.findViewById(R.id.layout_melondualds_toggle), R.string.emulator_melondualds)
         val mupen64Toggle = bindToggle(view.findViewById(R.id.layout_mupen64_toggle), R.string.emulator_mupen64)
+        val emuCoreXToggle = bindToggle(view.findViewById(R.id.layout_emucorex_toggle), R.string.emulator_emucorex)
         val retroArchAppIcon = loadInstalledAppIcon(RETROARCH_PACKAGE_CANDIDATES)
         val dolphinAppIcon = loadInstalledAppIcon(DOLPHIN_PACKAGE_CANDIDATES)
         val ppssppAppIcon = loadInstalledAppIcon(UI_PPSSPP_PACKAGE_CANDIDATES)
@@ -62,6 +63,7 @@ class HomeFragment : Fragment() {
         val flycastAppIcon = loadInstalledAppIcon(UI_FLYCAST_PACKAGE_CANDIDATES)
         val melonDualDsAppIcon = loadInstalledAppIcon(UI_MELONDUALDS_PACKAGE_CANDIDATES)
         val mupen64AppIcon = loadInstalledAppIcon(UI_MUPEN64_PACKAGE_CANDIDATES)
+        val emuCoreXAppIcon = loadInstalledAppIcon(UI_EMUCOREX_PACKAGE_CANDIDATES)
         val activeBorderColor = requireContext().getColor(R.color.emulator_toggle_border_active)
         val activeBackgroundColor = requireContext().getColor(R.color.emulator_toggle_background_active)
         val defaultBorderColor = requireContext().getColor(R.color.emulator_toggle_border_default)
@@ -136,10 +138,15 @@ class HomeFragment : Fragment() {
                 viewModel.setMupen64Enabled(!viewModel.state.value.mupen64Enabled)
             }
         }
+        emuCoreXToggle.row.setOnClickListener {
+            if (emuCoreXToggle.row.isEnabled) {
+                viewModel.setEmuCoreXEnabled(!viewModel.state.value.emuCoreXEnabled)
+            }
+        }
 
         viewLifecycleOwner.lifecycleScope.launch {
             viewModel.state.collect { state ->
-                val installedCount = listOf(state.retroArchInstalled, state.dolphinInstalled, state.ppssppInstalled, state.armsx2Installed, state.flycastInstalled, state.melonDualDsInstalled, state.mupen64Installed).count { it }
+                val installedCount = listOf(state.retroArchInstalled, state.dolphinInstalled, state.ppssppInstalled, state.armsx2Installed, state.flycastInstalled, state.melonDualDsInstalled, state.mupen64Installed, state.emuCoreXInstalled).count { it }
                 val noEmulatorInstalled = installedCount == 0
                 val onlyOneInstalled = installedCount == 1
                 val hasManualSetupManagedEmulator = state.retroArchInstalled || state.dolphinInstalled || state.ppssppInstalled
@@ -164,7 +171,7 @@ class HomeFragment : Fragment() {
 
                 btnStartProxy.visibility = if (shouldShowManualSetupButton) View.GONE else View.VISIBLE
                 btnStartProxy.text = getString(if (state.proxyRunning) R.string.proxy_stop else R.string.proxy_start)
-                btnStartProxy.isEnabled = if (state.proxyRunning) !proxyStartPending else !proxyStartPending && (state.retroArchEnabled || state.dolphinEnabled || state.ppssppEnabled || state.armsx2Enabled || state.flycastEnabled || state.melonDualDsEnabled || state.mupen64Enabled)
+                btnStartProxy.isEnabled = if (state.proxyRunning) !proxyStartPending else !proxyStartPending && (state.retroArchEnabled || state.dolphinEnabled || state.ppssppEnabled || state.armsx2Enabled || state.flycastEnabled || state.melonDualDsEnabled || state.mupen64Enabled || state.emuCoreXEnabled)
                 btnStartProxy.alpha = if (proxyStartPending) 0.45f else 1f
                 btnManualEmulatorSetup.visibility = if (shouldShowManualSetupButton) View.VISIBLE else View.GONE
                 btnGoToCachedGames.visibility = if (state.proxyRunning) View.VISIBLE else View.GONE
@@ -178,6 +185,7 @@ class HomeFragment : Fragment() {
                 flycastToggle.row.visibility = if (state.flycastInstalled) View.VISIBLE else View.GONE
                 melonDualDsToggle.row.visibility = if (state.melonDualDsInstalled) View.VISIBLE else View.GONE
                 mupen64Toggle.row.visibility = if (state.mupen64Installed) View.VISIBLE else View.GONE
+                emuCoreXToggle.row.visibility = if (state.emuCoreXInstalled) View.VISIBLE else View.GONE
 
                 retroArchToggle.row.isEnabled = state.retroArchInstalled && !state.proxyRunning && !onlyOneInstalled
                 dolphinToggle.row.isEnabled = state.dolphinInstalled && !state.proxyRunning && !onlyOneInstalled
@@ -186,6 +194,7 @@ class HomeFragment : Fragment() {
                 flycastToggle.row.isEnabled = state.flycastInstalled && !state.proxyRunning && !onlyOneInstalled
                 melonDualDsToggle.row.isEnabled = state.melonDualDsInstalled && !state.proxyRunning && !onlyOneInstalled
                 mupen64Toggle.row.isEnabled = state.mupen64Installed && !state.proxyRunning && !onlyOneInstalled
+                emuCoreXToggle.row.isEnabled = state.emuCoreXInstalled && !state.proxyRunning && !onlyOneInstalled
 
                 retroArchToggle.icon.setImageDrawable(retroArchAppIcon)
                 dolphinToggle.icon.setImageDrawable(dolphinAppIcon)
@@ -194,6 +203,7 @@ class HomeFragment : Fragment() {
                 flycastToggle.icon.setImageDrawable(flycastAppIcon)
                 melonDualDsToggle.icon.setImageDrawable(melonDualDsAppIcon)
                 mupen64Toggle.icon.setImageDrawable(mupen64AppIcon)
+                emuCoreXToggle.icon.setImageDrawable(emuCoreXAppIcon)
 
                 applyToggleRowStyle(
                     toggle = retroArchToggle,
@@ -252,6 +262,15 @@ class HomeFragment : Fragment() {
                 applyToggleRowStyle(
                     toggle = mupen64Toggle,
                     isSelected = state.mupen64Enabled,
+                    activeBorderColor = activeBorderColor,
+                    activeBackgroundColor = activeBackgroundColor,
+                    defaultBorderColor = defaultBorderColor,
+                    activeTextColor = activeTextColor,
+                    defaultTextColor = defaultTextColor
+                )
+                applyToggleRowStyle(
+                    toggle = emuCoreXToggle,
+                    isSelected = state.emuCoreXEnabled,
                     activeBorderColor = activeBorderColor,
                     activeBackgroundColor = activeBackgroundColor,
                     defaultBorderColor = defaultBorderColor,
