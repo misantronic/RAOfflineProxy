@@ -11,14 +11,14 @@ The Linux version is for handheld Linux devices where you want the same basic of
 - Keep earning casual achievements while offline
 - Let queued awards sync later when you reconnect
 
-Use the `KNULLI`, `Onion`, and `muOS` tabs throughout the Linux section to switch target-specific instructions.
+Use the `KNULLI`, `Onion`, `muOS`, and `ROCKNIX` tabs throughout the Linux section to switch target-specific instructions.
 
 ## Supported Targets
 
 - KNULLI (alpha)
 - Onion (alpha)
 - muOS (alpha)
-- ROCKNIX (planned)
+- ROCKNIX (alpha)
 
 ## Specifics
 
@@ -53,10 +53,20 @@ Current rough edges:
 - The bundled runtime (including `pygame`, which stock muOS does not ship) is larger than ideal and takes time to copy to SD storage
 - Patching has to keep both `retroarch.cfg` and the `retroarch.cheevos.cfg` appendconfig in sync
 
+== ROCKNIX
+
+It is currently compatible with [ROCKNIX 20260701](https://github.com/ROCKNIX/distribution/releases/tag/20260701) or newer.
+
+The ROCKNIX target ships as a self-extracting installer and runs the same SDL menu used on the other Linux targets. The app installs under `/storage/.local/share/raofflineproxy` and appears in the **Tools** menu.
+
+Current rough edges:
+
+- The bundled runtime (including `pygame`, which stock ROCKNIX does not ship) is larger than ideal
+
 :::
 
 ## Important Notes
 
 - Linux support is currently in alpha and should still be treated as a prerelease feature.
 - Linux install, startup, and UI behavior can vary a lot by firmware and frontend.
-- Always check the correct tab for your device instead of assuming KNULLI, Onion, and muOS behave the same way.
+- Always check the correct tab for your device instead of assuming KNULLI, Onion, muOS, and ROCKNIX behave the same way.

@@ -32,6 +32,12 @@ muOS RetroArch also loads a separate cheevos appendconfig, which stores your Ret
 
 RAOfflineProxy keeps both files in sync when patching and reverting.
 
+== ROCKNIX
+
+```text
+/storage/.config/retroarch/retroarch.cfg
+```
+
 :::
 
 ## What Gets Patched

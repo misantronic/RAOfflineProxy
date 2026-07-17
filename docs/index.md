@@ -85,6 +85,10 @@ features:
           <img src="/muos.png" alt="muOS logo">
           <span>muOS</span>
         </div>
+        <div class="supported-platforms__item">
+          <img class="supported-platforms__logo--rounded" src="/rocknix.png" alt="ROCKNIX logo">
+          <span>ROCKNIX</span>
+        </div>
       </div>
     </div>
   </div>
