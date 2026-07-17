@@ -139,6 +139,15 @@
                 android:layout_marginBottom="8dp"
                 android:visibility="gone"
                 layout="@layout/view_emulator_toggle" />
+
+            <include
+                android:id="@+id/layout_mupen64_toggle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="8dp"
+                android:layout_marginBottom="8dp"
+                android:visibility="gone"
+                layout="@layout/view_emulator_toggle" />
         </com.raofflineproxy.ui.WrappingLayout>
 
         <TextView

@@ -28,6 +28,8 @@
         <package android:name="com.armsx2" />
         <package android:name="com.flycast.emulator" />
         <package android:name="me.magnum.melondualds" />
+        <package android:name="org.mupen64plusae.v3.alpha" />
+        <package android:name="org.mupen64plusae.v3.alpha.debug" />
         <package android:name="moe.shizuku.privileged.api" />
     </queries>
 

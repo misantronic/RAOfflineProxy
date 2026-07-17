@@ -60,6 +60,10 @@ features:
           <img class="supported-platforms__logo--rounded" src="/argosy-launcher.png" alt="Argosy Launcher logo">
           <span>Argosy Launcher</span>
         </div>
+        <div class="supported-platforms__item">
+          <img src="/mupen64plus-ae.png" alt="Mupen64Plus logo">
+          <span>Mupen64Plus AE (fork)</span>
+        </div>
       </div>
     </div>
     <div class="supported-platforms__group">
@@ -89,4 +93,4 @@ RAOfflineProxy is currently an alpha release. Rough edges are still possible, an
 
 - [Contact / Feedback](/contact)
 - [GitHub Issues](https://github.com/misantronic/RAOfflineProxy/issues)
-:::
+  :::
