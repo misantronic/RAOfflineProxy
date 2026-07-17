@@ -64,6 +64,10 @@ features:
           <img src="/mupen64plus-ae.png" alt="Mupen64Plus logo">
           <span>Mupen64Plus AE (fork)</span>
         </div>
+        <div class="supported-platforms__item">
+          <img src="/emucorex.svg" alt="EmuCoreX logo">
+          <span>EmuCoreX</span>
+        </div>
       </div>
     </div>
     <div class="supported-platforms__group">

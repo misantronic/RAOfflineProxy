@@ -11,6 +11,7 @@ This page tracks which emulators and Linux handheld platforms `RAOfflineProxy` c
 - ARMSX2 Refresh
 - [Argosy Launcher](https://github.com/rommapp/argosy-launcher) (via its built-in proxy URL setting, see [#40](https://github.com/misantronic/RAOfflineProxy/issues/40#issuecomment-4939346094))
 - [Mupen64Plus AE (fork)](https://github.com/JoeysRetroHandhelds/mupen64plus-ae-retroachievements)
+- [EmuCoreX](https://emucorex.web.app/)
 - Flycast (planned, [pending release](https://github.com/flyinghead/flycast/pull/2371))
 - MelonDualDS (planned, pending release)
 
