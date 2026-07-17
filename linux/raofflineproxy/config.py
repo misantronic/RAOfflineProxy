@@ -13,6 +13,17 @@ DEFAULT_MUOS_RETROARCH_CFG = Path("/opt/muos/share/info/config/retroarch.cfg")
 MUOS_USER_INIT_CONFIG = Path("/opt/muos/config/settings/advanced/user_init")
 DEFAULT_BATOCERA_CONF = Path("/userdata/system/batocera.conf")
 DEFAULT_KNULLI_CONF = Path("/userdata/system/knulli.conf")
+DEFAULT_ROCKNIX_RETROARCH_CFG = Path("/storage/.config/retroarch/retroarch.cfg")
+DEFAULT_ROCKNIX_CONFIG_DIR = Path("/storage/.config/raofflineproxy")
+OS_RELEASE_PATH = Path("/etc/os-release")
+
+
+def running_on_rocknix() -> bool:
+    try:
+        content = OS_RELEASE_PATH.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return False
+    return 'OS_NAME="ROCKNIX"' in content
 
 
 def resolve_config_dir() -> Path:
@@ -32,6 +43,9 @@ def resolve_config_dir() -> Path:
 
     if Path("/userdata/system").exists():
         return Path("/userdata/system/.config/raofflineproxy")
+
+    if running_on_rocknix():
+        return DEFAULT_ROCKNIX_CONFIG_DIR
 
     return Path.home() / ".config" / "raofflineproxy"
 
@@ -163,6 +177,9 @@ def detect_retroarch_cfg() -> str:
 
     if Path("/userdata").exists():
         return str(Path("/userdata/system/configs/retroarch/retroarchcustom.cfg"))
+
+    if running_on_rocknix():
+        return str(DEFAULT_ROCKNIX_RETROARCH_CFG)
 
     candidates = [
         Path("/mnt/SDCARD/RetroArch/.retroarch/retroarch.cfg"),

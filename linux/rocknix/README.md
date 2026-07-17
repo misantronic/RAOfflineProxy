@@ -1,170 +1,94 @@
-# ROCKNIX Target Investigation
+# ROCKNIX Bundle
 
-This directory is reserved for a future `RAOfflineProxy` ROCKNIX target.
+This directory contains a portable ROCKNIX bundle for the Linux `RAOfflineProxy` client.
 
-At the moment, this is an investigation snapshot rather than an implementation.
+## Current State
 
-## Summary
+The alpha ROCKNIX flow has been verified end to end on real hardware (SM8550, aarch64, ROCKNIX `next`):
 
-Current evidence suggests a ROCKNIX port is likely feasible, but it should not be treated as a direct copy of the existing KNULLI target.
+- Install patches the required RetroArch config
+- RetroAchievements requests are intercepted locally by the proxy service
+- the controller-driven **SDL menu runs fullscreen** under the sway compositor
+- Start / Stop / Enable-autostart / Disable-autostart / Uninstall all work
+- `retroarch.cfg` is correctly patched and reverted (`cheevos_custom_host`, `cheevos_hardcore_mode_enable`)
 
-The Linux core in `linux/raofflineproxy/` already appears reusable. The main work is expected to be a ROCKNIX-specific integration layer for:
+## What It Does
 
-- install paths
-- launcher placement
-- config detection
-- autostart integration
-- optional SDL menu runtime packaging
+- installs the Python app under `/storage/.local/share/raofflineproxy` (`app/`, `bin/`, `lib/`)
+- bundles a self-contained `pygame` (see below) alongside the app
+- adds an EmulationStation **Tools** entry: `/storage/.config/modules/RAOfflineProxy.sh`
 
-## Current Status
+`RAOfflineProxy` is the primary interactive fullscreen UI (Start, Stop, Autostart, Cached Games, Pending Awards, Uninstall, Exit), identical to the KNULLI/muOS SDL menu.
 
-What looks reusable as-is:
+## Platform Specifics
 
-- the shared Linux proxy/service code in `linux/raofflineproxy/`
-- RetroArch config patching logic, conceptually
-- local cache, pending award, and flush logic
-- the existing Python CLI entrypoints
+Confirmed on-device (ROCKNIX `next`, `OS_NAME="ROCKNIX"` in `/etc/os-release`):
 
-What is currently KNULLI/Batocera-specific and would need adaptation:
+- `retroarch.cfg` lives at `/storage/.config/retroarch/retroarch.cfg`
+- There is no `batocera.conf`/`knulli.conf` equivalent — only `retroarch.cfg` is patched
+- Add-on apps install under `/storage/.local/share/` (Heroic, Steam, m8c, and this app)
+- The **Tools** system runs `.sh` scripts from `/storage/.config/modules/` inside a `foot`
+  terminal via `/usr/bin/foot %ROM%`. The launcher `source`s `/etc/profile`, calls
+  `set_kill` (so the frontend kill-combo works), then execs the SDL menu. The menu requests
+  SDL fullscreen itself; sway honors it (verified `fullscreen_mode=1`), so no `sway_fullscreen`
+  call is needed.
+- Autostart drops an executable script into `/storage/.config/autostart/`; ROCKNIX's
+  `/usr/bin/autostart` runs every script there at boot (no separate registration step)
 
-- `/userdata/...` filesystem assumptions
-- `batocera.conf` patching
-- `/userdata/system/custom.sh` autostart handling
-- KNULLI installer packaging in `linux/knulli/`
-- KNULLI launcher locations under `/userdata/system/raofflineproxy/`
+### pygame
 
-## Confirmed Findings
+ROCKNIX ships Python 3.13 but **no `pip` and no `pygame`**. The bundle vendors a self-contained
+`pygame` 2.6.1 cp313 aarch64 manylinux wheel (its own SDL 2.28.4 in `pygame.libs`, which includes
+the wayland video driver — no reliance on system SDL). This is verified working under sway on
+Python 3.13.5.
 
-### Python 3
+The vendored payload is **not** checked in (see `.gitignore`). Populate it before building:
 
-ROCKNIX includes Python 3 in its distribution tree.
+```bash
+# from a cp313 aarch64 manylinux pygame wheel
+cd linux/rocknix/vendor
+unzip pygame-2.6.1-cp313-cp313-manylinux_2_17_aarch64.manylinux2014_aarch64.whl
+# leaves vendor/pygame and vendor/pygame.libs in place
+```
 
-Evidence:
+> Note: the vendored `.so` files are cp313-specific. If ROCKNIX moves to a different Python
+> minor version, re-vendor a matching wheel.
 
-- `packages/lang/Python3/package.mk`
+## Build
 
-This strongly suggests the shared Linux client can run on-device without needing a Python runtime bundled from scratch.
+From repo root (requires `vendor/pygame` + `vendor/pygame.libs`, see above):
 
-### RetroArch Integration Exists
+```bash
+./linux/rocknix/build_bundle.sh
+```
 
-ROCKNIX ships RetroArch as a first-class package.
+This creates:
 
-Evidence:
+- `linux/rocknix/dist/RAOfflineProxy-Rocknix-v1.5.5-alpha1-Install.sh`
 
-- `projects/ROCKNIX/packages/emulators/libretro/retroarch`
-- `projects/ROCKNIX/packages/emulators/libretro/retroarch/sources/RK3566/retroarch.cfg`
-- `projects/ROCKNIX/packages/emulators/libretro/retroarch/sources/SM8650/retroarch.cfg`
+## Install On ROCKNIX
 
-This makes a RetroArch-targeted proxy flow realistic.
+Copy the installer to the device and run it (over SSH, or a terminal on-device):
 
-### EmulationStation Integration Exists
+```bash
+scp linux/rocknix/dist/RAOfflineProxy-Rocknix-v1.5.5-alpha1-Install.sh root@<device-ip>:/tmp/
+ssh root@<device-ip> "chmod +x /tmp/RAOfflineProxy-Rocknix-v1.5.5-alpha1-Install.sh && /tmp/RAOfflineProxy-Rocknix-v1.5.5-alpha1-Install.sh"
+```
 
-ROCKNIX includes EmulationStation and an autostart flow for it.
+The installer extracts to `/storage/.local/share/.raofflineproxy-rocknix-bundle`, installs the
+live bundle to `/storage/.local/share/raofflineproxy`, adds the Tools entry, and removes itself.
+Update gamelists so the new Tools entry appears.
 
-Evidence:
+When updating an existing install, the installer preserves prior proxy running state: if the
+proxy was running, it is stopped before files are replaced and restarted afterward.
 
-- `projects/ROCKNIX/packages/ui/emulationstation`
-- `projects/ROCKNIX/packages/ui/emulationstation/autostart/001-emulationstation`
-- `projects/ROCKNIX/packages/ui/emulationstation/sources/start_es.sh`
+## Uninstall
 
-### Tools and Ports Integration Exists
+Use `Uninstall` inside the menu, or run:
 
-ROCKNIX exposes tool and port configuration in its tree.
+```bash
+/storage/.local/share/raofflineproxy/bin/raofflineproxy-uninstall
+```
 
-Evidence:
-
-- `config/emulators/tools.conf`
-- `config/emulators/ports.conf`
-
-Earlier investigation also indicated that tools are exposed through simple shell-script based integration rather than requiring a native compiled frontend extension.
-
-### Autostart Infrastructure Exists
-
-ROCKNIX clearly has a system autostart mechanism, even though a KNULLI-style user `custom.sh` hook has not been confirmed.
-
-Evidence:
-
-- `projects/ROCKNIX/packages/sysutils/autostart/sources/autostart`
-- `projects/ROCKNIX/packages/sysutils/autostart/system.d/rocknix-autostart.service`
-- `projects/ROCKNIX/packages/rocknix/autostart/001-setup`
-
-This means autostart is likely possible, but it probably needs a ROCKNIX-specific implementation rather than reusing the KNULLI path directly.
-
-## Likely Findings
-
-### `/storage` Is The Primary Mutable Root
-
-ROCKNIX appears to be more `/storage`-centric than KNULLI.
-
-Observed evidence from public docs and repository exploration points to:
-
-- `/storage/.config/...`
-- `/storage/roms/...`
-- module/tool integration under ROCKNIX-managed config locations
-
-This is close enough to the current Linux target shape that a platform abstraction should be sufficient.
-
-### `retroarch.cfg` Is Likely Under `/storage/.config/retroarch/`
-
-This path has not been fully confirmed from a live device in this repository, but it remains the most likely runtime location based on ROCKNIX conventions and current documentation.
-
-Likely candidate:
-
-- `/storage/.config/retroarch/retroarch.cfg`
-
-### Tool Launchers Are Likely Script-Driven
-
-ROCKNIX appears friendly to shell-script launchers for tool or port entries. That aligns well with the current Linux/KNULLI launcher approach.
-
-## Important Nuance About `pygame`
-
-There is now strong evidence that `pygame` can run on ROCKNIX, but not that it ships preinstalled by default.
-
-The external project [`cw-dojo`](https://github.com/DavidClawson/cw-dojo) is a Python and `pygame` application targeting ROCKNIX on the R36S.
-
-Its README shows:
-
-- `python3` is available on-device
-- `pygame` and `numpy` are installed manually into `/storage/lib/python3.11/site-packages`
-- ROCKNIX system SDL libraries are reused by symlinking them into `pygame.libs`
-
-That means:
-
-- Python 3 support is effectively confirmed
-- `pygame` runtime support is practically proven
-- `pygame` should currently be treated as an extra packaged dependency, not an assumed built-in
-
-For `RAOfflineProxy`, this means the SDL menu is likely viable on ROCKNIX, but it may need either:
-
-- manual dependency installation
-- bundled wheels
-- a ROCKNIX-specific packaging flow for `pygame`
-
-## Unknowns
-
-These items still need confirmation on a real ROCKNIX device or through deeper repo inspection:
-
-- the exact active runtime location of `retroarch.cfg`
-- whether a `batocera.conf` equivalent must also be patched
-- the preferred user-facing install location for `RAOfflineProxy`
-- the cleanest autostart hook for a background proxy service
-- whether `pygame` should be bundled, installed separately, or avoided for first bring-up
-- whether any device families need special launcher or resolution handling
-
-## Implication For Implementation
-
-The most likely implementation path is:
-
-1. keep using the shared Linux code in `linux/raofflineproxy/`
-2. add a dedicated `linux/rocknix/` target instead of reusing `linux/knulli/`
-3. replace KNULLI-specific path assumptions with ROCKNIX-specific ones
-4. add a ROCKNIX installer/launcher flow for Tools or Ports
-5. decide separately whether the first version includes the SDL menu or only the CLI/service flow
-
-## Status Verdict
-
-Current verdict: likely feasible.
-
-Current caution: not a drop-in KNULLI build.
-
-The core Linux port appears reusable, but ROCKNIX should be treated as its own platform target.
+This stops the proxy, reverts `retroarch.cfg`, removes the autostart hook, removes the Tools
+entry, and removes the installed bundle and config/cache directory (`/storage/.config/raofflineproxy`).

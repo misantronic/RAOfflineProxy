@@ -77,7 +77,9 @@ class MenuLayoutTests(unittest.TestCase):
             "Press A or START to confirm. B to cancel.",
         )
 
-    def test_bottom_hint_for_clear_cache_confirm_reflects_swapped_mapping(self) -> None:
+    def test_bottom_hint_for_clear_cache_confirm_uses_fixed_face_labels(self) -> None:
+        # The hint shows fixed A=confirm / B=cancel face labels regardless of the
+        # calibrated physical buttons.
         session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
         session.view = "clear_cache_confirm"
         session.calibration_confirm_button = menu_sdl.BTN_EAST
@@ -85,7 +87,7 @@ class MenuLayoutTests(unittest.TestCase):
 
         self.assertEqual(
             menu_sdl.MenuSdlSession.bottom_hint_text(session),
-            "Press B or START to confirm. A to cancel.",
+            "Press A or START to confirm. B to cancel.",
         )
 
     def test_bottom_hint_for_controller_calibration_prompt(self) -> None:
@@ -182,6 +184,7 @@ class MenuLayoutTests(unittest.TestCase):
         session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
         session.view = "file_browser"
         session.browser_dir = type("PathLike", (), {"parent": "/root"})()
+        session.browser_root = None
         session.browser_entries = [
             type("Entry", (), {"name": "game1.gba", "is_file": lambda self: True})(),
             type("Entry", (), {"name": "Subdir", "is_file": lambda self: False})(),
@@ -956,6 +959,7 @@ class MenuLayoutTests(unittest.TestCase):
     ) -> None:
         session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
         session.browser_dir = Path("/roms/current")
+        session.browser_root = None
         session.browser_entries = []
         session.selected_index = 0
         session.browser_has_cacheable_files = lambda: True
@@ -981,6 +985,7 @@ class MenuLayoutTests(unittest.TestCase):
         browser_dir = Path("/roms")
         rom_entry = Path("/roms/game.gba")
         session.browser_dir = browser_dir
+        session.browser_root = None
         session.browser_entries = [rom_entry]
         session.selected_index = 0
         session.browser_has_cacheable_files = lambda: False
@@ -1004,6 +1009,7 @@ class MenuLayoutTests(unittest.TestCase):
     def test_cached_games_labels_include_start_smart_cache_after_add_rom(self) -> None:
         session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
         session.view = "cached_games"
+        session.main_online = True
         session.cached_games = [type("Game", (), {"title": "Tetris", "game_id": 1})()]
 
         self.assertEqual(
@@ -1327,6 +1333,7 @@ class MenuLayoutTests(unittest.TestCase):
         original_download = menu_sdl.download_knulli_update_installer
         original_update_status = menu_sdl.update_status
         original_close_input_devices = menu_sdl.close_input_devices
+        original_stop_proxy_inline = menu_sdl.stop_proxy_inline
         original_execv = menu_sdl.os.execv
         captured = {}
         try:
@@ -1337,6 +1344,7 @@ class MenuLayoutTests(unittest.TestCase):
                 AssertionError("should not refresh update status")
             )
             menu_sdl.close_input_devices = lambda _handles: None
+            menu_sdl.stop_proxy_inline = lambda: None
             menu_sdl.os.execv = lambda path, argv: captured.setdefault(
                 "exec", (path, argv)
             )
@@ -1348,6 +1356,7 @@ class MenuLayoutTests(unittest.TestCase):
             menu_sdl.download_knulli_update_installer = original_download
             menu_sdl.update_status = original_update_status
             menu_sdl.close_input_devices = original_close_input_devices
+            menu_sdl.stop_proxy_inline = original_stop_proxy_inline
             menu_sdl.os.execv = original_execv
 
 

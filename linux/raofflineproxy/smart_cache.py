@@ -273,10 +273,19 @@ def find_content_history_lpl(config_data: dict) -> Path | None:
     candidates: list[Path] = []
 
     # Honour the explicit path RetroArch writes in its own config (e.g. muOS sets
-    # content_history_path = "/opt/muos/share/emulator/retroarch/content_history.lpl")
+    # content_history_path = "/opt/muos/share/emulator/retroarch/content_history.lpl").
+    # RetroArch may store it relative to its home with a leading ~ (ROCKNIX uses
+    # "~/playlists/builtin/content_history.lpl"), so expand it.
     explicit = cfg_values.get("content_history_path", "").strip().strip('"')
     if explicit and explicit != "default":
-        candidates.append(Path(explicit))
+        candidates.append(Path(explicit).expanduser())
+
+    # Derive from the playlist directory when set (also possibly ~-relative).
+    playlist_dir = cfg_values.get("playlist_directory", "").strip().strip('"')
+    if playlist_dir and playlist_dir != "default":
+        playlist_base = Path(playlist_dir).expanduser()
+        candidates.append(playlist_base / "content_history.lpl")
+        candidates.append(playlist_base / "builtin" / "content_history.lpl")
 
     candidates += [
         cfg_path.parent / "content_history.lpl",

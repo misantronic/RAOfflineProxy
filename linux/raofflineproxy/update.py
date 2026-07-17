@@ -22,6 +22,7 @@ UPDATE_CHECK_INTERVAL_SECONDS = 24 * 60 * 60
 PLATFORM_KNULLI = "knulli"
 PLATFORM_ONION = "onion"
 PLATFORM_MUOS = "muos"
+PLATFORM_ROCKNIX = "rocknix"
 KNULLI_UPDATE_INSTALLER_PATH = CONFIG_DIR / "update-installer.sh"
 ONION_UPDATE_ARCHIVE_PATH = CONFIG_DIR / "update-onion.zip"
 MUOS_UPDATE_ARCHIVE_PATH = CONFIG_DIR / "update-muos.muxapp"
@@ -246,6 +247,9 @@ def find_platform_asset_url(platform: str, assets: list[dict]) -> str | None:
                 continue
         elif platform == PLATFORM_MUOS:
             if "muos" not in lower_name or not lower_name.endswith(".muxapp"):
+                continue
+        elif platform == PLATFORM_ROCKNIX:
+            if "rocknix" not in lower_name or not lower_name.endswith(".sh"):
                 continue
         else:
             continue
@@ -607,7 +611,7 @@ def parse_version(raw: str) -> ParsedVersion | None:
 
 def validate_platform(platform: str) -> str:
     lowered = platform.strip().lower()
-    if lowered not in {PLATFORM_KNULLI, PLATFORM_ONION, PLATFORM_MUOS}:
+    if lowered not in {PLATFORM_KNULLI, PLATFORM_ONION, PLATFORM_MUOS, PLATFORM_ROCKNIX}:
         raise ValueError(f"Unsupported update platform: {platform}")
     return lowered
 

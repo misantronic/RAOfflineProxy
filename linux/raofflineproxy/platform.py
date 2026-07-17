@@ -5,14 +5,20 @@ from .config import (
     DEFAULT_ONION_STARTUP_SCRIPT,
     MUOS_USER_INIT_CONFIG,
     detect_retroarch_cfg,
+    running_on_rocknix,
     save_config,
 )
 
 DEFAULT_KNULLI_ROMS_ROOT = Path("/userdata/roms")
 DEFAULT_MUOS_ROMS_ROOT = Path("/mnt/mmc/ROMS")
 DEFAULT_ONION_ROMS_ROOT = Path("/mnt/SDCARD/Roms")
+DEFAULT_ROCKNIX_ROMS_ROOT = Path("/storage/roms")
 DEFAULT_KNULLI_STARTUP_SCRIPT = Path("/userdata/system/custom.sh")
 DEFAULT_MUOS_STARTUP_SCRIPT = DEFAULT_MUOS_INIT_DIR / "raofflineproxy.sh"
+DEFAULT_ROCKNIX_STARTUP_SCRIPT = Path("/storage/.config/autostart/raofflineproxy.sh")
+ROCKNIX_MODULES_DIR = Path("/storage/.config/modules")
+ROCKNIX_MODULES_LAUNCHER = ROCKNIX_MODULES_DIR / "RAOfflineProxy.sh"
+ROCKNIX_TOOL_SOURCE = Path("/storage/.local/share/raofflineproxy/RAOfflineProxy.sh")
 ROM_DIRECTORY_KEYS = [
     "rgui_browser_directory",
     "content_directory",
@@ -45,6 +51,9 @@ def resolve_rom_root(config_data: dict) -> Path:
 
     if DEFAULT_ONION_ROMS_ROOT.exists() and DEFAULT_ONION_ROMS_ROOT.is_dir():
         return DEFAULT_ONION_ROMS_ROOT
+
+    if DEFAULT_ROCKNIX_ROMS_ROOT.exists() and DEFAULT_ROCKNIX_ROMS_ROOT.is_dir():
+        return DEFAULT_ROCKNIX_ROMS_ROOT
 
     return cfg_path.parent
 
@@ -133,6 +142,12 @@ def ensure_boot_hook(config_data: dict) -> None:
         _muos_enable_user_init()
         return
 
+    if startup_script == DEFAULT_ROCKNIX_STARTUP_SCRIPT:
+        startup_script.parent.mkdir(parents=True, exist_ok=True)
+        startup_script.write_text(rocknix_boot_hook_script(config_data), encoding="utf-8")
+        startup_script.chmod(0o755)
+        return
+
     startup_script.parent.mkdir(parents=True, exist_ok=True)
     existing = (
         startup_script.read_text(encoding="utf-8", errors="replace")
@@ -150,7 +165,11 @@ def remove_boot_hook(config_data: dict) -> None:
     if startup_script is None or not startup_script.exists():
         return
 
-    if startup_script in (DEFAULT_ONION_STARTUP_SCRIPT, DEFAULT_MUOS_STARTUP_SCRIPT):
+    if startup_script in (
+        DEFAULT_ONION_STARTUP_SCRIPT,
+        DEFAULT_MUOS_STARTUP_SCRIPT,
+        DEFAULT_ROCKNIX_STARTUP_SCRIPT,
+    ):
         startup_script.unlink()
         return
 
@@ -172,6 +191,9 @@ def resolve_startup_script_path(config_data: dict) -> Path | None:
 
     if Path("/userdata/system").exists():
         return DEFAULT_KNULLI_STARTUP_SCRIPT
+
+    if running_on_rocknix():
+        return DEFAULT_ROCKNIX_STARTUP_SCRIPT
 
     return None
 
@@ -199,6 +221,14 @@ def autostart_command(config_data: dict) -> tuple[str]:
             str(
                 config_data.get("autostart_launcher")
                 or "/run/muos/storage/application/RAOfflineProxy/launch.sh"
+            ),
+        )
+
+    if startup_script == DEFAULT_ROCKNIX_STARTUP_SCRIPT:
+        return (
+            str(
+                config_data.get("autostart_launcher")
+                or "/storage/.local/share/raofflineproxy/bin/raofflineproxy"
             ),
         )
 
@@ -251,6 +281,30 @@ def muos_boot_hook_script(config_data: dict) -> str:
             "",
             f'if [ -x "{launcher}" ]; then',
             f'  exec "{launcher}" boot-reconcile >/dev/null 2>&1 || true',
+            "fi",
+            "",
+        ]
+    )
+
+
+def rocknix_boot_hook_script(config_data: dict) -> str:
+    launcher = autostart_command(config_data)[0]
+    return "\n".join(
+        [
+            "#!/bin/sh",
+            "set -u",
+            "",
+            "# ROCKNIX re-syncs /storage/.config/modules from a read-only source on",
+            "# every boot (rsync --delete), wiping third-party Tools entries. Re-add",
+            "# ours so the RAOfflineProxy Tools entry survives reboots.",
+            f'if [ -f "{ROCKNIX_TOOL_SOURCE}" ]; then',
+            f'  mkdir -p "{ROCKNIX_MODULES_DIR}"',
+            f'  cp "{ROCKNIX_TOOL_SOURCE}" "{ROCKNIX_MODULES_LAUNCHER}" || true',
+            f'  chmod +x "{ROCKNIX_MODULES_LAUNCHER}" || true',
+            "fi",
+            "",
+            f'if [ -x "{launcher}" ]; then',
+            f'  "{launcher}" boot-reconcile >/dev/null 2>&1 || true',
             "fi",
             "",
         ]

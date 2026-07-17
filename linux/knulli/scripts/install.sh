@@ -58,11 +58,16 @@ chmod +x "${TOOLS_DIR}/RAOfflineProxy.sh"
 
 rm -f "${INSTALL_SCRIPT}"
 
+# Ask the running EmulationStation to rescan so the new Tools entry appears
+# without a manual "Update Gamelists". Best-effort: harmless if ES isn't
+# running or its HTTP API isn't reachable.
+curl -s --max-time 3 "http://127.0.0.1:1234/reloadgames" >/dev/null 2>&1 || true
+
 cat > "${BASE_DIR}/ui-state.txt" <<'EOF'
 RAOfflineProxy Install
 
 KNULLI bundle installed.
-Please Update Gamelists.
+If the RAOfflineProxy entry doesn't appear, refresh gamelists.
 EOF
 
 if [ "${RESTARTED}" -eq 1 ]; then
@@ -87,4 +92,4 @@ echo "RAOfflineProxy KNULLI bundle installed."
 if [ "${RESTARTED}" -eq 1 ]; then
   echo "Proxy restarted to apply update."
 fi
-echo "Please Update Gamelists."
+echo "Gamelists refreshed automatically."

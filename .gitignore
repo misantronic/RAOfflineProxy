@@ -25,4 +25,5 @@ linux/knulli/dist/
 linux/knulli/native/
 linux/onion/native/
 linux/muos/native/
+linux/rocknix/native/
 **/__pycache__

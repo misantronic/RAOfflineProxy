@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+exec /storage/.local/share/.raofflineproxy-rocknix-bundle/uninstall.sh

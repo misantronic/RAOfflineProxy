@@ -11,7 +11,7 @@ from .batocera_conf import (
     revert_batocera_conf,
     store_batocera_previous,
 )
-from .config import APP_VERSION, CONFIG_DIR, load_config, save_config
+from .config import APP_VERSION, CONFIG_DIR, load_config, running_on_rocknix, save_config
 from .platform import (
     autostart_supported,
     disable_autostart,
@@ -118,6 +118,17 @@ KNULLI_FONT_CANDIDATES = [
 ]
 MUOS_FONT_REGULAR = Path("/usr/share/fonts/liberation/LiberationMono-Regular.ttf")
 MUOS_FONT_BOLD = Path("/usr/share/fonts/liberation/LiberationMono-Bold.ttf")
+# Font files loaded by explicit path (SDL_ttf reads them directly, so no
+# fontconfig is needed — ROCKNIX ships no fc-list, which makes
+# pygame.font.match_font() return nothing). Each entry is (regular, bold);
+# when a face has no dedicated bold file, bold is synthesized via set_bold.
+FONT_FILE_CANDIDATES = [
+    (MUOS_FONT_REGULAR, MUOS_FONT_BOLD),
+    (
+        Path("/usr/share/fonts/truetype/dejavu/DejaVuSansCondensed.ttf"),
+        Path("/usr/share/fonts/truetype/dejavu/DejaVuSansCondensed.ttf"),
+    ),
+]
 LOGO_PATH = Path(__file__).resolve().parent / "logo-320.png"
 MUOS_SDCARD_ROOT = Path("/mnt/sdcard/ROMS")
 CALIBRATION_FACE_BUTTONS = {BTN_SOUTH, BTN_EAST}
@@ -343,12 +354,18 @@ class MenuSdlSession:
         self.refresh_cached_games()
 
     def load_font(self, size: int, bold: bool = False):
-        if Path("/opt/muos/script/archive").exists():
-            muos_font_path = MUOS_FONT_BOLD if bold else MUOS_FONT_REGULAR
-            if not muos_font_path.exists():
-                muos_font_path = MUOS_FONT_REGULAR
-            if muos_font_path.exists():
-                return self.pygame.font.Font(str(muos_font_path), size)
+        if running_on_muos() or running_on_rocknix():
+            for regular_path, bold_path in FONT_FILE_CANDIDATES:
+                chosen = bold_path if bold else regular_path
+                synthesize_bold = False
+                if not chosen.exists():
+                    chosen = regular_path
+                    synthesize_bold = bold
+                if chosen.exists():
+                    font = self.pygame.font.Font(str(chosen), size)
+                    if synthesize_bold:
+                        font.set_bold(True)
+                    return font
             font = self.pygame.font.Font(None, size)
             font.set_bold(bold)
             return font
@@ -511,7 +528,7 @@ class MenuSdlSession:
                 if self.main_autostart_enabled
                 else "Enable autostart"
             )
-        if (self.is_knulli_platform() and not service_mode) or running_on_muos():
+        if (self.is_knulli_platform() and not service_mode) or running_on_muos() or running_on_rocknix():
             labels.append("Uninstall")
         if os.environ.get("RAOFFLINEPROXY_DEBUG"):
             labels.append("Key Logger")
@@ -940,7 +957,11 @@ class MenuSdlSession:
         return Path("/userdata/system").exists()
 
     def update_platform(self) -> str:
-        return "muos" if running_on_muos() else "knulli"
+        if running_on_muos():
+            return "muos"
+        if running_on_rocknix():
+            return "rocknix"
+        return "knulli"
 
     def calibration_complete(self) -> bool:
         return (
@@ -2033,6 +2054,8 @@ class MenuSdlSession:
             launcher = "/run/muos/storage/application/RAOfflineProxy/uninstall.sh"
         elif self.is_knulli_platform():
             launcher = "/userdata/system/raofflineproxy/bin/raofflineproxy-uninstall"
+        elif running_on_rocknix():
+            launcher = "/storage/.local/share/raofflineproxy/bin/raofflineproxy-uninstall"
         else:
             self.message = ("Uninstall is not available on this platform", time.monotonic() + ERROR_SECONDS)
             return

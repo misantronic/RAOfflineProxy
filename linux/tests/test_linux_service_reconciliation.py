@@ -9,15 +9,26 @@ from linux.raofflineproxy import state
 class LinuxServiceReconciliationTests(unittest.TestCase):
     def test_discover_service_pid_parses_matching_process(self) -> None:
         original_check_output = service.subprocess.check_output
+        original_from_proc = service._discover_service_pid_from_proc
+        original_is_running = service.process_is_running
+        original_matches = service.process_matches_service
         try:
             service.subprocess.check_output = lambda *_args, **_kwargs: (
                 "123 /usr/bin/python3 -m something.else\n"
                 "456 /usr/bin/python3 -m raofflineproxy.main run-service\n"
             )
+            # discover_service_pids() re-validates every candidate against /proc;
+            # the parsed pids are not real processes here, so stub the checks.
+            service._discover_service_pid_from_proc = lambda: None
+            service.process_is_running = lambda pid: pid == 456
+            service.process_matches_service = lambda pid: pid == 456
 
             self.assertEqual(service.discover_service_pid(), 456)
         finally:
             service.subprocess.check_output = original_check_output
+            service._discover_service_pid_from_proc = original_from_proc
+            service.process_is_running = original_is_running
+            service.process_matches_service = original_matches
 
     def test_service_status_adopts_discovered_process_when_pid_file_is_missing(
         self,

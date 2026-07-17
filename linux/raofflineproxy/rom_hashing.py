@@ -71,6 +71,7 @@ def _candidate_library_paths() -> list[str | None]:
         "/userdata/system/raofflineproxy/lib",
         "/mnt/SDCARD/App/RAOfflineProxy/lib",
         "/run/muos/storage/application/RAOfflineProxy/lib",
+        "/storage/.local/share/raofflineproxy/lib",
     )
     for base in bases:
         for name in names:

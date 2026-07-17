@@ -237,6 +237,43 @@ class LinuxSmartCacheTests(unittest.TestCase):
 
             self.assertEqual(result, history_path)
 
+    def test_find_content_history_lpl_expands_tilde_from_cfg(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            home = Path(temp_dir)
+            cfg_path = home / ".config" / "retroarch" / "retroarch.cfg"
+            history_path = home / "playlists" / "builtin" / "content_history.lpl"
+            cfg_path.parent.mkdir(parents=True)
+            history_path.parent.mkdir(parents=True)
+            cfg_path.write_text(
+                'content_history_path = "~/playlists/builtin/content_history.lpl"\n',
+                encoding="utf-8",
+            )
+            history_path.write_text('{"items":[]}', encoding="utf-8")
+
+            with mock.patch.dict("os.environ", {"HOME": str(home)}):
+                result = smart_cache.find_content_history_lpl(
+                    {"retroarch_cfg": str(cfg_path)}
+                )
+
+            self.assertEqual(result, history_path)
+
+    def test_find_content_history_lpl_expands_tilde_playlist_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            home = Path(temp_dir)
+            cfg_path = home / ".config" / "retroarch" / "retroarch.cfg"
+            history_path = home / "playlists" / "builtin" / "content_history.lpl"
+            cfg_path.parent.mkdir(parents=True)
+            history_path.parent.mkdir(parents=True)
+            cfg_path.write_text('playlist_directory = "~/playlists"\n', encoding="utf-8")
+            history_path.write_text('{"items":[]}', encoding="utf-8")
+
+            with mock.patch.dict("os.environ", {"HOME": str(home)}):
+                result = smart_cache.find_content_history_lpl(
+                    {"retroarch_cfg": str(cfg_path)}
+                )
+
+            self.assertEqual(result, history_path)
+
     def test_run_smart_cache_paces_between_candidates(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)

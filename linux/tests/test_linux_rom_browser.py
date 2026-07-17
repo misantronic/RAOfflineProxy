@@ -12,9 +12,16 @@ from linux.raofflineproxy import main
 from linux.raofflineproxy import proxy_service
 from linux.raofflineproxy import rom_browser
 from linux.raofflineproxy import rom_cache
+from linux.raofflineproxy import rom_hashing
 from linux.raofflineproxy import storage
 from linux.raofflineproxy import smart_cache
 from linux.raofflineproxy import cache_keys
+
+# The real ROM hasher goes through the native libraproxy_rchash.so, which is
+# only built for the Linux device targets. On other hosts (e.g. a macOS dev
+# machine) dlopen fails and hashing returns nothing, so tests that exercise the
+# native hasher are skipped rather than reported as failures.
+_NATIVE_HASH_AVAILABLE = rom_hashing.load_rchash() is not None
 
 
 class LinuxRomBrowserTests(unittest.TestCase):
@@ -219,6 +226,9 @@ class LinuxRomBrowserTests(unittest.TestCase):
             finally:
                 platform.DEFAULT_ONION_ROMS_ROOT = original_onion_root
 
+    @unittest.skipUnless(
+        _NATIVE_HASH_AVAILABLE, "native libraproxy_rchash not loadable on this host"
+    )
     def test_hash_rom_file_uses_md5(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             rom_path = Path(temp_dir) / "test.gb"
@@ -431,6 +441,9 @@ class LinuxRomBrowserTests(unittest.TestCase):
                 rom_browser.cache_game = original_cache_game
                 store.close()
 
+    @unittest.skipUnless(
+        _NATIVE_HASH_AVAILABLE, "native libraproxy_rchash not loadable on this host"
+    )
     def test_add_zip_rom_to_cache_uses_single_supported_entry(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
