@@ -35,7 +35,7 @@ features:
 ---
 
 <section class="supported-platforms">
-  <h2>Supported Platforms</h2>
+  <h2><a href="/platforms.html">Supported Platforms</a></h2>
   <div class="supported-platforms__groups">
     <div class="supported-platforms__group">
       <p class="supported-platforms__label">Android</p>

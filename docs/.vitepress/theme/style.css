@@ -50,6 +50,12 @@
   text-align: center;
 }
 
+.supported-platforms h2 a {
+  color: inherit;
+  font-weight: inherit;
+  text-decoration: none;
+}
+
 .supported-platforms__groups {
   display: grid;
   gap: 1.25rem;
@@ -108,6 +114,18 @@
   .supported-platforms__groups {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+}
+
+.platforms-table__logo {
+  display: block;
+  width: 40px;
+  height: 40px;
+  margin: 0 auto;
+  object-fit: contain;
+}
+
+.platforms-table__logo--rounded {
+  border-radius: 8px;
 }
 
 .VPHero .actions .VPButton[href="/installation"]::before,

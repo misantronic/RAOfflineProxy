@@ -4,20 +4,25 @@ This page tracks which emulators and Linux handheld platforms `RAOfflineProxy` c
 
 ## Android
 
-- RetroArch
-- Dolphin
-- PPSSPP
-- ARMSX2 (requires [Nightly Build (DEBUG - 1.0.8) – 20260605-0050](https://github.com/ARMSX2/ARMSX2/releases/tag/come.nanodata.armsx2-nightly-1.0.8-20260605-0050) or newer.)
-- ARMSX2 Refresh
-- [Argosy Launcher](https://github.com/rommapp/argosy-launcher) (via its built-in proxy URL setting, see [#40](https://github.com/misantronic/RAOfflineProxy/issues/40#issuecomment-4939346094))
-- [Mupen64Plus AE (fork)](https://github.com/JoeysRetroHandhelds/mupen64plus-ae-retroachievements)
-- [EmuCoreX](https://emucorex.web.app/)
-- Flycast (planned, [pending release](https://github.com/flyinghead/flycast/pull/2371))
-- MelonDualDS (planned, pending release)
+|                                                                                                                          | Emulator                                                                                             | Status                                                                                                                                                                          |
+| :----------------------------------------------------------------------------------------------------------------------: | ---------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+|                      <img class="platforms-table__logo" src="/retroarch.png" alt="RetroArch logo">                       | **RetroArch**                                                                                        | ✅ Supported                                                                                                                                                                    |
+|                        <img class="platforms-table__logo" src="/dolphin.png" alt="Dolphin logo">                         | **Dolphin**                                                                                          | ✅ Supported                                                                                                                                                                    |
+|                         <img class="platforms-table__logo" src="/ppsspp.png" alt="PPSSPP logo">                          | **PPSSPP**                                                                                           | ✅ Supported                                                                                                                                                                    |
+|         <img class="platforms-table__logo platforms-table__logo--rounded" src="/armsx2.webp" alt="ARMSX2 logo">          | **ARMSX2**                                                                                           | ✅ Supported, requires [Nightly Build (DEBUG - 1.0.8) – 20260605-0050](https://github.com/ARMSX2/ARMSX2/releases/tag/come.nanodata.armsx2-nightly-1.0.8-20260605-0050) or newer |
+|     <img class="platforms-table__logo platforms-table__logo--rounded" src="/armsx2.webp" alt="ARMSX2 Refresh logo">      | **ARMSX2 Refresh**                                                                                   | ✅ Supported                                                                                                                                                                    |
+| <img class="platforms-table__logo platforms-table__logo--rounded" src="/argosy-launcher.png" alt="Argosy Launcher logo"> | **[Argosy Launcher](https://github.com/rommapp/argosy-launcher)**                                    | ✅ Supported via its built-in proxy URL setting, see [#40](https://github.com/misantronic/RAOfflineProxy/issues/40#issuecomment-4939346094)                                     |
+|                 <img class="platforms-table__logo" src="/mupen64plus-ae.png" alt="Mupen64Plus AE logo">                  | **[Mupen64Plus AE (fork)](https://github.com/JoeysRetroHandhelds/mupen64plus-ae-retroachievements)** | ✅ Supported                                                                                                                                                                    |
+|                       <img class="platforms-table__logo" src="/emucorex.svg" alt="EmuCoreX logo">                        | **[EmuCoreX](https://emucorex.web.app/)**                                                            | 🔜 Planned, pending release                                                                                                                                                     |
+|         <img class="platforms-table__logo platforms-table__logo--rounded" src="/flycast.png" alt="Flycast logo">         | **Flycast**                                                                                          | 🔜 Planned, [pending release](https://github.com/flyinghead/flycast/pull/2371)                                                                                                  |
+|                      <img class="platforms-table__logo" src="/melonds.png" alt="MelonDualDS logo">                       | **MelonDualDS**                                                                                      | 🔜 Planned, pending release                                                                                                                                                     |
 
 ## [Linux](/linux-support/)
 
-- KNULLI (RetroArch)
-- Onion (RetroArch)
-- muOS (RetroArch)
-- ROCKNIX (planned)
+|                                                                                                          | Platform               | Status       |
+| :------------------------------------------------------------------------------------------------------: | ---------------------- | ------------ |
+|                 <img class="platforms-table__logo" src="/knulli.png" alt="KNULLI logo">                  | **KNULLI** (RetroArch) | ✅ Supported |
+|                  <img class="platforms-table__logo" src="/onion.svg" alt="Onion logo">                   | **Onion** (RetroArch)  | ✅ Supported |
+|                   <img class="platforms-table__logo" src="/muos.png" alt="muOS logo">                    | **muOS** (RetroArch)   | ✅ Supported |
+| <img class="platforms-table__logo platforms-table__logo--rounded" src="/rocknix.png" alt="ROCKNIX logo"> | **ROCKNIX**            | 🔜 Planned   |
+| <img class="platforms-table__logo platforms-table__logo--rounded" src="/darkos.png" alt="dArkOS logo"> | **dArkOS**            | 🔜 Planned, [pending release](https://github.com/misantronic/RAOfflineProxy/pull/47)   |
