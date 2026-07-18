@@ -15,6 +15,12 @@ Note: ``.zip`` archives containing a single console ROM are extracted by the
 caller (``rom_browser``) before hashing — rcheevos' own zip path is for
 arcade/MAME images, not zipped cartridges. ``.cue`` and ``.m3u`` are resolved
 natively by rc_hash from their path.
+
+``.rvz`` (Dolphin's compressed GameCube/Wii disc container) is the one format
+rc_hash can't read directly — it expects a raw disc layout. Those go through
+``raproxy_hash_disc_datasource`` instead: a random-access callback pair lets
+rc_hash pull decompressed disc bytes from :mod:`rvz_datasource`, which does
+the container parsing (ported from the Android app's Kotlin RVZ reader).
 """
 
 import ctypes
@@ -24,6 +30,8 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
+from .rvz_datasource import FileReadSource, RvzDataSource
+
 LOGGER = logging.getLogger("raofflineproxy")
 
 _HASH_STRIDE = 33  # 32 hex chars + NUL, matching rc_hash's char[33]
@@ -31,6 +39,12 @@ _MAX_CANDIDATES = 8
 
 _LIBRCHASH: ctypes.CDLL | None = None
 _LIBRCHASH_ERROR: str | None = None
+
+# raproxy_ds_size_fn / raproxy_ds_read_fn, matching rchash_glue.h.
+_DS_SIZE_FN = ctypes.CFUNCTYPE(ctypes.c_longlong, ctypes.c_void_p)
+_DS_READ_FN = ctypes.CFUNCTYPE(
+    ctypes.c_int, ctypes.c_void_p, ctypes.c_longlong, ctypes.c_void_p, ctypes.c_int
+)
 
 
 @dataclass
@@ -100,6 +114,14 @@ def load_rchash() -> ctypes.CDLL | None:
                 ctypes.c_int,
             ]
             library.raproxy_hash_file.restype = ctypes.c_int
+            library.raproxy_hash_disc_datasource.argtypes = [
+                ctypes.c_void_p,
+                _DS_SIZE_FN,
+                _DS_READ_FN,
+                ctypes.c_char_p,
+                ctypes.c_int,
+            ]
+            library.raproxy_hash_disc_datasource.restype = ctypes.c_int
             _LIBRCHASH = library
             LOGGER.debug("Loaded libraproxy_rchash from %s", candidate)
             return library
@@ -115,7 +137,56 @@ def load_rchash() -> ctypes.CDLL | None:
     return None
 
 
+def _extract_candidates(buffer: ctypes.Array, count: int) -> list[str]:
+    candidates: list[str] = []
+    for index in range(max(count, 0)):
+        chunk = buffer.raw[index * _HASH_STRIDE : (index + 1) * _HASH_STRIDE]
+        value = chunk.split(b"\x00", 1)[0].decode("ascii", "ignore").strip().lower()
+        if value and value not in candidates:
+            candidates.append(value)
+    return candidates
+
+
+def _generate_disc_datasource_candidates(library: ctypes.CDLL, data_source: RvzDataSource) -> list[str]:
+    def size_fn(_ctx: int) -> int:
+        return data_source.length
+
+    def read_fn(_ctx: int, offset: int, out_buffer: int, num_bytes: int) -> int:
+        chunk = data_source.read(offset, num_bytes)
+        if not chunk:
+            return -1
+        ctypes.memmove(out_buffer, chunk, len(chunk))
+        return len(chunk)
+
+    buffer = ctypes.create_string_buffer(_MAX_CANDIDATES * _HASH_STRIDE)
+    # ctx is required to be non-NULL by raproxy_hash_disc_datasource (used only
+    # as a liveness check); the callbacks close over data_source instead.
+    count = library.raproxy_hash_disc_datasource(
+        ctypes.c_void_p(1), _DS_SIZE_FN(size_fn), _DS_READ_FN(read_fn), buffer, _MAX_CANDIDATES
+    )
+    return _extract_candidates(buffer, count)
+
+
+def _generate_rvz_candidates(path: Path) -> list[str]:
+    library = load_rchash()
+    if library is None:
+        return []
+
+    read_source = FileReadSource(str(path))
+    try:
+        data_source = RvzDataSource.open(read_source)
+        if data_source is None:
+            LOGGER.warning("Could not open RVZ data source for %s", path)
+            return []
+        return _generate_disc_datasource_candidates(library, data_source)
+    finally:
+        read_source.close()
+
+
 def _generate_candidates(path: Path) -> list[str]:
+    if path.suffix.lower() == ".rvz":
+        return _generate_rvz_candidates(path)
+
     library = load_rchash()
     if library is None:
         return []
@@ -124,14 +195,7 @@ def _generate_candidates(path: Path) -> list[str]:
     count = library.raproxy_hash_file(
         str(path).encode("utf-8"), buffer, _MAX_CANDIDATES
     )
-
-    candidates: list[str] = []
-    for index in range(max(count, 0)):
-        chunk = buffer.raw[index * _HASH_STRIDE : (index + 1) * _HASH_STRIDE]
-        value = chunk.split(b"\x00", 1)[0].decode("ascii", "ignore").strip().lower()
-        if value and value not in candidates:
-            candidates.append(value)
-    return candidates
+    return _extract_candidates(buffer, count)
 
 
 def hash_rom_candidates_result(path: Path) -> RomHashResult:
@@ -176,5 +240,5 @@ def supported_rom_extensions() -> set[str]:
         ".col", ".int", ".vec", ".vb", ".ws", ".wsc",
         ".ngp", ".ngc", ".min", ".sv", ".chf",
         # Disc / playlist / misc
-        ".iso", ".bin", ".chd", ".pbp", ".cue", ".m3u", ".cart",
+        ".iso", ".bin", ".chd", ".pbp", ".cue", ".m3u", ".cart", ".rvz",
     }
