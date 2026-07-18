@@ -27,6 +27,8 @@ The alpha ROCKNIX flow has been verified end to end on real hardware (SM8550, aa
 | RetroArch | Supported | `cheevos_custom_host` patched in `retroarch.cfg` |
 | PPSSPP | Supported | `AchievementsHost` patched in `ppsspp.ini` |
 | AetherSX2 (PS2, default core) | **Not supported** | See below |
+| flycast (standalone) | **Not supported** | See below |
+| flycast (RetroArch core) | Supported | goes through `retroarch.cfg`, same as any other libretro core |
 
 ### Why AetherSX2 is unsupported
 
@@ -53,6 +55,22 @@ binary — a real code change to the emulator, not a client-side or launch-scrip
 The `pcsx2-sa` alt-core's binary does support this, and its `cheevos_pcsx2.sh` does targeted
 `sed` edits (not a full config regen), so it's a viable client-side integration target for a
 future release.
+
+### Why standalone flycast is unsupported
+
+`/usr/bin/flycast`'s `[achievements]` section in `/storage/.config/flycast/emu.cfg` only has
+`Enabled`, `HardcoreMode`, `UserName`, and `Token` keys — `cheevos_flycast.sh` writes exactly
+those and nothing else. Confirmed via `strings` on the binary: no `Host`/`HostUrl`-style config
+key is read anywhere, and every RA request URL
+(`https://retroachievements.org/dorequest.php`, `http://media.retroachievements.org`, ...) is a
+hardcoded literal reachable from `achievements.cpp`. Unlike PPSSPP or RetroArch, there's no
+config hook to redirect at all — supporting it would mean porting host-override support into
+ROCKNIX's flycast fork and rebuilding the binary, the same class of work as the AetherSX2 case
+above.
+
+flycast is also available as a RetroArch core (`flycast_libretro.so` /
+`flycast2021_libretro.so`), which already works through the existing `retroarch.cfg` patching —
+that's the supported path for offline Dreamcast achievements on ROCKNIX today.
 
 ## Platform Specifics
 
