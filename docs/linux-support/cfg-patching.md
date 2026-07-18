@@ -32,15 +32,32 @@ muOS RetroArch also loads a separate cheevos appendconfig, which stores your Ret
 
 RAOfflineProxy keeps both files in sync when patching and reverting.
 
+== ROCKNIX
+
+```text
+/storage/.config/retroarch/retroarch.cfg
+```
+
+ROCKNIX also ships standalone PPSSPP with its own RetroAchievements support. When `ppsspp.ini` exists, RAOfflineProxy patches it too:
+
+```text
+/storage/.config/ppsspp/PSP/SYSTEM/ppsspp.ini
+```
+
 :::
 
 ## What Gets Patched
 
-While the proxy is active, `RAOfflineProxy` patches:
+While the proxy is active, `RAOfflineProxy` patches RetroArch:
 
 - `cheevos_enable = "true"`
 - `cheevos_custom_host = "<proxy_host>:<proxy_port>"`
 - `cheevos_hardcore_mode_enable = "false"`
+
+On ROCKNIX, standalone PPSSPP is patched the same way:
+
+- `AchievementsHost = <proxy_host>:<proxy_port>`
+- `AchievementsChallengeMode = False`
 
 Hardcore mode is not supported.
 
