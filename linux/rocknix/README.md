@@ -20,6 +20,40 @@ The alpha ROCKNIX flow has been verified end to end on real hardware (SM8550, aa
 
 `RAOfflineProxy` is the primary interactive fullscreen UI (Start, Stop, Autostart, Cached Games, Pending Awards, Uninstall, Exit), identical to the KNULLI/muOS SDL menu.
 
+## Emulator Support
+
+| Emulator | Status | Notes |
+|---|---|---|
+| RetroArch | Supported | `cheevos_custom_host` patched in `retroarch.cfg` |
+| PPSSPP | Supported | `AchievementsHost` patched in `ppsspp.ini` |
+| AetherSX2 (PS2, default core) | **Not supported** | See below |
+
+### Why AetherSX2 is unsupported
+
+ROCKNIX's `ps2` system ships two selectable cores: `aethersx2-sa` (the default, and the only
+one documented on rocknix.org) and `pcsx2-sa`. Only `pcsx2-sa` can be host-overridden.
+
+`aethersx2-sa`'s binary has no reachable code path for a custom RetroAchievements host:
+
+- No `Achievements/Host`-style config key is read anywhere in the binary (confirmed via
+  `strings` on `/usr/share/aethersx2-sa/aethersx2` — no `"Using custom host"` log line exists,
+  unlike the `pcsx2-sa` binary which has it).
+- The RA request URL (`https://retroachievements.org/dorequest.php`) is a hardcoded literal.
+  `cheevos_aethersx2.sh` never writes a `Host` key, consistent with the binary never reading one.
+- This is an older PCSX2 fork predating upstream's host-override support in `Achievements.cpp`
+  (`Host::GetBaseStringSettingValue("Achievements", "Host", "")` → `rc_client_set_host()`).
+
+Unlike the Dolphin case (fixed upstream via
+[ROCKNIX/distribution#3038](https://github.com/ROCKNIX/distribution/pull/3038), where the
+binary already supported a custom host and only the launch script needed a 2-line fix),
+AetherSX2's binary itself lacks the feature entirely. Supporting it would require porting the
+host-override code from upstream PCSX2 into ROCKNIX's AetherSX2 fork and rebuilding the
+binary — a real code change to the emulator, not a client-side or launch-script fix.
+
+The `pcsx2-sa` alt-core's binary does support this, and its `cheevos_pcsx2.sh` does targeted
+`sed` edits (not a full config regen), so it's a viable client-side integration target for a
+future release.
+
 ## Platform Specifics
 
 Confirmed on-device (ROCKNIX `next`, `OS_NAME="ROCKNIX"` in `/etc/os-release`):
