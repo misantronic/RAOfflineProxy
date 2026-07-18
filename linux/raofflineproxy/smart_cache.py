@@ -23,7 +23,16 @@ DOLPHIN_RECENT_WINDOW_SECONDS = 60 * 24 * 60 * 60
 DOLPHIN_GCI_CODE_REGEX = re.compile(r"^\d{2}-([A-Za-z0-9]{4})-.*\.gci$", re.IGNORECASE)
 DOLPHIN_WII_TITLE_ID_REGEX = re.compile(r"^[0-9A-Fa-f]{8}$")
 DOLPHIN_WII_DISC_TITLE_HIGH_ID = "00010000"
+# WiiWare/Virtual Console/DLC channels installed from a .wad live under this
+# NAND high ID instead of the disc-title one above.
+DOLPHIN_WII_WAD_TITLE_HIGH_ID = "00010001"
 DOLPHIN_DISC_ROM_SUFFIXES = (".rvz", ".wia", ".iso", ".gcm")
+# .wad (WAD installer package) has no disc header; its game code lives in the
+# TMD's title ID instead. Only the near-universal RSA-2048 signature type is
+# handled — every commercial Wii TMD/ticket uses it.
+DOLPHIN_WAD_RSA2048_SIG_TYPE = 0x10001
+DOLPHIN_WAD_RSA2048_SIG_BLOCK_SIZE = 0x140
+DOLPHIN_WAD_TMD_TITLE_ID_OFFSET = 0x18C
 # WIA/RVZ share the same header layout: 0x48-byte WIAHeader1 followed by
 # WIAHeader2, whose disc_type/compression_type/compression_level/chunk_size
 # (4 x u32 = 16 bytes) precede the embedded 0x80-byte original disc header.
@@ -379,6 +388,9 @@ def _load_dolphin_recent_paths(config_data: dict) -> list[Path]:
     wii_title_dir = config_dir_path / "Wii" / "title" / DOLPHIN_WII_DISC_TITLE_HIGH_ID
     _merge_recent_codes(recent_codes, _scan_dolphin_wii_title_codes(wii_title_dir))
 
+    wii_wad_title_dir = config_dir_path / "Wii" / "title" / DOLPHIN_WII_WAD_TITLE_HIGH_ID
+    _merge_recent_codes(recent_codes, _scan_dolphin_wii_title_codes(wii_wad_title_dir))
+
     if not recent_codes:
         return []
 
@@ -394,6 +406,8 @@ def _load_dolphin_recent_paths(config_data: dict) -> list[Path]:
         return []
 
     library = _scan_dolphin_disc_library(iso_dirs)
+    for code, path in _scan_dolphin_wad_library(iso_dirs).items():
+        library.setdefault(code, path)
     if not library:
         return []
 
@@ -547,6 +561,60 @@ def _read_dolphin_disc_code(path: Path) -> str | None:
     if not code.isalnum() or not code.isupper():
         return None
     return code[:4]
+
+
+def _scan_dolphin_wad_library(iso_dirs: list[Path]) -> dict[str, Path]:
+    library: dict[str, Path] = {}
+    for iso_dir in iso_dirs:
+        for path in iso_dir.rglob("*.wad"):
+            if not path.is_file():
+                continue
+            code = _read_wad_game_code(path)
+            if code is None or code in library:
+                continue
+            library[code] = path
+    return library
+
+
+def _read_wad_game_code(path: Path) -> str | None:
+    """Extracts the 4-char game code from a WAD's embedded TMD title ID.
+
+    A WAD has no disc header (it's an installer package, not a disc image);
+    the title ID lives in the TMD, whose offset depends on the sizes of the
+    sections before it (cert chain, CRL, ticket), each padded to a 64-byte
+    boundary. Only the near-universal RSA-2048 TMD signature type is handled.
+    """
+    try:
+        with path.open("rb") as handle:
+            header = handle.read(0x20)
+            if len(header) < 0x20:
+                return None
+            cert_chain_size = int.from_bytes(header[0x08:0x0C], "big")
+            crl_size = int.from_bytes(header[0x0C:0x10], "big")
+            ticket_size = int.from_bytes(header[0x10:0x14], "big")
+
+            cert_start = _align_up_64(0x20)
+            crl_start = _align_up_64(cert_start + cert_chain_size)
+            ticket_start = _align_up_64(crl_start + crl_size)
+            tmd_start = _align_up_64(ticket_start + ticket_size)
+
+            handle.seek(tmd_start)
+            sig_type = int.from_bytes(handle.read(4), "big")
+            if sig_type != DOLPHIN_WAD_RSA2048_SIG_TYPE:
+                return None
+
+            handle.seek(tmd_start + DOLPHIN_WAD_TMD_TITLE_ID_OFFSET)
+            title_id = handle.read(8)
+    except OSError:
+        return None
+
+    if len(title_id) != 8:
+        return None
+    return _decode_wii_title_id_to_game_code(title_id[4:8].hex())
+
+
+def _align_up_64(value: int) -> int:
+    return (value + 63) & ~63
 
 
 def _load_muos_history_paths() -> list[Path]:
