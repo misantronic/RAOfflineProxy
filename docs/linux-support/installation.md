@@ -32,11 +32,13 @@ Before using `RAOfflineProxy` on Linux:
 
 - Enter your RetroAchievements account details<br>
   > Game Settings -> Retroachievement settings
+- If you also use standalone PPSSPP, log in separately inside PPSSPP<br>
+  > Settings -> Tools -> Achievement Settings
 
 :::
 
-::: warning RetroArch config is patched automatically
-RAOfflineProxy patches the RetroArch config it needs in order to redirect RetroAchievements traffic through the local proxy. For target-specific details, see [Emulator Patching](/linux-support/cfg-patching).
+::: warning Emulator configs are patched automatically
+RAOfflineProxy patches the emulator configs it needs in order to redirect RetroAchievements traffic through the local proxy (RetroArch everywhere, plus standalone PPSSPP on ROCKNIX). For target-specific details, see [Emulator Patching](/linux-support/cfg-patching).
 :::
 
 ## Setup

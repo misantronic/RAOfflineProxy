@@ -59,6 +59,8 @@ It is currently compatible with [ROCKNIX 20260701](https://github.com/ROCKNIX/di
 
 The ROCKNIX target ships as a self-extracting installer and runs the same SDL menu used on the other Linux targets. The app installs under `/storage/.local/share/raofflineproxy` and appears in the **Tools** menu.
 
+Both RetroArch and standalone PPSSPP are supported on ROCKNIX. Starting the proxy patches both `retroarch.cfg` and, when present, `ppsspp.ini`.
+
 Current rough edges:
 
 - The bundled runtime (including `pygame`, which stock ROCKNIX does not ship) is larger than ideal
