@@ -1599,15 +1599,18 @@ class MenuSdlSession:
             return None
 
     def fit_achievement_preview_size(self, width: int, height: int) -> tuple[int, int]:
+        # RA badges are small source images (commonly 64px); cap the upscale
+        # factor rather than 1.0 so they still fill their box on large screens
+        # instead of staying pinned to native size while everything else scales.
         max_width = max(64, self.width // 8)
         max_height = max(64, self.height // 6)
-        scale = min(max_width / max(1, width), max_height / max(1, height), 1.0)
+        scale = min(max_width / max(1, width), max_height / max(1, height), 4.0)
         return max(1, int(width * scale)), max(1, int(height * scale))
 
     def fit_preview_size(self, width: int, height: int) -> tuple[int, int]:
         max_width = max(96, self.width // 4)
         max_height = max(96, self.height // 3)
-        scale = min(max_width / max(1, width), max_height / max(1, height), 1.0)
+        scale = min(max_width / max(1, width), max_height / max(1, height), 4.0)
         return max(1, int(width * scale)), max(1, int(height * scale))
 
     def item_start_y(self) -> int:
