@@ -29,6 +29,8 @@ The alpha ROCKNIX flow has been verified end to end on real hardware (SM8550, aa
 | AetherSX2 (PS2, default core) | **Not supported** | See below |
 | flycast (standalone) | **Not supported** | See below |
 | flycast (RetroArch core) | Supported | goes through `retroarch.cfg`, same as any other libretro core |
+| DuckStation (standalone) | **Not supported** | See below |
+| DuckStation (RetroArch core) | Supported | goes through `retroarch.cfg`, same as any other libretro core |
 
 ### Why AetherSX2 is unsupported
 
@@ -71,6 +73,33 @@ above.
 flycast is also available as a RetroArch core (`flycast_libretro.so` /
 `flycast2021_libretro.so`), which already works through the existing `retroarch.cfg` patching —
 that's the supported path for offline Dreamcast achievements on ROCKNIX today.
+
+### Why standalone DuckStation is unsupported
+
+Unlike AetherSX2 and flycast, DuckStation's binary genuinely has full achievements support,
+including what looks like a `Host` override — `/usr/bin/duckstation-sa` is an AppImage-style
+self-extracting stub (an ELF wrapper with a compressed squashfs payload appended), and the real
+`duckstation-qt` binary inside it is unstripped with debug info. It contains `Cheevos`, `Host`,
+`Username`, `Token`, `ChallengeMode`, `LoginTimestamp`, `RichPresencePatch`, and a
+`Using host: %s` log format string. On-device, `/var/log/exec.log` shows achievements working
+live end to end (`RA Login successful`, `RA: game N loaded ... achievements 1 leaderboards 1`)
+once a user logs in through DuckStation's own in-game menu.
+
+The blocker is the automatic login path, not the achievements engine. ROCKNIX's own
+`/usr/bin/start_duckstation.sh` unconditionally forces `Enabled = false` in the `[Cheevos]`
+section before every launch, and has `/usr/bin/cheevos_duckstation.sh` (the script that would
+inject the RA username/token from Emulation Station into DuckStation's ini, the same way
+`cheevos_ppsspp.sh`/`cheevos_pcsx2.sh` do) commented out entirely, with the comment
+`Disabled, not working. Seems like Duckstation changed the token encryption...`. Without that
+injection working, RAOfflineProxy has no way to get the emulator logged in and pointed at the
+proxy automatically — the user would have to manually re-enter their RA username/password
+inside DuckStation's own menu on every session, which isn't a viable integration for this
+project. Revisit this once ROCKNIX's launch script (or an upstream DuckStation change) fixes the
+token injection.
+
+DuckStation is also available as a RetroArch core (`duckstation_libretro.so`), which already
+works through the existing `retroarch.cfg` patching — that's the supported path for offline
+PS1 achievements on ROCKNIX today.
 
 ## Platform Specifics
 
