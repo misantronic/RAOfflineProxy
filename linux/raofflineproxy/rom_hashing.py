@@ -240,5 +240,5 @@ def supported_rom_extensions() -> set[str]:
         ".col", ".int", ".vec", ".vb", ".ws", ".wsc",
         ".ngp", ".ngc", ".min", ".sv", ".chf",
         # Disc / playlist / misc
-        ".iso", ".bin", ".chd", ".pbp", ".cue", ".m3u", ".cart", ".rvz",
+        ".iso", ".bin", ".chd", ".pbp", ".cue", ".m3u", ".cart", ".rvz", ".wad",
     }
