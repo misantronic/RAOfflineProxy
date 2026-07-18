@@ -15,6 +15,7 @@ DEFAULT_BATOCERA_CONF = Path("/userdata/system/batocera.conf")
 DEFAULT_KNULLI_CONF = Path("/userdata/system/knulli.conf")
 DEFAULT_ROCKNIX_RETROARCH_CFG = Path("/storage/.config/retroarch/retroarch.cfg")
 DEFAULT_ROCKNIX_CONFIG_DIR = Path("/storage/.config/raofflineproxy")
+DEFAULT_ROCKNIX_PPSSPP_INI = Path("/storage/.config/ppsspp/PSP/SYSTEM/ppsspp.ini")
 OS_RELEASE_PATH = Path("/etc/os-release")
 
 
@@ -197,3 +198,18 @@ def detect_retroarch_cfg() -> str:
         return str(Path("/mnt/SDCARD/RetroArch/.retroarch/retroarch.cfg"))
 
     return str(Path.home() / ".config" / "retroarch" / "retroarch.cfg")
+
+
+def detect_ppsspp_ini(config_data: dict) -> str | None:
+    configured = config_data.get("ppsspp_ini")
+    if configured:
+        return str(configured)
+
+    env_override = os.environ.get("RAOFFLINEPROXY_PPSSPP_INI")
+    if env_override:
+        return env_override
+
+    if DEFAULT_ROCKNIX_PPSSPP_INI.exists():
+        return str(DEFAULT_ROCKNIX_PPSSPP_INI)
+
+    return None

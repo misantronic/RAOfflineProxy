@@ -3,6 +3,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
+from .config import detect_ppsspp_ini
 from .platform import read_retroarch_cfg_values, resolve_retroarch_cfg
 from .rom_browser import (
     MAX_CACHED_GAMES,
@@ -191,8 +192,23 @@ def run_cache_paths(
 
 def load_content_history_paths(config_data: dict) -> list[Path]:
     if MUOS_HISTORY_DIR.exists():
-        return _load_muos_history_paths()
-    return _load_retroarch_history_paths(config_data)
+        paths = _load_muos_history_paths()
+    else:
+        paths = _load_retroarch_history_paths(config_data)
+
+    ppsspp_paths = _load_ppsspp_recent_paths(config_data)
+    if not ppsspp_paths:
+        return paths
+
+    seen = {str(path) for path in paths}
+    for path in ppsspp_paths:
+        normalized = str(path)
+        if normalized in seen:
+            continue
+        seen.add(normalized)
+        paths.append(path)
+
+    return paths
 
 def _load_retroarch_history_paths(config_data: dict) -> list[Path]:
     history_path = find_content_history_lpl(config_data)
@@ -228,10 +244,79 @@ def _load_retroarch_history_paths(config_data: dict) -> list[Path]:
 
 
 def _find_history_source(config_data: dict) -> Path | None:
-    """Returns the muOS history dir, or the content_history.lpl path, whichever is available."""
+    """Returns the muOS history dir, content_history.lpl, or ppsspp.ini, whichever is available."""
     if MUOS_HISTORY_DIR.exists():
         return MUOS_HISTORY_DIR
-    return find_content_history_lpl(config_data)
+
+    retroarch_source = find_content_history_lpl(config_data)
+    if retroarch_source is not None:
+        return retroarch_source
+
+    ppsspp_ini = detect_ppsspp_ini(config_data)
+    if ppsspp_ini is not None and Path(ppsspp_ini).exists():
+        return Path(ppsspp_ini)
+
+    return None
+
+
+def _load_ppsspp_recent_paths(config_data: dict) -> list[Path]:
+    ini_path = detect_ppsspp_ini(config_data)
+    if ini_path is None:
+        return []
+
+    target = Path(ini_path)
+    if not target.exists():
+        return []
+
+    try:
+        content = target.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return []
+
+    return parse_ppsspp_recent_paths(content)
+
+
+def parse_ppsspp_recent_paths(content: str) -> list[Path]:
+    """Read ROM paths from the [Recent] section of ppsspp.ini.
+
+    Entries are keyed FileName0, FileName1, ... with 0 being most recent;
+    sort by that index the same way PPSSPP's own recent list is ordered.
+    """
+    in_recent = False
+    seen: set[str] = set()
+    candidates: list[tuple[int, Path]] = []
+
+    for line in content.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("[") and stripped.endswith("]"):
+            in_recent = stripped == "[Recent]"
+            continue
+        if not in_recent:
+            continue
+
+        separator = stripped.find("=")
+        if separator == -1:
+            continue
+        key = stripped[:separator].strip()
+        if not key.startswith("FileName"):
+            continue
+        index_text = key[len("FileName") :]
+        if not index_text.isdigit():
+            continue
+
+        raw_path = stripped[separator + 1 :].strip()
+        if not raw_path:
+            continue
+
+        path = Path(raw_path).expanduser()
+        normalized = str(path)
+        if normalized in seen or not path.exists() or not path.is_file():
+            continue
+        seen.add(normalized)
+        candidates.append((int(index_text), path))
+
+    candidates.sort(key=lambda item: item[0])
+    return [path for _, path in candidates]
 
 
 def _load_muos_history_paths() -> list[Path]:

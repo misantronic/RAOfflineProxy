@@ -5,6 +5,7 @@ from io import StringIO
 from pathlib import Path
 from unittest import mock
 
+from linux.raofflineproxy import config
 from linux.raofflineproxy import main
 from linux.raofflineproxy import smart_cache
 from linux.raofflineproxy import storage
@@ -42,6 +43,62 @@ class LinuxSmartCacheTests(unittest.TestCase):
             )
 
             self.assertEqual(paths, [rom_one, rom_two])
+
+    def test_parse_ppsspp_recent_paths_sorts_by_index_and_dedupes(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            rom_one = root / "one.iso"
+            rom_two = root / "two.chd"
+            rom_one.write_bytes(b"one")
+            rom_two.write_bytes(b"two")
+            content = (
+                "[Recent]\n"
+                "MaxRecent = 30\n"
+                f"FileName1 = {rom_two}\n"
+                f"FileName0 = {rom_one}\n"
+                f"FileName2 = {rom_one}\n"
+                f"FileName3 = {root / 'missing.iso'}\n"
+                "[Log]\n"
+                "SomeKey = 1\n"
+            )
+
+            paths = smart_cache.parse_ppsspp_recent_paths(content)
+
+            self.assertEqual(paths, [rom_one, rom_two])
+
+    def test_load_content_history_paths_merges_ppsspp_recent_deduped(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            cfg_path = root / "retroarch.cfg"
+            history_path = root / "playlists" / "content_history.lpl"
+            ini_path = root / "ppsspp.ini"
+            rom_shared = root / "shared.gb"
+            rom_ppsspp_only = root / "psp_only.chd"
+            history_path.parent.mkdir(parents=True)
+            rom_shared.write_bytes(b"shared")
+            rom_ppsspp_only.write_bytes(b"psp")
+            cfg_path.write_text("# cfg\n", encoding="utf-8")
+            history_path.write_text(
+                json.dumps({"items": [{"path": str(rom_shared)}]}), encoding="utf-8"
+            )
+            ini_path.write_text(
+                "[Recent]\n"
+                f"FileName0 = {rom_ppsspp_only}\n"
+                f"FileName1 = {rom_shared}\n",
+                encoding="utf-8",
+            )
+
+            original_default = config.DEFAULT_ROCKNIX_PPSSPP_INI
+            try:
+                config.DEFAULT_ROCKNIX_PPSSPP_INI = ini_path
+
+                paths = smart_cache.load_content_history_paths(
+                    {"retroarch_cfg": str(cfg_path)}
+                )
+
+                self.assertEqual(paths, [rom_shared, rom_ppsspp_only])
+            finally:
+                config.DEFAULT_ROCKNIX_PPSSPP_INI = original_default
 
     def test_should_offer_smart_cache_still_offers_when_uncached_history_entries_exist(
         self,
@@ -126,6 +183,37 @@ class LinuxSmartCacheTests(unittest.TestCase):
                 self.assertEqual(status.total_candidates, 0)
                 self.assertEqual(status.reason, "all_history_entries_cached")
             finally:
+                store.close()
+
+    def test_should_offer_smart_cache_finds_history_from_ppsspp_only(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            db_path = root / "test.sqlite3"
+            cfg_path = root / "retroarch.cfg"
+            ini_path = root / "ppsspp.ini"
+            rom_path = root / "roms" / "psp" / "game.chd"
+            rom_path.parent.mkdir(parents=True)
+            cfg_path.write_text("# cfg\n", encoding="utf-8")
+            rom_path.write_bytes(b"psp")
+            ini_path.write_text(f"[Recent]\nFileName0 = {rom_path}\n", encoding="utf-8")
+
+            original_default = config.DEFAULT_ROCKNIX_PPSSPP_INI
+            store = storage.Storage(database_path=db_path)
+            try:
+                config.DEFAULT_ROCKNIX_PPSSPP_INI = ini_path
+
+                status = smart_cache.should_offer_smart_cache(
+                    store,
+                    {"retroarch_cfg": str(cfg_path)},
+                    is_online=True,
+                    has_credentials=True,
+                )
+
+                self.assertTrue(status.found_history)
+                self.assertEqual(status.total_candidates, 1)
+                self.assertEqual(status.history_path, str(ini_path))
+            finally:
+                config.DEFAULT_ROCKNIX_PPSSPP_INI = original_default
                 store.close()
 
     def test_should_offer_smart_cache_false_when_offline(self) -> None:
