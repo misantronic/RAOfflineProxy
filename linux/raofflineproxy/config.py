@@ -16,6 +16,7 @@ DEFAULT_KNULLI_CONF = Path("/userdata/system/knulli.conf")
 DEFAULT_ROCKNIX_RETROARCH_CFG = Path("/storage/.config/retroarch/retroarch.cfg")
 DEFAULT_ROCKNIX_CONFIG_DIR = Path("/storage/.config/raofflineproxy")
 DEFAULT_ROCKNIX_PPSSPP_INI = Path("/storage/.config/ppsspp/PSP/SYSTEM/ppsspp.ini")
+DEFAULT_ROCKNIX_DOLPHIN_CONFIG_DIR = Path("/storage/.config/dolphin-emu")
 OS_RELEASE_PATH = Path("/etc/os-release")
 
 
@@ -213,3 +214,34 @@ def detect_ppsspp_ini(config_data: dict) -> str | None:
         return str(DEFAULT_ROCKNIX_PPSSPP_INI)
 
     return None
+
+
+def detect_dolphin_config_dir(config_data: dict) -> str | None:
+    configured = config_data.get("dolphin_config_dir")
+    if configured:
+        return str(configured)
+
+    env_override = os.environ.get("RAOFFLINEPROXY_DOLPHIN_CONFIG_DIR")
+    if env_override:
+        return env_override
+
+    if DEFAULT_ROCKNIX_DOLPHIN_CONFIG_DIR.exists():
+        return str(DEFAULT_ROCKNIX_DOLPHIN_CONFIG_DIR)
+
+    return None
+
+
+def detect_dolphin_ini(config_data: dict) -> str | None:
+    configured = config_data.get("dolphin_ini")
+    if configured:
+        return str(configured)
+
+    env_override = os.environ.get("RAOFFLINEPROXY_DOLPHIN_INI")
+    if env_override:
+        return env_override
+
+    config_dir = detect_dolphin_config_dir(config_data)
+    if config_dir is None:
+        return None
+
+    return str(Path(config_dir) / "RetroAchievements.ini")

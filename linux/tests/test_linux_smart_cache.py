@@ -1,5 +1,7 @@
 import json
+import os
 import tempfile
+import time
 import unittest
 from io import StringIO
 from pathlib import Path
@@ -215,6 +217,171 @@ class LinuxSmartCacheTests(unittest.TestCase):
             finally:
                 config.DEFAULT_ROCKNIX_PPSSPP_INI = original_default
                 store.close()
+
+    def test_read_dolphin_disc_code_reads_raw_iso_header(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            rom_path = Path(temp_dir) / "game.iso"
+            rom_path.write_bytes(b"GALE01" + b"\x00" * 100)
+
+            self.assertEqual(smart_cache._read_dolphin_disc_code(rom_path), "GALE")
+
+    def test_read_dolphin_disc_code_reads_rvz_embedded_header(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            rom_path = Path(temp_dir) / "game.rvz"
+            padding = smart_cache.DOLPHIN_WIA_RVZ_DISC_HEADER_OFFSET
+            rom_path.write_bytes(
+                b"RVZ\x01" + b"\x00" * (padding - 4) + b"GAFE01" + b"\x00" * 20
+            )
+
+            self.assertEqual(smart_cache._read_dolphin_disc_code(rom_path), "GAFE")
+
+    def test_decode_wii_title_id_to_game_code_round_trips(self) -> None:
+        title_id = "".join(f"{ord(c):02x}" for c in "WRXE")
+
+        self.assertEqual(
+            smart_cache._decode_wii_title_id_to_game_code(title_id), "WRXE"
+        )
+
+    def test_load_dolphin_recent_paths_matches_gci_save_to_rvz_library(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config_dir = Path(temp_dir) / "dolphin-emu"
+            gci_dir = config_dir / "GC" / "USA"
+            roms_dir = Path(temp_dir) / "roms" / "gamecube"
+            gci_dir.mkdir(parents=True)
+            roms_dir.mkdir(parents=True)
+
+            rom_path = roms_dir / "Mario Power Tennis.rvz"
+            padding = smart_cache.DOLPHIN_WIA_RVZ_DISC_HEADER_OFFSET
+            rom_path.write_bytes(
+                b"RVZ\x01" + b"\x00" * (padding - 4) + b"GAFE01" + b"\x00" * 20
+            )
+
+            (gci_dir / "01-GAFE-Save.gci").write_bytes(b"save")
+
+            (config_dir / "Dolphin.ini").write_text(
+                "[Core]\n"
+                f"GCIFolderAPath = {gci_dir}\n"
+                "[General]\n"
+                "ISOPaths = 1\n"
+                f"ISOPath0 = {roms_dir}\n",
+                encoding="utf-8",
+            )
+
+            original_default = config.DEFAULT_ROCKNIX_DOLPHIN_CONFIG_DIR
+            try:
+                config.DEFAULT_ROCKNIX_DOLPHIN_CONFIG_DIR = config_dir
+
+                paths = smart_cache._load_dolphin_recent_paths({})
+
+                self.assertEqual(paths, [rom_path])
+            finally:
+                config.DEFAULT_ROCKNIX_DOLPHIN_CONFIG_DIR = original_default
+
+    def test_load_dolphin_recent_paths_matches_wii_title_dir_to_library(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config_dir = Path(temp_dir) / "dolphin-emu"
+            title_id = "".join(f"{ord(c):02x}" for c in "WRXE")
+            title_dir = config_dir / "Wii" / "title" / "00010000" / title_id
+            roms_dir = Path(temp_dir) / "roms" / "wii"
+            title_dir.mkdir(parents=True)
+            roms_dir.mkdir(parents=True)
+
+            rom_path = roms_dir / "Some Wii Game.iso"
+            rom_path.write_bytes(b"WRXE01" + b"\x00" * 100)
+
+            (config_dir / "Dolphin.ini").write_text(
+                "[General]\nISOPaths = 1\n" f"ISOPath0 = {roms_dir}\n",
+                encoding="utf-8",
+            )
+
+            original_default = config.DEFAULT_ROCKNIX_DOLPHIN_CONFIG_DIR
+            try:
+                config.DEFAULT_ROCKNIX_DOLPHIN_CONFIG_DIR = config_dir
+
+                paths = smart_cache._load_dolphin_recent_paths({})
+
+                self.assertEqual(paths, [rom_path])
+            finally:
+                config.DEFAULT_ROCKNIX_DOLPHIN_CONFIG_DIR = original_default
+
+    def test_load_dolphin_recent_paths_excludes_saves_outside_recency_window(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config_dir = Path(temp_dir) / "dolphin-emu"
+            gci_dir = config_dir / "GC" / "USA"
+            roms_dir = Path(temp_dir) / "roms" / "gamecube"
+            gci_dir.mkdir(parents=True)
+            roms_dir.mkdir(parents=True)
+
+            rom_path = roms_dir / "Old Game.iso"
+            rom_path.write_bytes(b"GAFE01" + b"\x00" * 100)
+
+            gci_path = gci_dir / "01-GAFE-Save.gci"
+            gci_path.write_bytes(b"save")
+            old_timestamp = time.time() - smart_cache.DOLPHIN_RECENT_WINDOW_SECONDS - 3600
+            os.utime(gci_path, (old_timestamp, old_timestamp))
+
+            (config_dir / "Dolphin.ini").write_text(
+                "[Core]\n"
+                f"GCIFolderAPath = {gci_dir}\n"
+                "[General]\n"
+                "ISOPaths = 1\n"
+                f"ISOPath0 = {roms_dir}\n",
+                encoding="utf-8",
+            )
+
+            original_default = config.DEFAULT_ROCKNIX_DOLPHIN_CONFIG_DIR
+            try:
+                config.DEFAULT_ROCKNIX_DOLPHIN_CONFIG_DIR = config_dir
+
+                paths = smart_cache._load_dolphin_recent_paths({})
+
+                self.assertEqual(paths, [])
+            finally:
+                config.DEFAULT_ROCKNIX_DOLPHIN_CONFIG_DIR = original_default
+
+    def test_load_content_history_paths_merges_dolphin_recent_deduped(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            cfg_path = root / "retroarch.cfg"
+            history_path = root / "playlists" / "content_history.lpl"
+            history_path.parent.mkdir(parents=True)
+            cfg_path.write_text("# cfg\n", encoding="utf-8")
+            history_path.write_text(json.dumps({"items": []}), encoding="utf-8")
+
+            config_dir = root / "dolphin-emu"
+            gci_dir = config_dir / "GC" / "USA"
+            roms_dir = root / "roms" / "gamecube"
+            gci_dir.mkdir(parents=True)
+            roms_dir.mkdir(parents=True)
+
+            rom_path = roms_dir / "Mario Power Tennis.rvz"
+            padding = smart_cache.DOLPHIN_WIA_RVZ_DISC_HEADER_OFFSET
+            rom_path.write_bytes(
+                b"RVZ\x01" + b"\x00" * (padding - 4) + b"GAFE01" + b"\x00" * 20
+            )
+            (gci_dir / "01-GAFE-Save.gci").write_bytes(b"save")
+            (config_dir / "Dolphin.ini").write_text(
+                "[Core]\n"
+                f"GCIFolderAPath = {gci_dir}\n"
+                "[General]\n"
+                "ISOPaths = 1\n"
+                f"ISOPath0 = {roms_dir}\n",
+                encoding="utf-8",
+            )
+
+            original_default = config.DEFAULT_ROCKNIX_DOLPHIN_CONFIG_DIR
+            try:
+                config.DEFAULT_ROCKNIX_DOLPHIN_CONFIG_DIR = config_dir
+
+                paths = smart_cache.load_content_history_paths(
+                    {"retroarch_cfg": str(cfg_path)}
+                )
+
+                self.assertEqual(paths, [rom_path])
+            finally:
+                config.DEFAULT_ROCKNIX_DOLPHIN_CONFIG_DIR = original_default
 
     def test_should_offer_smart_cache_false_when_offline(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

@@ -32,6 +32,11 @@ from .ppsspp_cfg import (
     revert_ppsspp_ini,
     store_ppsspp_previous,
 )
+from .dolphin_cfg import (
+    patch_dolphin_ini,
+    revert_dolphin_ini,
+    store_dolphin_previous,
+)
 from .retroarch_cfg import (
     enforce_patched_cfg,
     patch_retroarch_cfg,
@@ -94,9 +99,11 @@ def _apply_proxy(config_data: dict, cfg_path: str) -> list[str]:
     enforce_patched_cfg(cfg_path, config_data)
     batocera = patch_batocera_conf(config_data)
     ppsspp = patch_ppsspp_ini(config_data)
+    dolphin = patch_dolphin_ini(config_data)
     patch_state = load_patch_state() or {}
     store_batocera_previous(patch_state, batocera)
     store_ppsspp_previous(patch_state, ppsspp)
+    store_dolphin_previous(patch_state, dolphin)
     save_patch_state(patch_state)
     service = start_service_process(config_data)
 
@@ -112,6 +119,9 @@ def _apply_proxy(config_data: dict, cfg_path: str) -> list[str]:
 
     if ppsspp.get("exists"):
         output.append(f"Patched ppsspp.ini at {ppsspp['path']}")
+
+    if dolphin.get("exists"):
+        output.append(f"Patched RetroAchievements.ini at {dolphin['path']}")
 
     if service["already_running"]:
         output.append(f"Service already running (pid {service['pid']})")
@@ -129,12 +139,16 @@ def _revert_proxy_config(config_data: dict, cfg_path: str | None) -> list[str]:
     revert_cfg_path = patch_state.get("cfg_path") or cfg_path
     batocera = revert_batocera_conf(config_data, patch_state.get("batocera_previous", {}))
     ppsspp = revert_ppsspp_ini(config_data, patch_state.get("ppsspp_previous", {}))
+    dolphin = revert_dolphin_ini(config_data, patch_state.get("dolphin_previous", {}))
 
     if batocera.get("exists"):
         output.append(f"Reverted batocera.conf at {batocera['path']}")
 
     if ppsspp.get("exists"):
         output.append(f"Reverted ppsspp.ini at {ppsspp['path']}")
+
+    if dolphin.get("exists"):
+        output.append(f"Reverted RetroAchievements.ini at {dolphin['path']}")
 
     revert_result = None
     if patch_state:
