@@ -32,8 +32,6 @@ Before using `RAOfflineProxy` on Linux:
 
 - Enter your RetroAchievements account details<br>
   > Game Settings -> Retroachievement settings
-- If you also use standalone PPSSPP, log in separately inside PPSSPP<br>
-  > Settings -> Tools -> Achievement Settings
 
 :::
 
