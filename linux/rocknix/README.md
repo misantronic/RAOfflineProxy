@@ -31,6 +31,8 @@ The alpha ROCKNIX flow has been verified end to end on real hardware (SM8550, aa
 | flycast (RetroArch core) | Supported | goes through `retroarch.cfg`, same as any other libretro core |
 | DuckStation (standalone) | **Not supported** | See below |
 | DuckStation (RetroArch core) | Supported | goes through `retroarch.cfg`, same as any other libretro core |
+| melonDS (standalone) | **Not supported** | See below |
+| melonDS (RetroArch core) | Supported | goes through `retroarch.cfg`, same as any other libretro core |
 
 ### Why AetherSX2 is unsupported
 
@@ -100,6 +102,22 @@ token injection.
 DuckStation is also available as a RetroArch core (`duckstation_libretro.so`), which already
 works through the existing `retroarch.cfg` patching — that's the supported path for offline
 PS1 achievements on ROCKNIX today.
+
+### Why standalone melonDS is unsupported
+
+Same class of problem as AetherSX2 and flycast: `/usr/bin/cheevos_melonds.sh` writes only
+`RA_Enabled`, `RA_Username`, `RA_Password`, `RA_Token`, `RA_HardcoreMode`, `RA_EncoreMode`, and
+`RA_Unofficial` into the flat (no-section) `melonDS.ini` — confirmed via `strings` on
+`/usr/bin/melonDS` that those are exactly the `RA_*` config keys the binary reads, with no
+`RA_Host`/`Host`-style key among them. The RA request URL
+(`https://retroachievements.org/dorequest.php`) is a hardcoded literal at a fixed offset in the
+binary, with no config, env var, or CLI flag to redirect it. Supporting it would mean porting
+host-override support into melonDS and rebuilding the binary, the same class of work as the
+AetherSX2 and flycast cases above.
+
+melonDS is also available as a RetroArch core (`melonds_libretro.so` / `melondsds_libretro.so`),
+which already works through the existing `retroarch.cfg` patching — that's the supported path
+for offline NDS/DSi achievements on ROCKNIX today.
 
 ## Platform Specifics
 
