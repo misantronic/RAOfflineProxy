@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 USER_AGENT = "ua::last"
 AUTH_INVALID_TOKEN = "auth::invalid_token"
 

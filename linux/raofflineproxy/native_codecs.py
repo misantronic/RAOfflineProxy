@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """ctypes bindings to system libzstd / libcrypto.
 
 ROCKNIX has no pip (no ``zstandard``/``cryptography`` packages), but both
