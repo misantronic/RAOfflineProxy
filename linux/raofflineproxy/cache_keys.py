@@ -1,4 +1,5 @@
 USER_AGENT = "ua::last"
+AUTH_INVALID_TOKEN = "auth::invalid_token"
 
 PREFIX_LOGIN = "login2::"
 PREFIX_PATCH = "patch:"

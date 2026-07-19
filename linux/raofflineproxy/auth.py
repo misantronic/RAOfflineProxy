@@ -33,17 +33,21 @@ def resolve_credentials(
         return cache_token_credentials(storage, token_credentials)
 
     cached = storage.load_login_credentials()
-    if cached is not None:
+    if cached is not None and not storage.is_token_invalid(cached["token"]):
         return cached
 
     password_credentials = (
         load_retroarch_password_credentials(cfg_path)
         or load_retroarch_password_credentials(cheevos_cfg)
     )
-    if password_credentials is None:
-        return None
+    if password_credentials is not None:
+        refreshed = login_and_cache_token(
+            storage, config_data, password_credentials, user_agent
+        )
+        if refreshed is not None:
+            return refreshed
 
-    return login_and_cache_token(storage, config_data, password_credentials, user_agent)
+    return cached
 
 
 def cache_token_credentials(storage: Storage, credentials: dict) -> dict | None:

@@ -548,12 +548,18 @@ class MenuSdlSession:
             self.refresh_main_menu_state()
             return bool(getattr(self, "main_logged_in", False))
 
-        if self.storage.load_login_credentials() is not None:
-            return True
+        cached_credentials = self.storage.load_login_credentials()
+        if cached_credentials is not None:
+            return not self.storage.is_token_invalid(cached_credentials["token"])
 
-        return (
-            load_retroarch_credentials(resolve_retroarch_cfg(config_data)) is not None
-        )
+        cfg_credentials = load_retroarch_credentials(resolve_retroarch_cfg(config_data))
+        if cfg_credentials is None:
+            return False
+
+        token = cfg_credentials.get("token")
+        if token is not None:
+            return not self.storage.is_token_invalid(token)
+        return True
 
     def current_labels(self, running: bool | None = None) -> list[str]:
         return self.labels(self.proxy_running() if running is None else running)

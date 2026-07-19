@@ -666,6 +666,16 @@ class Storage:
             return None
         return {"user": user, "token": token}
 
+    def mark_token_invalid(self, token: str) -> None:
+        self.upsert_cache(cache_keys.AUTH_INVALID_TOKEN, token)
+
+    def is_token_invalid(self, token: str) -> bool:
+        entry = self.get_cache(cache_keys.AUTH_INVALID_TOKEN)
+        return entry is not None and entry.get("responseBody") == token
+
+    def clear_invalid_token(self) -> None:
+        self.delete_cache(cache_keys.AUTH_INVALID_TOKEN)
+
     def load_user_agent(self, fallback: str) -> str:
         entry = self.get_cache(cache_keys.USER_AGENT)
         if entry is None:

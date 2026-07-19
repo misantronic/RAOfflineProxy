@@ -1,6 +1,7 @@
 import json
 import logging
 import time
+import urllib.error
 
 from . import cache_keys
 from .config import FALLBACK_USER_AGENT, proxy_host, proxy_port, upstream_host
@@ -15,6 +16,10 @@ RC_ACHIEVEMENT_FLAG_CORE = 3  # rcheevos: official/core achievements only
 
 
 class CacheGameError(RuntimeError):
+    pass
+
+
+class CacheGameAuthError(CacheGameError):
     pass
 
 
@@ -132,6 +137,10 @@ def refresh_game_patch(
     try:
         response_body = http_get(url, user_agent)
         payload = json.loads(response_body)
+    except urllib.error.HTTPError as exc:
+        if exc.code in (401, 403):
+            raise CacheGameAuthError(f"patch request failed: {exc}") from exc
+        raise CacheGameError(f"patch request failed: {exc}") from exc
     except Exception as exc:
         raise CacheGameError(f"patch request failed: {exc}") from exc
 
