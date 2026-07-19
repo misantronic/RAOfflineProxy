@@ -9,7 +9,7 @@ APP_PACKAGE_DIR="$APP_DIR/app"
 APP_LIB_DIR="$APP_DIR/lib"
 APP_RETROARCH_CFG=
 APP_LOG_PANEL=/mnt/SDCARD/.tmp_update/bin/infoPanel
-APP_CERT_FILE="$APP_RUNTIME_DIR/lib/python3.10/site-packages/pip/_vendor/certifi/cacert.pem"
+APP_CERT_FILE="$APP_RUNTIME_DIR/lib/python3.9/site-packages/pip/_vendor/certifi/cacert.pem"
 APP_ONION_STARTUP_DIR=/mnt/SDCARD/.tmp_update/startup
 APP_ONION_AUTOSTART_SCRIPT="$APP_ONION_STARTUP_DIR/raofflineproxy.sh"
 APP_ONION_CHECKOFF_DIR=/mnt/SDCARD/.tmp_update/checkoff
@@ -51,7 +51,8 @@ prepare_env() {
     export RAOFFLINEPROXY_APP_VERSION="${APP_VERSION#v}"
     export RAOFFLINEPROXY_CACHE_IMAGES=0
     export PYTHONPATH="$APP_PACKAGE_DIR${PYTHONPATH:+:$PYTHONPATH}"
-    export LD_LIBRARY_PATH="$APP_LIB_DIR${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+    export LD_LIBRARY_PATH="$APP_LIB_DIR:/config/lib:/customer/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+    export SDL_VIDEODRIVER=Mini
     if [ -f "$APP_CERT_FILE" ]; then
         export SSL_CERT_FILE="$APP_CERT_FILE"
         export RAOFFLINEPROXY_CA_FILE="$APP_CERT_FILE"
@@ -65,9 +66,9 @@ activate_runtime_env() {
     export PYTHONHOME="$runtime_root"
     export LD_LIBRARY_PATH="$APP_LIB_DIR:$runtime_root/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
     export PATH="$runtime_root/bin${PATH:+:$PATH}"
-    if [ -f "$runtime_root/lib/python3.10/site-packages/pip/_vendor/certifi/cacert.pem" ]; then
-        export SSL_CERT_FILE="$runtime_root/lib/python3.10/site-packages/pip/_vendor/certifi/cacert.pem"
-        export RAOFFLINEPROXY_CA_FILE="$runtime_root/lib/python3.10/site-packages/pip/_vendor/certifi/cacert.pem"
+    if [ -f "$runtime_root/lib/python3.9/site-packages/pip/_vendor/certifi/cacert.pem" ]; then
+        export SSL_CERT_FILE="$runtime_root/lib/python3.9/site-packages/pip/_vendor/certifi/cacert.pem"
+        export RAOFFLINEPROXY_CA_FILE="$runtime_root/lib/python3.9/site-packages/pip/_vendor/certifi/cacert.pem"
     fi
 }
 

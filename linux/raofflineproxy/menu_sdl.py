@@ -18,7 +18,14 @@ from .ppsspp_cfg import (
     revert_ppsspp_ini,
     store_ppsspp_previous,
 )
-from .config import APP_VERSION, CONFIG_DIR, load_config, running_on_rocknix, save_config
+from .config import (
+    APP_VERSION,
+    CONFIG_DIR,
+    load_config,
+    running_on_onion,
+    running_on_rocknix,
+    save_config,
+)
 from .platform import (
     autostart_supported,
     disable_autostart,
@@ -137,8 +144,13 @@ FONT_FILE_CANDIDATES = [
     ),
 ]
 LOGO_PATH = Path(__file__).resolve().parent / "logo-320.png"
+# Onion has no fontconfig and no reliable system-wide monospace font (its
+# only TTFs are bundled inside individual, optional third-party apps), so a
+# monospace face ships directly alongside this module rather than being
+# looked up on the filesystem.
+ONION_FONT_REGULAR = Path(__file__).resolve().parent / "font-mono.ttf"
+ONION_FONT_BOLD = Path(__file__).resolve().parent / "font-mono-bold.ttf"
 MUOS_SDCARD_ROOT = Path("/mnt/sdcard/ROMS")
-CALIBRATION_FACE_BUTTONS = {BTN_SOUTH, BTN_EAST}
 KEY_NAMES = {
     103: "KEY_UP",
     108: "KEY_DOWN",
@@ -170,6 +182,74 @@ KEY_NAMES = {
     546: "BTN_DPAD_LEFT",
     547: "BTN_DPAD_RIGHT",
 }
+# Calibration accepts any button that isn't a d-pad direction, rather than a
+# fixed whitelist: gpio-keys-polled handhelds (Onion) emit raw evdev KEY_*
+# codes for their face buttons (e.g. KEY_LEFTCTRL), not the BTN_SOUTH/BTN_EAST
+# joystick codes other platforms' controllers use, and there's no complete
+# enumeration of every device's button codes to whitelist against.
+CALIBRATION_EXCLUDED_KEYS = {
+    KEY_UP,
+    KEY_DOWN,
+    KEY_LEFT,
+    KEY_RIGHT,
+    BTN_DPAD_UP,
+    BTN_DPAD_DOWN,
+    BTN_DPAD_LEFT,
+    BTN_DPAD_RIGHT,
+}
+
+
+ONION_DEFAULT_PANEL_SIZE = (640, 480)
+ONION_SCREEN_RESOLUTION_FILE = Path("/tmp/screen_resolution")
+
+
+def _onion_panel_size() -> tuple[int, int]:
+    """The vendored "Mini" SDL2 driver ignores whatever size is passed to
+    SDL_SetDisplayMode/pygame.display.set_mode: it self-detects the real
+    framebuffer via its own `fbset` probe at init (640x480, or 752x560 on
+    devices whose fbset mode reports "752") and presents at that size
+    regardless. So the window/texture here must match what the driver will
+    actually use, or the two sizes fight each other. Onion's own
+    runtime.sh writes the same underlying panel probe result to
+    /tmp/screen_resolution, so read that rather than re-deriving it (and
+    rather than assuming 640x480, which is only one of Onion's panel
+    variants).
+    """
+    try:
+        raw = ONION_SCREEN_RESOLUTION_FILE.read_text(encoding="utf-8").strip()
+        width_str, height_str = raw.split("x", 1)
+        width, height = int(width_str), int(height_str)
+        if width > 0 and height > 0:
+            return (width, height)
+    except (OSError, ValueError):
+        pass
+    return ONION_DEFAULT_PANEL_SIZE
+
+
+def _init_onion_display(pygame):
+    """Onion's SDL2 video driver only presents through the SDL_Renderer +
+    streaming-texture path; SDL_UpdateWindowSurface (what pygame.display.flip
+    normally uses) silently no-ops there. Route flip() through a renderer
+    instead, keeping the surface pygame draws onto in RGB565 (the only pixel
+    format that doesn't crash the renderer's texture upload on this driver).
+    """
+    from pygame._sdl2.video import Renderer, Texture, Window
+
+    panel_size = _onion_panel_size()
+    pygame.display.set_mode(panel_size, 0)
+    window = Window.from_display_module()
+    renderer = Renderer(window, accelerated=-1, vsync=False)
+    texture = Texture(renderer, panel_size, streaming=True)
+    draw_surface = pygame.Surface(panel_size, depth=16)
+
+    def _present() -> None:
+        texture.update(draw_surface)
+        renderer.clear()
+        texture.draw()
+        renderer.present()
+
+    pygame.display.flip = _present
+    return draw_surface
 
 
 def run_menu_sdl(command_runner: str) -> None:
@@ -181,20 +261,23 @@ def run_menu_sdl(command_runner: str) -> None:
         pygame.init()
         pygame.font.init()
 
-        try:
-            surface = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
-        except pygame.error as exc:
-            configured_driver = os.environ.get("SDL_VIDEODRIVER", "")
-            if configured_driver != "" and "not available" in str(exc):
-                log_menu_sdl(
-                    f"display fallback from driver={configured_driver} error={exc}"
-                )
-                os.environ.pop("SDL_VIDEODRIVER", None)
-                pygame.display.quit()
-                pygame.display.init()
+        if running_on_onion():
+            surface = _init_onion_display(pygame)
+        else:
+            try:
                 surface = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
-            else:
-                raise
+            except pygame.error as exc:
+                configured_driver = os.environ.get("SDL_VIDEODRIVER", "")
+                if configured_driver != "" and "not available" in str(exc):
+                    log_menu_sdl(
+                        f"display fallback from driver={configured_driver} error={exc}"
+                    )
+                    os.environ.pop("SDL_VIDEODRIVER", None)
+                    pygame.display.quit()
+                    pygame.display.init()
+                    surface = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
+                else:
+                    raise
         width, height = surface.get_size()
         session = MenuSdlSession(command_runner, surface, width, height, pygame)
         session.run()
@@ -354,6 +437,7 @@ class MenuSdlSession:
         self._badge_path_cache: dict[str, object] = {}
         self._badge_surface_cache: dict[str, object] = {}
         self.input_handles = open_input_devices()
+        self.last_key_press: dict[int, float] = {}
         self.title_font = self.load_font(max(30, height // 19), bold=True)
         self.status_font = self.load_font(max(20, height // 30))
         self.item_font = self.load_font(max(22, height // 30), bold=False)
@@ -364,6 +448,14 @@ class MenuSdlSession:
         self.refresh_cached_games()
 
     def load_font(self, size: int, bold: bool = False):
+        if running_on_onion():
+            font_path = ONION_FONT_BOLD if bold else ONION_FONT_REGULAR
+            if font_path.exists():
+                return self.pygame.font.Font(str(font_path), size)
+            font = self.pygame.font.Font(None, size)
+            font.set_bold(bold)
+            return font
+
         if running_on_muos() or running_on_rocknix():
             for regular_path, bold_path in FONT_FILE_CANDIDATES:
                 chosen = bold_path if bold else regular_path
@@ -726,17 +818,31 @@ class MenuSdlSession:
         return "Login to RetroAchievements in system settings."
 
     def handle_events(self) -> None:
+        # Onion's vendored SDL2 build runs a generic Linux evdev keyboard
+        # backend independent of its video driver, so the same physical
+        # press arrives here as KEYDOWN *and* via handle_raw_input reading
+        # the device directly, double-firing navigation. This is confirmed
+        # on Onion specifically (verified with a dual-logging capture that
+        # showed both a "RAW" and an "SDL KEYDOWN" line ~20ms apart for one
+        # tap) — it is NOT known to happen on muOS/Knulli/ROCKNIX, so the
+        # skip is scoped to Onion rather than applied whenever raw input
+        # happens to be available, to avoid silently disabling their
+        # existing KEYDOWN path on unverified assumptions. Keep draining the
+        # event queue regardless (QUIT still matters, and an undrained SDL
+        # event queue can back up).
+        skip_keydown = running_on_onion() and bool(getattr(self, "input_handles", None))
         for event in self.pygame.event.get():
             if event.type == self.pygame.QUIT:
                 self.running = False
                 return
 
             if event.type == self.pygame.KEYDOWN:
-                self.handle_key(event.key)
+                if not skip_keydown:
+                    self.handle_key(event.key)
                 continue
 
     def handle_raw_input(self) -> None:
-        for key in read_keys(self.input_handles):
+        for key in read_keys(self.input_handles, self.last_key_press):
             if self.handle_calibration_key(key):
                 continue
 
@@ -1009,7 +1115,7 @@ class MenuSdlSession:
         if self.view != "controller_calibration":
             return False
 
-        if key not in CALIBRATION_FACE_BUTTONS:
+        if key in CALIBRATION_EXCLUDED_KEYS:
             return True
 
         if self.calibration_step == "confirm":

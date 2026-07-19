@@ -29,6 +29,10 @@ def running_on_rocknix() -> bool:
     return 'OS_NAME="ROCKNIX"' in content
 
 
+def running_on_onion() -> bool:
+    return DEFAULT_ONION_APP_DIR.exists()
+
+
 def resolve_config_dir() -> Path:
     configured = os.environ.get("RAOFFLINEPROXY_CONFIG_DIR")
     if configured:

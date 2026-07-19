@@ -56,10 +56,37 @@ def close_input_devices(handles: list[object]) -> None:
             pass
 
 
-def read_keys(handles: list[object]) -> list[int]:
+
+# Onion's gpio-keys-polled hardware has been observed producing a second
+# full press/release cycle ~120-220ms after the first for a single physical
+# tap (measured via kernel event timestamps on an isolated single-tap
+# capture) -- a real switch-quality issue the kernel's own debounce config
+# isn't filtering, not something a userspace timing window can fully
+# separate from a fast deliberate repeat. This value is a tuned compromise
+# between the two; raise it if double-navigates are still seen, lower it if
+# rapid navigation feels throttled.
+DEBOUNCE_SECONDS = 0.08
+
+
+def read_keys(handles: list[object], last_press: dict[int, float] | None = None) -> list[int]:
+    """Reads pending key events, emitting each code at most once per
+    DEBOUNCE_SECONDS.
+
+    Onion's gpio-keys-polled driver reports switch chatter as full,
+    legitimate-looking press/release cycles (not just a stuck-down repeat) —
+    a single physical tap has been observed producing several such cycles
+    tens to hundreds of milliseconds apart. A press/release state machine
+    can't tell that apart from genuine rapid presses, so this instead
+    suppresses same-code presses that land within DEBOUNCE_SECONDS of the
+    last accepted one, keyed off each event's own kernel timestamp (so it's
+    unaffected by how long read_keys() itself takes to run). Pass the same
+    dict across calls to debounce across calls; omit it to only debounce
+    within a single call.
+    """
     if not handles:
         return []
 
+    last = last_press if last_press is not None else {}
     keys: list[int] = []
     readable, _, _ = select.select(handles, [], [], 0)
     for handle in readable:
@@ -75,19 +102,29 @@ def read_keys(handles: list[object]) -> list[int]:
             if len(event) != EVENT_SIZE:
                 break
 
-            _seconds, _micros, event_type, code, value = struct.unpack("llHHi", event)
-            if event_type == EV_KEY and value == 1:
-                keys.append(code)
+            seconds, micros, event_type, code, value = struct.unpack("llHHi", event)
+            timestamp = seconds + micros / 1_000_000
+            if event_type == EV_KEY:
+                if value == 1:
+                    _emit_debounced(keys, last, code, timestamp)
                 continue
             if event_type == EV_ABS:
                 if code == ABS_HAT0Y:
                     if value < 0:
-                        keys.append(BTN_DPAD_UP)
+                        _emit_debounced(keys, last, BTN_DPAD_UP, timestamp)
                     elif value > 0:
-                        keys.append(BTN_DPAD_DOWN)
+                        _emit_debounced(keys, last, BTN_DPAD_DOWN, timestamp)
                 if code == ABS_HAT0X:
                     if value < 0:
-                        keys.append(BTN_DPAD_LEFT)
+                        _emit_debounced(keys, last, BTN_DPAD_LEFT, timestamp)
                     elif value > 0:
-                        keys.append(BTN_DPAD_RIGHT)
+                        _emit_debounced(keys, last, BTN_DPAD_RIGHT, timestamp)
     return keys
+
+
+def _emit_debounced(keys: list[int], last: dict[int, float], code: int, timestamp: float) -> None:
+    previous = last.get(code)
+    if previous is not None and timestamp - previous < DEBOUNCE_SECONDS:
+        return
+    last[code] = timestamp
+    keys.append(code)
