@@ -124,6 +124,124 @@ class LinuxAuthTests(unittest.TestCase):
             finally:
                 store.close()
 
+    def test_resolve_credentials_uses_cached_token_when_not_invalid(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            db_path = root / "test.sqlite3"
+            cfg_path = root / "retroarch.cfg"
+            cfg_path.write_text(
+                'cheevos_username = "misantronic"\ncheevos_password = "secret"\n',
+                encoding="utf-8",
+            )
+            store = storage.Storage(database_path=db_path)
+            original_http_get = auth.http_get
+            try:
+                store.upsert_cache(
+                    cache_keys.login("misantronic"),
+                    '{"Success":true,"User":"misantronic","Token":"cached-token"}',
+                )
+
+                def fake_http_get(_url: str, _user_agent: str) -> str:
+                    raise AssertionError(
+                        "login2 should not be called when cached token is valid"
+                    )
+
+                auth.http_get = fake_http_get
+
+                credentials = auth.resolve_credentials(
+                    store,
+                    {"retroarch_cfg": str(cfg_path)},
+                    "RetroArch/1.20.0",
+                )
+
+                self.assertEqual(
+                    credentials,
+                    {"user": "misantronic", "token": "cached-token"},
+                )
+            finally:
+                auth.http_get = original_http_get
+                store.close()
+
+    def test_resolve_credentials_falls_back_to_password_login_when_cached_token_invalid(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            db_path = root / "test.sqlite3"
+            cfg_path = root / "retroarch.cfg"
+            cfg_path.write_text(
+                'cheevos_username = "misantronic"\ncheevos_password = "secret"\n',
+                encoding="utf-8",
+            )
+            store = storage.Storage(database_path=db_path)
+            original_http_get = auth.http_get
+            try:
+                store.upsert_cache(
+                    cache_keys.login("misantronic"),
+                    '{"Success":true,"User":"misantronic","Token":"stale-token"}',
+                )
+                store.mark_token_invalid("stale-token")
+
+                def fake_http_get(url: str, _user_agent: str) -> str:
+                    self.assertIn("r=login2", url)
+                    return '{"Success":true,"User":"misantronic","Token":"fresh-token"}'
+
+                auth.http_get = fake_http_get
+
+                credentials = auth.resolve_credentials(
+                    store,
+                    {"retroarch_cfg": str(cfg_path)},
+                    "RetroArch/1.20.0",
+                )
+
+                self.assertEqual(
+                    credentials,
+                    {"user": "misantronic", "token": "fresh-token"},
+                )
+                self.assertFalse(store.is_token_invalid("fresh-token"))
+            finally:
+                auth.http_get = original_http_get
+                store.close()
+
+    def test_resolve_credentials_falls_back_to_stale_cache_when_password_login_fails(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            db_path = root / "test.sqlite3"
+            cfg_path = root / "retroarch.cfg"
+            cfg_path.write_text(
+                'cheevos_username = "misantronic"\ncheevos_password = "secret"\n',
+                encoding="utf-8",
+            )
+            store = storage.Storage(database_path=db_path)
+            original_http_get = auth.http_get
+            try:
+                store.upsert_cache(
+                    cache_keys.login("misantronic"),
+                    '{"Success":true,"User":"misantronic","Token":"stale-token"}',
+                )
+                store.mark_token_invalid("stale-token")
+
+                def fake_http_get(_url: str, _user_agent: str) -> str:
+                    raise OSError("offline")
+
+                auth.http_get = fake_http_get
+
+                credentials = auth.resolve_credentials(
+                    store,
+                    {"retroarch_cfg": str(cfg_path)},
+                    "RetroArch/1.20.0",
+                )
+
+                self.assertEqual(
+                    credentials,
+                    {"user": "misantronic", "token": "stale-token"},
+                )
+            finally:
+                auth.http_get = original_http_get
+                store.close()
+
 
 if __name__ == "__main__":
     unittest.main()

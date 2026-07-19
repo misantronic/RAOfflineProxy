@@ -115,6 +115,24 @@ class LinuxStorageTests(unittest.TestCase):
                     first.close()
                     second.close()
 
+    def test_mark_token_invalid_round_trip(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "test.sqlite3"
+            store = storage.Storage(database_path=db_path)
+            try:
+                self.assertFalse(store.is_token_invalid("token-a"))
+
+                store.mark_token_invalid("token-a")
+
+                self.assertTrue(store.is_token_invalid("token-a"))
+                self.assertFalse(store.is_token_invalid("token-b"))
+
+                store.clear_invalid_token()
+
+                self.assertFalse(store.is_token_invalid("token-a"))
+            finally:
+                store.close()
+
     def test_upsert_pending_award_skips_warning_achievement(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             db_path = Path(temp_dir) / "test.sqlite3"
