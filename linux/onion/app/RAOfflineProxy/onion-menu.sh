@@ -109,7 +109,7 @@ pending_awards_count() {
 }
 
 home_status() {
-    run_backend_raw "$PYTHON_BIN" home-status 2>/dev/null
+    run_backend_raw "$PYTHON_BIN" home-status 2>>"$(log_path)"
 }
 
 update_status() {

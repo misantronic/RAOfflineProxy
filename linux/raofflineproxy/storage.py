@@ -59,9 +59,14 @@ class Storage:
     def _initialize_sqlite(self) -> None:
         assert self._connection is not None
         with self._lock:
+            try:
+                self._connection.execute("PRAGMA journal_mode=WAL;").fetchone()
+            except sqlite3.OperationalError:
+                # WAL requires shared-memory/locking semantics that FAT32
+                # (e.g. Miyoo Mini / Onion SD cards) doesn't provide.
+                self._connection.execute("PRAGMA journal_mode=DELETE;")
             self._connection.executescript(
                 """
-                PRAGMA journal_mode=WAL;
                 CREATE TABLE IF NOT EXISTS api_cache (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     cacheKey TEXT NOT NULL UNIQUE,
