@@ -36,7 +36,7 @@ Before using `RAOfflineProxy` on Linux:
 == dArkOS
 
 - Enter your RetroAchievements account details in RetroArch
-- The installer installs `python3-pygame` via `apt` automatically using passwordless `sudo`; if that's not available on your setup, install it manually: `sudo apt-get install -y python3-pygame`
+- The installer installs `python3-pygame` via `apt` automatically using passwordless `sudo`; if that's not available on your setup, install it manually: `sudo apt install -y python3-pygame`
 
 :::
 
