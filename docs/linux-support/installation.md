@@ -54,8 +54,8 @@ RAOfflineProxy patches the emulator configs it needs in order to redirect RetroA
 /userdata/roms/tools
 ```
 
-3. Refresh or update gamelists so **RAOfflineProxy Install** appears in the **Tools** menu
-4. Launch **RAOfflineProxy Install** from **Tools** — gamelists are refreshed automatically once it finishes, so the main **RAOfflineProxy** entry appears without a manual refresh
+3. Update gamelists so **RAOfflineProxy Install** appears in the **Tools** menu
+4. Launch **RAOfflineProxy Install** from **Tools**
 5. Launch **RAOfflineProxy** from the **Tools** menu
 6. Start the proxy while online
 7. Cache games either from **Cached Games** then **Add ROM** or by launching them once in RetroArch
@@ -108,8 +108,8 @@ RAOfflineProxy patches the emulator configs it needs in order to redirect RetroA
 /storage/.config/modules
 ```
 
-3. Refresh or update gamelists so the installer appears in the **Tools** menu
-4. Launch the installer from **Tools** — it installs the app, removes itself, and refreshes gamelists automatically so the main **RAOfflineProxy** entry appears without a manual refresh
+3. Update gamelists so the installer appears in the **Tools** menu
+4. Launch the installer from **Tools**
 
    The app payload is installed under:
 
