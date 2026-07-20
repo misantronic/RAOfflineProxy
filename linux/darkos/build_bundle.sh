@@ -44,7 +44,7 @@ cat > "${INSTALLER_PATH}" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
 
-SCRIPT_PATH="$0"
+SCRIPT_PATH="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"
 PAYLOAD_MARKER="__RAOFFLINEPROXY_PAYLOAD_BELOW__"
 TARGET_DIR="/home/ark/raofflineproxy-darkos-bundle"
 TOOLS_INSTALL_SCRIPT="/roms/tools/RAOfflineProxy Install.sh"
