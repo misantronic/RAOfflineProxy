@@ -39,6 +39,7 @@ cp "${SCRIPT_DIR}/scripts/uninstall.sh" "${BUILD_DIR}/uninstall.sh"
 
 find "${APP_DIR}/raofflineproxy" -name "__pycache__" -type d -prune -exec rm -rf {} +
 find "${APP_DIR}/raofflineproxy" -name "*.pyc" -delete
+find "${APP_DIR}/raofflineproxy" -name "font-mono*.ttf" -delete
 find "${APP_DIR}/pygame" -name "__pycache__" -type d -prune -exec rm -rf {} +
 find "${APP_DIR}/pygame" -name "*.pyc" -delete
 

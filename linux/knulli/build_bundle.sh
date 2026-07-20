@@ -30,6 +30,7 @@ cp "${SCRIPT_DIR}/scripts/uninstall.sh" "${BUILD_DIR}/uninstall.sh"
 
 find "${APP_DIR}" -name "__pycache__" -type d -prune -exec rm -rf {} +
 find "${APP_DIR}" -name "*.pyc" -delete
+find "${APP_DIR}" -name "font-mono*.ttf" -delete
 
 chmod +x "${BUILD_DIR}/install.sh"
 chmod +x "${BUILD_DIR}/uninstall.sh"

@@ -31,6 +31,7 @@ cp "${SCRIPT_DIR}/uninstall.sh" "${DIST_DIR}/uninstall.sh"
 
 find "${APP_DIR}" -name "__pycache__" -type d -prune -exec rm -rf {} +
 find "${APP_DIR}" -name "*.pyc" -delete
+find "${APP_DIR}" -name "font-mono*.ttf" -delete
 
 chmod +x "${DIST_DIR}/launch.sh"
 chmod +x "${DIST_DIR}/mux_launch.sh"
