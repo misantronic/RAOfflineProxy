@@ -7,7 +7,7 @@ DIST_DIR="${SCRIPT_DIR}/dist"
 BUILD_DIR="${DIST_DIR}/raofflineproxy-darkos-bundle"
 APP_DIR="${BUILD_DIR}/app"
 LIB_DIR="${BUILD_DIR}/lib"
-INSTALLER_PATH="${DIST_DIR}/RAOfflineProxy-DarkOS-v1.6.0-alpha1-Install.sh"
+INSTALLER_PATH="${DIST_DIR}/RAOfflineProxy-DarkOS-v1.7.0-alpha1-Install.sh"
 TEMP_TARBALL="${DIST_DIR}/.raofflineproxy-darkos-bundle.tar.gz"
 
 TARGET="aarch64-linux-gnu.2.17" OUT_DIR="${SCRIPT_DIR}/native" \
