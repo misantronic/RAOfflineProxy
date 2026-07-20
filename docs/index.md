@@ -93,6 +93,10 @@ features:
           <img class="supported-platforms__logo--rounded" src="/rocknix.png" alt="ROCKNIX logo">
           <span>ROCKNIX</span>
         </div>
+        <div class="supported-platforms__item">
+          <img class="supported-platforms__logo--rounded" src="/darkos.png" alt="dArkOS logo">
+          <span>dArkOS</span>
+        </div>
       </div>
     </div>
   </div>
