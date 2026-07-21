@@ -27,3 +27,6 @@ linux/onion/native/
 linux/muos/native/
 linux/rocknix/native/
 **/__pycache__
+infra/dist/
+infra/cdk.out/
+lambda/*/dist/
