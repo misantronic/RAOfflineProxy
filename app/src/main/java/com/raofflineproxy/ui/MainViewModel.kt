@@ -114,6 +114,7 @@ data class MainUiState(
     val manualEmulatorPatchingEnabled: Boolean = false,
     val smartCachingEnabled: Boolean = true,
     val appUpdateCheckEnabled: Boolean = true,
+    val showLogsMenuEntry: Boolean = false,
     val proxyPort: Int = PrefsConstants.DEFAULT_PROXY_PORT,
     val retroArchInstalled: Boolean = false,
     val dolphinInstalled: Boolean = false,
@@ -236,6 +237,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             manualEmulatorPatchingEnabled = loadManualEmulatorPatchingEnabled(),
             smartCachingEnabled = loadSmartCachingEnabled(),
             appUpdateCheckEnabled = loadAppUpdateCheckEnabled(),
+            showLogsMenuEntry = PrefsConstants.loadShowLogsMenuEntry(app),
             proxyPort = PrefsConstants.loadProxyPort(app),
             retroArchInstalled = emulatorSupport.retroArchInstalled,
             dolphinInstalled = emulatorSupport.dolphinInstalled,
@@ -293,8 +295,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 val hasLoginCredentials = loginEntries.isNotEmpty()
                 val pendingAwardsByGameId = buildPendingAwardsByGameId(entries, awards)
                 val games = run {
-                    val sessionKeys = db.cacheDao().getAllByPrefix(CacheKeys.PREFIX_UNLOCKS).map { it.cacheKey }
-                    Log.d("RAProxy/Games", "patch entries=${entries.size}, unlocks keys in DB=${sessionKeys.size}")
                     entries.mapNotNull { entry ->
                         val parts = entry.cacheKey.split(":")
                         if (parts.size < 3) return@mapNotNull null
@@ -2291,6 +2291,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
 
         _state.value = _state.value.copy(appUpdateCheckEnabled = true)
+    }
+
+    fun setShowLogsMenuEntry(enabled: Boolean) {
+        PrefsConstants.saveShowLogsMenuEntry(getApplication(), enabled)
+        _state.value = _state.value.copy(showLogsMenuEntry = enabled)
     }
 
     fun setManualEmulatorPatchingEnabled(enabled: Boolean) {

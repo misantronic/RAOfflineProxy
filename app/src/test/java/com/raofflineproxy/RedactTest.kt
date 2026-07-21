@@ -100,6 +100,26 @@ class RedactTest {
         )
     }
 
+    @Test
+    fun redactTokens_replacesPasswordInQueryString() {
+        val input = "/dorequest.php?r=login2&u=player&p=hunter2"
+
+        assertEquals(
+            "/dorequest.php?r=login2&u=player&p=<password>",
+            redactTokens(input)
+        )
+    }
+
+    @Test
+    fun redactTokens_replacesBothTokenAndPassword() {
+        val input = "/dorequest.php?r=login2&u=player&p=hunter2&t=SECRET"
+
+        assertEquals(
+            "/dorequest.php?r=login2&u=player&p=<password>&t=<token>",
+            redactTokens(input)
+        )
+    }
+
     // ── redactFormBody (form-encoded bodies) ──
 
     @Test
@@ -177,6 +197,16 @@ class RedactTest {
 
         assertEquals(
             "r=patch&t=<token>&u=player",
+            redactFormBody(input)
+        )
+    }
+
+    @Test
+    fun redactFormBody_replacesPassword() {
+        val input = "r=login2&u=player&p=hunter2"
+
+        assertEquals(
+            "r=login2&u=player&p=<password>",
             redactFormBody(input)
         )
     }

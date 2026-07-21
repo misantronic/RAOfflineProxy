@@ -31,6 +31,13 @@
             android:layout_marginTop="8dp"
             android:text="@string/setting_app_update_check_label" />
 
+        <CheckBox
+            android:id="@+id/cb_show_logs_menu_entry"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="@string/setting_show_logs_menu_entry_label" />
+
         <com.google.android.material.textfield.TextInputLayout
             android:id="@+id/input_proxy_port"
             android:layout_width="match_parent"

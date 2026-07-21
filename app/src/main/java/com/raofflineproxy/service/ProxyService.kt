@@ -54,7 +54,7 @@ import kotlinx.coroutines.launch
 import org.json.JSONObject
 import kotlin.time.Duration.Companion.milliseconds
 
-private const val TAG = "ProxyService"
+private const val TAG = "RAProxy/ProxyService"
 private const val CHANNEL_ID = "proxy_service"
 private const val NOTIFICATION_ID = 1
 private const val REFRESH_INTERVAL_MS = 60L * 60 * 1000 // 1 hour

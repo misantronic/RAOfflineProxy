@@ -9,7 +9,7 @@ import okhttp3.Request
 import java.io.File
 import java.io.IOException
 
-private const val TAG = "ApkDownloader"
+private const val TAG = "RAProxy/ApkDownloader"
 private const val APK_DOWNLOADS_DIR = "apk_downloads"
 private const val DOWNLOAD_FILENAME = "RAOfflineProxy-update.apk"
 

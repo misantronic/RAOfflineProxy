@@ -12,7 +12,16 @@
     <string name="title_awards_history">Awards History</string>
     <string name="title_settings">Settings</string>
     <string name="title_manual_emulator_setup">Manual Emulator Setup</string>
+    <string name="title_view_logs">View Logs</string>
     <string name="title_quit">Quit</string>
+
+    <!-- Log viewer -->
+    <string name="log_viewer_intro">These are the app\'s recent logs. Copy or share them when reporting an issue.</string>
+    <string name="log_viewer_loading">Loading logs…</string>
+    <string name="log_viewer_empty">No logs captured yet.</string>
+    <string name="log_viewer_copy">Copy to clipboard</string>
+    <string name="log_viewer_share">Share</string>
+    <string name="log_viewer_copied">Logs copied to clipboard.</string>
 
     <!-- Proxy button -->
     <string name="proxy_start">Start proxy</string>
@@ -234,6 +243,7 @@
     <!-- Settings fragment -->
     <string name="setting_smart_caching_label">Enable smart caching</string>
     <string name="setting_app_update_check_label">Enable app update checker</string>
+    <string name="setting_show_logs_menu_entry_label">Show \"View Logs\" menu entry</string>
     <string name="setting_proxy_port_label">Proxy port</string>
     <string name="setting_proxy_port_hint">Used for the local emulator proxy. Range: 1024 to 65535. Stop the proxy to change it.</string>
     <string name="setting_proxy_port_invalid">Enter a port between 1024 and 65535.</string>

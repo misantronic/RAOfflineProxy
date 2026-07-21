@@ -31,6 +31,7 @@ class SettingsFragment : Fragment() {
         val cbAutostart = view.findViewById<CheckBox>(R.id.cb_autostart_proxy)
         val cbSmartCaching = view.findViewById<CheckBox>(R.id.cb_smart_caching)
         val cbAppUpdateCheck = view.findViewById<CheckBox>(R.id.cb_app_update_check)
+        val cbShowLogsMenuEntry = view.findViewById<CheckBox>(R.id.cb_show_logs_menu_entry)
         val inputProxyPort = view.findViewById<TextInputLayout>(R.id.input_proxy_port)
         val etProxyPort = view.findViewById<TextInputEditText>(R.id.et_proxy_port)
         val tvProxyPortHint = view.findViewById<TextView>(R.id.tv_proxy_port_hint)
@@ -51,6 +52,10 @@ class SettingsFragment : Fragment() {
         cbAppUpdateCheck.setOnCheckedChangeListener { _, isChecked ->
             if (syncingState) return@setOnCheckedChangeListener
             viewModel.setAppUpdateCheckEnabled(isChecked)
+        }
+        cbShowLogsMenuEntry.setOnCheckedChangeListener { _, isChecked ->
+            if (syncingState) return@setOnCheckedChangeListener
+            viewModel.setShowLogsMenuEntry(isChecked)
         }
 
         fun submitProxyPort(): Boolean {
@@ -140,6 +145,9 @@ class SettingsFragment : Fragment() {
                 }
                 if (cbAppUpdateCheck.isChecked != state.appUpdateCheckEnabled) {
                     cbAppUpdateCheck.isChecked = state.appUpdateCheckEnabled
+                }
+                if (cbShowLogsMenuEntry.isChecked != state.showLogsMenuEntry) {
+                    cbShowLogsMenuEntry.isChecked = state.showLogsMenuEntry
                 }
                 val proxyPortText = state.proxyPort.toString()
                 if (etProxyPort.text?.toString() != proxyPortText && !etProxyPort.hasFocus()) {

@@ -25,8 +25,10 @@ private const val RETROACHIEVEMENTS_PROBE_INTERVAL_MS = 30_000L
 
 val sharedHttpClient: OkHttpClient = OkHttpClient.Builder().build()
 
-private val TOKEN_QUERY_REGEX = Regex("""([?&])t=[^&]*""")
-private val TOKEN_FORM_REGEX = Regex("""(^|&)t=[^&]*""")
+private val TOKEN_QUERY_REGEX = Regex("""([?&])(t|p)=[^&]*""")
+private val TOKEN_FORM_REGEX = Regex("""(^|&)(t|p)=[^&]*""")
+
+private fun redactedValue(key: String): String = if (key == "p") "<password>" else "<token>"
 
 data class RetroAchievementsReachability(
     val reachable: Boolean = false,
@@ -171,10 +173,10 @@ internal fun isLoopbackPortAvailable(port: Int): Boolean = runCatching {
 }.getOrDefault(false)
 
 fun redactTokens(input: String): String =
-    TOKEN_QUERY_REGEX.replace(input) { "${it.groupValues[1]}t=<token>" }
+    TOKEN_QUERY_REGEX.replace(input) { "${it.groupValues[1]}${it.groupValues[2]}=${redactedValue(it.groupValues[2])}" }
 
 fun redactFormBody(input: String): String =
-    TOKEN_FORM_REGEX.replace(input) { "${it.groupValues[1]}t=<token>" }
+    TOKEN_FORM_REGEX.replace(input) { "${it.groupValues[1]}${it.groupValues[2]}=${redactedValue(it.groupValues[2])}" }
 
 private object RetroAchievementsRequestThrottle {
     private var nextAllowedAtMillis = 0L
