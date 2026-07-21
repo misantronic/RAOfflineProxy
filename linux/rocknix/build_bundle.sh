@@ -71,7 +71,19 @@ fi
 payload_line=$((marker_line + 1))
 rm -rf "${TARGET_DIR}"
 mkdir -p "${SHARE_DIR}"
-tail -n +"${payload_line}" "${SCRIPT_PATH}" | base64 -d | tar -xzf - -C "${SHARE_DIR}" --no-same-owner
+
+PAYLOAD_TARBALL="$(mktemp "${SHARE_DIR}/.raofflineproxy-payload.XXXXXX")"
+trap 'rm -f "${PAYLOAD_TARBALL}"' EXIT
+tail -n +"${payload_line}" "${SCRIPT_PATH}" | base64 -d > "${PAYLOAD_TARBALL}"
+tar -xzf "${PAYLOAD_TARBALL}" -C "${SHARE_DIR}" --no-same-owner
+
+SENTINEL="${SHARE_DIR}/raofflineproxy-rocknix-bundle/app/raofflineproxy/main.py"
+if [ ! -f "${SENTINEL}" ]; then
+  echo "Installer payload did not extract correctly (missing ${SENTINEL})."
+  echo "Your device's base64/tar may have truncated the payload."
+  exit 1
+fi
+
 mv "${SHARE_DIR}/raofflineproxy-rocknix-bundle" "${TARGET_DIR}"
 cd "${TARGET_DIR}"
 ./install.sh
@@ -81,7 +93,7 @@ exit 0
 __RAOFFLINEPROXY_PAYLOAD_BELOW__
 EOF
 
-base64 -i "${TEMP_TARBALL}" >> "${INSTALLER_PATH}"
+base64 < "${TEMP_TARBALL}" | fold -w 76 >> "${INSTALLER_PATH}"
 chmod +x "${INSTALLER_PATH}"
 
 rm -f "${TEMP_TARBALL}"

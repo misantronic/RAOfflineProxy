@@ -128,11 +128,17 @@ Confirmed on-device (ROCKNIX `next`, `OS_NAME="ROCKNIX"` in `/etc/os-release`):
 - Add-on apps install under `/storage/.local/share/` (Heroic, Steam, m8c, and this app)
 - The **Tools** system runs `.sh` scripts from `/storage/.config/modules/` inside a `foot`
   terminal via `/usr/bin/foot %ROM%`. The launcher `source`s `/etc/profile`, calls
-  `set_kill` (so the frontend kill-combo works), then execs the SDL menu. The menu requests
+  `set_kill` (so the frontend kill-combo works), then runs the SDL menu. The menu requests
   SDL fullscreen itself; sway honors it (verified `fullscreen_mode=1`), so no `sway_fullscreen`
   call is needed.
 - Autostart drops an executable script into `/storage/.config/autostart/`; ROCKNIX's
   `/usr/bin/autostart` runs every script there at boot (no separate registration step)
+- Some devices (e.g. RK3326 with the `libmali` blob) segfault inside SDL's wayland/EGL init
+  before the app's own `pygame.error` fallback can run — a native crash never reaches Python.
+  `tool-launcher.sh` tries `SDL_VIDEODRIVER` candidates (`wayland`, `kmsdrm`, `x11`) as separate
+  attempts, detects a crash via exit code (`>=128` means signal death), falls back to the next
+  candidate, and caches the first one that works in
+  `/storage/.config/raofflineproxy/rocknix_video_driver` so later launches skip straight to it.
 
 ### pygame
 
