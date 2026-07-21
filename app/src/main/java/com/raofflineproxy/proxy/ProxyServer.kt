@@ -277,6 +277,8 @@ class ProxyServer(
                 val bytes = response.body.bytes()
                 if (response.isSuccessful && bytes.isNotEmpty()) {
                     scheduleImageDownload(context, url, cleanPath, userAgent)
+                } else if (!response.isSuccessful) {
+                    Log.w(TAG, "Static asset request failed url=${redactTokens(url)} http=${response.code} bytes=${bytes.size}")
                 }
                 val contentType = response.header("Content-Type") ?: "image/png"
                 ProxyResponse.Bytes(proxyHttpRawBytes(response.code, contentType, bytes))

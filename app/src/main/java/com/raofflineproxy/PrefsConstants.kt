@@ -52,7 +52,6 @@ object PrefsConstants {
     const val KEY_EMUCOREX_PATCHED_THIS_RUN = "emucorex_patched_this_run"
     const val KEY_PROXY_PORT = "proxy_port"
     const val KEY_APP_UPDATE_CHECK_ENABLED = "app_update_check_enabled"
-    const val KEY_SHOW_LOGS_MENU_ENTRY = "show_logs_menu_entry"
     const val KEY_APP_UPDATE_LAST_CHECKED_AT = "app_update_last_checked_at"
     const val KEY_APP_UPDATE_LAST_PROMPTED_AT = "app_update_last_prompted_at"
     private const val KEY_AVAILABLE_APP_UPDATE = "available_app_update"
@@ -276,15 +275,6 @@ object PrefsConstants {
     fun saveAppUpdateCheckEnabled(context: Context, enabled: Boolean) {
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .edit { putBoolean(KEY_APP_UPDATE_CHECK_ENABLED, enabled) }
-    }
-
-    fun loadShowLogsMenuEntry(context: Context): Boolean =
-        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .getBoolean(KEY_SHOW_LOGS_MENU_ENTRY, false)
-
-    fun saveShowLogsMenuEntry(context: Context, enabled: Boolean) {
-        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .edit { putBoolean(KEY_SHOW_LOGS_MENU_ENTRY, enabled) }
     }
 
     fun saveAppUpdateLastCheckedAt(context: Context, checkedAt: Long) {

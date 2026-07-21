@@ -26,10 +26,6 @@
             android:id="@+id/nav_manual_emulator_setup"
             android:title="@string/title_manual_emulator_setup" />
         <item
-            android:id="@+id/nav_view_logs"
-            android:title="@string/title_view_logs"
-            android:visible="false" />
-        <item
             android:id="@+id/nav_quit"
             android:title="@string/title_quit" />
     </group>

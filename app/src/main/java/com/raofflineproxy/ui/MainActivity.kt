@@ -239,7 +239,6 @@ class MainActivity : AppCompatActivity() {
                 updateNavBadge(navView, R.id.nav_cached_games, state.cachedGames.size)
                 updateNavBadge(navView, R.id.nav_pending_awards, state.pendingAwards.size)
                 updateNavBadge(navView, R.id.nav_awards_history, state.awardHistory.size)
-                navView.menu.findItem(R.id.nav_view_logs)?.isVisible = state.showLogsMenuEntry
                 if (state.needsSafGrant) {
                     val target = state.safGrantTarget ?: SafGrantTarget.RetroArch
                     if (activeSafGrantTarget != target) {
@@ -355,7 +354,6 @@ class MainActivity : AppCompatActivity() {
             R.id.nav_awards_history -> AwardsHistoryFragment()
             R.id.nav_settings -> SettingsFragment()
             R.id.nav_manual_emulator_setup -> ManualEmulatorSetupFragment()
-            R.id.nav_view_logs -> LogViewerFragment()
             R.id.nav_version -> return
             R.id.nav_quit -> {
                 quitApp()
@@ -391,7 +389,6 @@ class MainActivity : AppCompatActivity() {
             R.id.nav_awards_history -> getString(R.string.title_awards_history)
             R.id.nav_settings -> getString(R.string.title_settings)
             R.id.nav_manual_emulator_setup -> getString(R.string.title_manual_emulator_setup)
-            R.id.nav_view_logs -> getString(R.string.title_view_logs)
             else -> getString(R.string.app_name)
         }
         supportActionBar?.title = title
@@ -405,7 +402,6 @@ class MainActivity : AppCompatActivity() {
         is AwardsHistoryFragment -> R.id.nav_awards_history
         is SettingsFragment -> R.id.nav_settings
         is ManualEmulatorSetupFragment -> R.id.nav_manual_emulator_setup
-        is LogViewerFragment -> R.id.nav_view_logs
         else -> null
     }
 

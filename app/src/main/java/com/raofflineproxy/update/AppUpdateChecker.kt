@@ -45,7 +45,8 @@ internal object AppUpdateChecker {
         return try {
             val statusCode = connection.responseCode
             if (statusCode !in 200..299) {
-                Log.w(TAG, "GitHub releases request failed with HTTP $statusCode")
+                val errorBody = connection.errorStream?.bufferedReader()?.use { it.readText() }.orEmpty()
+                Log.w(TAG, "GitHub releases request failed with HTTP $statusCode: ${errorBody.take(512)}")
                 return null
             }
 

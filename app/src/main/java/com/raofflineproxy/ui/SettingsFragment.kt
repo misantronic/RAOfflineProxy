@@ -1,5 +1,8 @@
 package com.raofflineproxy.ui
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import android.text.InputFilter
@@ -18,7 +21,10 @@ import androidx.lifecycle.lifecycleScope
 import com.google.android.material.textfield.TextInputEditText
 import com.google.android.material.textfield.TextInputLayout
 import com.raofflineproxy.R
+import com.raofflineproxy.diagnostics.LogUploader
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class SettingsFragment : Fragment() {
     private val viewModel: MainViewModel by activityViewModels()
@@ -31,13 +37,13 @@ class SettingsFragment : Fragment() {
         val cbAutostart = view.findViewById<CheckBox>(R.id.cb_autostart_proxy)
         val cbSmartCaching = view.findViewById<CheckBox>(R.id.cb_smart_caching)
         val cbAppUpdateCheck = view.findViewById<CheckBox>(R.id.cb_app_update_check)
-        val cbShowLogsMenuEntry = view.findViewById<CheckBox>(R.id.cb_show_logs_menu_entry)
         val inputProxyPort = view.findViewById<TextInputLayout>(R.id.input_proxy_port)
         val etProxyPort = view.findViewById<TextInputEditText>(R.id.et_proxy_port)
         val tvProxyPortHint = view.findViewById<TextView>(R.id.tv_proxy_port_hint)
         val btnClearCache = view.findViewById<Button>(R.id.btn_clear_cache)
         val btnClearPermissions = view.findViewById<Button>(R.id.btn_clear_permissions)
         val btnClearDatabase = view.findViewById<Button>(R.id.btn_clear_database)
+        val btnSendLogs = view.findViewById<Button>(R.id.btn_send_logs)
         cbAutostart.text = getString(R.string.setting_autostart_label, getString(R.string.app_name))
         etProxyPort.filters = arrayOf(InputFilter.LengthFilter(5))
 
@@ -52,10 +58,6 @@ class SettingsFragment : Fragment() {
         cbAppUpdateCheck.setOnCheckedChangeListener { _, isChecked ->
             if (syncingState) return@setOnCheckedChangeListener
             viewModel.setAppUpdateCheckEnabled(isChecked)
-        }
-        cbShowLogsMenuEntry.setOnCheckedChangeListener { _, isChecked ->
-            if (syncingState) return@setOnCheckedChangeListener
-            viewModel.setShowLogsMenuEntry(isChecked)
         }
 
         fun submitProxyPort(): Boolean {
@@ -123,6 +125,23 @@ class SettingsFragment : Fragment() {
                 .show()
         }
 
+        btnSendLogs.setOnClickListener {
+            btnSendLogs.isEnabled = false
+            btnSendLogs.text = getString(R.string.send_logs_uploading)
+            viewLifecycleOwner.lifecycleScope.launch {
+                val result = withContext(Dispatchers.IO) { LogUploader.uploadLogs() }
+                btnSendLogs.isEnabled = true
+                btnSendLogs.text = getString(R.string.btn_send_logs)
+                result.onSuccess { id -> showSendLogsSuccessDialog(id) }
+                result.onFailure { error ->
+                    AlertDialog.Builder(requireContext())
+                        .setMessage(getString(R.string.send_logs_failed, error.message ?: error.toString()))
+                        .setPositiveButton(android.R.string.ok, null)
+                        .show()
+                }
+            }
+        }
+
         view.findViewById<Button>(R.id.btn_contact_feedback).setOnClickListener {
             val url = getString(R.string.contact_feedback_url)
             startActivity(Intent(Intent.ACTION_VIEW, url.toUri()))
@@ -146,9 +165,6 @@ class SettingsFragment : Fragment() {
                 if (cbAppUpdateCheck.isChecked != state.appUpdateCheckEnabled) {
                     cbAppUpdateCheck.isChecked = state.appUpdateCheckEnabled
                 }
-                if (cbShowLogsMenuEntry.isChecked != state.showLogsMenuEntry) {
-                    cbShowLogsMenuEntry.isChecked = state.showLogsMenuEntry
-                }
                 val proxyPortText = state.proxyPort.toString()
                 if (etProxyPort.text?.toString() != proxyPortText && !etProxyPort.hasFocus()) {
                     etProxyPort.setText(proxyPortText)
@@ -165,5 +181,18 @@ class SettingsFragment : Fragment() {
                 syncingState = false
             }
         }
+    }
+
+    private fun showSendLogsSuccessDialog(id: String) {
+        AlertDialog.Builder(requireContext())
+            .setTitle(R.string.send_logs_success_title)
+            .setMessage(getString(R.string.send_logs_success_message, id))
+            .setPositiveButton(R.string.send_logs_copy_id) { _, _ ->
+                val clipboard = requireContext().getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                clipboard.setPrimaryClip(ClipData.newPlainText("RAOfflineProxy log ID", id))
+                SnackbarManager.showMessage(getString(R.string.send_logs_id_copied), SnackbarDuration.Short)
+            }
+            .setNegativeButton(android.R.string.ok, null)
+            .show()
     }
 }
