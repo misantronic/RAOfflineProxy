@@ -29,6 +29,7 @@ import kotlinx.coroutines.withContext
 class SettingsFragment : Fragment() {
     private val viewModel: MainViewModel by activityViewModels()
     private var syncingState = false
+    private var sendingLogs = false
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View =
         inflater.inflate(R.layout.fragment_settings, container, false)
@@ -126,11 +127,13 @@ class SettingsFragment : Fragment() {
         }
 
         btnSendLogs.setOnClickListener {
+            sendingLogs = true
             btnSendLogs.isEnabled = false
             btnSendLogs.text = getString(R.string.send_logs_uploading)
             viewLifecycleOwner.lifecycleScope.launch {
                 val result = withContext(Dispatchers.IO) { LogUploader.uploadLogs() }
-                btnSendLogs.isEnabled = true
+                sendingLogs = false
+                btnSendLogs.isEnabled = viewModel.state.value.isOnline
                 btnSendLogs.text = getString(R.string.btn_send_logs)
                 result.onSuccess { id -> showSendLogsSuccessDialog(id) }
                 result.onFailure { error ->
@@ -175,6 +178,9 @@ class SettingsFragment : Fragment() {
                 btnClearCache.isEnabled = !state.proxyRunning
                 btnClearPermissions.isEnabled = !state.proxyRunning
                 btnClearDatabase.isEnabled = !state.proxyRunning
+                if (!sendingLogs) {
+                    btnSendLogs.isEnabled = state.isOnline
+                }
                 if (!state.proxyRunning) {
                     inputProxyPort.error = null
                 }
