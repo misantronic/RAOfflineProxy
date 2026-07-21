@@ -79,6 +79,7 @@ from .update import (
     install_muos_update_archive,
     update_status,
 )
+from .log_uploader import upload_logs
 from .menu_input import (
     BTN_DPAD_DOWN,
     BTN_DPAD_LEFT,
@@ -407,6 +408,9 @@ class MenuSdlSession:
         self.cache_return_view = "cached_games"
         self.cache_return_browser_dir: Path | None = None
         self.cache_return_browser_restore = False
+        self.log_upload_thread: threading.Thread | None = None
+        self.log_upload_progress_text: str | None = None
+        self.log_upload_result: tuple[bool, str] | None = None
         self.preview_surface = None
         self.preview_game_id = None
         self.achievement_preview_surface = None
@@ -597,6 +601,15 @@ class MenuSdlSession:
         if self.view == "update_prompt":
             return ["Download and install", "Later"]
 
+        if self.view == "send_logs_confirm":
+            return ["YES", "NO"]
+
+        if self.view == "send_logs_progress":
+            return []
+
+        if self.view == "send_logs_result":
+            return ["Back"]
+
         if self.view == "game_actions":
             unlock_titles = self.game_actions_unlock_titles()
             return ["Remove cache", *unlock_titles, "Back"]
@@ -632,6 +645,7 @@ class MenuSdlSession:
             )
         if (self.is_knulli_platform() and not service_mode) or running_on_muos() or running_on_rocknix():
             labels.append("Uninstall")
+        labels.append("Send Logs")
         if os.environ.get("RAOFFLINEPROXY_DEBUG"):
             labels.append("Key Logger")
         labels.append("Exit Menu")
@@ -687,6 +701,12 @@ class MenuSdlSession:
             return "Clear Cache?"
         if self.view == "cache_progress":
             return self.cache_progress_title or "Caching"
+        if self.view == "send_logs_confirm":
+            return "Send Logs?"
+        if self.view == "send_logs_progress":
+            return "Sending Logs"
+        if self.view == "send_logs_result":
+            return "Send Logs" if self.log_upload_result and self.log_upload_result[0] else "Send Logs Failed"
         return "RAOfflineProxy"
 
     def item_text_color(self, label: str) -> tuple[int, int, int]:
@@ -752,6 +772,15 @@ class MenuSdlSession:
                 if self.main_update_version is not None
                 else "A new version is available."
             )
+        if self.view == "send_logs_confirm":
+            return "Send logs for support?"
+        if self.view == "send_logs_progress":
+            return self.log_upload_progress_text or "Uploading logs..."
+        if self.view == "send_logs_result":
+            if self.log_upload_result is None:
+                return ""
+            success, message = self.log_upload_result
+            return f"Support ID: {message}" if success else f"Upload failed: {message}"
         self.refresh_main_menu_state()
         logged_in = bool(getattr(self, "main_logged_in", False))
         proxy_status = "RUNNING" if running else "STOPPED"
@@ -786,6 +815,12 @@ class MenuSdlSession:
                 return None
             if self.view == "update_prompt":
                 return self.confirm_cancel_hint("install", None)
+            if self.view == "send_logs_confirm":
+                return self.confirm_cancel_hint("confirm", "cancel")
+            if self.view == "send_logs_progress":
+                return None
+            if self.view == "send_logs_result":
+                return self.confirm_cancel_hint("dismiss", None)
             if self.view == "file_browser" and self.browser_at_switchable_root():
                 alt = resolve_rom_root(load_config()) if self.browser_root == MUOS_SDCARD_ROOT else MUOS_SDCARD_ROOT
                 return f"L/R: switch to {alt}"
@@ -922,6 +957,17 @@ class MenuSdlSession:
             self.activate_update_prompt_selected()
             return
 
+        if self.view == "send_logs_confirm":
+            self.activate_send_logs_confirm_selected()
+            return
+
+        if self.view == "send_logs_progress":
+            return
+
+        if self.view == "send_logs_result":
+            self.dismiss_send_logs_result()
+            return
+
         if self.view == "game_actions":
             self.activate_game_actions_selected()
             return
@@ -968,6 +1014,10 @@ class MenuSdlSession:
 
         if selected_label == "Uninstall":
             self.uninstall()
+            return
+
+        if selected_label == "Send Logs":
+            self.activate_send_logs_confirm()
             return
 
         if selected_label == "Key Logger":
@@ -1543,6 +1593,18 @@ class MenuSdlSession:
         if self.view == "cache_progress":
             return
 
+        if self.view == "send_logs_confirm":
+            self.view = "main"
+            self.restore_view_position("main")
+            return
+
+        if self.view == "send_logs_progress":
+            return
+
+        if self.view == "send_logs_result":
+            self.dismiss_send_logs_result()
+            return
+
         if self.view == "pending_award_actions":
             self.active_pending_award = None
             self.view = "pending_awards"
@@ -1913,6 +1975,44 @@ class MenuSdlSession:
             self.install_update()
             return
         self.dismiss_update_prompt()
+
+    def activate_send_logs_confirm(self) -> None:
+        self.save_view_position("main")
+        self.view = "send_logs_confirm"
+        self.reset_selection()
+
+    def activate_send_logs_confirm_selected(self) -> None:
+        if self.selected_index == 0:
+            self.start_send_logs()
+            return
+        self.view = "main"
+        self.restore_view_position("main")
+
+    def start_send_logs(self) -> None:
+        self.log_upload_progress_text = "Uploading logs..."
+        self.log_upload_result = None
+        self.view = "send_logs_progress"
+        self.reset_selection()
+
+        def worker() -> None:
+            try:
+                upload_id = upload_logs()
+                self.log_upload_result = (True, upload_id)
+            except Exception as exc:
+                self.log_upload_result = (False, str(exc))
+            finally:
+                self.log_upload_progress_text = None
+                if self.view == "send_logs_progress":
+                    self.view = "send_logs_result"
+                    self.reset_selection()
+
+        self.log_upload_thread = threading.Thread(target=worker, daemon=True)
+        self.log_upload_thread.start()
+
+    def dismiss_send_logs_result(self) -> None:
+        self.log_upload_result = None
+        self.view = "main"
+        self.restore_view_position("main")
 
     def clear_active_game_unlocks(self) -> None:
         self.active_game_unlock_game_id = None
