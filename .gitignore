@@ -20,6 +20,7 @@ keystore.properties
 AGENTS.md
 CLAUDE.md
 RELEASING.md
+SUPPORT-TRIAGE.md
 .agents/
 linux/knulli/dist/
 linux/knulli/native/
