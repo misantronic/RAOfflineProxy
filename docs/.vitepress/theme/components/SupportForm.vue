@@ -1,25 +1,32 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref } from 'vue';
 
-const SUPPORT_SUBMIT_ENDPOINT = 'https://ud63psmdb5.execute-api.eu-central-1.amazonaws.com/support/submit'
+const SUPPORT_SUBMIT_ENDPOINT =
+  'https://ud63psmdb5.execute-api.eu-central-1.amazonaws.com/support/submit';
 
-type Status = 'idle' | 'submitting' | 'success' | 'error'
+type Status = 'idle' | 'submitting' | 'success' | 'error';
 
-const status = ref<Status>('idle')
-const errorMessage = ref('')
+const status = ref<Status>('idle');
+const errorMessage = ref('');
 
-const APP_VERSIONS = ['1.8.0-alpha1', '1.7.0-alpha1', '1.6.0-alpha1', '1.5.5-alpha1']
-const OTHER_VERSION = 'Other / older'
+const APP_VERSIONS = [
+  '1.8.0-alpha1',
+  '1.7.0-alpha1',
+  '1.6.0-alpha1',
+  '1.5.5-alpha1'
+];
+const OTHER_VERSION = 'Other / older';
 
-const appVersion = ref('')
-const appVersionOther = ref('')
+const appVersion = ref('');
+const appVersionOther = ref('');
 
 function buildPayload(form: HTMLFormElement): Record<string, string> {
-  const data = new FormData(form)
-  const field = (name: string) => (data.get(name) as string)?.trim() || ''
-  const appVersionValue = appVersion.value === OTHER_VERSION
-    ? appVersionOther.value.trim()
-    : appVersion.value
+  const data = new FormData(form);
+  const field = (name: string) => (data.get(name) as string)?.trim() || '';
+  const appVersionValue =
+    appVersion.value === OTHER_VERSION
+      ? appVersionOther.value.trim()
+      : appVersion.value;
 
   return {
     email: field('email'),
@@ -29,45 +36,57 @@ function buildPayload(form: HTMLFormElement): Record<string, string> {
     app_version: appVersionValue,
     emulator: field('emulator'),
     log_id: field('log_id'),
-    message: field('message'),
-  }
+    message: field('message')
+  };
 }
 
 async function onSubmit(event: Event) {
-  const form = event.target as HTMLFormElement
-  status.value = 'submitting'
-  errorMessage.value = ''
+  const form = event.target as HTMLFormElement;
+  status.value = 'submitting';
+  errorMessage.value = '';
 
   try {
     const response = await fetch(SUPPORT_SUBMIT_ENDPOINT, {
       method: 'POST',
       body: JSON.stringify(buildPayload(form)),
-      headers: { 'Content-Type': 'application/json' },
-    })
+      headers: { 'Content-Type': 'application/json' }
+    });
 
     if (response.ok) {
-      status.value = 'success'
-      form.reset()
-      appVersion.value = ''
-      appVersionOther.value = ''
+      status.value = 'success';
+      form.reset();
+      appVersion.value = '';
+      appVersionOther.value = '';
     } else {
-      const data = await response.json().catch(() => null)
-      errorMessage.value = data?.error
-        || 'Something went wrong sending the form. Please try again or use one of the other contact options.'
-      status.value = 'error'
+      const data = await response.json().catch(() => null);
+      errorMessage.value =
+        data?.error ||
+        'Something went wrong sending the form. Please try again or use one of the other contact options.';
+      status.value = 'error';
     }
   } catch {
-    errorMessage.value = 'Could not reach the support service. Please try again or use one of the other contact options.'
-    status.value = 'error'
+    errorMessage.value =
+      'Could not reach the support service. Please try again or use one of the other contact options.';
+    status.value = 'error';
   }
 }
 </script>
 
 <template>
-  <form v-if="status !== 'success'" class="support-form" @submit.prevent="onSubmit">
+  <form
+    v-if="status !== 'success'"
+    class="support-form"
+    @submit.prevent="onSubmit"
+  >
     <label>
       <span>Email <span class="required">*</span></span>
-      <input type="email" name="email" required maxlength="200" placeholder="you@example.com" />
+      <input
+        type="email"
+        name="email"
+        required
+        maxlength="200"
+        placeholder="you@example.com"
+      />
     </label>
 
     <div class="support-form-row">
@@ -82,19 +101,36 @@ async function onSubmit(event: Event) {
 
       <label>
         <span>OS / firmware version <span class="required">*</span></span>
-        <input type="text" name="os_version" required maxlength="200" placeholder="e.g. Android 14, or Onion v4.3" />
+        <input
+          type="text"
+          name="os_version"
+          required
+          maxlength="200"
+          placeholder="e.g. Android 14, or Onion v4.3"
+        />
       </label>
     </div>
 
     <div class="support-form-row">
       <label>
         <span>Device / model <span class="required">*</span></span>
-        <input type="text" name="device" required maxlength="200" placeholder="e.g. Pixel 8, Miyoo Mini Flip, Anbernic RG35XX" />
+        <input
+          type="text"
+          name="device"
+          required
+          maxlength="200"
+          placeholder="e.g. Retroid Pocket Nova, Miyoo Mini Flip, Anbernic RG35XX"
+        />
       </label>
 
       <label>
         Emulator / core
-        <input type="text" name="emulator" maxlength="200" placeholder="e.g. RetroArch (Beetle PSX HW), Dolphin" />
+        <input
+          type="text"
+          name="emulator"
+          maxlength="200"
+          placeholder="e.g. RetroArch (Beetle PSX HW), Dolphin"
+        />
       </label>
     </div>
 
@@ -102,7 +138,9 @@ async function onSubmit(event: Event) {
       <span>RAOfflineProxy version <span class="required">*</span></span>
       <select v-model="appVersion" required>
         <option value="" disabled>Select...</option>
-        <option v-for="version in APP_VERSIONS" :key="version" :value="version">{{ version }}</option>
+        <option v-for="version in APP_VERSIONS" :key="version" :value="version">
+          {{ version }}
+        </option>
         <option :value="OTHER_VERSION">{{ OTHER_VERSION }}</option>
       </select>
     </label>
@@ -120,7 +158,12 @@ async function onSubmit(event: Event) {
 
     <label>
       Log ID
-      <input type="text" name="log_id" maxlength="100" placeholder="From Settings/Menu → Send Logs" />
+      <input
+        type="text"
+        name="log_id"
+        maxlength="100"
+        placeholder="From Settings/Menu → Send Logs"
+      />
     </label>
 
     <label>
@@ -138,12 +181,12 @@ async function onSubmit(event: Event) {
       {{ status === 'submitting' ? 'Sending...' : 'Send' }}
     </button>
 
-    <p v-if="status === 'error'" class="support-form-error">{{ errorMessage }}</p>
+    <p v-if="status === 'error'" class="support-form-error">
+      {{ errorMessage }}
+    </p>
   </form>
 
-  <p v-else class="support-form-success">
-    Thanks! Your request has been sent.
-  </p>
+  <p v-else class="support-form-success">Thanks! Your request has been sent.</p>
 </template>
 
 <style scoped>
