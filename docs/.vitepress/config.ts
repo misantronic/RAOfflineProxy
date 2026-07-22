@@ -78,6 +78,7 @@ export default defineConfig({
         text: 'Help',
         items: [
           { text: 'Troubleshooting / FAQ', link: '/troubleshooting' },
+          { text: 'Get Support', link: '/support' },
           { text: 'Contact / Feedback', link: '/contact' },
           { text: 'Privacy Policy', link: '/privacy-policy' },
         ],

@@ -123,4 +123,4 @@ If you install an update that includes a database structure change, the database
 
 ## Still need help?
 
-Send feedback or support questions to [misantronic@posteo.se](mailto:misantronic@posteo.se), or see [Contact / Feedback](./contact).
+See [Support](./support) for what to include in a report, then reach out via [Contact / Feedback](./contact).

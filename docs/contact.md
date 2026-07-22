@@ -2,7 +2,7 @@
 
 Questions, bug reports, and general feedback are welcome.
 
-[Open the Contact / Feedback Form](https://forms.gle/XPRfWe2hAqzYy3JX9)
+For bug reports, use the [Get Support](./support) page - it collects the details needed to help you (device, version, logs) and sends them directly.
 
 ## Discord
 
