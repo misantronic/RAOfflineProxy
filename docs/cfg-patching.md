@@ -38,7 +38,7 @@ ARMSX2 exposes a RetroAchievements host-override broadcast receiver. To redirect
 
 - The RetroAchievements host override is set to the proxy on your device
 - No config file patching or SAF grant is required for ARMSX2 itself
-- RAOfflineProxy uses the same broadcast-only patch and revert flow for all supported ARMSX2 package IDs (legacy ARMSX2 and ARMSX2 Refresh)
+- RAOfflineProxy uses the same broadcast-only patch and revert flow for all supported ARMSX2 package IDs (current and legacy builds)
 
 :::
 
@@ -84,7 +84,7 @@ For PPSSPP, the app prefers a package-targeted broadcast override when the insta
 
 For ARMSX2, the app sends a package-targeted broadcast to set the RetroAchievements host override.
 
-- It supports `come.nanodata.armsx2` and `com.armsx2` (ARMSX2 Refresh)
+- It supports `com.armsx2` (current ARMSX2) and `come.nanodata.armsx2` (legacy build)
 - No config file is edited
 - No folder access prompt is needed
 - The emulator should still be fully closed before patching so the new override is picked up cleanly on next launch

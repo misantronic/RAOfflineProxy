@@ -54,7 +54,7 @@ features:
         </div>
         <div class="supported-platforms__item">
           <img class="supported-platforms__logo--rounded" src="/armsx2.webp" alt="ARMSX2 logo">
-          <span>ARMSX2 / Refresh</span>
+          <span>ARMSX2</span>
         </div>
         <div class="supported-platforms__item">
           <img class="supported-platforms__logo--rounded" src="/argosy-launcher.png" alt="Argosy Launcher logo">

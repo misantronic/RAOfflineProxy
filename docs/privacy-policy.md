@@ -2,7 +2,7 @@
 
 **Last updated: May 10, 2026**
 
-RAOfflineProxy ("the app") is a local proxy tool for Android that enables offline RetroAchievements support with supported emulators such as RetroArch, Dolphin, PPSSPP, ARMSX2, and ARMSX2 Refresh. This privacy policy explains what data is handled by the app, how it is stored, and when it is transmitted.
+RAOfflineProxy ("the app") is a local proxy tool for Android that enables offline RetroAchievements support with supported emulators such as RetroArch, Dolphin, PPSSPP, and ARMSX2. This privacy policy explains what data is handled by the app, how it is stored, and when it is transmitted.
 
 ## Summary
 
