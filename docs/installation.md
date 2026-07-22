@@ -1,6 +1,6 @@
 # Installation & Setup (Android)
 
-> You are installing the current alpha build: `v1.7.0-alpha1`.
+> You are installing the current alpha build: `v1.8.0-alpha1`.
 
 ## Prerequisites
 
