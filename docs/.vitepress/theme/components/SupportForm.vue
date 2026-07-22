@@ -67,7 +67,7 @@ async function onSubmit(event: Event) {
   <form v-if="status !== 'success'" class="support-form" @submit.prevent="onSubmit">
     <label>
       <span>Email <span class="required">*</span></span>
-      <input type="email" name="email" required placeholder="you@example.com" />
+      <input type="email" name="email" required maxlength="200" placeholder="you@example.com" />
     </label>
 
     <div class="support-form-row">
@@ -82,19 +82,19 @@ async function onSubmit(event: Event) {
 
       <label>
         <span>OS / firmware version <span class="required">*</span></span>
-        <input type="text" name="os_version" required placeholder="e.g. Android 14, or Onion v4.3" />
+        <input type="text" name="os_version" required maxlength="200" placeholder="e.g. Android 14, or Onion v4.3" />
       </label>
     </div>
 
     <div class="support-form-row">
       <label>
         <span>Device / model <span class="required">*</span></span>
-        <input type="text" name="device" required placeholder="e.g. Pixel 8, Miyoo Mini Flip, Anbernic RG35XX" />
+        <input type="text" name="device" required maxlength="200" placeholder="e.g. Pixel 8, Miyoo Mini Flip, Anbernic RG35XX" />
       </label>
 
       <label>
         Emulator / core
-        <input type="text" name="emulator" placeholder="e.g. RetroArch (Beetle PSX HW), Dolphin" />
+        <input type="text" name="emulator" maxlength="200" placeholder="e.g. RetroArch (Beetle PSX HW), Dolphin" />
       </label>
     </div>
 
@@ -113,13 +113,14 @@ async function onSubmit(event: Event) {
         v-model="appVersionOther"
         type="text"
         required
+        maxlength="100"
         placeholder="e.g. 1.4.0-alpha1"
       />
     </label>
 
     <label>
       Log ID
-      <input type="text" name="log_id" placeholder="From Settings/Menu → Send Logs" />
+      <input type="text" name="log_id" maxlength="100" placeholder="From Settings/Menu → Send Logs" />
     </label>
 
     <label>
@@ -128,6 +129,7 @@ async function onSubmit(event: Event) {
         name="message"
         required
         rows="6"
+        maxlength="1024"
         placeholder="What did you expect, what happened instead, and steps to reproduce if known."
       ></textarea>
     </label>

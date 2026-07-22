@@ -96,6 +96,15 @@ export class RaopSupportLogsStack extends cdk.Stack {
             }
         });
 
+        const api = new apigwv2.HttpApi(this, 'SupportLogsApi', {
+            apiName: 'raop-support-logs',
+            corsPreflight: {
+                allowOrigins: ['https://raofflineproxy.com', 'http://localhost:5199'],
+                allowMethods: [apigwv2.CorsHttpMethod.POST],
+                allowHeaders: ['content-type']
+            }
+        });
+
         const supportReportFn = new lambda.Function(this, 'SupportReportFn', {
             functionName: 'raop-support-report',
             runtime: lambda.Runtime.NODEJS_24_X,
@@ -104,18 +113,15 @@ export class RaopSupportLogsStack extends cdk.Stack {
             code: lambda.Code.fromAsset(
                 path.join(LAMBDA_DIR, 'raop-support-report', 'dist', 'raop-support-report.zip')
             ),
-            environment: { BUCKET_NAME: bucket.bucketName, DISCORD_WEBHOOK_URL_PARAM },
+            environment: {
+                BUCKET_NAME: bucket.bucketName,
+                DISCORD_WEBHOOK_URL_PARAM,
+                // Used to build the short /support/logs/{logId} redirect link posted to Discord,
+                // instead of embedding an oversized presigned S3 URL directly.
+                API_BASE_URL: api.apiEndpoint
+            },
             timeout: cdk.Duration.seconds(10),
             memorySize: 256
-        });
-
-        const api = new apigwv2.HttpApi(this, 'SupportLogsApi', {
-            apiName: 'raop-support-logs',
-            corsPreflight: {
-                allowOrigins: ['https://raofflineproxy.com', 'http://localhost:5199'],
-                allowMethods: [apigwv2.CorsHttpMethod.POST],
-                allowHeaders: ['content-type']
-            }
         });
 
         // Throttle the whole API (both routes) so a scripted flood of /support/submit can't
@@ -134,10 +140,21 @@ export class RaopSupportLogsStack extends cdk.Stack {
             integration: new apigwv2_integrations.HttpLambdaIntegration('RequestUploadIntegration', requestUploadFn)
         });
 
+        const supportReportIntegration = new apigwv2_integrations.HttpLambdaIntegration(
+            'SupportReportIntegration',
+            supportReportFn
+        );
+
         api.addRoutes({
             path: '/support/submit',
             methods: [apigwv2.HttpMethod.POST],
-            integration: new apigwv2_integrations.HttpLambdaIntegration('SupportReportIntegration', supportReportFn)
+            integration: supportReportIntegration
+        });
+
+        api.addRoutes({
+            path: '/support/logs/{logId}',
+            methods: [apigwv2.HttpMethod.GET],
+            integration: supportReportIntegration
         });
 
         new cdk.CfnOutput(this, 'SupportLogsApiUrl', {
