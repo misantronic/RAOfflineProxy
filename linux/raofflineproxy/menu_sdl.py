@@ -207,8 +207,9 @@ ONION_SCREEN_RESOLUTION_FILE = Path("/tmp/screen_resolution")
 def _onion_panel_size() -> tuple[int, int]:
     """The vendored "Mini" SDL2 driver ignores whatever size is passed to
     SDL_SetDisplayMode/pygame.display.set_mode: it self-detects the real
-    framebuffer via its own `fbset` probe at init (640x480, or 752x560 on
-    devices whose fbset mode reports "752") and presents at that size
+    framebuffer via its own `fbset` probe at init (640x480, or 750x560 on
+    devices whose fbset mode reports "750", e.g. the Miyoo Mini Flip) and
+    presents at that size
     regardless. So the window/texture here must match what the driver will
     actually use, or the two sizes fight each other. Onion's own
     runtime.sh writes the same underlying panel probe result to
@@ -240,13 +241,28 @@ def _init_onion_display(pygame):
     pygame.display.set_mode(panel_size, 0)
     window = Window.from_display_module()
     renderer = Renderer(window, accelerated=-1, vsync=False)
-    texture = Texture(renderer, panel_size, streaming=True)
     draw_surface = pygame.Surface(panel_size, depth=16)
 
+    try:
+        texture = Texture(renderer, panel_size, streaming=True)
+        texture_surface = draw_surface
+    except RuntimeError:
+        # The vendored "Mini" SDL2 driver's swiftshader renderer caps
+        # streaming textures at 640x480 regardless of the actual panel
+        # (e.g. the Miyoo Mini Flip's 750x560 screen exceeds it). Present
+        # through a capped-size texture and let SDL_RenderCopy scale it
+        # back up to the real panel size.
+        texture_surface = pygame.Surface(ONION_DEFAULT_PANEL_SIZE, depth=16)
+        texture = Texture(renderer, ONION_DEFAULT_PANEL_SIZE, streaming=True)
+
     def _present() -> None:
-        texture.update(draw_surface)
+        if texture_surface is draw_surface:
+            texture.update(draw_surface)
+        else:
+            pygame.transform.scale(draw_surface, texture_surface.get_size(), texture_surface)
+            texture.update(texture_surface)
         renderer.clear()
-        texture.draw()
+        texture.draw(dstrect=(0, 0, panel_size[0], panel_size[1]))
         renderer.present()
 
     pygame.display.flip = _present
