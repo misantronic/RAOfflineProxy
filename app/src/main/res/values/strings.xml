@@ -77,6 +77,7 @@
     <string name="smart_cache_rom_saf_dialog_message">Smart Cache needs access to your ROM folder so it can read the recent game paths from RetroArch history and hash those ROM files.</string>
     <string name="saf_dialog_grant">Grant Access</string>
     <string name="action_ok">OK</string>
+    <string name="action_abort">Abort</string>
     <!-- CFG patcher messages -->
     <string name="patch_could_not_read">Could not read %s via folder access.</string>
     <string name="patch_already_configured">Already configured — no changes needed.</string>
@@ -165,9 +166,11 @@
     <string name="scan_add_complete">Added: %1$d of %2$d game(s) cached, %3$d skipped.</string>
     <string name="scan_add_complete_limit">Added: %1$d of %2$d game(s) cached, %3$d skipped. Reached the %4$d-game cache limit.</string>
     <string name="scan_starting">Starting scan…</string>
+    <string name="scan_aborting">Aborting scan…</string>
     <string name="scan_progress">Scanning %1$d/%2$d: %3$s</string>
     <string name="scan_complete">Scan complete: %1$d game(s) matched out of %2$d file(s), %3$d skipped.</string>
     <string name="scan_complete_limit">Scan complete: %1$d game(s) matched out of %2$d file(s), %3$d skipped. Reached the %4$d-game cache limit.</string>
+    <string name="scan_aborted">Scan aborted.</string>
     <string name="smart_cache_starting">Starting Smart Cache…</string>
     <string name="smart_cache_progress">Smart Cache %1$d/%2$d: %3$s</string>
     <string name="smart_cache_complete">Smart Cache complete: %1$d game(s) cached from %2$d candidate(s), %3$d skipped.</string>

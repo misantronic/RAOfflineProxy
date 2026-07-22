@@ -70,7 +70,9 @@ import com.raofflineproxy.proxy.SmartCacheEmulator
 import com.raofflineproxy.service.ProxyService
 import com.raofflineproxy.update.AppUpdateChecker
 import com.raofflineproxy.update.AppUpdateInfo
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -1920,9 +1922,19 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    private var scanJob: Job? = null
+
+    fun cancelScan() {
+        if (scanJob?.isActive != true) return
+        val abortingMessage = str(R.string.scan_aborting)
+        _state.value = _state.value.copy(scanProgress = abortingMessage)
+        SnackbarManager.showProgress(abortingMessage)
+        scanJob?.cancel()
+    }
+
     fun scanRoms(treeUri: Uri) {
         val app = getApplication<Application>()
-        viewModelScope.launch {
+        scanJob = viewModelScope.launch {
             if (_state.value.cachedGames.size >= MAX_CACHED_GAMES) {
                 SnackbarManager.showMessage(str(R.string.cached_games_limit_reached, MAX_CACHED_GAMES), SnackbarDuration.Indefinite)
                 return@launch
@@ -1930,15 +1942,16 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             val credentials = requireCredentials(PendingCredentialAction.ScanRoms(treeUri)) ?: return@launch
             val startingMessage = str(R.string.scan_starting)
             _state.value = _state.value.copy(scanInProgress = true, scanProgress = startingMessage)
-            SnackbarManager.showProgress(startingMessage)
+            SnackbarManager.showProgress(startingMessage, onAbort = ::cancelScan)
             var completionMessage: String? = null
+            var completionDuration = SnackbarDuration.Indefinite
             try {
                 val userAgent = withContext(Dispatchers.IO) { proxyUserAgent(loadUserAgent(db)) }
                 val result = withContext(Dispatchers.IO) {
                     scanRomFolder(app, treeUri, credentials, userAgent, db) { current, total, fileName ->
                         val progressMessage = str(R.string.scan_progress, current, total, fileName)
                         _state.value = _state.value.copy(scanProgress = progressMessage)
-                        SnackbarManager.showProgress(progressMessage)
+                        SnackbarManager.showProgress(progressMessage, onAbort = ::cancelScan)
                     }
                 }
                 completionMessage = if (result.limitReached) {
@@ -1946,6 +1959,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 } else {
                     str(R.string.scan_complete, result.matched, result.total, result.skipped)
                 }
+            } catch (c: CancellationException) {
+                Log.i("RAProxy/Scan", "scanRoms aborted for treeUri=$treeUri")
+                completionMessage = str(R.string.scan_aborted)
+                completionDuration = SnackbarDuration.Short
             } catch (t: Throwable) {
                 Log.e("RAProxy/Scan", "scanRoms failed for treeUri=$treeUri", t)
                 SnackbarManager.showError(t.message ?: "ROM scan failed.")
@@ -1957,7 +1974,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 SnackbarManager.showProgress(null)
             }
             completionMessage?.let {
-                SnackbarManager.showMessage(it, SnackbarDuration.Indefinite)
+                SnackbarManager.showMessage(it, completionDuration)
             }
         }
     }

@@ -52,6 +52,7 @@ class MainActivity : AppCompatActivity() {
     private val pendingErrors = ArrayDeque<QueuedError>()
     private var pendingMessage: SnackbarEvent.Message? = null
     private var progressMessage: String? = null
+    private var progressOnAbort: (() -> Unit)? = null
     private var activeSnackbarKind: ActiveSnackbarKind? = null
     private var suppressNextDismissCallback = false
     private var activeSafGrantTarget: SafGrantTarget? = null
@@ -259,7 +260,7 @@ class MainActivity : AppCompatActivity() {
             SnackbarManager.events.collect { event ->
                 when (event) {
                     is SnackbarEvent.Error -> enqueueError(event.message)
-                    is SnackbarEvent.Progress -> showOrClearProgress(event.message)
+                    is SnackbarEvent.Progress -> showOrClearProgress(event.message, event.onAbort)
                     is SnackbarEvent.Message -> showOrQueueMessage(event)
                 }
             }
@@ -769,10 +770,12 @@ class MainActivity : AppCompatActivity() {
         showNextSnackbar()
     }
 
-    private fun showOrClearProgress(message: String?) {
+    private fun showOrClearProgress(message: String?, onAbort: (() -> Unit)? = null) {
+        val previousOnAbort = progressOnAbort
         progressMessage = message
+        progressOnAbort = onAbort
         if (activeSnackbarKind == ActiveSnackbarKind.Error) return
-        if (message != null && activeSnackbarKind == ActiveSnackbarKind.Progress && snackbar != null) {
+        if (message != null && activeSnackbarKind == ActiveSnackbarKind.Progress && snackbar != null && onAbort === previousOnAbort) {
             snackbar?.setText(message)
             return
         }
@@ -790,7 +793,7 @@ class MainActivity : AppCompatActivity() {
 
         when {
             pendingErrors.isNotEmpty() -> showCurrentError()
-            progressMessage != null -> showCurrentProgress(progressMessage!!)
+            progressMessage != null -> showCurrentProgress(progressMessage!!, progressOnAbort)
             pendingMessage != null -> showCurrentMessage(pendingMessage!!)
             else -> activeSnackbarKind = null
         }
@@ -860,10 +863,13 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun showCurrentProgress(message: String) {
+    private fun showCurrentProgress(message: String, onAbort: (() -> Unit)?) {
         activeSnackbarKind = ActiveSnackbarKind.Progress
         snackbar = Snackbar.make(binding.fragmentContainer, message, Snackbar.LENGTH_INDEFINITE)
             .also {
+                if (onAbort != null) {
+                    it.setAction(R.string.action_abort) { onAbort() }
+                }
                 it.addCallback(object : Snackbar.Callback() {
                     override fun onDismissed(transientBottomBar: Snackbar?, event: Int) {
                         if (suppressNextDismissCallback) {
