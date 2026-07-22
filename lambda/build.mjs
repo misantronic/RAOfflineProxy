@@ -7,7 +7,8 @@ import archiver from 'archiver';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const packages = [
-    'raop-log-upload'
+    'raop-log-upload',
+    'raop-support-report'
 ];
 
 async function buildPackage(name) {

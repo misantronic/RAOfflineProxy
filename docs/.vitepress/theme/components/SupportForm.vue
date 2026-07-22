@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 
-const FORMSPREE_ENDPOINT = 'https://formspree.io/f/meeylkqq'
+const SUPPORT_SUBMIT_ENDPOINT = 'https://ud63psmdb5.execute-api.eu-central-1.amazonaws.com/support/submit'
 
 type Status = 'idle' | 'submitting' | 'success' | 'error'
 
@@ -14,30 +14,23 @@ const OTHER_VERSION = 'Other / older'
 const appVersion = ref('')
 const appVersionOther = ref('')
 
-function buildPayload(form: HTMLFormElement): FormData {
+function buildPayload(form: HTMLFormElement): Record<string, string> {
   const data = new FormData(form)
-  const field = (name: string) => (data.get(name) as string)?.trim() || '-'
+  const field = (name: string) => (data.get(name) as string)?.trim() || ''
   const appVersionValue = appVersion.value === OTHER_VERSION
-    ? appVersionOther.value.trim() || '-'
+    ? appVersionOther.value.trim()
     : appVersion.value
 
-  const body = [
-    `System: ${field('system')}`,
-    `Device / model: ${field('device')}`,
-    `OS / firmware version: ${field('os_version')}`,
-    `RAOfflineProxy version: ${appVersionValue}`,
-    `Emulator / core: ${field('emulator')}`,
-    `Log ID: ${field('log_id')}`,
-    '',
-    'What happened:',
-    field('message'),
-  ].join('\n')
-
-  const payload = new FormData()
-  payload.set('email', field('email'))
-  payload.set('_subject', `RAOfflineProxy support request (${field('system')})`)
-  payload.set('message', body)
-  return payload
+  return {
+    email: field('email'),
+    system: field('system'),
+    device: field('device'),
+    os_version: field('os_version'),
+    app_version: appVersionValue,
+    emulator: field('emulator'),
+    log_id: field('log_id'),
+    message: field('message'),
+  }
 }
 
 async function onSubmit(event: Event) {
@@ -46,10 +39,10 @@ async function onSubmit(event: Event) {
   errorMessage.value = ''
 
   try {
-    const response = await fetch(FORMSPREE_ENDPOINT, {
+    const response = await fetch(SUPPORT_SUBMIT_ENDPOINT, {
       method: 'POST',
-      body: buildPayload(form),
-      headers: { Accept: 'application/json' },
+      body: JSON.stringify(buildPayload(form)),
+      headers: { 'Content-Type': 'application/json' },
     })
 
     if (response.ok) {
@@ -59,12 +52,12 @@ async function onSubmit(event: Event) {
       appVersionOther.value = ''
     } else {
       const data = await response.json().catch(() => null)
-      errorMessage.value = data?.errors?.map((e: { message: string }) => e.message).join(', ')
+      errorMessage.value = data?.error
         || 'Something went wrong sending the form. Please try again or use one of the other contact options.'
       status.value = 'error'
     }
   } catch {
-    errorMessage.value = 'Could not reach the form service. Please try again or use one of the other contact options.'
+    errorMessage.value = 'Could not reach the support service. Please try again or use one of the other contact options.'
     status.value = 'error'
   }
 }

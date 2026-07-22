@@ -3,7 +3,8 @@
     "version": "1.0.0",
     "private": true,
     "workspaces": [
-        "raop-log-upload"
+        "raop-log-upload",
+        "raop-support-report"
     ],
     "scripts": {
         "build": "node build.mjs",

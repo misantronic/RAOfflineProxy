@@ -61,14 +61,83 @@ export class RaopSupportLogsStack extends cdk.Stack {
             memorySize: 256
         });
 
+        const DISCORD_WEBHOOK_URL_PARAM = '/raop/support-report/discord-webhook-url';
+
+        const supportReportRole = new iam.Role(this, 'SupportReportLambdaRole', {
+            roleName: 'raop-support-report-lambda-role',
+            assumedBy: new iam.ServicePrincipal('lambda.amazonaws.com'),
+            managedPolicies: [
+                iam.ManagedPolicy.fromAwsManagedPolicyName('service-role/AWSLambdaBasicExecutionRole')
+            ],
+            inlinePolicies: {
+                SupportLogsReadPolicy: new iam.PolicyDocument({
+                    statements: [
+                        new iam.PolicyStatement({
+                            // Used only to presign a GET download link for the maintainer, not to
+                            // read the log contents server-side.
+                            actions: ['s3:GetObject'],
+                            resources: [bucket.arnForObjects('*')]
+                        })
+                    ]
+                }),
+                SupportReportSecretsPolicy: new iam.PolicyDocument({
+                    statements: [
+                        new iam.PolicyStatement({
+                            actions: ['ssm:GetParameter'],
+                            resources: [`arn:aws:ssm:${this.region}:${this.account}:parameter${DISCORD_WEBHOOK_URL_PARAM}`]
+                        }),
+                        new iam.PolicyStatement({
+                            // The SecureString param above uses the default AWS-managed SSM key.
+                            actions: ['kms:Decrypt'],
+                            resources: [`arn:aws:kms:${this.region}:${this.account}:alias/aws/ssm`]
+                        })
+                    ]
+                })
+            }
+        });
+
+        const supportReportFn = new lambda.Function(this, 'SupportReportFn', {
+            functionName: 'raop-support-report',
+            runtime: lambda.Runtime.NODEJS_24_X,
+            handler: 'index.handler',
+            role: supportReportRole,
+            code: lambda.Code.fromAsset(
+                path.join(LAMBDA_DIR, 'raop-support-report', 'dist', 'raop-support-report.zip')
+            ),
+            environment: { BUCKET_NAME: bucket.bucketName, DISCORD_WEBHOOK_URL_PARAM },
+            timeout: cdk.Duration.seconds(10),
+            memorySize: 256
+        });
+
         const api = new apigwv2.HttpApi(this, 'SupportLogsApi', {
-            apiName: 'raop-support-logs'
+            apiName: 'raop-support-logs',
+            corsPreflight: {
+                allowOrigins: ['https://raofflineproxy.com', 'http://localhost:5199'],
+                allowMethods: [apigwv2.CorsHttpMethod.POST],
+                allowHeaders: ['content-type']
+            }
+        });
+
+        // Throttle the whole API (both routes) so a scripted flood of /support/submit can't
+        // spam Discord. Applied as an in-place override to the implicitly-created default
+        // stage rather than replacing it, so the already-live /logs/request-upload route
+        // used by shipped apps isn't disrupted.
+        const defaultStage = api.defaultStage?.node.defaultChild as apigwv2.CfnStage | undefined;
+        defaultStage?.addPropertyOverride('DefaultRouteSettings', {
+            ThrottlingBurstLimit: 5,
+            ThrottlingRateLimit: 2
         });
 
         api.addRoutes({
             path: '/logs/request-upload',
             methods: [apigwv2.HttpMethod.POST],
             integration: new apigwv2_integrations.HttpLambdaIntegration('RequestUploadIntegration', requestUploadFn)
+        });
+
+        api.addRoutes({
+            path: '/support/submit',
+            methods: [apigwv2.HttpMethod.POST],
+            integration: new apigwv2_integrations.HttpLambdaIntegration('SupportReportIntegration', supportReportFn)
         });
 
         new cdk.CfnOutput(this, 'SupportLogsApiUrl', {

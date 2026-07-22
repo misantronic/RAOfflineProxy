@@ -7,7 +7,8 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const REGION = 'eu-central-1';
 
 const ALL_LAMBDAS = [
-    'raop-log-upload'
+    'raop-log-upload',
+    'raop-support-report'
 ];
 
 function deployToRegion(name, region, zipPath) {
