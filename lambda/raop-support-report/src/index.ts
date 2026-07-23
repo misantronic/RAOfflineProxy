@@ -167,8 +167,31 @@ async function handleLogDownload(event: any): Promise<any> {
     }
 }
 
+async function handleLogMetadata(event: any): Promise<any> {
+    const logId = event.pathParameters?.logId;
+    if (typeof logId !== 'string' || !LOG_ID_PATTERN.test(logId)) {
+        return respond(400, { error: 'Invalid log ID' });
+    }
+
+    try {
+        const result = await s3.send(new GetObjectCommand({ Bucket: BUCKET, Key: `${logId}.json` }));
+        const raw = await result.Body?.transformToString('utf-8');
+        return respond(200, JSON.parse(raw ?? '{}'));
+    } catch (error: any) {
+        if (error?.$metadata?.httpStatusCode !== 404) {
+            console.error(`Failed to fetch metadata for ${logId}`, error);
+        }
+        return respond(404, { error: 'No metadata for this log ID' });
+    }
+}
+
 exports.handler = async (event: any): Promise<any> => {
     const method = event.requestContext?.http?.method;
+    const routeKey = event.requestContext?.routeKey;
+
+    if (method === 'GET' && routeKey === 'GET /support/logs/{logId}/metadata') {
+        return handleLogMetadata(event);
+    }
 
     if (method === 'GET') {
         return handleLogDownload(event);

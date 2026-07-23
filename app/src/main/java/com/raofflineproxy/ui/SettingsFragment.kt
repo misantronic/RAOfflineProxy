@@ -130,8 +130,9 @@ class SettingsFragment : Fragment() {
             sendingLogs = true
             btnSendLogs.isEnabled = false
             btnSendLogs.text = getString(R.string.send_logs_uploading)
+            val appContext = requireContext().applicationContext
             viewLifecycleOwner.lifecycleScope.launch {
-                val result = withContext(Dispatchers.IO) { LogUploader.uploadLogs() }
+                val result = withContext(Dispatchers.IO) { LogUploader.uploadLogs(appContext) }
                 sendingLogs = false
                 btnSendLogs.isEnabled = viewModel.state.value.isOnline
                 btnSendLogs.text = getString(R.string.btn_send_logs)

@@ -89,6 +89,71 @@ class LinuxLogUploaderTests(unittest.TestCase):
             self.assertEqual(archive.read("service.log.1").decode("utf-8"), "old")
             self.assertEqual(archive.read("service.log").decode("utf-8"), "new")
 
+    def test_platform_label_falls_back_to_knulli(self) -> None:
+        with ExitStack() as stack:
+            stack.enter_context(mock.patch.object(log_uploader.config, "running_on_onion", return_value=False))
+            stack.enter_context(mock.patch.object(log_uploader.config, "running_on_rocknix", return_value=False))
+            stack.enter_context(mock.patch.object(log_uploader, "MUOS_MARKER_PATH", Path("/nonexistent")))
+            self.assertEqual(log_uploader._platform_label(), "Knulli")
+
+    def test_platform_label_detects_onion_first(self) -> None:
+        with ExitStack() as stack:
+            stack.enter_context(mock.patch.object(log_uploader.config, "running_on_onion", return_value=True))
+            stack.enter_context(mock.patch.object(log_uploader.config, "running_on_rocknix", return_value=True))
+            self.assertEqual(log_uploader._platform_label(), "Onion")
+
+    def test_platform_label_detects_rocknix(self) -> None:
+        with ExitStack() as stack:
+            stack.enter_context(mock.patch.object(log_uploader.config, "running_on_onion", return_value=False))
+            stack.enter_context(mock.patch.object(log_uploader.config, "running_on_rocknix", return_value=True))
+            stack.enter_context(mock.patch.object(log_uploader, "MUOS_MARKER_PATH", Path("/nonexistent")))
+            self.assertEqual(log_uploader._platform_label(), "ROCKNIX")
+
+    def test_os_release_field_prefers_first_matching_key(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            os_release = Path(tmp_dir) / "os-release"
+            os_release.write_text('PRETTY_NAME="Knulli 24.1"\nVERSION_ID=24.1\n', encoding="utf-8")
+
+            with mock.patch.object(log_uploader.config, "OS_RELEASE_PATH", os_release):
+                self.assertEqual(log_uploader._os_release_field("VERSION", "PRETTY_NAME"), "Knulli 24.1")
+                self.assertIsNone(log_uploader._os_release_field("VERSION"))
+
+    def test_os_release_field_tolerates_missing_file(self) -> None:
+        with mock.patch.object(log_uploader.config, "OS_RELEASE_PATH", Path("/nonexistent/os-release")):
+            self.assertIsNone(log_uploader._os_release_field("VERSION"))
+
+    def test_upload_metadata_includes_emulator_when_patched(self) -> None:
+        with ExitStack() as stack:
+            stack.enter_context(mock.patch.object(log_uploader, "_platform_label", return_value="Knulli"))
+            stack.enter_context(mock.patch.object(log_uploader, "_os_release_field", return_value=None))
+            stack.enter_context(mock.patch.object(log_uploader.config, "APP_VERSION", "1.8.0-alpha1"))
+            stack.enter_context(mock.patch.object(log_uploader.state, "load_patch_state", return_value={"cfg_path": "x"}))
+
+            metadata = log_uploader._upload_metadata()
+
+            self.assertEqual(
+                metadata,
+                {
+                    "system": "Linux",
+                    "device": "Knulli",
+                    "os_version": "Knulli",
+                    "app_version": "1.8.0-alpha1",
+                    "emulator": ["RetroArch"],
+                },
+            )
+
+    def test_upload_metadata_omits_emulator_when_not_patched(self) -> None:
+        with ExitStack() as stack:
+            stack.enter_context(mock.patch.object(log_uploader, "_platform_label", return_value="Onion"))
+            stack.enter_context(mock.patch.object(log_uploader, "_os_release_field", return_value="Onion v4.3"))
+            stack.enter_context(mock.patch.object(log_uploader.config, "APP_VERSION", "1.8.0-alpha1"))
+            stack.enter_context(mock.patch.object(log_uploader.state, "load_patch_state", return_value=None))
+
+            metadata = log_uploader._upload_metadata()
+
+            self.assertNotIn("emulator", metadata)
+            self.assertEqual(metadata["os_version"], "Onion v4.3")
+
 
 if __name__ == "__main__":
     unittest.main()

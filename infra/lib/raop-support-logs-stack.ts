@@ -100,7 +100,7 @@ export class RaopSupportLogsStack extends cdk.Stack {
             apiName: 'raop-support-logs',
             corsPreflight: {
                 allowOrigins: ['https://raofflineproxy.com', 'http://localhost:5199'],
-                allowMethods: [apigwv2.CorsHttpMethod.POST],
+                allowMethods: [apigwv2.CorsHttpMethod.POST, apigwv2.CorsHttpMethod.GET],
                 allowHeaders: ['content-type']
             }
         });
@@ -153,6 +153,12 @@ export class RaopSupportLogsStack extends cdk.Stack {
 
         api.addRoutes({
             path: '/support/logs/{logId}',
+            methods: [apigwv2.HttpMethod.GET],
+            integration: supportReportIntegration
+        });
+
+        api.addRoutes({
+            path: '/support/logs/{logId}/metadata',
             methods: [apigwv2.HttpMethod.GET],
             integration: supportReportIntegration
         });

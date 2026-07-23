@@ -11,12 +11,11 @@ Use the **Send Logs** feature in the app:
 - **Android:** Settings → **Send logs**
 - **Linux:** Main menu → **Send Logs**
 
-You need to be online for this to work. After the upload finishes, you'll get an **ID** — copy it and paste it into the form below. Don't lose it, the logs can't be matched back to you without it.
+You need to be online for this to work. After the upload finishes, you'll get an **ID** — paste it into the form below and your device, OS, app version, and emulator/core are filled in automatically, no need to type them.
 
-## 2. Emulator & core
+## 2. If you don't have an ID
 
-- Which emulator (RetroArch, Dolphin, DuckStation, ...) and, for RetroArch, which core
-- Whether hardcore mode is involved — RAOfflineProxy does not support it, see [Troubleshooting](./troubleshooting#is-hardcore-mode-supported)
+No log to share (e.g. the app won't start at all)? The form falls back to asking for system, device, OS, and emulator/core manually — and whether hardcore mode is involved, since RAOfflineProxy does not support it, see [Troubleshooting](./troubleshooting#is-hardcore-mode-supported).
 
 ## 3. What happened
 

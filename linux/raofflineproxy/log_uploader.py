@@ -8,7 +8,7 @@ import urllib.request
 import zipfile
 from pathlib import Path
 
-from . import config
+from . import config, state
 from .network import configured_ssl_context
 from .utils import redact_query_tokens
 
@@ -16,6 +16,9 @@ LOGGER = logging.getLogger(__name__)
 
 REQUEST_UPLOAD_URL = "https://ud63psmdb5.execute-api.eu-central-1.amazonaws.com/logs/request-upload"
 REQUEST_TIMEOUT_SECONDS = 15
+# Not config.running_on_muos() (doesn't exist) or menu_sdl.running_on_muos() (would create a
+# circular import, since menu_sdl imports upload_logs from this module) — duplicated here.
+MUOS_MARKER_PATH = Path("/opt/muos/script/archive")
 
 
 def _log_file_paths() -> list[Path]:
@@ -55,7 +58,7 @@ def _zip_logs(files: dict[str, str]) -> bytes:
 def _request_upload_target() -> tuple[str, str]:
     request = urllib.request.Request(
         REQUEST_UPLOAD_URL,
-        data=b"",
+        data=json.dumps(_upload_metadata()).encode("utf-8"),
         headers={"Content-Type": "application/json"},
         method="POST",
     )
@@ -85,6 +88,53 @@ def _request_upload_target() -> tuple[str, str]:
         raise RuntimeError("Malformed request-upload response") from error
 
     return upload_id, upload_url
+
+
+def _platform_label() -> str:
+    if config.running_on_onion():
+        return "Onion"
+    if MUOS_MARKER_PATH.exists():
+        return "muOS"
+    if config.running_on_rocknix():
+        return "ROCKNIX"
+    return "Knulli"
+
+
+def _os_release_field(*keys: str) -> str | None:
+    try:
+        content = config.OS_RELEASE_PATH.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+
+    values: dict[str, str] = {}
+    for line in content.splitlines():
+        if "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        values[key.strip()] = value.strip().strip('"')
+
+    for key in keys:
+        if values.get(key):
+            return values[key]
+    return None
+
+
+def _upload_metadata() -> dict[str, str | list[str]]:
+    # Submitted alongside the log so the support form can skip asking for this again once the
+    # user provides a Log ID. Best-effort: device model and precise emulator/core aren't
+    # reliably detectable across these distros, so this is coarser than the Android equivalent
+    # (platform name stands in for device model; only whether RetroArch was patched, not which
+    # core, stands in for emulator).
+    platform = _platform_label()
+    metadata: dict[str, str | list[str]] = {
+        "system": "Linux",
+        "device": platform,
+        "os_version": _os_release_field("VERSION", "PRETTY_NAME", "VERSION_ID") or platform,
+        "app_version": config.APP_VERSION,
+    }
+    if state.load_patch_state() is not None:
+        metadata["emulator"] = ["RetroArch"]
+    return metadata
 
 
 def _put_log_archive(upload_url: str, zip_bytes: bytes) -> None:
