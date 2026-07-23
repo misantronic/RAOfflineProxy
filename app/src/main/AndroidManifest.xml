@@ -22,6 +22,7 @@
         <package android:name="org.dolphinemu.dolphinemu" />
         <package android:name="org.dolphinemu.dolphinemu.beta" />
         <package android:name="org.dolphinemu.dolphinemu.debug" />
+        <package android:name="com.joeyos.dolphinemu" />
         <package android:name="org.ppsspp.ppsspp" />
         <package android:name="org.ppsspp.ppssppgold" />
         <package android:name="come.nanodata.armsx2" />

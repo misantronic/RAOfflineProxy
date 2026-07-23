@@ -27,7 +27,8 @@ private const val DOLPHIN_GAME_SETTINGS_KEY = "HardcoreEnabled"
 internal val DOLPHIN_PACKAGE_CANDIDATES = listOf(
     "org.dolphinemu.dolphinemu",
     "org.dolphinemu.dolphinemu.beta",
-    "org.dolphinemu.dolphinemu.debug"
+    "org.dolphinemu.dolphinemu.debug",
+    "com.joeyos.dolphinemu"
 )
 
 internal const val DOLPHIN_SET_HOST_OVERRIDE_ACTION_SUFFIX = ".action.SET_RETROACHIEVEMENTS_HOST_OVERRIDE"
@@ -138,39 +139,45 @@ internal fun isDolphinInstalled(context: Context): Boolean =
         runCatching { context.packageManager.getPackageInfo(packageName, 0) }.isSuccess
     } || DOLPHIN_SOURCE_CANDIDATES.any { File(it).exists() }
 
-internal fun supportsDolphinBroadcastOverride(context: Context): Boolean {
-    val packageName = resolveInstalledPackage(context, DOLPHIN_PACKAGE_CANDIDATES) ?: return false
-    return resolvesDolphinBroadcast(context, packageName, "$packageName$DOLPHIN_SET_HOST_OVERRIDE_ACTION_SUFFIX")
-        && resolvesDolphinBroadcast(context, packageName, "$packageName$DOLPHIN_CLEAR_HOST_OVERRIDE_ACTION_SUFFIX")
-}
-
-private fun broadcastDolphinHostOverride(context: Context): DolphinPatchResult? {
-    val packageName = resolveInstalledPackage(context, DOLPHIN_PACKAGE_CANDIDATES) ?: return null
-    if (!supportsDolphinBroadcastOverride(context)) {
-        return null
+private fun resolveInstalledDolphinPackages(context: Context): List<String> =
+    DOLPHIN_PACKAGE_CANDIDATES.filter { packageName ->
+        runCatching { context.packageManager.getPackageInfo(packageName, 0) }.isSuccess
     }
 
-    context.sendBroadcast(
-        Intent("$packageName$DOLPHIN_SET_HOST_OVERRIDE_ACTION_SUFFIX")
-            .setPackage(packageName)
-            .putExtra(DOLPHIN_HOST_OVERRIDE_EXTRA, proxyBase(proxyPort(context)))
-    )
+private fun dolphinBroadcastOverridePackages(context: Context): List<String> =
+    resolveInstalledDolphinPackages(context).filter { packageName ->
+        resolvesDolphinBroadcast(context, packageName, "$packageName$DOLPHIN_SET_HOST_OVERRIDE_ACTION_SUFFIX")
+            && resolvesDolphinBroadcast(context, packageName, "$packageName$DOLPHIN_CLEAR_HOST_OVERRIDE_ACTION_SUFFIX")
+    }
+
+internal fun supportsDolphinBroadcastOverride(context: Context): Boolean =
+    dolphinBroadcastOverridePackages(context).isNotEmpty()
+
+private fun broadcastDolphinHostOverride(context: Context, packages: List<String>): DolphinPatchResult? {
+    if (packages.isEmpty()) return null
+
+    packages.forEach { packageName ->
+        context.sendBroadcast(
+            Intent("$packageName$DOLPHIN_SET_HOST_OVERRIDE_ACTION_SUFFIX")
+                .setPackage(packageName)
+                .putExtra(DOLPHIN_HOST_OVERRIDE_EXTRA, proxyBase(proxyPort(context)))
+        )
+    }
     return DolphinPatchResult(
         success = true,
         message = context.getString(R.string.dolphin_patch_success)
     )
 }
 
-private fun clearDolphinHostOverride(context: Context): DolphinPatchResult? {
-    val packageName = resolveInstalledPackage(context, DOLPHIN_PACKAGE_CANDIDATES) ?: return null
-    if (!supportsDolphinBroadcastOverride(context)) {
-        return null
-    }
+private fun clearDolphinHostOverride(context: Context, packages: List<String>): DolphinPatchResult? {
+    if (packages.isEmpty()) return null
 
-    context.sendBroadcast(
-        Intent("$packageName$DOLPHIN_CLEAR_HOST_OVERRIDE_ACTION_SUFFIX")
-            .setPackage(packageName)
-    )
+    packages.forEach { packageName ->
+        context.sendBroadcast(
+            Intent("$packageName$DOLPHIN_CLEAR_HOST_OVERRIDE_ACTION_SUFFIX")
+                .setPackage(packageName)
+        )
+    }
     return DolphinPatchResult(
         success = true,
         message = context.getString(R.string.dolphin_revert_success)
@@ -187,6 +194,21 @@ private fun resolvesDolphinBroadcast(context: Context, packageName: String, acti
     }
 }
 
+private fun combineDolphinResults(results: List<DolphinPatchResult>): DolphinPatchResult {
+    if (results.isEmpty()) {
+        return DolphinPatchResult(success = true, message = "", skippedNotInstalled = true)
+    }
+    return DolphinPatchResult(
+        success = results.all { it.success },
+        message = results.mapNotNull { it.message.takeIf(String::isNotBlank) }.distinct().joinToString("\n"),
+        needsSafGrant = results.any { it.needsSafGrant },
+        invalidSafGrant = results.any { it.invalidSafGrant },
+        copyBackPath = results.firstNotNullOfOrNull { it.copyBackPath },
+        hardcoreWasEnabled = results.any { it.hardcoreWasEnabled },
+        credentials = results.firstNotNullOfOrNull { it.credentials }
+    )
+}
+
 fun patchDolphinCfg(
     context: Context,
     treeUri: Uri?,
@@ -197,9 +219,13 @@ fun patchDolphinCfg(
         return DolphinPatchResult(success = true, message = "Dolphin not installed.", skippedNotInstalled = true)
     }
 
-    broadcastDolphinHostOverride(context)?.let {
-        Log.i(TAG, "patch: applied via broadcast override")
-        return it
+    val installedPackages = resolveInstalledDolphinPackages(context)
+    val broadcastPackages = dolphinBroadcastOverridePackages(context)
+    val broadcastResult = broadcastDolphinHostOverride(context, broadcastPackages)
+
+    if (broadcastResult != null && broadcastPackages.containsAll(installedPackages)) {
+        Log.i(TAG, "patch: applied via broadcast override for all installed packages=$broadcastPackages")
+        return broadcastResult
     }
 
     Log.i(TAG, "patch: starting treeUri=$treeUri proxy=${proxyValue(context)}")
@@ -211,7 +237,7 @@ fun patchDolphinCfg(
             storedCredentials = storedCredentials
         )
     }
-    val globalResult = applyDolphinTransform(
+    val fileResult = applyDolphinTransform(
         context = context,
         treeUri = treeUri,
         transform = transform,
@@ -219,6 +245,7 @@ fun patchDolphinCfg(
         detectHardcore = true,
         ensureBackup = true
     )
+    val globalResult = if (broadcastResult != null) combineDolphinResults(listOf(broadcastResult, fileResult)) else fileResult
 
     if (!globalResult.success) {
         return globalResult
@@ -250,15 +277,19 @@ fun revertDolphinCfg(context: Context, treeUri: Uri?, restoreHardcore: Boolean =
         return DolphinPatchResult(success = true, message = "Dolphin not installed.", skippedNotInstalled = true)
     }
 
-    clearDolphinHostOverride(context)?.let {
-        Log.i(TAG, "revert: cleared via broadcast override")
-        return it
+    val installedPackages = resolveInstalledDolphinPackages(context)
+    val broadcastPackages = dolphinBroadcastOverridePackages(context)
+    val broadcastResult = clearDolphinHostOverride(context, broadcastPackages)
+
+    if (broadcastResult != null && broadcastPackages.containsAll(installedPackages)) {
+        Log.i(TAG, "revert: cleared via broadcast override for all installed packages=$broadcastPackages")
+        return broadcastResult
     }
 
     Log.i(TAG, "revert: starting treeUri=$treeUri restoreHardcore=$restoreHardcore")
 
     val transform: (String) -> String = { buildRevertedDolphinContent(it, restoreHardcore) }
-    val globalResult = applyDolphinTransform(
+    val fileResult = applyDolphinTransform(
         context = context,
         treeUri = treeUri,
         transform = transform,
@@ -266,6 +297,7 @@ fun revertDolphinCfg(context: Context, treeUri: Uri?, restoreHardcore: Boolean =
         detectHardcore = false,
         ensureBackup = false
     )
+    val globalResult = if (broadcastResult != null) combineDolphinResults(listOf(broadcastResult, fileResult)) else fileResult
 
     val gameSettingsResult = revertDolphinGameSettingsHardcoreOverrides(context, treeUri)
     if (!gameSettingsResult.success) {
@@ -297,14 +329,13 @@ private fun patchDolphinGameSettingsHardcoreOverrides(
         Log.i(TAG, "game settings patch: SAF tree could not be opened, falling back to direct file access")
     }
 
-    val directDirectory = DOLPHIN_GAME_SETTINGS_SOURCE_CANDIDATES
-        .asSequence()
+    val directDirectories = DOLPHIN_GAME_SETTINGS_SOURCE_CANDIDATES
         .map(::File)
-        .firstOrNull { it.isDirectory && it.canRead() && it.canWrite() }
+        .filter { it.isDirectory && it.canRead() && it.canWrite() }
 
-    if (directDirectory != null) {
-        Log.i(TAG, "game settings patch: starting via file path=${directDirectory.path}")
-        val fileResult = patchDolphinGameSettingsViaFile(directDirectory)
+    if (directDirectories.isNotEmpty()) {
+        Log.i(TAG, "game settings patch: starting via file paths=${directDirectories.map { it.path }}")
+        val fileResult = combineDolphinGameSettingsOutcomes(directDirectories.map(::patchDolphinGameSettingsViaFile))
         Log.i(
             TAG,
             "game settings patch: finished via file success=${fileResult.success} changed=${fileResult.overrides.size} durationMs=${System.currentTimeMillis() - startedAt}"
@@ -314,6 +345,15 @@ private fun patchDolphinGameSettingsHardcoreOverrides(
 
     Log.i(TAG, "game settings patch: no accessible GameSettings directory durationMs=${System.currentTimeMillis() - startedAt}")
     return DolphinGameSettingsPatchOutcome(success = true)
+}
+
+private fun combineDolphinGameSettingsOutcomes(outcomes: List<DolphinGameSettingsPatchOutcome>): DolphinGameSettingsPatchOutcome {
+    if (outcomes.isEmpty()) return DolphinGameSettingsPatchOutcome(success = true)
+    return DolphinGameSettingsPatchOutcome(
+        success = outcomes.all { it.success },
+        message = outcomes.firstOrNull { !it.success }?.message,
+        overrides = outcomes.flatMap { it.overrides }
+    )
 }
 
 internal fun revertDolphinGameSettingsHardcoreOverrides(
@@ -377,11 +417,19 @@ private fun patchDolphinGameSettingsViaSaf(
     treeUri: Uri
 ): DolphinGameSettingsPatchOutcome? {
     val tree = DocumentFile.fromTreeUri(context, treeUri) ?: return null
-    val directory = DOLPHIN_SAF_GAME_SETTINGS_PATHS.firstNotNullOfOrNull { segments ->
+    val directories = DOLPHIN_SAF_GAME_SETTINGS_PATHS.mapNotNull { segments ->
         segments.fold(tree as DocumentFile?) { current, segment -> current?.findFile(segment) }
             ?.takeIf { it.exists() && it.isDirectory }
-    } ?: return DolphinGameSettingsPatchOutcome(success = true)
+    }
+    if (directories.isEmpty()) return DolphinGameSettingsPatchOutcome(success = true)
 
+    return combineDolphinGameSettingsOutcomes(directories.map { directory -> patchDolphinGameSettingsDirectoryViaSaf(context, directory) })
+}
+
+private fun patchDolphinGameSettingsDirectoryViaSaf(
+    context: Context,
+    directory: DocumentFile
+): DolphinGameSettingsPatchOutcome {
     val changedFiles = mutableListOf<Pair<DocumentFile, DolphinGameSettingsOverride>>()
     val overrides = mutableListOf<DolphinGameSettingsOverride>()
     val iniFiles = directory.listFiles()
@@ -559,14 +607,15 @@ private fun applyDolphinTransform(
         Log.d(TAG, "apply: treeUri present but SAF tree could not be opened")
     }
 
-    val directCandidate = DOLPHIN_SOURCE_CANDIDATES.map(::File).firstOrNull { it.exists() }
-    Log.d(TAG, "apply: directCandidate=${directCandidate?.path} writable=${directCandidate?.canWrite()}")
-    if (directCandidate != null && directCandidate.canWrite()) {
-        return transformDolphinViaFile(context, directCandidate, transform, strings, detectHardcore, ensureBackup)
+    val existingCandidates = DOLPHIN_SOURCE_CANDIDATES.map(::File).filter { it.exists() }
+    val writableCandidates = existingCandidates.filter { it.canWrite() }
+    Log.d(TAG, "apply: existingCandidates=${existingCandidates.map { it.path }} writable=${writableCandidates.map { it.path }}")
+    if (writableCandidates.isNotEmpty()) {
+        return combineDolphinResults(writableCandidates.map { transformDolphinViaFile(context, it, transform, strings, detectHardcore, ensureBackup) })
     }
 
-    if (directCandidate != null || treeUri == null) {
-        Log.w(TAG, "apply: requesting SAF grant directCandidate=${directCandidate?.path} treeUri=$treeUri sdk=${Build.VERSION.SDK_INT}")
+    if (existingCandidates.isNotEmpty() || treeUri == null) {
+        Log.w(TAG, "apply: requesting SAF grant existingCandidates=${existingCandidates.map { it.path }} treeUri=$treeUri sdk=${Build.VERSION.SDK_INT}")
         return DolphinPatchResult(
             success = false,
             message = context.getString(R.string.dolphin_saf_dialog_message),
@@ -592,6 +641,8 @@ private fun transformDolphinViaSaf(
     val tree = DocumentFile.fromTreeUri(context, treeUri) ?: return null
     Log.d(TAG, "saf: opened tree uri=$treeUri name=${tree.name}")
 
+    val results = mutableListOf<DolphinPatchResult>()
+
     for (segments in DOLPHIN_SAF_CFG_PATHS) {
         Log.d(TAG, "saf: trying segments=${segments.joinToString("/")}")
         val cfgParent = segments.dropLast(1).fold(tree as DocumentFile?) { dir, seg -> dir?.findFile(seg) }
@@ -601,42 +652,48 @@ private fun transformDolphinViaSaf(
             continue
         }
 
-        return try {
-            val original = context.contentResolver.openInputStream(cfgFile.uri)
-                ?.bufferedReader()
-                ?.use { it.readText() }
-                ?: return DolphinPatchResult(success = false, message = context.getString(R.string.patch_could_not_read, cfgFile.name))
-            Log.i(TAG, "saf: found cfg uri=${cfgFile.uri} size=${original.length}")
+        results += run {
+            try {
+                val original = context.contentResolver.openInputStream(cfgFile.uri)
+                    ?.bufferedReader()
+                    ?.use { it.readText() }
+                    ?: return@run DolphinPatchResult(success = false, message = context.getString(R.string.patch_could_not_read, cfgFile.name))
+                Log.i(TAG, "saf: found cfg uri=${cfgFile.uri} size=${original.length}")
 
-            if (ensureBackup) {
-                ensureDolphinSafBackupExists(context, cfgParent, original)
-                    ?: return DolphinPatchResult(success = false, message = context.getString(strings.errorSaf, "Could not create $DOLPHIN_CFG_BACKUP_NAME"))
-                Log.d(TAG, "saf: ensured backup $DOLPHIN_CFG_BACKUP_NAME")
-            }
+                if (ensureBackup) {
+                    ensureDolphinSafBackupExists(context, cfgParent, original)
+                        ?: return@run DolphinPatchResult(success = false, message = context.getString(strings.errorSaf, "Could not create $DOLPHIN_CFG_BACKUP_NAME"))
+                    Log.d(TAG, "saf: ensured backup $DOLPHIN_CFG_BACKUP_NAME")
+                }
 
-            val hardcoreWas = if (detectHardcore) detectDolphinHardcoreEnabled(original) else false
-            val credentials = extractDolphinCredentials(original)
-            val transformed = transform(original)
-            Log.d(TAG, "saf: transform changed=${transformed != original} hardcoreWas=$hardcoreWas")
-            if (transformed == original) {
-                DolphinPatchResult(success = true, message = context.getString(strings.noOpMessage), hardcoreWasEnabled = hardcoreWas, credentials = credentials)
-            } else {
-                writeSafTextFile(context, cfgParent, cfgFile, transformed)
-                Log.i(TAG, "saf: wrote updated config uri=${cfgFile.uri}")
-                DolphinPatchResult(success = true, message = context.getString(strings.successSaf), hardcoreWasEnabled = hardcoreWas, credentials = credentials)
+                val hardcoreWas = if (detectHardcore) detectDolphinHardcoreEnabled(original) else false
+                val credentials = extractDolphinCredentials(original)
+                val transformed = transform(original)
+                Log.d(TAG, "saf: transform changed=${transformed != original} hardcoreWas=$hardcoreWas")
+                if (transformed == original) {
+                    DolphinPatchResult(success = true, message = context.getString(strings.noOpMessage), hardcoreWasEnabled = hardcoreWas, credentials = credentials)
+                } else {
+                    writeSafTextFile(context, cfgParent, cfgFile, transformed)
+                    Log.i(TAG, "saf: wrote updated config uri=${cfgFile.uri}")
+                    DolphinPatchResult(success = true, message = context.getString(strings.successSaf), hardcoreWasEnabled = hardcoreWas, credentials = credentials)
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "saf: error ${e.message}", e)
+                DolphinPatchResult(success = false, message = context.getString(strings.errorSaf, e.message))
             }
-        } catch (e: Exception) {
-            Log.w(TAG, "saf: error ${e.message}", e)
-            DolphinPatchResult(success = false, message = context.getString(strings.errorSaf, e.message))
         }
     }
 
-    Log.w(TAG, "saf: config not found in granted tree")
-    return DolphinPatchResult(
-        success = false,
-        message = context.getString(strings.configMissingInFolder),
-        invalidSafGrant = true
-    )
+    if (results.isEmpty()) {
+        Log.w(TAG, "saf: config not found in granted tree")
+        return DolphinPatchResult(
+            success = false,
+            message = context.getString(strings.configMissingInFolder),
+            invalidSafGrant = true
+        )
+    }
+
+    return combineDolphinResults(results)
 }
 
 private fun transformDolphinViaFile(
