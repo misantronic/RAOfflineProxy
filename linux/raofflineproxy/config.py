@@ -101,7 +101,13 @@ def load_config() -> dict:
         return {}
 
     with CONFIG_FILE.open(encoding="utf-8") as handle:
-        data = json.load(handle)
+        try:
+            data = json.load(handle)
+        except json.JSONDecodeError:
+            logging.getLogger("raofflineproxy").warning(
+                "Config file %s is empty or corrupt, resetting to defaults", CONFIG_FILE
+            )
+            return {}
 
     if not isinstance(data, dict):
         raise ValueError(f"Invalid config file: {CONFIG_FILE}")

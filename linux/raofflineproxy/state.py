@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 from typing import Optional
 
@@ -12,7 +13,13 @@ def load_patch_state() -> Optional[dict]:
         return None
 
     with STATE_FILE.open(encoding="utf-8") as handle:
-        data = json.load(handle)
+        try:
+            data = json.load(handle)
+        except json.JSONDecodeError:
+            logging.getLogger("raofflineproxy").warning(
+                "Patch state file %s is empty or corrupt, resetting to defaults", STATE_FILE
+            )
+            return None
 
     if not isinstance(data, dict):
         raise ValueError(f"Invalid patch state file: {STATE_FILE}")
@@ -38,7 +45,13 @@ def load_json_file(path: Path) -> Optional[dict]:
         return None
 
     with path.open(encoding="utf-8") as handle:
-        data = json.load(handle)
+        try:
+            data = json.load(handle)
+        except json.JSONDecodeError:
+            logging.getLogger("raofflineproxy").warning(
+                "State file %s is empty or corrupt, resetting to defaults", path
+            )
+            return None
 
     if not isinstance(data, dict):
         raise ValueError(f"Invalid state file: {path}")
