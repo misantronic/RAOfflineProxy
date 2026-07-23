@@ -42,6 +42,8 @@ SUPPORTED_ROM_EXTENSIONS = supported_rom_extensions()
 SUPPORTED_ARCHIVE_EXTENSIONS = {".zip"}
 EXCLUDED_BROWSER_DIR_NAMES = {"Imgs"}
 MAX_CACHED_GAMES = 100
+MAX_SCAN_ENTRIES = 5000
+MAX_SCAN_DEPTH = 12
 
 
 @dataclass
@@ -178,6 +180,33 @@ def describe_browser_entries_fast(current_dir: Path) -> list[BrowserEntry]:
 
 def list_browser_files_fast(current_dir: Path) -> list[Path]:
     return [path for path in list_browser_entries_fast(current_dir) if path.is_file()]
+
+
+def list_scannable_files_recursive(root: Path) -> list[Path]:
+    result: list[Path] = []
+    stack: list[tuple[Path, int]] = [(root, 0)]
+    while stack and len(result) < MAX_SCAN_ENTRIES:
+        current_dir, depth = stack.pop()
+        try:
+            entries = sorted(
+                current_dir.iterdir(),
+                key=lambda path: (not path.is_dir(), path.name.lower()),
+            )
+        except OSError:
+            continue
+        for entry in entries:
+            if len(result) >= MAX_SCAN_ENTRIES:
+                break
+            if entry.name.startswith("."):
+                continue
+            if entry.is_dir():
+                if entry.name in EXCLUDED_BROWSER_DIR_NAMES:
+                    continue
+                if depth < MAX_SCAN_DEPTH:
+                    stack.append((entry, depth + 1))
+            elif is_supported_browser_file(entry):
+                result.append(entry)
+    return result
 
 
 def describe_browser_entries(current_dir: Path, storage: Storage) -> list[BrowserEntry]:

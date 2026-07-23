@@ -17,6 +17,7 @@ import com.raofflineproxy.ui.DOLPHIN_PACKAGE_CANDIDATES
 import com.raofflineproxy.ui.EmulatorSupport
 import com.raofflineproxy.ui.RETROARCH_PACKAGE_CANDIDATES
 import com.raofflineproxy.ui.UI_PPSSPP_PACKAGE_CANDIDATES
+import com.raofflineproxy.applyScanBatchCooldown
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -1270,6 +1271,8 @@ private suspend fun executeResolvedSmartCacheCandidates(
             limitReached = true
             break
         }
+
+        applyScanBatchCooldown(index, TAG)
 
         val candidate = resolvedCandidate.candidate
         val label = candidate.title?.takeIf { it.isNotBlank() } ?: candidate.path.substringAfterLast('/')

@@ -9,6 +9,7 @@ import com.raofflineproxy.MAX_CACHED_GAMES
 import com.raofflineproxy.R
 import com.raofflineproxy.RA_HOST
 import com.raofflineproxy.RequestFailureNotifier
+import com.raofflineproxy.applyScanBatchCooldown
 import com.raofflineproxy.buildApiUrl
 import com.raofflineproxy.proxy.hash.hashRomCandidates
 import com.raofflineproxy.proxyHost
@@ -392,6 +393,8 @@ suspend fun scanRomFolder(
                 limitReached = true
                 break
             }
+            applyScanBatchCooldown(index, TAG)
+
             onProgress(index + 1, total, file.name ?: "")
             val sourceRomPath = resolveDocumentAbsolutePath(file)
             val normalizedPath = sourceRomPath?.normalizeCachedRomPath()
