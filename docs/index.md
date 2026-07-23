@@ -57,12 +57,16 @@ features:
           <span>ARMSX2</span>
         </div>
         <div class="supported-platforms__item">
-          <img class="supported-platforms__logo--rounded" src="/argosy-launcher.png" alt="Argosy Launcher logo">
-          <span>Argosy Launcher</span>
+          <img src="/melonds.png" alt="MelonDualDS logo">
+          <span>MelonDualDS</span>
         </div>
         <div class="supported-platforms__item">
           <img src="/mupen64plus-ae.png" alt="Mupen64Plus logo">
           <span>Mupen64Plus AE (fork)</span>
+        </div>
+        <div class="supported-platforms__item">
+          <img class="supported-platforms__logo--rounded" src="/argosy-launcher.png" alt="Argosy Launcher logo">
+          <span>Argosy Launcher</span>
         </div>
         <div class="supported-platforms__item">
           <img src="/emucorex.svg" alt="EmuCoreX logo">
