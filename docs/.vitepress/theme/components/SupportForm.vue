@@ -25,6 +25,7 @@ const hasLogId = ref<HasLogId>('');
 
 interface LogMetadata {
   system?: string;
+  os?: string;
   device?: string;
   os_version?: string;
   app_version?: string;
@@ -35,6 +36,12 @@ const logId = ref('');
 type MetadataLookupStatus = 'idle' | 'loading' | 'found' | 'not_found';
 const metadataLookupStatus = ref<MetadataLookupStatus>('idle');
 const detectedMetadata = ref<LogMetadata | null>(null);
+
+// The Discord-facing /support/submit payload still has a single os_version field — "os" is
+// only a separate field in the stored/looked-up metadata, for a cleaner data model there.
+function combinedOsVersion(metadata: LogMetadata): string {
+  return [metadata.os, metadata.os_version].filter(Boolean).join(' ');
+}
 
 async function lookupLogMetadata() {
   const id = logId.value.trim();
@@ -78,7 +85,7 @@ function buildPayload(form: HTMLFormElement): Record<string, string> {
     email: field('email'),
     system: detected?.system || field('system'),
     device: detected?.device || field('device'),
-    os_version: detected?.os_version || field('os_version'),
+    os_version: detected ? combinedOsVersion(detected) : field('os_version'),
     app_version: detected?.app_version || appVersionValue,
     emulator: detected?.emulator?.length ? detected.emulator.join(', ') : field('emulator'),
     log_id: logId.value.trim(),
@@ -160,7 +167,7 @@ async function onSubmit(event: Event) {
         <strong>Detected from your log:</strong>
         {{ detectedMetadata.system }} &middot;
         {{ detectedMetadata.device }} &middot;
-        {{ detectedMetadata.os_version }} &middot;
+        {{ combinedOsVersion(detectedMetadata) }} &middot;
         v{{ detectedMetadata.app_version }}
         <template v-if="detectedMetadata.emulator?.length"> &middot; {{ detectedMetadata.emulator.join(', ') }}</template>
       </div>

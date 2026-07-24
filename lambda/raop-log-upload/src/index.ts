@@ -49,13 +49,14 @@ async function generateUniqueId(): Promise<string> {
 // is optional/best-effort — clients send whatever they can reliably detect.
 interface UploadMetadata {
     system?: string;
+    os?: string;
     device?: string;
     os_version?: string;
     app_version?: string;
     emulator?: string[];
 }
 
-const METADATA_STRING_KEYS = ['system', 'device', 'os_version', 'app_version'] as const;
+const METADATA_STRING_KEYS = ['system', 'os', 'device', 'os_version', 'app_version'] as const;
 
 function parseMetadata(rawBody: string): UploadMetadata {
     let body: any;
