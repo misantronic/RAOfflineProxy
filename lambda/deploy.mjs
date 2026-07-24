@@ -8,7 +8,8 @@ const REGION = 'eu-central-1';
 
 const ALL_LAMBDAS = [
     'raop-log-upload',
-    'raop-support-report'
+    'raop-support-report',
+    'raop-support-payment'
 ];
 
 function deployToRegion(name, region, zipPath) {

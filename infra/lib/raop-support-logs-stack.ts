@@ -96,6 +96,33 @@ export class RaopSupportLogsStack extends cdk.Stack {
             }
         });
 
+        const STRIPE_SECRET_KEY_PARAM = '/raop/support-payment/stripe-secret-key';
+        const STRIPE_MONTHLY_PRODUCT_ID = 'prod_UwXRSyJpaF1FmT';
+        const STRIPE_ONETIME_PRODUCT_ID = 'prod_UwXWrdkTIRAO2g';
+
+        const paymentRole = new iam.Role(this, 'PaymentLambdaRole', {
+            roleName: 'raop-support-payment-lambda-role',
+            assumedBy: new iam.ServicePrincipal('lambda.amazonaws.com'),
+            managedPolicies: [
+                iam.ManagedPolicy.fromAwsManagedPolicyName('service-role/AWSLambdaBasicExecutionRole')
+            ],
+            inlinePolicies: {
+                PaymentSecretsPolicy: new iam.PolicyDocument({
+                    statements: [
+                        new iam.PolicyStatement({
+                            actions: ['ssm:GetParameter'],
+                            resources: [`arn:aws:ssm:${this.region}:${this.account}:parameter${STRIPE_SECRET_KEY_PARAM}`]
+                        }),
+                        new iam.PolicyStatement({
+                            // The SecureString param above uses the default AWS-managed SSM key.
+                            actions: ['kms:Decrypt'],
+                            resources: [`arn:aws:kms:${this.region}:${this.account}:alias/aws/ssm`]
+                        })
+                    ]
+                })
+            }
+        });
+
         const api = new apigwv2.HttpApi(this, 'SupportLogsApi', {
             apiName: 'raop-support-logs',
             corsPreflight: {
@@ -124,10 +151,28 @@ export class RaopSupportLogsStack extends cdk.Stack {
             memorySize: 256
         });
 
+        const paymentFn = new lambda.Function(this, 'PaymentFn', {
+            functionName: 'raop-support-payment',
+            runtime: lambda.Runtime.NODEJS_24_X,
+            handler: 'index.handler',
+            role: paymentRole,
+            code: lambda.Code.fromAsset(
+                path.join(LAMBDA_DIR, 'raop-support-payment', 'dist', 'raop-support-payment.zip')
+            ),
+            environment: {
+                STRIPE_SECRET_KEY_PARAM,
+                STRIPE_MONTHLY_PRODUCT_ID,
+                STRIPE_ONETIME_PRODUCT_ID
+            },
+            timeout: cdk.Duration.seconds(10),
+            memorySize: 256
+        });
+
         // Throttle the whole API (both routes) so a scripted flood of /support/submit can't
         // spam Discord. Applied as an in-place override to the implicitly-created default
         // stage rather than replacing it, so the already-live /logs/request-upload route
-        // used by shipped apps isn't disrupted.
+        // used by shipped apps isn't disrupted. Now also covers the payment routes below,
+        // which is a good thing since each request triggers a Stripe API call.
         const defaultStage = api.defaultStage?.node.defaultChild as apigwv2.CfnStage | undefined;
         defaultStage?.addPropertyOverride('DefaultRouteSettings', {
             ThrottlingBurstLimit: 5,
@@ -161,6 +206,26 @@ export class RaopSupportLogsStack extends cdk.Stack {
             path: '/support/logs/{logId}/metadata',
             methods: [apigwv2.HttpMethod.GET],
             integration: supportReportIntegration
+        });
+
+        const paymentIntegration = new apigwv2_integrations.HttpLambdaIntegration('PaymentIntegration', paymentFn);
+
+        api.addRoutes({
+            path: '/support/payment-intent',
+            methods: [apigwv2.HttpMethod.POST],
+            integration: paymentIntegration
+        });
+
+        api.addRoutes({
+            path: '/support/subscription',
+            methods: [apigwv2.HttpMethod.POST],
+            integration: paymentIntegration
+        });
+
+        api.addRoutes({
+            path: '/support/email-invoice',
+            methods: [apigwv2.HttpMethod.POST],
+            integration: paymentIntegration
         });
 
         new cdk.CfnOutput(this, 'SupportLogsApiUrl', {

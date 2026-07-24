@@ -4,7 +4,8 @@
     "private": true,
     "workspaces": [
         "raop-log-upload",
-        "raop-support-report"
+        "raop-support-report",
+        "raop-support-payment"
     ],
     "scripts": {
         "build": "node build.mjs",

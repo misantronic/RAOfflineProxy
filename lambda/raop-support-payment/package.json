@@ -1,0 +1,11 @@
+{
+    "name": "raop-support-payment",
+    "version": "0.0.1",
+    "scripts": {
+        "typecheck": "tsc --noEmit"
+    },
+    "dependencies": {
+        "@aws-sdk/client-ssm": "^3.1092.0",
+        "stripe": "^18.0.0"
+    }
+}
