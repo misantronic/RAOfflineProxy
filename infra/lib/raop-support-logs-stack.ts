@@ -97,6 +97,8 @@ export class RaopSupportLogsStack extends cdk.Stack {
         });
 
         const STRIPE_SECRET_KEY_PARAM = '/raop/support-payment/stripe-secret-key';
+        const STRIPE_WEBHOOK_SECRET_PARAM = '/raop/support-payment/stripe-webhook-secret';
+        const DONATION_DISCORD_WEBHOOK_URL_PARAM = '/raop/support-payment/discord-webhook-url';
         const STRIPE_MONTHLY_PRODUCT_ID = 'prod_UwXVoGHCZgyLHr';
         const STRIPE_ONETIME_PRODUCT_ID = 'prod_UwXVN3Ib6UUpFE';
 
@@ -111,10 +113,14 @@ export class RaopSupportLogsStack extends cdk.Stack {
                     statements: [
                         new iam.PolicyStatement({
                             actions: ['ssm:GetParameter'],
-                            resources: [`arn:aws:ssm:${this.region}:${this.account}:parameter${STRIPE_SECRET_KEY_PARAM}`]
+                            resources: [
+                                `arn:aws:ssm:${this.region}:${this.account}:parameter${STRIPE_SECRET_KEY_PARAM}`,
+                                `arn:aws:ssm:${this.region}:${this.account}:parameter${STRIPE_WEBHOOK_SECRET_PARAM}`,
+                                `arn:aws:ssm:${this.region}:${this.account}:parameter${DONATION_DISCORD_WEBHOOK_URL_PARAM}`
+                            ]
                         }),
                         new iam.PolicyStatement({
-                            // The SecureString param above uses the default AWS-managed SSM key.
+                            // The SecureString params above use the default AWS-managed SSM key.
                             actions: ['kms:Decrypt'],
                             resources: [`arn:aws:kms:${this.region}:${this.account}:alias/aws/ssm`]
                         })
@@ -161,6 +167,8 @@ export class RaopSupportLogsStack extends cdk.Stack {
             ),
             environment: {
                 STRIPE_SECRET_KEY_PARAM,
+                STRIPE_WEBHOOK_SECRET_PARAM,
+                DISCORD_WEBHOOK_URL_PARAM: DONATION_DISCORD_WEBHOOK_URL_PARAM,
                 STRIPE_MONTHLY_PRODUCT_ID,
                 STRIPE_ONETIME_PRODUCT_ID
             },
@@ -224,6 +232,12 @@ export class RaopSupportLogsStack extends cdk.Stack {
 
         api.addRoutes({
             path: '/support/email-invoice',
+            methods: [apigwv2.HttpMethod.POST],
+            integration: paymentIntegration
+        });
+
+        api.addRoutes({
+            path: '/support/stripe-webhook',
             methods: [apigwv2.HttpMethod.POST],
             integration: paymentIntegration
         });

@@ -4,6 +4,8 @@ import Stripe from 'stripe';
 
 const REGION = process.env.AWS_REGION ?? 'eu-central-1';
 const STRIPE_SECRET_KEY_PARAM = process.env.STRIPE_SECRET_KEY_PARAM ?? '/raop/support-payment/stripe-secret-key';
+const STRIPE_WEBHOOK_SECRET_PARAM = process.env.STRIPE_WEBHOOK_SECRET_PARAM ?? '/raop/support-payment/stripe-webhook-secret';
+const DISCORD_WEBHOOK_URL_PARAM = process.env.DISCORD_WEBHOOK_URL_PARAM ?? '/raop/support-payment/discord-webhook-url';
 const STRIPE_MONTHLY_PRODUCT_ID = process.env.STRIPE_MONTHLY_PRODUCT_ID ?? '';
 // PaymentIntents/InvoiceItems have no Product/Price of their own, so this is attached only as
 // metadata for Dashboard reporting parity with the (Price-based) monthly product above.
@@ -29,6 +31,32 @@ async function getStripeClient(): Promise<Stripe> {
 
     stripeClientCache = new Stripe(secretKey, { apiVersion: STRIPE_API_VERSION as Stripe.LatestApiVersion });
     return stripeClientCache;
+}
+
+let webhookSecretCache: string | null = null;
+
+async function getStripeWebhookSecret(): Promise<string> {
+    if (webhookSecretCache) return webhookSecretCache;
+
+    const param = await ssm.send(new GetParameterCommand({ Name: STRIPE_WEBHOOK_SECRET_PARAM, WithDecryption: true }));
+    const value = param.Parameter?.Value;
+    if (!value) throw new Error('Missing required SSM parameter');
+
+    webhookSecretCache = value;
+    return webhookSecretCache;
+}
+
+let discordWebhookUrlCache: string | null = null;
+
+async function getDiscordWebhookUrl(): Promise<string> {
+    if (discordWebhookUrlCache) return discordWebhookUrlCache;
+
+    const param = await ssm.send(new GetParameterCommand({ Name: DISCORD_WEBHOOK_URL_PARAM, WithDecryption: true }));
+    const value = param.Parameter?.Value;
+    if (!value) throw new Error('Missing required SSM parameter');
+
+    discordWebhookUrlCache = value;
+    return discordWebhookUrlCache;
 }
 
 function respond(statusCode: number, body: unknown) {
@@ -373,6 +401,92 @@ async function handleSyncCustomerEmail(event: any): Promise<any> {
     }
 }
 
+async function handleStripeWebhook(event: any): Promise<any> {
+    // Stripe signs the raw request bytes, so this must be the untouched body — not the
+    // parseBody() helper, which JSON-parses (and would invalidate the signature anyway).
+    const rawBody = event.isBase64Encoded
+        ? Buffer.from(event.body ?? '', 'base64')
+        : Buffer.from(event.body ?? '', 'utf-8');
+
+    // API Gateway HTTP APIs lowercase all header names.
+    const signature = event.headers?.['stripe-signature'];
+    if (typeof signature !== 'string') {
+        return respond(400, { error: 'Missing Stripe-Signature header' });
+    }
+
+    let stripeEvent: Stripe.Event;
+    try {
+        const stripe = await getStripeClient();
+        const webhookSecret = await getStripeWebhookSecret();
+        stripeEvent = stripe.webhooks.constructEvent(rawBody, signature, webhookSecret);
+    } catch (error) {
+        console.error('Stripe webhook signature verification failed', error);
+        return respond(400, { error: 'Invalid signature' });
+    }
+
+    // Acknowledge every event type Stripe sends us (even ones we don't act on) so it doesn't
+    // keep retrying delivery — we only subscribed to payment_intent.succeeded when creating
+    // the endpoint, but staying tolerant here avoids breakage if that ever changes.
+    if (stripeEvent.type === 'payment_intent.succeeded') {
+        try {
+            await notifyDiscordOfDonation(stripeEvent.data.object as Stripe.PaymentIntent);
+        } catch (error) {
+            // Never fail the webhook response over a Discord hiccup — Stripe would just
+            // retry and re-notify, and the payment itself already succeeded regardless.
+            console.error('Failed to post donation notification to Discord', error);
+        }
+    }
+
+    return respond(200, { received: true });
+}
+
+async function notifyDiscordOfDonation(paymentIntent: Stripe.PaymentIntent): Promise<void> {
+    const stripe = await getStripeClient();
+
+    // A PaymentIntent tied to an Invoice came from a subscription (our monthly donations,
+    // whether the first payment or a later renewal); one without is always one-time.
+    // `invoice` is present on the raw API object but missing from the installed SDK's types.
+    const isMonthly = Boolean((paymentIntent as unknown as { invoice?: string | null }).invoice);
+
+    let email = paymentIntent.receipt_email ?? undefined;
+    if (!email) {
+        const full = await stripe.paymentIntents.retrieve(paymentIntent.id, {
+            expand: ['payment_method', 'customer']
+        });
+        email =
+            (full.payment_method as Stripe.PaymentMethod | null)?.billing_details?.email ??
+            (full.customer as Stripe.Customer | null)?.email ??
+            undefined;
+    }
+
+    const amount = (paymentIntent.amount / 100).toLocaleString('en-US', {
+        style: 'currency',
+        currency: paymentIntent.currency.toUpperCase()
+    });
+
+    const embed = {
+        title: `New ${isMonthly ? 'monthly' : 'one-time'} donation received 💛`,
+        color: 0xd2a448,
+        fields: [
+            { name: 'Amount', value: amount, inline: true },
+            { name: 'Type', value: isMonthly ? 'Monthly' : 'One-time', inline: true },
+            { name: 'Donor', value: email ?? 'Unknown', inline: false }
+        ]
+    };
+
+    const webhookUrl = await getDiscordWebhookUrl();
+    const response = await fetch(webhookUrl, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ embeds: [embed] })
+    });
+
+    if (!response.ok) {
+        const body = await response.text();
+        throw new Error(`Discord webhook failed ${response.status}: ${body.slice(0, 300)}`);
+    }
+}
+
 exports.handler = async (event: any): Promise<any> => {
     const routeKey = event.requestContext?.routeKey;
 
@@ -384,6 +498,9 @@ exports.handler = async (event: any): Promise<any> => {
     }
     if (routeKey === 'POST /support/subscription/sync-email') {
         return handleSyncCustomerEmail(event);
+    }
+    if (routeKey === 'POST /support/stripe-webhook') {
+        return handleStripeWebhook(event);
     }
     return handlePaymentIntent(event);
 };
