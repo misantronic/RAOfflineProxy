@@ -181,7 +181,7 @@
                 android:textColor="@android:color/black"
                 android:textAllCaps="true"
                 app:backgroundTint="@color/support_button_background"
-                app:cornerRadius="20dp"
+                app:cornerRadius="4dp"
                 app:elevation="4dp"
                 app:rippleColor="@color/primary"
                 android:text="@string/btn_support_development" />
