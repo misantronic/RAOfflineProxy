@@ -80,6 +80,7 @@ export default defineConfig({
           { text: 'Troubleshooting / FAQ', link: '/troubleshooting' },
           { text: 'Get Support', link: '/support' },
           { text: 'Contact / Feedback', link: '/contact' },
+          { text: 'Donate', link: '/donate' },
           { text: 'Privacy Policy', link: '/privacy-policy' },
         ],
       },
