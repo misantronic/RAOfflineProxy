@@ -149,6 +149,22 @@ FONT_FILE_CANDIDATES = [
     ),
 ]
 LOGO_PATH = Path(__file__).resolve().parent / "logo-320.png"
+ASSETS_DIR = Path(__file__).resolve().parent / "assets"
+SUPPORT_SUBTITLE = "Free & open source, made in my spare time"
+SUPPORT_DESCRIPTION = "If it's been useful to you, a small donation helps keep it going. Thank you!"
+SUPPORT_DONATE_URL = "https://raofflineproxy.com/donate.html"
+# Monthly-only: Stripe can't combine a customer-chosen amount with a
+# recurring price, so unlike one-time (any amount), monthly is a fixed set
+# of preset tiers, each its own Payment Link/QR image.
+SUPPORT_ONETIME_QR = ASSETS_DIR / "support_qr_onetime.png"
+SUPPORT_MONTHLY_TIERS: list[tuple[str, str, Path]] = [
+    ("$1 / month", "monthly_1", ASSETS_DIR / "support_qr_monthly_1.png"),
+    ("$3 / month", "monthly_3", ASSETS_DIR / "support_qr_monthly_3.png"),
+    ("$5 / month", "monthly_5", ASSETS_DIR / "support_qr_monthly_5.png"),
+    ("$8 / month", "monthly_8", ASSETS_DIR / "support_qr_monthly_8.png"),
+    ("$10 / month", "monthly_10", ASSETS_DIR / "support_qr_monthly_10.png"),
+    ("$15 / month", "monthly_15", ASSETS_DIR / "support_qr_monthly_15.png"),
+]
 # Onion has no fontconfig and no reliable system-wide monospace font (its
 # only TTFs are bundled inside individual, optional third-party apps), so a
 # monospace face ships directly alongside this module rather than being
@@ -437,6 +453,12 @@ class MenuSdlSession:
         self.achievement_preview_game_id = None
         self.achievement_preview_title = None
         self.logo_surface = None
+        self.support_qr_surface_cache: dict[str, object] = {}
+        # "onetime" or one of SUPPORT_MONTHLY_TIERS' keys — set right before entering
+        # support_me_qr so it knows which QR/label to show, and go_back()/dismiss know
+        # which list to return to.
+        self.support_selected_tier: str | None = None
+        self.support_qr_return_view = "support_me"
         self.main_state_refreshed_at = 0.0
         self.main_running = False
         self.main_online = False
@@ -539,12 +561,21 @@ class MenuSdlSession:
         status_rect = status.get_rect(topleft=(LEFT_MARGIN, title_rect.bottom + 20))
         self.surface.blit(status, status_rect)
 
+        body_bottom = status_rect.bottom
+        if self.view == "support_me":
+            body_bottom = self.render_support_description(status_rect.bottom + 16)
+        elif self.view in ("support_me_monthly", "support_me_qr"):
+            body_bottom = self.render_support_scan_hint(status_rect.bottom + 16)
+            if self.view == "support_me_qr":
+                body_bottom = self.render_support_qr(body_bottom + 16)
+
         items = self.current_labels(running)
-        start_y = status_rect.bottom + 34
+        start_y = body_bottom + 34
         gap = max(self.item_font.get_height() + 6, self.height // 18)
         self.normalize_selection(items, start_y, gap)
         self.render_game_preview()
         self.render_home_logo()
+        self.render_support_monthly_preview(start_y)
         positions = self.item_positions(items, start_y, gap)
         visible_offset, visible_items = self.visible_items(items, positions, start_y)
         scroll_base_y = positions[visible_offset] - start_y if visible_items else 0
@@ -634,6 +665,15 @@ class MenuSdlSession:
             unlock_titles = self.game_actions_unlock_titles()
             return ["Remove cache", *unlock_titles, "Back"]
 
+        if self.view == "support_me":
+            return ["Monthly", "One time", "Back"]
+
+        if self.view == "support_me_monthly":
+            return [tier_label for tier_label, _key, _qr in SUPPORT_MONTHLY_TIERS] + ["Back"]
+
+        if self.view == "support_me_qr":
+            return ["Back"]
+
         if self.view == "file_browser":
             if self.browser_dir is None:
                 return ["Cancel"]
@@ -665,6 +705,7 @@ class MenuSdlSession:
             )
         if (self.is_knulli_platform() and not service_mode) or running_on_muos() or running_on_rocknix():
             labels.append("Uninstall")
+        labels.append("Support me")
         labels.append("Send Logs")
         if os.environ.get("RAOFFLINEPROXY_DEBUG"):
             labels.append("Key Logger")
@@ -727,7 +768,32 @@ class MenuSdlSession:
             return "Sending Logs"
         if self.view == "send_logs_result":
             return "Send Logs" if self.log_upload_result and self.log_upload_result[0] else "Send Logs Failed"
+        if self.view == "support_me":
+            return "Support RAOfflineProxy"
+        if self.view == "support_me_monthly":
+            return "Choose a Monthly Amount"
+        if self.view == "support_me_qr":
+            return self.support_qr_display_label()
         return "RAOfflineProxy"
+
+    def support_qr_display_label(self) -> str:
+        if self.support_selected_tier == "onetime":
+            return "Scan to Donate"
+        for tier_label, key, _qr in SUPPORT_MONTHLY_TIERS:
+            if key == self.support_selected_tier:
+                return f"Scan to Donate {tier_label}"
+        return "Scan to Donate"
+
+    def support_qr_path(self) -> Path | None:
+        return self.support_qr_path_for_tier(self.support_selected_tier)
+
+    def support_qr_path_for_tier(self, tier_key: str | None) -> Path | None:
+        if tier_key == "onetime":
+            return SUPPORT_ONETIME_QR
+        for _label, key, qr_path in SUPPORT_MONTHLY_TIERS:
+            if key == tier_key:
+                return qr_path
+        return None
 
     def item_text_color(self, label: str) -> tuple[int, int, int]:
         if label in {"Back", "Cancel", ""}:
@@ -801,6 +867,10 @@ class MenuSdlSession:
                 return ""
             success, message = self.log_upload_result
             return f"Support ID: {message}" if success else f"Upload failed: {message}"
+        if self.view == "support_me":
+            return SUPPORT_SUBTITLE
+        if self.view in ("support_me_monthly", "support_me_qr"):
+            return ""
         self.refresh_main_menu_state()
         logged_in = bool(getattr(self, "main_logged_in", False))
         proxy_status = "RUNNING" if running else "STOPPED"
@@ -841,6 +911,8 @@ class MenuSdlSession:
                 return None
             if self.view == "send_logs_result":
                 return self.confirm_cancel_hint("dismiss", None)
+            if self.view == "support_me_qr":
+                return None
             if self.view == "file_browser" and self.browser_at_switchable_root():
                 alt = resolve_rom_root(load_config()) if self.browser_root == MUOS_SDCARD_ROOT else MUOS_SDCARD_ROOT
                 return f"L/R: switch to {alt}"
@@ -996,6 +1068,18 @@ class MenuSdlSession:
             self.activate_file_browser_selected()
             return
 
+        if self.view == "support_me":
+            self.activate_support_me_selected()
+            return
+
+        if self.view == "support_me_monthly":
+            self.activate_support_me_monthly_selected()
+            return
+
+        if self.view == "support_me_qr":
+            self.dismiss_support_me_qr()
+            return
+
         if self.view == "cache_progress":
             if self.selected_index == 0:
                 if getattr(self, "cache_completed", False):
@@ -1047,7 +1131,61 @@ class MenuSdlSession:
             self.reset_selection()
             return
 
+        if selected_label == "Support me":
+            self.save_view_position("main")
+            self.view = "support_me"
+            self.restore_view_position("support_me")
+            return
+
         self.running = False
+
+    def activate_support_me_selected(self) -> None:
+        labels = self.current_labels()
+        selected_label = labels[self.selected_index] if labels else ""
+
+        if selected_label == "Monthly":
+            self.save_view_position("support_me")
+            self.view = "support_me_monthly"
+            self.restore_view_position("support_me_monthly")
+            return
+
+        if selected_label == "One time":
+            self.save_view_position("support_me")
+            self.support_selected_tier = "onetime"
+            self.support_qr_return_view = "support_me"
+            self.view = "support_me_qr"
+            self.reset_selection()
+            return
+
+        if selected_label == "Back":
+            self.save_view_position("support_me")
+            self.view = "main"
+            self.restore_view_position("main")
+            return
+
+    def activate_support_me_monthly_selected(self) -> None:
+        labels = self.current_labels()
+        selected_label = labels[self.selected_index] if labels else ""
+
+        if selected_label == "Back":
+            self.save_view_position("support_me_monthly")
+            self.view = "support_me"
+            self.restore_view_position("support_me")
+            return
+
+        for tier_label, key, _qr in SUPPORT_MONTHLY_TIERS:
+            if selected_label == tier_label:
+                self.save_view_position("support_me_monthly")
+                self.support_selected_tier = key
+                self.support_qr_return_view = "support_me_monthly"
+                self.view = "support_me_qr"
+                self.reset_selection()
+                return
+
+    def dismiss_support_me_qr(self) -> None:
+        self.support_selected_tier = None
+        self.view = self.support_qr_return_view
+        self.restore_view_position(self.support_qr_return_view)
 
     def activate_cached_games_selected(self) -> None:
         labels = self.current_labels()
@@ -1642,6 +1780,22 @@ class MenuSdlSession:
             self.restore_view_position("cached_games")
             return
 
+        if self.view == "support_me":
+            self.save_view_position("support_me")
+            self.view = "main"
+            self.restore_view_position("main")
+            return
+
+        if self.view == "support_me_monthly":
+            self.save_view_position("support_me_monthly")
+            self.view = "support_me"
+            self.restore_view_position("support_me")
+            return
+
+        if self.view == "support_me_qr":
+            self.dismiss_support_me_qr()
+            return
+
         self.running = False
 
     def render_game_preview(self) -> None:
@@ -1820,6 +1974,128 @@ class MenuSdlSession:
         max_height = max(96, self.height // 3)
         scale = min(max_width / max(1, width), max_height / max(1, height), 4.0)
         return max(1, int(width * scale)), max(1, int(height * scale))
+
+    def wrap_text_to_width(self, text: str, font, max_width: int) -> list[str]:
+        # Word-wrap measured in actual rendered pixel width rather than character
+        # count, since these fonts aren't monospace — a char-count wrap either
+        # overflows or wastes space depending on the word mix.
+        words = text.split()
+        lines: list[str] = []
+        current = ""
+        for word in words:
+            candidate = f"{current} {word}".strip()
+            if not current or font.size(candidate)[0] <= max_width:
+                current = candidate
+            else:
+                lines.append(current)
+                current = word
+        if current:
+            lines.append(current)
+        return lines
+
+    def render_support_description(self, top_y: int) -> int:
+        max_width = self.width - (2 * LEFT_MARGIN)
+        y = top_y
+        for line in self.wrap_text_to_width(SUPPORT_DESCRIPTION, self.status_font, max_width):
+            surface = self.status_font.render(line, False, TEXT_COLOR)
+            rect = surface.get_rect(topleft=(LEFT_MARGIN, y))
+            self.surface.blit(surface, rect)
+            y = rect.bottom + 4
+        return y
+
+    def render_support_scan_hint(self, top_y: int) -> int:
+        # Wrapped rather than a single status-bar line, since combining "scan"
+        # and the fallback URL into one message can easily run past screen
+        # width on smaller handhelds.
+        max_width = self.width - (2 * LEFT_MARGIN)
+        text = f"Scan with your phone's camera, or visit {SUPPORT_DONATE_URL}"
+        y = top_y
+        for line in self.wrap_text_to_width(text, self.meta_font, max_width):
+            surface = self.meta_font.render(line, False, SECONDARY_TEXT_COLOR)
+            rect = surface.get_rect(topleft=(LEFT_MARGIN, y))
+            self.surface.blit(surface, rect)
+            y = rect.bottom + 4
+        return y
+
+    def fit_qr_size(self, width: int, height: int) -> tuple[int, int]:
+        # QR assets are already high-resolution (512x512) squares, so this only
+        # ever scales down — sized generously since it needs to stay scannable.
+        target = max(120, min(self.width // 2, int(self.height * 0.45)))
+        scale = target / max(1, max(width, height))
+        return max(1, int(width * scale)), max(1, int(height * scale))
+
+    def load_support_qr_surface(self, tier_key: str | None, *, large: bool):
+        if tier_key is None:
+            return None
+
+        cache_key = f"{tier_key}:{'large' if large else 'small'}"
+        if cache_key in self.support_qr_surface_cache:
+            return self.support_qr_surface_cache[cache_key]
+
+        qr_path = self.support_qr_path_for_tier(tier_key)
+        if qr_path is None or not qr_path.exists():
+            self.support_qr_surface_cache[cache_key] = None
+            return None
+
+        try:
+            image = self.pygame.image.load(str(qr_path))
+            image = (
+                image.convert_alpha()
+                if image.get_alpha() is not None
+                else image.convert()
+            )
+            scaled_size = (
+                self.fit_qr_size(image.get_width(), image.get_height())
+                if large
+                else self.fit_preview_size(image.get_width(), image.get_height())
+            )
+            surface = self.pygame.transform.smoothscale(image, scaled_size)
+            self.support_qr_surface_cache[cache_key] = surface
+            return surface
+        except Exception as exc:
+            log_menu_sdl(f"support qr load failed path={qr_path} error={exc}")
+            self.support_qr_surface_cache[cache_key] = None
+            return None
+
+    def render_support_qr(self, top_y: int) -> int:
+        qr_surface = self.load_support_qr_surface(self.support_selected_tier, large=True)
+        if qr_surface is None:
+            text = self.status_font.render(
+                f"QR unavailable — visit {SUPPORT_DONATE_URL}", False, TEXT_COLOR
+            )
+            rect = text.get_rect(topleft=(LEFT_MARGIN, top_y))
+            self.surface.blit(text, rect)
+            return rect.bottom
+
+        qr_rect = qr_surface.get_rect(midtop=(self.width // 2, top_y))
+        self.surface.blit(qr_surface, qr_rect)
+        return qr_rect.bottom
+
+    def support_monthly_preview_tier_key(self) -> str | None:
+        if self.view != "support_me_monthly":
+            return None
+
+        labels = self.current_labels()
+        if not labels or not (0 <= self.selected_index < len(labels)):
+            return None
+
+        selected_label = labels[self.selected_index]
+        for tier_label, key, _qr in SUPPORT_MONTHLY_TIERS:
+            if selected_label == tier_label:
+                return key
+        return None
+
+    def render_support_monthly_preview(self, top_y: int) -> None:
+        tier_key = self.support_monthly_preview_tier_key()
+        if tier_key is None:
+            return
+
+        qr_surface = self.load_support_qr_surface(tier_key, large=True)
+        if qr_surface is None:
+            return
+
+        qr_rect = qr_surface.get_rect(topright=(self.width - 24, top_y))
+        self.surface.blit(qr_surface, qr_rect)
 
     def item_start_y(self) -> int:
         title_top = max(36, self.height // 12)
