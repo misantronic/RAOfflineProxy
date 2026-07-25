@@ -74,7 +74,7 @@ class MenuLayoutTests(unittest.TestCase):
 
         self.assertEqual(
             menu_sdl.MenuSdlSession.bottom_hint_text(session),
-            "Press A or START to confirm. B to cancel.",
+            "Press A to confirm. B to cancel.",
         )
 
     def test_bottom_hint_for_clear_cache_confirm_uses_fixed_face_labels(self) -> None:
@@ -87,7 +87,7 @@ class MenuLayoutTests(unittest.TestCase):
 
         self.assertEqual(
             menu_sdl.MenuSdlSession.bottom_hint_text(session),
-            "Press A or START to confirm. B to cancel.",
+            "Press A to confirm. B to cancel.",
         )
 
     def test_bottom_hint_for_controller_calibration_prompt(self) -> None:
@@ -1325,10 +1325,18 @@ class MenuLayoutTests(unittest.TestCase):
         session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
         session.main_update_asset_url = "https://example.com/installer.sh"
         session.message = None
+        session.render = lambda: None
         session.dismiss_update_prompt = lambda: None
         session.storage = type("Storage", (), {"close": lambda self: None})()
         session.input_handles = []
-        session.pygame = type("Pygame", (), {"quit": lambda self: None})()
+        session.pygame = type(
+            "Pygame",
+            (),
+            {
+                "quit": lambda self: None,
+                "event": type("Event", (), {"pump": staticmethod(lambda: None)})(),
+            },
+        )()
 
         original_download = menu_sdl.download_knulli_update_installer
         original_update_status = menu_sdl.update_status

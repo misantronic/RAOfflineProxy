@@ -21,6 +21,7 @@ from .ppsspp_cfg import (
 from .config import (
     APP_VERSION,
     CONFIG_DIR,
+    DEFAULT_ONION_APP_DIR,
     load_config,
     running_on_onion,
     running_on_rocknix,
@@ -77,7 +78,9 @@ from .storage import Storage
 from .update import (
     download_knulli_update_installer,
     download_muos_update_archive,
+    download_onion_update_archive,
     install_muos_update_archive,
+    install_onion_update_archive,
     update_status,
 )
 from .log_uploader import upload_logs
@@ -1148,6 +1151,8 @@ class MenuSdlSession:
     def update_platform(self) -> str:
         if running_on_muos():
             return "muos"
+        if running_on_onion():
+            return "onion"
         if running_on_rocknix():
             return "rocknix"
         return "knulli"
@@ -1223,11 +1228,11 @@ class MenuSdlSession:
     def confirm_cancel_hint(self, confirm_action: str, cancel_action: str | None) -> str:
         confirm_label = self.confirm_button_name()
         if cancel_action is None:
-            return f"Press START or {confirm_label} to {confirm_action}."
+            return f"Press {confirm_label} to {confirm_action}."
 
         cancel_label = self.cancel_button_name()
         return (
-            f"Press {confirm_label} or START to {confirm_action}. "
+            f"Press {confirm_label} to {confirm_action}. "
             f"{cancel_label} to {cancel_action}."
         )
 
@@ -2247,11 +2252,22 @@ class MenuSdlSession:
         self.main_update_available = update.update_available
         return update.asset_url
 
+    def show_update_progress(self, text: str) -> None:
+        # The update install runs synchronously with no event loop, so this
+        # paints the message immediately instead of waiting for the next frame.
+        self.message = (text, time.monotonic() + 120)
+        self.render()
+        self.pygame.event.pump()
+
     def install_update(self) -> None:
         if running_on_muos():
             self.install_update_muos()
             return
+        if running_on_onion():
+            self.install_update_onion()
+            return
 
+        self.show_update_progress("Checking for update...")
         asset_url = self.resolve_update_asset_url()
         if not asset_url:
             self.message = ("Update install failed: no installer URL", time.monotonic() + ERROR_SECONDS)
@@ -2259,8 +2275,11 @@ class MenuSdlSession:
             return
 
         try:
+            self.show_update_progress("Stopping proxy...")
             stop_proxy_inline()
+            self.show_update_progress("Downloading update...")
             installer_path = download_knulli_update_installer(asset_url)
+            self.show_update_progress("Installing update...")
             self.storage.close()
             close_input_devices(self.input_handles)
             self.pygame.quit()
@@ -2269,7 +2288,33 @@ class MenuSdlSession:
             self.message = (f"Update install failed: {exc}", time.monotonic() + ERROR_SECONDS)
             self.dismiss_update_prompt()
 
+    def install_update_onion(self) -> None:
+        self.show_update_progress("Checking for update...")
+        asset_url = self.resolve_update_asset_url()
+        if not asset_url:
+            self.message = ("Update install failed: no installer URL", time.monotonic() + ERROR_SECONDS)
+            self.dismiss_update_prompt()
+            return
+
+        app_dir = DEFAULT_ONION_APP_DIR
+        try:
+            self.show_update_progress("Stopping proxy...")
+            stop_proxy_inline()
+            self.show_update_progress("Downloading update...")
+            archive_path = download_onion_update_archive(asset_url)
+            self.show_update_progress("Installing update...")
+            install_onion_update_archive(archive_path, app_dir)
+            self.storage.close()
+            close_input_devices(self.input_handles)
+            self.pygame.quit()
+            launch_script = str(app_dir / "launch.sh")
+            os.execv("/bin/sh", ["/bin/sh", launch_script, "menu-sdl"])
+        except Exception as exc:
+            self.message = (f"Update install failed: {exc}", time.monotonic() + ERROR_SECONDS)
+            self.dismiss_update_prompt()
+
     def install_update_muos(self) -> None:
+        self.show_update_progress("Checking for update...")
         asset_url = self.resolve_update_asset_url()
         if not asset_url:
             self.message = ("Update install failed: no installer URL", time.monotonic() + ERROR_SECONDS)
@@ -2278,10 +2323,13 @@ class MenuSdlSession:
 
         app_dir = Path("/run/muos/storage/application/RAOfflineProxy")
         try:
+            self.show_update_progress("Stopping proxy...")
             stop_proxy_inline()
             # Download outside app_dir so the in-place swap never touches the archive.
             archive_dest = app_dir.parent / ".raofflineproxy-update.muxapp"
+            self.show_update_progress("Downloading update...")
             archive_path = download_muos_update_archive(asset_url, archive_dest)
+            self.show_update_progress("Installing update...")
             install_muos_update_archive(archive_path, app_dir)
             self.storage.close()
             close_input_devices(self.input_handles)
