@@ -1,4 +1,5 @@
 import { SSMClient, GetParameterCommand } from '@aws-sdk/client-ssm';
+import { SESClient, SendEmailCommand } from '@aws-sdk/client-ses';
 import Stripe from 'stripe';
 
 const REGION = process.env.AWS_REGION ?? 'eu-central-1';
@@ -8,12 +9,14 @@ const STRIPE_MONTHLY_PRODUCT_ID = process.env.STRIPE_MONTHLY_PRODUCT_ID ?? '';
 // metadata for Dashboard reporting parity with the (Price-based) monthly product above.
 const STRIPE_ONETIME_PRODUCT_ID = process.env.STRIPE_ONETIME_PRODUCT_ID ?? '';
 const STRIPE_API_VERSION = '2025-08-27.basil';
+const SES_SENDER_EMAIL = process.env.SES_SENDER_EMAIL ?? 'donations@raofflineproxy.com';
 
 const MIN_AMOUNT_CENTS = 100;
 const MAX_AMOUNT_CENTS = 100_000;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const ssm = new SSMClient({ region: REGION });
+const ses = new SESClient({ region: REGION });
 
 let stripeClientCache: Stripe | null = null;
 
@@ -139,7 +142,113 @@ async function handleEmailInvoice(event: any): Promise<any> {
     }
 
     const email = body.email.trim();
+    const frequency = body.frequency as 'once' | 'monthly';
 
+    // Primary path: a Payment Link that we email ourselves via SES. This never touches
+    // Stripe's own "send invoice" action, so it isn't subject to Stripe's live-mode risk
+    // checks on manually-sent invoices (see sendStripeHostedInvoice below).
+    try {
+        await sendPaymentLinkEmail(email, body.amount, frequency);
+        return respond(200, { status: 'sent' });
+    } catch (error) {
+        console.error('Failed to send payment link email, falling back to Stripe-hosted invoice', error);
+    }
+
+    // Fallback: the original Stripe Invoicing flow. Kept around in case the Payment Link/SES
+    // path itself breaks (SES outage, DNS issue, etc.) — still worth a shot even though this
+    // is the path Stripe's risk checks can block for one-off invoices in live mode.
+    try {
+        await sendStripeHostedInvoice(email, body.amount, frequency);
+        return respond(200, { status: 'sent' });
+    } catch (error) {
+        console.error('Failed to send email invoice', error);
+        return respond(502, { error: 'Could not send payment link' });
+    }
+}
+
+async function sendPaymentLinkEmail(email: string, amount: number, frequency: 'once' | 'monthly'): Promise<void> {
+    const stripe = await getStripeClient();
+    const isMonthly = frequency === 'monthly';
+
+    // `managed_payments` isn't in the installed SDK's types yet, but Stripe's API requires it
+    // here: without a tax_code on the product, Managed Payments (on by default) rejects the
+    // line item, so we opt this link out of it instead of tax-categorizing a donation product.
+    const paymentLinkParams: Stripe.PaymentLinkCreateParams & Record<string, unknown> = {
+        line_items: [{
+            price_data: {
+                currency: 'usd',
+                product: isMonthly ? STRIPE_MONTHLY_PRODUCT_ID : STRIPE_ONETIME_PRODUCT_ID,
+                unit_amount: amount,
+                ...(isMonthly ? { recurring: { interval: 'month' } } : {})
+            },
+            quantity: 1
+        }],
+        // Single-use: this link is emailed to one specific donor, so it shouldn't stay valid
+        // for anyone who later gets hold of the email.
+        restrictions: { completed_sessions: { limit: 1 } },
+        metadata: { donor_email: email },
+        managed_payments: { enabled: false }
+    };
+    const paymentLink = await stripe.paymentLinks.create(paymentLinkParams);
+    const frequencyLabel = isMonthly ? 'monthly' : 'one-time';
+
+    await ses.send(new SendEmailCommand({
+        Source: SES_SENDER_EMAIL,
+        Destination: { ToAddresses: [email] },
+        Message: {
+            Subject: { Data: 'Complete your RAOfflineProxy donation', Charset: 'UTF-8' },
+            Body: {
+                Text: {
+                    Charset: 'UTF-8',
+                    Data: `Thanks for supporting RAOfflineProxy!\n\nComplete your ${frequencyLabel} donation here:\n${paymentLink.url}\n\nThis link is for your use only and can only be completed once.`
+                },
+                Html: {
+                    Charset: 'UTF-8',
+                    Data: paymentLinkEmailHtml(paymentLink.url, frequencyLabel)
+                }
+            }
+        }
+    }));
+}
+
+function paymentLinkEmailHtml(paymentLinkUrl: string, frequencyLabel: string): string {
+    return `<!DOCTYPE html>
+<html>
+  <body style="margin:0; padding:0; background-color:#f4f4f5; font-family:Helvetica,Arial,sans-serif;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f4f4f5; padding:32px 16px;">
+      <tr>
+        <td align="center">
+          <table role="presentation" width="480" cellpadding="0" cellspacing="0" style="background-color:#ffffff; border-radius:12px; overflow:hidden; max-width:480px; width:100%;">
+            <tr>
+              <td align="center" style="background-color:#1c5182; padding:32px 24px;">
+                <img src="https://raofflineproxy.com/logo-320.png" width="72" height="72" alt="RAOfflineProxy" style="display:block; border-radius:16px;" />
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:32px 32px 8px 32px;">
+                <p style="margin:0 0 16px 0; font-size:16px; line-height:1.5; color:#1a1a1a;">Thanks for supporting RAOfflineProxy!</p>
+                <p style="margin:0 0 24px 0; font-size:16px; line-height:1.5; color:#1a1a1a;">Complete your ${frequencyLabel} donation using the button below.</p>
+              </td>
+            </tr>
+            <tr>
+              <td align="center" style="padding:0 32px 32px 32px;">
+                <a href="${paymentLinkUrl}" style="display:inline-block; background-color:#d2a448; color:#1a1400; text-decoration:none; font-weight:bold; font-size:15px; padding:14px 28px; border-radius:24px;">Complete donation</a>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:0 32px 32px 32px;">
+                <p style="margin:0; font-size:13px; line-height:1.5; color:#6b6b6b;">This link is for your use only and can only be completed once.</p>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>`;
+}
+
+async function sendStripeHostedInvoice(email: string, amount: number, frequency: 'once' | 'monthly'): Promise<void> {
     let invoiceItemId: string | undefined;
     let invoiceId: string | undefined;
 
@@ -150,10 +259,10 @@ async function handleEmailInvoice(event: any): Promise<any> {
         const existing = await stripe.customers.list({ email, limit: 1 });
         const customer = existing.data[0] ?? await stripe.customers.create({ email });
 
-        if (body.frequency === 'once') {
+        if (frequency === 'once') {
             const invoiceItem = await stripe.invoiceItems.create({
                 customer: customer.id,
-                amount: body.amount,
+                amount,
                 currency: 'usd',
                 description: 'RAOfflineProxy donation',
                 metadata: { product_id: STRIPE_ONETIME_PRODUCT_ID }
@@ -175,7 +284,7 @@ async function handleEmailInvoice(event: any): Promise<any> {
                         currency: 'usd',
                         product: STRIPE_MONTHLY_PRODUCT_ID,
                         recurring: { interval: 'month' },
-                        unit_amount: body.amount
+                        unit_amount: amount
                     }
                 }],
                 collection_method: 'send_invoice',
@@ -188,15 +297,12 @@ async function handleEmailInvoice(event: any): Promise<any> {
         // since the user is actively waiting for the email right now.
         await stripe.invoices.finalizeInvoice(invoiceId);
         await stripe.invoices.sendInvoice(invoiceId);
-
-        return respond(200, { status: 'sent' });
     } catch (error) {
-        console.error('Failed to send email invoice', error);
         // Without this, a failed send leaves the invoice item (and, if finalization never
         // happened, the draft invoice) dangling as "pending" on the customer — it silently
         // attaches itself to whatever invoice gets created for them next.
         await cleanupFailedInvoice(invoiceId, invoiceItemId);
-        return respond(502, { error: 'Could not send payment link' });
+        throw error;
     }
 }
 

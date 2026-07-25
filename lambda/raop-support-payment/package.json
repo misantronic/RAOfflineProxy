@@ -5,6 +5,7 @@
         "typecheck": "tsc --noEmit"
     },
     "dependencies": {
+        "@aws-sdk/client-ses": "^3.1092.0",
         "@aws-sdk/client-ssm": "^3.1092.0",
         "stripe": "^18.0.0"
     }
