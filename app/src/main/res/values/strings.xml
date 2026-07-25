@@ -44,7 +44,7 @@
     <string name="home_manual_setup_warning">With your Android version (%1$s), automatic emulator setup will most likely not work on this device. Please consider using Manual Emulator Setup instead. Android builds can differ, so you can still try Start proxy with automatic setup if you want.</string>
     <string name="home_shizuku_info">You are running the proxy through Shizuku.</string>
     <string name="home_no_emulator_warning">No supported emulator was found. Install RetroArch, Dolphin, PPSSPP, ARMSX2, Flycast, melonDualDS, Mupen64Plus, or EmuCoreX to use RAOfflineProxy.</string>
-    <string name="home_go_to_cached_games">Go to Cached Games</string>
+    <string name="home_go_to_cached_games">Cached Games</string>
     <string name="btn_support_development">💛 Support me</string>
     <string name="support_dialog_title">💛 Support RAOfflineProxy</string>
     <string name="support_dialog_message">RAOfflineProxy is free and open source, built and maintained by one person in their spare time. If it\'s been useful to you, a small donation helps keep it going. Thank you!</string>

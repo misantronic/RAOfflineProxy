@@ -28,8 +28,7 @@
             android:textStyle="bold"
             android:visibility="gone" />
 
-        <!-- Logo top-left, description text floats to its right and wraps below, support
-             button pinned to the top-right corner of this block -->
+        <!-- Logo top-left, description text floats to its right and wraps below -->
         <RelativeLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -46,41 +45,12 @@
                 android:scaleType="fitCenter"
                 android:contentDescription="@string/app_name" />
 
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/btn_support_development"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_alignParentTop="true"
-                android:layout_alignParentEnd="true"
-                android:insetLeft="0dp"
-                android:insetRight="0dp"
-                android:insetTop="0dp"
-                android:insetBottom="0dp"
-                android:minWidth="0dp"
-                android:minHeight="0dp"
-                android:paddingStart="16dp"
-                android:paddingEnd="16dp"
-                android:paddingTop="8dp"
-                android:paddingBottom="8dp"
-                android:layout_marginTop="12dp"
-                android:gravity="center"
-                android:textSize="14sp"
-                android:textColor="@android:color/black"
-                android:textAllCaps="true"
-                app:backgroundTint="@color/white"
-                app:cornerRadius="20dp"
-                app:elevation="4dp"
-                app:rippleColor="@color/primary"
-                android:text="@string/btn_support_development" />
-
             <TextView
                 android:id="@+id/tv_home_description"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_toEndOf="@id/iv_logo"
-                android:layout_toStartOf="@id/btn_support_development"
                 android:layout_alignParentTop="true"
-                android:layout_marginEnd="8dp"
                 android:gravity="top"
                 android:textSize="14sp"
                 android:lineSpacingMultiplier="1.4"
@@ -166,7 +136,7 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="24dp"
             android:orientation="horizontal"
-            android:gravity="start"
+            android:gravity="start|center_vertical"
             android:baselineAligned="false">
 
             <com.google.android.material.button.MaterialButton
@@ -190,6 +160,31 @@
                 android:layout_marginStart="16dp"
                 android:text="@string/home_go_to_cached_games"
                 android:visibility="gone" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btn_support_development"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="16dp"
+                android:insetLeft="0dp"
+                android:insetRight="0dp"
+                android:insetTop="0dp"
+                android:insetBottom="0dp"
+                android:minWidth="0dp"
+                android:minHeight="0dp"
+                android:paddingStart="16dp"
+                android:paddingEnd="16dp"
+                android:paddingTop="8dp"
+                android:paddingBottom="8dp"
+                android:gravity="center"
+                android:textSize="14sp"
+                android:textColor="@android:color/black"
+                android:textAllCaps="true"
+                app:backgroundTint="@color/support_button_background"
+                app:cornerRadius="20dp"
+                app:elevation="4dp"
+                app:rippleColor="@color/primary"
+                android:text="@string/btn_support_development" />
 
         </LinearLayout>
 
