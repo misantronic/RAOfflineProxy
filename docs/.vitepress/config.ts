@@ -27,8 +27,8 @@ export default defineConfig({
     nav: [
       { text: 'Guide', link: '/introduction', activeMatch: '^/(?!$)' },
       {
-        text: 'Contact',
-        link: '/contact',
+        text: 'Donate',
+        link: '/donate',
       },
       {
         text: 'GitHub',
