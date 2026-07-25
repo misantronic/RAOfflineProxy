@@ -54,6 +54,10 @@
     <string name="emulator_mupen64">Mupen64Plus</string>
     <string name="emulator_emucorex">EmuCoreX</string>
     <string name="emulator_toggle_icon_cd">Installed emulator icon</string>
+    <string name="emulator_selector_caret">▼</string>
+    <string name="emulator_selector_cd">Enabled emulators, tap to change</string>
+    <string name="emulator_selector_select_all">Select all</string>
+    <string name="emulator_selector_select_none">Select none</string>
     <string name="proxy_start_requires_emulator">Enable at least one installed emulator to start the proxy.</string>
     <string name="proxy_start_aborted_retroarch_saf_rejected">Proxy not started because RetroArch folder access was rejected.</string>
     <string name="proxy_start_aborted_dolphin_saf_rejected">Proxy not started because Dolphin folder access was rejected.</string>
