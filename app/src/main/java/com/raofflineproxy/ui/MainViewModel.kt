@@ -85,6 +85,8 @@ import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import kotlin.time.Duration.Companion.milliseconds
 
+private const val TOKEN_VALIDATION_COOLDOWN_MS = 60_000L
+
 enum class AuthState { Unknown, Valid, Invalid }
 
 enum class SafGrantTarget { RetroArch, SmartCacheRetroArch, Dolphin, Ppsspp, SmartCacheRom, AllFilesAccess }
@@ -191,6 +193,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private var smartCacheAllFilesRejectedThisRun = false
     private var pendingAddRomUris = emptyList<Uri>()
     private var pendingCredentialAction: PendingCredentialAction? = null
+    private var lastTokenValidationAttemptAt: Long = 0L
     private fun str(resId: Int): String = getApplication<Application>().getString(resId)
     private fun str(resId: Int, vararg args: Any): String = getApplication<Application>().getString(resId, *args)
 
@@ -368,7 +371,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         hasLoginCredentials = hasLoginCredentials
                     )
                     if (_state.value.proxyRunning && games.isNotEmpty() && _state.value.authState != AuthState.Valid) {
-                        validateToken()
+                        validateToken(force = false)
                     }
                 }
         }
@@ -990,7 +993,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun validateToken() {
+    fun validateToken(force: Boolean = true) {
         viewModelScope.launch {
             val credentials = withContext(Dispatchers.IO) { loadLoginCredentials(db) }
             if (credentials == null) {
@@ -1012,6 +1015,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 _state.value = _state.value.copy(authState = AuthState.Valid)
                 return@launch
             }
+            val now = System.currentTimeMillis()
+            if (!force && now - lastTokenValidationAttemptAt < TOKEN_VALIDATION_COOLDOWN_MS) {
+                Log.i("RAProxy/Auth", "validateToken: skipped — within cooldown of previous attempt")
+                return@launch
+            }
+            lastTokenValidationAttemptAt = now
             val valid = withContext(Dispatchers.IO) {
                 val userAgent = proxyUserAgent(loadUserAgent(db))
                 val url = buildApiUrl(
