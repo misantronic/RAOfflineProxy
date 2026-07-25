@@ -140,6 +140,9 @@ async function handleEmailInvoice(event: any): Promise<any> {
 
     const email = body.email.trim();
 
+    let invoiceItemId: string | undefined;
+    let invoiceId: string | undefined;
+
     try {
         const stripe = await getStripeClient();
         // Reuse an existing customer for this email instead of creating a duplicate, so repeat
@@ -147,15 +150,16 @@ async function handleEmailInvoice(event: any): Promise<any> {
         const existing = await stripe.customers.list({ email, limit: 1 });
         const customer = existing.data[0] ?? await stripe.customers.create({ email });
 
-        let invoiceId: string;
         if (body.frequency === 'once') {
-            await stripe.invoiceItems.create({
+            const invoiceItem = await stripe.invoiceItems.create({
                 customer: customer.id,
                 amount: body.amount,
                 currency: 'usd',
                 description: 'RAOfflineProxy donation',
                 metadata: { product_id: STRIPE_ONETIME_PRODUCT_ID }
             });
+            invoiceItemId = invoiceItem.id;
+
             const invoice = await stripe.invoices.create({
                 customer: customer.id,
                 collection_method: 'send_invoice',
@@ -188,7 +192,37 @@ async function handleEmailInvoice(event: any): Promise<any> {
         return respond(200, { status: 'sent' });
     } catch (error) {
         console.error('Failed to send email invoice', error);
+        // Without this, a failed send leaves the invoice item (and, if finalization never
+        // happened, the draft invoice) dangling as "pending" on the customer — it silently
+        // attaches itself to whatever invoice gets created for them next.
+        await cleanupFailedInvoice(invoiceId, invoiceItemId);
         return respond(502, { error: 'Could not send payment link' });
+    }
+}
+
+async function cleanupFailedInvoice(invoiceId: string | undefined, invoiceItemId: string | undefined): Promise<void> {
+    try {
+        const stripe = await getStripeClient();
+
+        if (invoiceId) {
+            const invoice = await stripe.invoices.retrieve(invoiceId);
+            if (invoice.status === 'draft') {
+                // Deleting a draft invoice detaches its items but returns them to "pending"
+                // rather than deleting them, so the invoice item below still needs cleanup.
+                await stripe.invoices.del(invoiceId);
+            } else if (invoice.status === 'open') {
+                // Voiding a finalized invoice cancels it along with its line items, so the
+                // underlying invoice item is already accounted for — nothing left to delete.
+                await stripe.invoices.voidInvoice(invoiceId);
+                invoiceItemId = undefined;
+            }
+        }
+
+        if (invoiceItemId) {
+            await stripe.invoiceItems.del(invoiceItemId);
+        }
+    } catch (cleanupError) {
+        console.error('Failed to clean up after invoice send failure', cleanupError);
     }
 }
 
