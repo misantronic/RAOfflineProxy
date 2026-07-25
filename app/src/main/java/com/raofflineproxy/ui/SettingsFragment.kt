@@ -22,6 +22,7 @@ import com.google.android.material.textfield.TextInputEditText
 import com.google.android.material.textfield.TextInputLayout
 import com.raofflineproxy.R
 import com.raofflineproxy.diagnostics.LogUploader
+import com.raofflineproxy.donation.DonationManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -39,6 +40,7 @@ class SettingsFragment : Fragment() {
         val cbSmartCaching = view.findViewById<CheckBox>(R.id.cb_smart_caching)
         val cbAppUpdateCheck = view.findViewById<CheckBox>(R.id.cb_app_update_check)
         val cbHideSupportButton = view.findViewById<CheckBox>(R.id.cb_hide_support_button)
+        val btnManageSubscription = view.findViewById<Button>(R.id.btn_manage_subscription)
         val inputProxyPort = view.findViewById<TextInputLayout>(R.id.input_proxy_port)
         val etProxyPort = view.findViewById<TextInputEditText>(R.id.et_proxy_port)
         val tvProxyPortHint = view.findViewById<TextView>(R.id.tv_proxy_port_hint)
@@ -64,6 +66,22 @@ class SettingsFragment : Fragment() {
         cbHideSupportButton.setOnCheckedChangeListener { _, isChecked ->
             if (syncingState) return@setOnCheckedChangeListener
             viewModel.setHideSupportButtonEnabled(isChecked)
+        }
+
+        btnManageSubscription.setOnClickListener {
+            viewLifecycleOwner.lifecycleScope.launch {
+                val raCredentials = viewModel.currentRaCredentials() ?: return@launch
+                btnManageSubscription.isEnabled = false
+                val result = withContext(Dispatchers.IO) {
+                    DonationManager.getManageSubscriptionUrl(raCredentials)
+                }
+                btnManageSubscription.isEnabled = true
+                result.onSuccess { url ->
+                    startActivity(Intent(Intent.ACTION_VIEW, url.toUri()))
+                }.onFailure {
+                    SnackbarManager.showMessage(getString(R.string.manage_subscription_error), SnackbarDuration.Short)
+                }
+            }
         }
 
         fun submitProxyPort(): Boolean {
@@ -195,6 +213,21 @@ class SettingsFragment : Fragment() {
                 }
                 syncingState = false
             }
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Re-checked every time Settings becomes visible (not just on first creation), since
+        // a subscription made via the emailed Payment Link happens outside the app — the user
+        // might complete it in a browser and come straight back here.
+        val btnManageSubscription = view?.findViewById<Button>(R.id.btn_manage_subscription) ?: return
+        viewLifecycleOwner.lifecycleScope.launch {
+            val raCredentials = viewModel.currentRaCredentials()
+            val hasActiveSubscription = raCredentials != null && withContext(Dispatchers.IO) {
+                DonationManager.checkSubscriptionStatus(raCredentials).getOrDefault(false)
+            }
+            btnManageSubscription.visibility = if (hasActiveSubscription) View.VISIBLE else View.GONE
         }
     }
 

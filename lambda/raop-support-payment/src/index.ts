@@ -12,10 +12,16 @@ const STRIPE_MONTHLY_PRODUCT_ID = process.env.STRIPE_MONTHLY_PRODUCT_ID ?? '';
 const STRIPE_ONETIME_PRODUCT_ID = process.env.STRIPE_ONETIME_PRODUCT_ID ?? '';
 const STRIPE_API_VERSION = '2025-08-27.basil';
 const SES_SENDER_EMAIL = process.env.SES_SENDER_EMAIL ?? 'donations@raofflineproxy.com';
+const RA_HOST = 'https://retroachievements.org';
+const PORTAL_RETURN_URL = 'https://raofflineproxy.com';
 
 const MIN_AMOUNT_CENTS = 100;
 const MAX_AMOUNT_CENTS = 100_000;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+// The RA username tied to a monthly donation, so a donor can later look up / manage their
+// own subscription without any auth system of our own — see verifyRaCredentials below.
+const RA_USERNAME_METADATA_KEY = 'ra_username';
 
 const ssm = new SSMClient({ region: REGION });
 const ses = new SESClient({ region: REGION });
@@ -78,6 +84,34 @@ function validateAmount(amount: unknown): amount is number {
     return typeof amount === 'number' && Number.isInteger(amount) && amount >= MIN_AMOUNT_CENTS && amount <= MAX_AMOUNT_CENTS;
 }
 
+// Proves a caller actually owns the RA account they claim, by making the exact same kind of
+// authenticated call the app's own proxy already trusts (dorequest.php with u=user&t=token) —
+// no separate auth system of our own needed. Uses the "patch" action (same one the app's own
+// RomScanner.refreshGamePatch calls) rather than "ping", since ping is meant to keep an
+// already-active game session alive and can fail with no session started, regardless of
+// whether the token itself is valid — patch has no such session prerequisite.
+//
+// RA's API validates the User-Agent against a known allowlist of RA client apps and rejects
+// anything else with "unsupported_client" — a made-up UA string doesn't work here, so the app
+// sends its own real one (the exact value it already uses for its direct RA calls).
+async function verifyRaCredentials(username: string, token: string, userAgent: string): Promise<boolean> {
+    // Game ID 1 is just used as a fixed, always-valid target for the auth check itself; its
+    // achievement data (the actual response body) is irrelevant and discarded.
+    const url = `${RA_HOST}/dorequest.php?r=patch&g=1&u=${encodeURIComponent(username)}&t=${encodeURIComponent(token)}`;
+    const response = await fetch(url, { headers: { 'User-Agent': userAgent } });
+    if (!response.ok) {
+        const body = await response.text().catch(() => '');
+        console.error(`verifyRaCredentials: RA API returned HTTP ${response.status} server=${response.headers.get('server')} body=${body.slice(0, 500)}`);
+        return false;
+    }
+
+    const json = await response.json().catch(() => null) as { Success?: boolean; Error?: string } | null;
+    if (!json?.Success) {
+        console.error(`verifyRaCredentials: RA API rejected credentials, response=${JSON.stringify(json)}`);
+    }
+    return Boolean(json?.Success);
+}
+
 async function handlePaymentIntent(event: any): Promise<any> {
     let body: any;
     try {
@@ -117,6 +151,21 @@ async function handleSubscription(event: any): Promise<any> {
         return respond(400, { error: 'Invalid amount' });
     }
 
+    // Optional: if the app is logged into RA, it sends the username + connect-API token it
+    // already holds, so this donation can be tied to that account for the manage-subscription
+    // feature. Verified here (not just trusted) so donations can't be falsely attributed to
+    // someone else's RA account.
+    let raUsername: string | undefined;
+    if (body.raUsername !== undefined || body.raToken !== undefined) {
+        if (typeof body.raUsername !== 'string' || typeof body.raToken !== 'string' || typeof body.raUserAgent !== 'string') {
+            return respond(400, { error: 'Invalid RA credentials' });
+        }
+        if (!(await verifyRaCredentials(body.raUsername, body.raToken, body.raUserAgent))) {
+            return respond(403, { error: 'Could not verify RA credentials' });
+        }
+        raUsername = body.raUsername;
+    }
+
     try {
         const stripe = await getStripeClient();
         const customer = await stripe.customers.create({});
@@ -133,6 +182,10 @@ async function handleSubscription(event: any): Promise<any> {
             }],
             payment_behavior: 'default_incomplete',
             payment_settings: { save_default_payment_method: 'on_subscription' },
+            // Kept on the Subscription (not the Customer) so both this in-app flow and the
+            // Payment Link flow (which can only set subscription_data.metadata, not customer
+            // metadata) store it in the same consistent place for the status/portal lookups.
+            metadata: raUsername ? { [RA_USERNAME_METADATA_KEY]: raUsername } : undefined,
             expand: ['latest_invoice.confirmation_secret']
         });
 
@@ -172,11 +225,23 @@ async function handleEmailInvoice(event: any): Promise<any> {
     const email = body.email.trim();
     const frequency = body.frequency as 'once' | 'monthly';
 
+    // Same optional RA-account linking as handleSubscription, only relevant for monthly.
+    let raUsername: string | undefined;
+    if (frequency === 'monthly' && (body.raUsername !== undefined || body.raToken !== undefined)) {
+        if (typeof body.raUsername !== 'string' || typeof body.raToken !== 'string' || typeof body.raUserAgent !== 'string') {
+            return respond(400, { error: 'Invalid RA credentials' });
+        }
+        if (!(await verifyRaCredentials(body.raUsername, body.raToken, body.raUserAgent))) {
+            return respond(403, { error: 'Could not verify RA credentials' });
+        }
+        raUsername = body.raUsername;
+    }
+
     // Primary path: a Payment Link that we email ourselves via SES. This never touches
     // Stripe's own "send invoice" action, so it isn't subject to Stripe's live-mode risk
     // checks on manually-sent invoices (see sendStripeHostedInvoice below).
     try {
-        await sendPaymentLinkEmail(email, body.amount, frequency);
+        await sendPaymentLinkEmail(email, body.amount, frequency, raUsername);
         return respond(200, { status: 'sent' });
     } catch (error) {
         console.error('Failed to send payment link email, falling back to Stripe-hosted invoice', error);
@@ -186,7 +251,7 @@ async function handleEmailInvoice(event: any): Promise<any> {
     // path itself breaks (SES outage, DNS issue, etc.) — still worth a shot even though this
     // is the path Stripe's risk checks can block for one-off invoices in live mode.
     try {
-        await sendStripeHostedInvoice(email, body.amount, frequency);
+        await sendStripeHostedInvoice(email, body.amount, frequency, raUsername);
         return respond(200, { status: 'sent' });
     } catch (error) {
         console.error('Failed to send email invoice', error);
@@ -194,7 +259,12 @@ async function handleEmailInvoice(event: any): Promise<any> {
     }
 }
 
-async function sendPaymentLinkEmail(email: string, amount: number, frequency: 'once' | 'monthly'): Promise<void> {
+async function sendPaymentLinkEmail(
+    email: string,
+    amount: number,
+    frequency: 'once' | 'monthly',
+    raUsername: string | undefined
+): Promise<void> {
     const stripe = await getStripeClient();
     const isMonthly = frequency === 'monthly';
 
@@ -215,7 +285,10 @@ async function sendPaymentLinkEmail(email: string, amount: number, frequency: 'o
         // for anyone who later gets hold of the email.
         restrictions: { completed_sessions: { limit: 1 } },
         metadata: { donor_email: email },
-        managed_payments: { enabled: false }
+        managed_payments: { enabled: false },
+        ...(isMonthly && raUsername
+            ? { subscription_data: { metadata: { [RA_USERNAME_METADATA_KEY]: raUsername } } }
+            : {})
     };
     const paymentLink = await stripe.paymentLinks.create(paymentLinkParams);
     const frequencyLabel = isMonthly ? 'monthly' : 'one-time';
@@ -276,7 +349,12 @@ function paymentLinkEmailHtml(paymentLinkUrl: string, frequencyLabel: string): s
 </html>`;
 }
 
-async function sendStripeHostedInvoice(email: string, amount: number, frequency: 'once' | 'monthly'): Promise<void> {
+async function sendStripeHostedInvoice(
+    email: string,
+    amount: number,
+    frequency: 'once' | 'monthly',
+    raUsername: string | undefined
+): Promise<void> {
     let invoiceItemId: string | undefined;
     let invoiceId: string | undefined;
 
@@ -316,7 +394,8 @@ async function sendStripeHostedInvoice(email: string, amount: number, frequency:
                     }
                 }],
                 collection_method: 'send_invoice',
-                days_until_due: 7
+                days_until_due: 7,
+                metadata: raUsername ? { [RA_USERNAME_METADATA_KEY]: raUsername } : undefined
             });
             invoiceId = subscription.latest_invoice as string;
         }
@@ -401,6 +480,75 @@ async function handleSyncCustomerEmail(event: any): Promise<any> {
     }
 }
 
+async function findActiveSubscriptionForRaUser(username: string): Promise<Stripe.Subscription | null> {
+    const stripe = await getStripeClient();
+    // Search Query Language escaping: backslash and single-quote are the only special chars.
+    const escapedUsername = username.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+    const result = await stripe.subscriptions.search({
+        query: `status:'active' AND metadata['${RA_USERNAME_METADATA_KEY}']:'${escapedUsername}'`
+    });
+    return result.data[0] ?? null;
+}
+
+async function handleSubscriptionStatus(event: any): Promise<any> {
+    let body: any;
+    try {
+        body = parseBody(event);
+    } catch {
+        return respond(400, { error: 'Malformed JSON body' });
+    }
+
+    if (typeof body.username !== 'string' || typeof body.token !== 'string' || typeof body.userAgent !== 'string') {
+        return respond(400, { error: 'Missing RA credentials' });
+    }
+    if (!(await verifyRaCredentials(body.username, body.token, body.userAgent))) {
+        return respond(403, { error: 'Could not verify RA credentials' });
+    }
+
+    try {
+        const subscription = await findActiveSubscriptionForRaUser(body.username);
+        return respond(200, { hasActiveSubscription: Boolean(subscription) });
+    } catch (error) {
+        console.error('Failed to look up subscription status', error);
+        return respond(502, { error: 'Could not look up subscription status' });
+    }
+}
+
+async function handleSubscriptionPortal(event: any): Promise<any> {
+    let body: any;
+    try {
+        body = parseBody(event);
+    } catch {
+        return respond(400, { error: 'Malformed JSON body' });
+    }
+
+    if (typeof body.username !== 'string' || typeof body.token !== 'string' || typeof body.userAgent !== 'string') {
+        return respond(400, { error: 'Missing RA credentials' });
+    }
+    if (!(await verifyRaCredentials(body.username, body.token, body.userAgent))) {
+        return respond(403, { error: 'Could not verify RA credentials' });
+    }
+
+    try {
+        const subscription = await findActiveSubscriptionForRaUser(body.username);
+        if (!subscription) {
+            return respond(404, { error: 'No active subscription found' });
+        }
+
+        const stripe = await getStripeClient();
+        const customerId = typeof subscription.customer === 'string' ? subscription.customer : subscription.customer.id;
+        const session = await stripe.billingPortal.sessions.create({
+            customer: customerId,
+            return_url: PORTAL_RETURN_URL
+        });
+
+        return respond(200, { url: session.url });
+    } catch (error) {
+        console.error('Failed to create billing portal session', error);
+        return respond(502, { error: 'Could not create manage-subscription link' });
+    }
+}
+
 async function handleStripeWebhook(event: any): Promise<any> {
     // Stripe signs the raw request bytes, so this must be the untouched body — not the
     // parseBody() helper, which JSON-parses (and would invalidate the signature anyway).
@@ -444,9 +592,13 @@ async function notifyDiscordOfDonation(paymentIntent: Stripe.PaymentIntent): Pro
     const stripe = await getStripeClient();
 
     // A PaymentIntent tied to an Invoice came from a subscription (our monthly donations,
-    // whether the first payment or a later renewal); one without is always one-time.
-    // `invoice` is present on the raw API object but missing from the installed SDK's types.
-    const isMonthly = Boolean((paymentIntent as unknown as { invoice?: string | null }).invoice);
+    // whether the first payment or a later renewal); one without is always one-time. This API
+    // version puts that reference at payment_details.order_reference (an "in_..." invoice id)
+    // rather than a top-level `invoice` field — confirmed against a real subscription payment;
+    // neither field is in the installed SDK's types.
+    const isMonthly = Boolean(
+        (paymentIntent as unknown as { payment_details?: { order_reference?: string | null } }).payment_details?.order_reference
+    );
 
     let email = paymentIntent.receipt_email ?? undefined;
     if (!email) {
@@ -498,6 +650,12 @@ exports.handler = async (event: any): Promise<any> => {
     }
     if (routeKey === 'POST /support/subscription/sync-email') {
         return handleSyncCustomerEmail(event);
+    }
+    if (routeKey === 'POST /support/subscription/status') {
+        return handleSubscriptionStatus(event);
+    }
+    if (routeKey === 'POST /support/subscription/portal') {
+        return handleSubscriptionPortal(event);
     }
     if (routeKey === 'POST /support/stripe-webhook') {
         return handleStripeWebhook(event);

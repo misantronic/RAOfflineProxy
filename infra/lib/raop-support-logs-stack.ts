@@ -248,6 +248,18 @@ export class RaopSupportLogsStack extends cdk.Stack {
             integration: paymentIntegration
         });
 
+        api.addRoutes({
+            path: '/support/subscription/status',
+            methods: [apigwv2.HttpMethod.POST],
+            integration: paymentIntegration
+        });
+
+        api.addRoutes({
+            path: '/support/subscription/portal',
+            methods: [apigwv2.HttpMethod.POST],
+            integration: paymentIntegration
+        });
+
         new cdk.CfnOutput(this, 'SupportLogsApiUrl', {
             value: api.apiEndpoint,
             description: 'Base URL for the RAOfflineProxy support-logs upload API'

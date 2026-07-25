@@ -675,6 +675,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         return credentials
     }
 
+    // Used to optionally tie a monthly donation to the logged-in RA account (for the
+    // manage-subscription feature), and to look up/manage that subscription from Settings.
+    // Unlike requireCredentials, this doesn't prompt for login — both donating and checking
+    // subscription status are meant to work fine even when logged out.
+    suspend fun currentRaCredentials(): LoginCredentials? =
+        withContext(Dispatchers.IO) { loadLoginCredentials(db) }
+
     private fun refreshReachability(
         forceProbe: Boolean,
         capabilities: NetworkCapabilities? = null

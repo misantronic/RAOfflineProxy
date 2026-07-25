@@ -197,7 +197,10 @@ class HomeFragment : Fragment() {
                 btnStartProxy.alpha = if (proxyStartPending) 0.45f else 1f
                 btnManualEmulatorSetup.visibility = if (shouldShowManualSetupButton) View.VISIBLE else View.GONE
                 btnGoToCachedGames.visibility = if (state.proxyRunning) View.VISIBLE else View.GONE
-                btnSupportDevelopment.visibility = if (state.hideSupportButton) View.GONE else View.VISIBLE
+                // Only makes sense once the user is actually logged into RA — that's also the
+                // data a monthly donation needs to tie itself to their account.
+                btnSupportDevelopment.visibility =
+                    if (!state.hideSupportButton && state.hasLoginCredentials) View.VISIBLE else View.GONE
 
                 emulatorLabel.visibility = if (installedCount > 0) View.VISIBLE else View.GONE
                 emulatorSelector.visibility = if (installedCount > 0) View.VISIBLE else View.GONE
@@ -343,8 +346,9 @@ class HomeFragment : Fragment() {
                     setButtonLoading(positiveButton, true)
                     viewLifecycleOwner.lifecycleScope.launch {
                         val frequency = if (isMonthly) "monthly" else "once"
+                        val raCredentials = if (isMonthly) viewModel.currentRaCredentials() else null
                         val result = withContext(Dispatchers.IO) {
-                            DonationManager.requestEmailInvoice(amountCents, frequency, email)
+                            DonationManager.requestEmailInvoice(amountCents, frequency, email, raCredentials)
                         }
                         setButtonLoading(positiveButton, false)
                         result.onSuccess {
@@ -358,9 +362,10 @@ class HomeFragment : Fragment() {
                 } else {
                     setButtonLoading(positiveButton, true)
                     viewLifecycleOwner.lifecycleScope.launch {
+                        val raCredentials = if (isMonthly) viewModel.currentRaCredentials() else null
                         val result = withContext(Dispatchers.IO) {
                             if (isMonthly) {
-                                DonationManager.createSubscription(amountCents).map { checkout ->
+                                DonationManager.createSubscription(amountCents, raCredentials).map { checkout ->
                                     Triple(checkout.clientSecret, checkout.customerId, checkout.ephemeralKey)
                                 }
                             } else {
