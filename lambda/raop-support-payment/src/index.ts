@@ -142,7 +142,10 @@ async function handleEmailInvoice(event: any): Promise<any> {
 
     try {
         const stripe = await getStripeClient();
-        const customer = await stripe.customers.create({ email });
+        // Reuse an existing customer for this email instead of creating a duplicate, so repeat
+        // donations from the same person consolidate under one Stripe Customer.
+        const existing = await stripe.customers.list({ email, limit: 1 });
+        const customer = existing.data[0] ?? await stripe.customers.create({ email });
 
         let invoiceId: string;
         if (body.frequency === 'once') {
@@ -189,6 +192,47 @@ async function handleEmailInvoice(event: any): Promise<any> {
     }
 }
 
+async function handleSyncCustomerEmail(event: any): Promise<any> {
+    let body: any;
+    try {
+        body = parseBody(event);
+    } catch {
+        return respond(400, { error: 'Malformed JSON body' });
+    }
+
+    if (typeof body.paymentIntentId !== 'string' || !body.paymentIntentId.startsWith('pi_')) {
+        return respond(400, { error: 'Invalid paymentIntentId' });
+    }
+    if (typeof body.customerId !== 'string' || !body.customerId.startsWith('cus_')) {
+        return respond(400, { error: 'Invalid customerId' });
+    }
+
+    try {
+        const stripe = await getStripeClient();
+        const paymentIntent = await stripe.paymentIntents.retrieve(body.paymentIntentId, { expand: ['payment_method'] });
+
+        // Only trust a PaymentIntent that's actually tied to this customer, so this endpoint
+        // can't be abused to overwrite an arbitrary customer's email.
+        if (paymentIntent.customer !== body.customerId) {
+            return respond(403, { error: 'Payment intent does not belong to this customer' });
+        }
+
+        // Whichever payment method the user picked (card, Amazon Pay, etc.), PaymentSheet
+        // attaches whatever email it collected to the confirmed PaymentMethod's billing
+        // details — it never updates the Customer object itself, so we sync it here.
+        const paymentMethod = paymentIntent.payment_method as Stripe.PaymentMethod | null;
+        const email = paymentMethod?.billing_details?.email;
+        if (email) {
+            await stripe.customers.update(body.customerId, { email });
+        }
+
+        return respond(200, { synced: Boolean(email) });
+    } catch (error) {
+        console.error('Failed to sync customer email', error);
+        return respond(502, { error: 'Could not sync customer email' });
+    }
+}
+
 exports.handler = async (event: any): Promise<any> => {
     const routeKey = event.requestContext?.routeKey;
 
@@ -197,6 +241,9 @@ exports.handler = async (event: any): Promise<any> => {
     }
     if (routeKey === 'POST /support/email-invoice') {
         return handleEmailInvoice(event);
+    }
+    if (routeKey === 'POST /support/subscription/sync-email') {
+        return handleSyncCustomerEmail(event);
     }
     return handlePaymentIntent(event);
 };

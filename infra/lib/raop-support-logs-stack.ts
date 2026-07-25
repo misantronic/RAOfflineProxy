@@ -97,8 +97,8 @@ export class RaopSupportLogsStack extends cdk.Stack {
         });
 
         const STRIPE_SECRET_KEY_PARAM = '/raop/support-payment/stripe-secret-key';
-        const STRIPE_MONTHLY_PRODUCT_ID = 'prod_UwXRSyJpaF1FmT';
-        const STRIPE_ONETIME_PRODUCT_ID = 'prod_UwXWrdkTIRAO2g';
+        const STRIPE_MONTHLY_PRODUCT_ID = 'prod_UwXVoGHCZgyLHr';
+        const STRIPE_ONETIME_PRODUCT_ID = 'prod_UwXVN3Ib6UUpFE';
 
         const paymentRole = new iam.Role(this, 'PaymentLambdaRole', {
             roleName: 'raop-support-payment-lambda-role',
@@ -224,6 +224,12 @@ export class RaopSupportLogsStack extends cdk.Stack {
 
         api.addRoutes({
             path: '/support/email-invoice',
+            methods: [apigwv2.HttpMethod.POST],
+            integration: paymentIntegration
+        });
+
+        api.addRoutes({
+            path: '/support/subscription/sync-email',
             methods: [apigwv2.HttpMethod.POST],
             integration: paymentIntegration
         });
