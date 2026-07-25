@@ -38,6 +38,7 @@ class SettingsFragment : Fragment() {
         val cbAutostart = view.findViewById<CheckBox>(R.id.cb_autostart_proxy)
         val cbSmartCaching = view.findViewById<CheckBox>(R.id.cb_smart_caching)
         val cbAppUpdateCheck = view.findViewById<CheckBox>(R.id.cb_app_update_check)
+        val cbHideSupportButton = view.findViewById<CheckBox>(R.id.cb_hide_support_button)
         val inputProxyPort = view.findViewById<TextInputLayout>(R.id.input_proxy_port)
         val etProxyPort = view.findViewById<TextInputEditText>(R.id.et_proxy_port)
         val tvProxyPortHint = view.findViewById<TextView>(R.id.tv_proxy_port_hint)
@@ -59,6 +60,10 @@ class SettingsFragment : Fragment() {
         cbAppUpdateCheck.setOnCheckedChangeListener { _, isChecked ->
             if (syncingState) return@setOnCheckedChangeListener
             viewModel.setAppUpdateCheckEnabled(isChecked)
+        }
+        cbHideSupportButton.setOnCheckedChangeListener { _, isChecked ->
+            if (syncingState) return@setOnCheckedChangeListener
+            viewModel.setHideSupportButtonEnabled(isChecked)
         }
 
         fun submitProxyPort(): Boolean {
@@ -168,6 +173,9 @@ class SettingsFragment : Fragment() {
                 }
                 if (cbAppUpdateCheck.isChecked != state.appUpdateCheckEnabled) {
                     cbAppUpdateCheck.isChecked = state.appUpdateCheckEnabled
+                }
+                if (cbHideSupportButton.isChecked != state.hideSupportButton) {
+                    cbHideSupportButton.isChecked = state.hideSupportButton
                 }
                 val proxyPortText = state.proxyPort.toString()
                 if (etProxyPort.text?.toString() != proxyPortText && !etProxyPort.hasFocus()) {

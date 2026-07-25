@@ -513,6 +513,7 @@ class MainActivity : AppCompatActivity() {
                         }
                     }
                 }
+                viewModel.setHideSupportButtonEnabled(true)
                 showDonationOutcomeDialog(R.string.donation_success_title, R.string.donation_success_message)
             }
             is PaymentSheetResult.Canceled -> Unit

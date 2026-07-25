@@ -116,6 +116,7 @@ data class MainUiState(
     val manualEmulatorPatchingEnabled: Boolean = false,
     val smartCachingEnabled: Boolean = true,
     val appUpdateCheckEnabled: Boolean = true,
+    val hideSupportButton: Boolean = false,
     val proxyPort: Int = PrefsConstants.DEFAULT_PROXY_PORT,
     val retroArchInstalled: Boolean = false,
     val dolphinInstalled: Boolean = false,
@@ -208,6 +209,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     init {
+        PrefsConstants.resetHideSupportButtonOnAppUpdate(app, BuildConfig.VERSION_CODE.toLong())
+
         _state.value = _state.value.copy(
             isOnline = hasValidatedInternet(connectivityManager) && isRetroAchievementsReachable()
         )
@@ -238,6 +241,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             manualEmulatorPatchingEnabled = loadManualEmulatorPatchingEnabled(),
             smartCachingEnabled = loadSmartCachingEnabled(),
             appUpdateCheckEnabled = loadAppUpdateCheckEnabled(),
+            hideSupportButton = loadHideSupportButtonEnabled(),
             proxyPort = PrefsConstants.loadProxyPort(app),
             retroArchInstalled = emulatorSupport.retroArchInstalled,
             dolphinInstalled = emulatorSupport.dolphinInstalled,
@@ -2294,6 +2298,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         _state.value = _state.value.copy(smartCachingEnabled = enabled)
     }
 
+    fun setHideSupportButtonEnabled(enabled: Boolean) {
+        PrefsConstants.saveHideSupportButtonEnabled(getApplication(), enabled)
+        _state.value = _state.value.copy(hideSupportButton = enabled)
+    }
+
     fun setAppUpdateCheckEnabled(enabled: Boolean) {
         val app = getApplication<Application>()
         PrefsConstants.saveAppUpdateCheckEnabled(app, enabled)
@@ -2682,6 +2691,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun loadAppUpdateCheckEnabled(): Boolean =
         PrefsConstants.loadAppUpdateCheckEnabled(getApplication())
+
+    private fun loadHideSupportButtonEnabled(): Boolean =
+        PrefsConstants.loadHideSupportButtonEnabled(getApplication())
 
     private fun loadManualEmulatorPatchingEnabled(): Boolean =
         PrefsConstants.loadManualEmulatorPatchingEnabled(getApplication())

@@ -197,6 +197,7 @@ class HomeFragment : Fragment() {
                 btnStartProxy.alpha = if (proxyStartPending) 0.45f else 1f
                 btnManualEmulatorSetup.visibility = if (shouldShowManualSetupButton) View.VISIBLE else View.GONE
                 btnGoToCachedGames.visibility = if (state.proxyRunning) View.VISIBLE else View.GONE
+                btnSupportDevelopment.visibility = if (state.hideSupportButton) View.GONE else View.VISIBLE
 
                 emulatorLabel.visibility = if (installedCount > 0) View.VISIBLE else View.GONE
                 emulatorSelector.visibility = if (installedCount > 0) View.VISIBLE else View.GONE
@@ -347,6 +348,7 @@ class HomeFragment : Fragment() {
                         }
                         setButtonLoading(positiveButton, false)
                         result.onSuccess {
+                            viewModel.setHideSupportButtonEnabled(true)
                             dialog.dismiss()
                             showOutcomeDialog(R.string.donation_email_sent_title, R.string.donation_email_sent_message)
                         }.onFailure {
