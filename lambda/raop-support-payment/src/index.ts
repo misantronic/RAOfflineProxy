@@ -573,8 +573,8 @@ async function handleStripeWebhook(event: any): Promise<any> {
     }
 
     // Acknowledge every event type Stripe sends us (even ones we don't act on) so it doesn't
-    // keep retrying delivery — we only subscribed to payment_intent.succeeded when creating
-    // the endpoint, but staying tolerant here avoids breakage if that ever changes.
+    // keep retrying delivery — we only subscribed to specific event types when creating the
+    // endpoint, but staying tolerant here avoids breakage if that ever changes.
     if (stripeEvent.type === 'payment_intent.succeeded') {
         try {
             await notifyDiscordOfDonation(stripeEvent.data.object as Stripe.PaymentIntent);
@@ -585,7 +585,35 @@ async function handleStripeWebhook(event: any): Promise<any> {
         }
     }
 
+    if (stripeEvent.type === 'checkout.session.completed') {
+        try {
+            await linkRaUsernameFromCheckoutSession(stripeEvent.data.object as Stripe.Checkout.Session);
+        } catch (error) {
+            console.error('Failed to link RA username from checkout session', error);
+        }
+    }
+
     return respond(200, { received: true });
+}
+
+// The static monthly Payment Links (Linux QR codes, docs website) collect an optional
+// "RA username" custom field directly on Stripe's own checkout page — self-reported, not
+// verified against RA the way the in-app flow is, but that's an acceptable tradeoff here
+// (see donate-me design discussion: typing someone else's username only gives *them* power
+// over *your* subscription, not the other way around). This copies that value onto the
+// resulting Subscription's metadata so it's discoverable the same way as verified ones.
+async function linkRaUsernameFromCheckoutSession(session: Stripe.Checkout.Session): Promise<void> {
+    if (session.mode !== 'subscription' || !session.subscription) return;
+
+    const field = session.custom_fields?.find((customField) => customField.key === RA_USERNAME_METADATA_KEY);
+    const raUsername = field?.text?.value?.trim();
+    if (!raUsername) return;
+
+    const stripe = await getStripeClient();
+    const subscriptionId = typeof session.subscription === 'string' ? session.subscription : session.subscription.id;
+    await stripe.subscriptions.update(subscriptionId, {
+        metadata: { [RA_USERNAME_METADATA_KEY]: raUsername }
+    });
 }
 
 async function notifyDiscordOfDonation(paymentIntent: Stripe.PaymentIntent): Promise<void> {
