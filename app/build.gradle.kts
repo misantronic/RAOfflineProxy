@@ -24,8 +24,8 @@ android {
         applicationId = "com.raofflineproxy"
         minSdk = 26
         targetSdk = 36
-        versionCode = 24
-        versionName = "1.8.0-alpha1"
+        versionCode = 25
+        versionName = "1.9.0-alpha1"
 
         buildConfigField(
             "String",
