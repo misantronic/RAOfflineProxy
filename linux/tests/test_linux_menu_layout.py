@@ -97,7 +97,7 @@ class MenuLayoutTests(unittest.TestCase):
 
         self.assertEqual(
             menu_sdl.MenuSdlSession.bottom_hint_text(session),
-            "Face buttons only. Press the labeled A button to continue.",
+            "Face buttons only. Press A to continue.",
         )
 
     def test_status_text_for_controller_calibration_confirm_step(self) -> None:

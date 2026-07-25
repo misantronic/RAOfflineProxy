@@ -891,9 +891,9 @@ class MenuSdlSession:
 
         if self.view == "controller_calibration":
             if self.calibration_step == "confirm":
-                return "Face buttons only. Press the labeled A button to continue."
+                return "Face buttons only. Press A to continue."
             if self.calibration_step == "cancel":
-                return "Now press the labeled B button."
+                return "Now press B."
             return None
 
         if self.view != "main":
