@@ -16,6 +16,7 @@ import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 
 private const val REQUEST_UPLOAD_URL = "https://ud63psmdb5.execute-api.eu-central-1.amazonaws.com/logs/request-upload"
+private const val SUPPORT_SUBMIT_URL = "https://ud63psmdb5.execute-api.eu-central-1.amazonaws.com/support/submit"
 private const val TAG = "RAProxy/LogUploader"
 
 object LogUploader {
@@ -60,9 +61,47 @@ object LogUploader {
         Log.e(TAG, "uploadLogs failed: ${error.message}", error)
     }
 
-    // Submitted alongside the log so the support form can skip asking for this again once the
-    // user provides a Log ID. Best-effort: any field that can't be determined is just omitted.
-    private fun uploadMetadata(context: Context): JSONObject {
+    // Posted to the same endpoint the docs support form uses, so a user who adds details while
+    // sending logs lands in the same Discord channel as a website submission.
+    fun submitSupportRequest(context: Context, logId: String, email: String, message: String): Result<Unit> =
+        runCatching {
+            val info = deviceInfo(context)
+            val payload = JSONObject().apply {
+                put("email", email)
+                put("system", "Android")
+                put("device", info.device)
+                put("os_version", info.osVersion)
+                put("app_version", info.appVersion)
+                if (info.enabledEmulators.isNotEmpty()) {
+                    put("emulator", info.enabledEmulators.joinToString(", "))
+                }
+                put("log_id", logId)
+                put("message", message)
+            }
+
+            val response = sharedHttpClient.newCall(
+                Request.Builder()
+                    .url(SUPPORT_SUBMIT_URL)
+                    .post(payload.toString().toRequestBody("application/json".toMediaType()))
+                    .build()
+            ).execute()
+
+            if (!response.isSuccessful) {
+                val body = response.body?.string().orEmpty()
+                error("Support request failed (HTTP ${response.code}): ${body.take(512)}")
+            }
+        }.onFailure { error ->
+            Log.e(TAG, "submitSupportRequest failed: ${error.message}", error)
+        }
+
+    private data class DeviceInfo(
+        val device: String,
+        val osVersion: String,
+        val appVersion: String,
+        val enabledEmulators: List<String>
+    )
+
+    private fun deviceInfo(context: Context): DeviceInfo {
         val emulators = loadEmulatorSupport(context)
         val enabledEmulators = buildList {
             if (emulators.retroArchEnabled) add("RetroArch")
@@ -75,13 +114,25 @@ object LogUploader {
             if (emulators.emuCoreXEnabled) add("EmuCoreX")
         }
 
+        return DeviceInfo(
+            device = "${Build.MANUFACTURER} ${Build.MODEL}".trim(),
+            osVersion = androidVersionLabel(),
+            appVersion = BuildConfig.VERSION_NAME,
+            enabledEmulators = enabledEmulators
+        )
+    }
+
+    // Submitted alongside the log so the support form can skip asking for this again once the
+    // user provides a Log ID. Best-effort: any field that can't be determined is just omitted.
+    private fun uploadMetadata(context: Context): JSONObject {
+        val info = deviceInfo(context)
         return JSONObject().apply {
             put("system", "Android")
-            put("device", "${Build.MANUFACTURER} ${Build.MODEL}".trim())
-            put("os_version", androidVersionLabel())
-            put("app_version", BuildConfig.VERSION_NAME)
-            if (enabledEmulators.isNotEmpty()) {
-                put("emulator", JSONArray(enabledEmulators))
+            put("device", info.device)
+            put("os_version", info.osVersion)
+            put("app_version", info.appVersion)
+            if (info.enabledEmulators.isNotEmpty()) {
+                put("emulator", JSONArray(info.enabledEmulators))
             }
         }
     }

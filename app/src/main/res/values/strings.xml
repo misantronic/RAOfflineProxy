@@ -16,12 +16,18 @@
 
     <!-- Send logs -->
     <string name="btn_send_logs">Send logs</string>
-    <string name="send_logs_uploading">Sending logs…</string>
     <string name="send_logs_success_title">Logs sent</string>
     <string name="send_logs_success_message">Share this ID when reporting an issue:\n\n%s</string>
     <string name="send_logs_copy_id">Copy ID</string>
     <string name="send_logs_id_copied">ID copied to clipboard.</string>
     <string name="send_logs_failed">Failed to send logs: %s</string>
+    <string name="send_logs_details_dialog_title">Send Logs</string>
+    <string name="send_logs_details_intro">This uploads recent logs from the app to help diagnose an issue.</string>
+    <string name="send_logs_details_label">Add more details</string>
+    <string name="send_logs_details_email_label">Email address</string>
+    <string name="send_logs_details_description_label">What happened?</string>
+    <string name="send_logs_details_field_required">Required</string>
+    <string name="send_logs_support_request_failed">Logs were sent, but the support request could not be delivered: %s</string>
 
     <!-- Proxy button -->
     <string name="proxy_start">Start proxy</string>

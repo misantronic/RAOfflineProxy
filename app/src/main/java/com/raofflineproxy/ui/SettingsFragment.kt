@@ -15,6 +15,7 @@ import android.widget.CheckBox
 import android.widget.TextView
 import androidx.appcompat.app.AlertDialog
 import androidx.core.net.toUri
+import androidx.swiperefreshlayout.widget.CircularProgressDrawable
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.lifecycleScope
@@ -150,23 +151,7 @@ class SettingsFragment : Fragment() {
         }
 
         btnSendLogs.setOnClickListener {
-            sendingLogs = true
-            btnSendLogs.isEnabled = false
-            btnSendLogs.text = getString(R.string.send_logs_uploading)
-            val appContext = requireContext().applicationContext
-            viewLifecycleOwner.lifecycleScope.launch {
-                val result = withContext(Dispatchers.IO) { LogUploader.uploadLogs(appContext) }
-                sendingLogs = false
-                btnSendLogs.isEnabled = viewModel.state.value.isOnline
-                btnSendLogs.text = getString(R.string.btn_send_logs)
-                result.onSuccess { id -> showSendLogsSuccessDialog(id) }
-                result.onFailure { error ->
-                    AlertDialog.Builder(requireContext())
-                        .setMessage(getString(R.string.send_logs_failed, error.message ?: error.toString()))
-                        .setPositiveButton(android.R.string.ok, null)
-                        .show()
-                }
-            }
+            showSendLogsDetailsDialog(btnSendLogs)
         }
 
         view.findViewById<Button>(R.id.btn_contact_feedback).setOnClickListener {
@@ -242,5 +227,112 @@ class SettingsFragment : Fragment() {
             }
             .setNegativeButton(android.R.string.ok, null)
             .show()
+    }
+
+    // The "Add more details" checkbox reveals the email/description fields rather than showing
+    // them upfront as optional — a visible-but-optional pair of fields reads as "you should
+    // probably fill this in", which isn't true here. Once checked, though, a support request
+    // needs both fields to pass server-side validation, so Send is blocked until both are
+    // filled. The loading state lives on this dialog's own Send button, not on btnSendLogs
+    // (which only opens the dialog) — btnSendLogs just stays disabled meanwhile so a second
+    // dialog can't be opened mid-upload.
+    private fun showSendLogsDetailsDialog(btnSendLogs: Button) {
+        val dialogView = LayoutInflater.from(requireContext())
+            .inflate(R.layout.dialog_send_logs_details, view as? ViewGroup, false)
+        val cbAddDetails = dialogView.findViewById<CheckBox>(R.id.cb_send_logs_details)
+        val detailsFields = dialogView.findViewById<View>(R.id.layout_send_logs_details_fields)
+        val emailInput = dialogView.findViewById<TextInputLayout>(R.id.input_send_logs_email)
+        val descriptionInput = dialogView.findViewById<TextInputLayout>(R.id.input_send_logs_description)
+        val emailEdit = dialogView.findViewById<TextInputEditText>(R.id.et_send_logs_email)
+        val descriptionEdit = dialogView.findViewById<TextInputEditText>(R.id.et_send_logs_description)
+
+        cbAddDetails.setOnCheckedChangeListener { _, isChecked ->
+            detailsFields.visibility = if (isChecked) View.VISIBLE else View.GONE
+            if (!isChecked) {
+                emailInput.error = null
+                descriptionInput.error = null
+            }
+        }
+
+        val dialog = AlertDialog.Builder(requireContext())
+            .setTitle(R.string.send_logs_details_dialog_title)
+            .setView(dialogView)
+            .setPositiveButton(R.string.btn_send_logs, null)
+            .setNegativeButton(android.R.string.cancel, null)
+            .create()
+
+        dialog.setOnShowListener {
+            val positiveButton = dialog.getButton(AlertDialog.BUTTON_POSITIVE)
+            val negativeButton = dialog.getButton(AlertDialog.BUTTON_NEGATIVE)
+
+            positiveButton.setOnClickListener {
+                val addDetails = cbAddDetails.isChecked
+                val email = if (addDetails) emailEdit.text?.toString()?.trim().orEmpty() else ""
+                val description = if (addDetails) descriptionEdit.text?.toString()?.trim().orEmpty() else ""
+                emailInput.error = null
+                descriptionInput.error = null
+
+                if (addDetails && (email.isEmpty() || description.isEmpty())) {
+                    val requiredError = getString(R.string.send_logs_details_field_required)
+                    if (email.isEmpty()) emailInput.error = requiredError
+                    if (description.isEmpty()) descriptionInput.error = requiredError
+                    return@setOnClickListener
+                }
+
+                sendingLogs = true
+                btnSendLogs.isEnabled = false
+                positiveButton.isEnabled = false
+                negativeButton.isEnabled = false
+                cbAddDetails.isEnabled = false
+                emailEdit.isEnabled = false
+                descriptionEdit.isEnabled = false
+
+                val spinnerSizePx = (18 * resources.displayMetrics.density).toInt()
+                val spinner = CircularProgressDrawable(requireContext()).apply {
+                    setStyle(CircularProgressDrawable.DEFAULT)
+                    setColorSchemeColors(positiveButton.currentTextColor)
+                    setBounds(0, 0, spinnerSizePx, spinnerSizePx)
+                    start()
+                }
+                positiveButton.text = null
+                positiveButton.setCompoundDrawables(spinner, null, null, null)
+
+                val appContext = requireContext().applicationContext
+                viewLifecycleOwner.lifecycleScope.launch {
+                    val result = withContext(Dispatchers.IO) { LogUploader.uploadLogs(appContext) }
+                    sendingLogs = false
+                    btnSendLogs.isEnabled = viewModel.state.value.isOnline
+
+                    result.onSuccess { id ->
+                        if (email.isNotEmpty() && description.isNotEmpty()) {
+                            val submitResult = withContext(Dispatchers.IO) {
+                                LogUploader.submitSupportRequest(appContext, id, email, description)
+                            }
+                            submitResult.onFailure { error ->
+                                SnackbarManager.showMessage(
+                                    getString(
+                                        R.string.send_logs_support_request_failed,
+                                        error.message ?: error.toString()
+                                    ),
+                                    SnackbarDuration.Long
+                                )
+                            }
+                        }
+                        dialog.dismiss()
+                        showSendLogsSuccessDialog(id)
+                    }
+                    result.onFailure { error ->
+                        dialog.dismiss()
+                        AlertDialog.Builder(requireContext())
+                            .setMessage(getString(R.string.send_logs_failed, error.message ?: error.toString()))
+                            .setPositiveButton(android.R.string.ok, null)
+                            .show()
+                    }
+                }
+            }
+        }
+
+        dialog.setCanceledOnTouchOutside(false)
+        dialog.show()
     }
 }
