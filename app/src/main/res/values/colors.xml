@@ -5,6 +5,7 @@
     <color name="secondary">#FFD2A448</color>
     <color name="secondary_dark">#FFB88A30</color>
     <color name="dialog_action">#FFFFD27A</color>
+    <color name="dialog_action_neutral">#FFB0B0B0</color>
     <color name="white">#FFFFFFFF</color>
     <color name="ic_launcher_background">#FF1A1A2E</color>
     <color name="warning_background">#FFF6E8A6</color>
@@ -18,4 +19,5 @@
     <color name="emulator_toggle_background_active">#FFFFD27A</color>
     <color name="emulator_toggle_text_active">#FF1A1400</color>
     <color name="console_header_background">#FFFFFFFF</color>
+    <color name="toggle_button_background_inactive">#FFB0B0B0</color>
 </resources>

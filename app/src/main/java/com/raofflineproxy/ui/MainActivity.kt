@@ -8,6 +8,7 @@ import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import android.provider.DocumentsContract
+import android.util.Log
 import android.view.Menu
 import android.view.MenuItem
 import android.view.LayoutInflater
@@ -35,11 +36,17 @@ import com.raofflineproxy.update.AppUpdateInfo
 import com.raofflineproxy.update.ApkDownloader
 import java.util.ArrayDeque
 import androidx.core.net.toUri
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import com.raofflineproxy.donation.DonationManager
 import com.google.android.material.textfield.TextInputEditText
 import com.google.android.material.textfield.TextInputLayout
+import com.stripe.android.PaymentConfiguration
+import com.stripe.android.paymentsheet.PaymentSheet
+import com.stripe.android.paymentsheet.PaymentSheetResult
 import rikka.shizuku.Shizuku
 
 class MainActivity : AppCompatActivity() {
@@ -58,6 +65,8 @@ class MainActivity : AppCompatActivity() {
     private var activeSafGrantTarget: SafGrantTarget? = null
     private var attemptedGenericAllFilesAccess = false
     private var pendingQuit = false
+    private lateinit var paymentSheet: PaymentSheet
+    private var pendingSubscriptionSync: Pair<String, String>? = null
     private val shizukuPermissionListener = Shizuku.OnRequestPermissionResultListener { requestCode, grantResult ->
         if (requestCode != SHIZUKU_PERMISSION_REQUEST_CODE) return@OnRequestPermissionResultListener
         if (grantResult == PackageManager.PERMISSION_GRANTED) {
@@ -176,6 +185,9 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
+
+        PaymentConfiguration.init(applicationContext, BuildConfig.STRIPE_PUBLISHABLE_KEY)
+        paymentSheet = PaymentSheet.Builder(::onPaymentSheetResult).build(this)
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
             ContextCompat.checkSelfPermission(this, android.Manifest.permission.POST_NOTIFICATIONS)
@@ -457,6 +469,66 @@ class MainActivity : AppCompatActivity() {
 
     fun requestStopProxy() {
         viewModel.stopProxy(treeUri = PrefsConstants.loadSafUri(this))
+    }
+
+    fun presentDonationCheckout(clientSecret: String, customerId: String?, ephemeralKey: String?) {
+        val configuration = PaymentSheet.Configuration.Builder(getString(R.string.app_name))
+            .apply {
+                if (customerId != null && ephemeralKey != null) {
+                    customer(PaymentSheet.CustomerConfiguration(customerId, ephemeralKey))
+                    // Only require an email for recurring donations, so we can identify the
+                    // subscriber (e.g. for receipts) — one-time "buy me a coffee" payments stay
+                    // frictionless and anonymous.
+                    billingDetailsCollectionConfiguration(
+                        PaymentSheet.BillingDetailsCollectionConfiguration(
+                            email = PaymentSheet.BillingDetailsCollectionConfiguration.CollectionMode.Always
+                        )
+                    )
+                }
+            }
+            .build()
+
+        pendingSubscriptionSync = customerId?.let { id ->
+            // clientSecret is "<payment_intent_id>_secret_<...>" — the ID alone is what the
+            // sync-email endpoint needs to look up the confirmed PaymentMethod's billing details.
+            clientSecret.substringBefore("_secret_") to id
+        }
+
+        paymentSheet.presentWithPaymentIntent(clientSecret, configuration)
+    }
+
+    private fun onPaymentSheetResult(result: PaymentSheetResult) {
+        val subscriptionSync = pendingSubscriptionSync
+        pendingSubscriptionSync = null
+
+        when (result) {
+            is PaymentSheetResult.Completed -> {
+                // Whichever payment method the user picked, sync whatever email PaymentSheet
+                // collected back onto the Stripe Customer — best-effort, doesn't block the
+                // thank-you dialog.
+                subscriptionSync?.let { (paymentIntentId, customerId) ->
+                    lifecycleScope.launch {
+                        withContext(Dispatchers.IO) {
+                            DonationManager.syncCustomerEmail(paymentIntentId, customerId)
+                        }
+                    }
+                }
+                showDonationOutcomeDialog(R.string.donation_success_title, R.string.donation_success_message)
+            }
+            is PaymentSheetResult.Canceled -> Unit
+            is PaymentSheetResult.Failed -> {
+                Log.e("RAProxy/Donation", "PaymentSheet failed", result.error)
+                showDonationOutcomeDialog(R.string.support_dialog_title, R.string.donation_error_message)
+            }
+        }
+    }
+
+    private fun showDonationOutcomeDialog(titleRes: Int, messageRes: Int) {
+        AlertDialog.Builder(this)
+            .setTitle(titleRes)
+            .setMessage(messageRes)
+            .setPositiveButton(android.R.string.ok, null)
+            .show()
     }
 
     private fun quitApp() {

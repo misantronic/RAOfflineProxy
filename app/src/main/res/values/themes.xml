@@ -16,12 +16,20 @@
 
     <style name="ThemeOverlay.RAOfflineProxy.AlertDialog" parent="ThemeOverlay.MaterialComponents.MaterialAlertDialog">
         <item name="buttonBarPositiveButtonStyle">@style/Widget.RAOfflineProxy.AlertDialog.Button</item>
-        <item name="buttonBarNegativeButtonStyle">@style/Widget.RAOfflineProxy.AlertDialog.Button</item>
+        <item name="buttonBarNegativeButtonStyle">@style/Widget.RAOfflineProxy.AlertDialog.Button.Neutral</item>
         <item name="buttonBarNeutralButtonStyle">@style/Widget.RAOfflineProxy.AlertDialog.Button</item>
+        <!-- Title panel and message-body panel both derive their horizontal padding from this
+             single attribute, so overriding it here keeps them aligned with each other and with
+             our custom setView() dialog layouts, which use the same 16dp padding. -->
+        <item name="dialogPreferredPadding">16dp</item>
     </style>
 
     <style name="Widget.RAOfflineProxy.AlertDialog.Button" parent="Widget.AppCompat.Button.ButtonBar.AlertDialog">
         <item name="android:textColor">@color/dialog_action</item>
+    </style>
+
+    <style name="Widget.RAOfflineProxy.AlertDialog.Button.Neutral" parent="Widget.AppCompat.Button.ButtonBar.AlertDialog">
+        <item name="android:textColor">@color/dialog_action_neutral</item>
     </style>
 
     <style name="Widget.RAOfflineProxy.SnackbarText" parent="Widget.MaterialComponents.Snackbar.TextView">

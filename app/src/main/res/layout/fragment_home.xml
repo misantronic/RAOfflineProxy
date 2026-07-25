@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <androidx.core.widget.NestedScrollView
     xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent">
 
@@ -8,7 +9,10 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:padding="24dp">
+        android:paddingStart="24dp"
+        android:paddingTop="24dp"
+        android:paddingEnd="16dp"
+        android:paddingBottom="24dp">
 
         <TextView
             android:id="@+id/tv_token_warning"
@@ -24,7 +28,8 @@
             android:textStyle="bold"
             android:visibility="gone" />
 
-        <!-- Logo top-left, description text floats to its right and wraps below -->
+        <!-- Logo top-left, description text floats to its right and wraps below, support
+             button pinned to the top-right corner of this block -->
         <RelativeLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -41,12 +46,41 @@
                 android:scaleType="fitCenter"
                 android:contentDescription="@string/app_name" />
 
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btn_support_development"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_alignParentTop="true"
+                android:layout_alignParentEnd="true"
+                android:insetLeft="0dp"
+                android:insetRight="0dp"
+                android:insetTop="0dp"
+                android:insetBottom="0dp"
+                android:minWidth="0dp"
+                android:minHeight="0dp"
+                android:paddingStart="16dp"
+                android:paddingEnd="16dp"
+                android:paddingTop="8dp"
+                android:paddingBottom="8dp"
+                android:layout_marginTop="12dp"
+                android:gravity="center"
+                android:textSize="14sp"
+                android:textColor="@android:color/black"
+                android:textAllCaps="true"
+                app:backgroundTint="@color/white"
+                app:cornerRadius="20dp"
+                app:elevation="4dp"
+                app:rippleColor="@color/primary"
+                android:text="@string/btn_support_development" />
+
             <TextView
                 android:id="@+id/tv_home_description"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_toEndOf="@id/iv_logo"
+                android:layout_toStartOf="@id/btn_support_development"
                 android:layout_alignParentTop="true"
+                android:layout_marginEnd="8dp"
                 android:gravity="top"
                 android:textSize="14sp"
                 android:lineSpacingMultiplier="1.4"
@@ -79,85 +113,38 @@
             android:textStyle="bold"
             android:visibility="gone" />
 
-        <com.raofflineproxy.ui.WrappingLayout
-            android:id="@+id/layout_emulator_toggles"
-            android:layout_width="match_parent"
+        <LinearLayout
+            android:id="@+id/layout_emulator_selector"
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginBottom="8dp"
+            android:background="@drawable/bg_emulator_selector_trigger"
+            android:clickable="true"
+            android:focusable="true"
+            android:contentDescription="@string/emulator_selector_cd"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingStart="10dp"
+            android:paddingTop="8dp"
+            android:paddingEnd="10dp"
+            android:paddingBottom="8dp"
             android:visibility="gone">
 
-            <include
-                android:id="@+id/layout_retroarch_toggle"
+            <LinearLayout
+                android:id="@+id/layout_enabled_emulator_icons"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginEnd="8dp"
-                android:layout_marginBottom="8dp"
-                android:visibility="gone"
-                layout="@layout/view_emulator_toggle" />
+                android:orientation="horizontal" />
 
-            <include
-                android:id="@+id/layout_dolphin_toggle"
+            <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginEnd="8dp"
-                android:layout_marginBottom="8dp"
-                android:visibility="gone"
-                layout="@layout/view_emulator_toggle" />
+                android:layout_marginStart="8dp"
+                android:text="@string/emulator_selector_caret"
+                android:textColor="@color/emulator_toggle_text_active"
+                android:textStyle="bold" />
 
-            <include
-                android:id="@+id/layout_ppsspp_toggle"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginEnd="8dp"
-                android:layout_marginBottom="8dp"
-                android:visibility="gone"
-                layout="@layout/view_emulator_toggle" />
-
-            <include
-                android:id="@+id/layout_armsx2_toggle"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginEnd="8dp"
-                android:layout_marginBottom="8dp"
-                android:visibility="gone"
-                layout="@layout/view_emulator_toggle" />
-
-            <include
-                android:id="@+id/layout_flycast_toggle"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginEnd="8dp"
-                android:layout_marginBottom="8dp"
-                android:visibility="gone"
-                layout="@layout/view_emulator_toggle" />
-
-            <include
-                android:id="@+id/layout_melondualds_toggle"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginEnd="8dp"
-                android:layout_marginBottom="8dp"
-                android:visibility="gone"
-                layout="@layout/view_emulator_toggle" />
-
-            <include
-                android:id="@+id/layout_mupen64_toggle"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginEnd="8dp"
-                android:layout_marginBottom="8dp"
-                android:visibility="gone"
-                layout="@layout/view_emulator_toggle" />
-
-            <include
-                android:id="@+id/layout_emucorex_toggle"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginEnd="8dp"
-                android:layout_marginBottom="8dp"
-                android:visibility="gone"
-                layout="@layout/view_emulator_toggle" />
-        </com.raofflineproxy.ui.WrappingLayout>
+        </LinearLayout>
 
         <TextView
             android:id="@+id/tv_shizuku_info"

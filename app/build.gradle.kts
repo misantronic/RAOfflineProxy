@@ -11,6 +11,11 @@ val keystoreProperties = Properties().also { props ->
     if (propsFile.exists()) props.load(propsFile.inputStream())
 }
 
+val localProperties = Properties().also { props ->
+    val propsFile = rootProject.file("local.properties")
+    if (propsFile.exists()) props.load(propsFile.inputStream())
+}
+
 android {
     namespace = "com.raofflineproxy"
     compileSdk = 36
@@ -21,6 +26,12 @@ android {
         targetSdk = 36
         versionCode = 24
         versionName = "1.8.0-alpha1"
+
+        buildConfigField(
+            "String",
+            "STRIPE_PUBLISHABLE_KEY",
+            "\"${localProperties.getProperty("STRIPE_PUBLISHABLE_KEY", "")}\""
+        )
     }
 
     signingConfigs {
@@ -38,6 +49,12 @@ android {
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             signingConfig = signingConfigs.getByName("release")
+
+            buildConfigField(
+                "String",
+                "STRIPE_PUBLISHABLE_KEY",
+                "\"${localProperties.getProperty("STRIPE_PUBLISHABLE_KEY_LIVE", "")}\""
+            )
         }
     }
 
@@ -99,6 +116,8 @@ dependencies {
     ksp(libs.room.compiler)
     implementation(libs.okhttp)
     implementation(libs.coroutines.android)
+    implementation(libs.stripe.android)
+    implementation(libs.swiperefreshlayout)
     implementation(libs.coil)
     implementation(libs.documentfile)
     implementation(libs.recyclerview)
