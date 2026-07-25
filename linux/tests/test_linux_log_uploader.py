@@ -344,6 +344,30 @@ class LinuxLogUploaderTests(unittest.TestCase):
         with mock.patch.object(log_uploader, "_hardware_device_label", return_value="Anbernic RG35XX Plus"):
             self.assertEqual(log_uploader._device_label("Knulli"), "Anbernic RG35XX Plus")
 
+    def test_muos_device_label_reads_board_name_uppercased(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            path = Path(tmp_dir) / "name"
+            path.write_text("rg40xx-h\n", encoding="utf-8")
+
+            with mock.patch.object(log_uploader, "MUOS_BOARD_NAME_FILE", path):
+                self.assertEqual(log_uploader._muos_device_label(), "RG40XX-H")
+
+    def test_muos_device_label_returns_none_when_file_missing(self) -> None:
+        with mock.patch.object(log_uploader, "MUOS_BOARD_NAME_FILE", Path("/nonexistent")):
+            self.assertIsNone(log_uploader._muos_device_label())
+
+    def test_device_label_routes_muos_to_board_name_file(self) -> None:
+        with ExitStack() as stack:
+            stack.enter_context(mock.patch.object(log_uploader, "_muos_device_label", return_value="RG40XX-H"))
+            stack.enter_context(mock.patch.object(log_uploader, "_hardware_device_label", return_value="sun50iw9"))
+            self.assertEqual(log_uploader._device_label("muOS"), "RG40XX-H")
+
+    def test_device_label_falls_back_to_hardware_probe_when_muos_board_name_missing(self) -> None:
+        with ExitStack() as stack:
+            stack.enter_context(mock.patch.object(log_uploader, "_muos_device_label", return_value=None))
+            stack.enter_context(mock.patch.object(log_uploader, "_hardware_device_label", return_value="sun50iw9"))
+            self.assertEqual(log_uploader._device_label("muOS"), "sun50iw9")
+
 
 if __name__ == "__main__":
     unittest.main()

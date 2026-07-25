@@ -29,6 +29,10 @@ ONION_DEVICE_MODEL_FILE = Path("/tmp/deviceModel")
 # untruncated file (version + build date + time) is what Knulli's own knulli-report-stats tool
 # reads instead.
 KNULLI_VERSION_FILE = Path("/usr/share/knulli/knulli.version")
+# muOS's own board/name config value (confirmed on real hardware — see MustardOS/internal's
+# script/var/func.sh GET_VAR "device" "board/name"). Its devicetree model property only holds
+# the bare SoC codename (e.g. "sun50iw9"), not a useful device label.
+MUOS_BOARD_NAME_FILE = Path("/opt/muos/device/config/board/name")
 # The standard Linux hardware-identity files (ARM devicetree, x86 DMI) — the same pair
 # ROCKNIX's own rocknix-info script uses to label the device, not Onion-specific.
 DEVICETREE_MODEL_FILE = Path("/sys/firmware/devicetree/base/model")
@@ -162,6 +166,13 @@ def _knulli_os_version() -> str | None:
     return _read_stripped(KNULLI_VERSION_FILE)
 
 
+def _muos_device_label() -> str | None:
+    # e.g. "rg40xx-h" -> "RG40XX-H" — muOS's own device/build-target slug, not a marketing name,
+    # but the closest thing available and far more useful than the bare SoC codename.
+    raw = _read_stripped(MUOS_BOARD_NAME_FILE)
+    return raw.upper() if raw else None
+
+
 def _hardware_device_label(fallback: str) -> str:
     # Same pair ROCKNIX's own rocknix-info script uses to label the device: devicetree model
     # on ARM boards, DMI vendor+product on x86. Both are the OS's own self-reported hardware
@@ -178,6 +189,8 @@ def _hardware_device_label(fallback: str) -> str:
 def _device_label(platform: str) -> str:
     if platform == "Onion":
         return _onion_device_label()
+    if platform == "muOS":
+        return _muos_device_label() or _hardware_device_label(platform)
     return _hardware_device_label(platform)
 
 
