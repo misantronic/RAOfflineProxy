@@ -128,7 +128,11 @@ class LinuxLogUploaderTests(unittest.TestCase):
             stack.enter_context(mock.patch.object(log_uploader, "_device_label", return_value="Knulli"))
             stack.enter_context(mock.patch.object(log_uploader, "_os_version_value", return_value=None))
             stack.enter_context(mock.patch.object(log_uploader.config, "APP_VERSION", "1.8.0-alpha1"))
-            stack.enter_context(mock.patch.object(log_uploader.state, "load_patch_state", return_value={"cfg_path": "x"}))
+            stack.enter_context(mock.patch.object(log_uploader.config, "load_config", return_value={}))
+            stack.enter_context(
+                mock.patch.object(log_uploader.retroarch_cfg, "is_retroarch_patched", return_value=True)
+            )
+            stack.enter_context(mock.patch.object(log_uploader.ppsspp_cfg, "is_ppsspp_patched", return_value=False))
 
             metadata = log_uploader._upload_metadata()
 
@@ -148,7 +152,11 @@ class LinuxLogUploaderTests(unittest.TestCase):
             stack.enter_context(mock.patch.object(log_uploader, "_platform_label", return_value="ROCKNIX"))
             stack.enter_context(mock.patch.object(log_uploader, "_device_label", return_value="ROCKNIX"))
             stack.enter_context(mock.patch.object(log_uploader.config, "APP_VERSION", "1.8.0-alpha1"))
-            stack.enter_context(mock.patch.object(log_uploader.state, "load_patch_state", return_value=None))
+            stack.enter_context(mock.patch.object(log_uploader.config, "load_config", return_value={}))
+            stack.enter_context(
+                mock.patch.object(log_uploader.retroarch_cfg, "is_retroarch_patched", return_value=False)
+            )
+            stack.enter_context(mock.patch.object(log_uploader.ppsspp_cfg, "is_ppsspp_patched", return_value=False))
             os_release = mock.patch.object(
                 log_uploader,
                 "_os_release_field",
@@ -167,7 +175,11 @@ class LinuxLogUploaderTests(unittest.TestCase):
             stack.enter_context(mock.patch.object(log_uploader, "_onion_os_version", return_value="v4.4.0-beta"))
             stack.enter_context(mock.patch.object(log_uploader, "_device_label", return_value="Onion"))
             stack.enter_context(mock.patch.object(log_uploader.config, "APP_VERSION", "1.8.0-alpha1"))
-            stack.enter_context(mock.patch.object(log_uploader.state, "load_patch_state", return_value=None))
+            stack.enter_context(mock.patch.object(log_uploader.config, "load_config", return_value={}))
+            stack.enter_context(
+                mock.patch.object(log_uploader.retroarch_cfg, "is_retroarch_patched", return_value=False)
+            )
+            stack.enter_context(mock.patch.object(log_uploader.ppsspp_cfg, "is_ppsspp_patched", return_value=False))
 
             metadata = log_uploader._upload_metadata()
 
@@ -175,6 +187,38 @@ class LinuxLogUploaderTests(unittest.TestCase):
             self.assertEqual(metadata["os"], "Onion")
             self.assertEqual(metadata["os_version"], "v4.4.0-beta")
             self.assertEqual(metadata["device"], "Onion")
+
+    def test_upload_metadata_includes_ppsspp_when_patched(self) -> None:
+        with ExitStack() as stack:
+            stack.enter_context(mock.patch.object(log_uploader, "_platform_label", return_value="ROCKNIX"))
+            stack.enter_context(mock.patch.object(log_uploader, "_device_label", return_value="ROCKNIX"))
+            stack.enter_context(mock.patch.object(log_uploader, "_os_version_value", return_value=None))
+            stack.enter_context(mock.patch.object(log_uploader.config, "APP_VERSION", "1.8.0-alpha1"))
+            stack.enter_context(mock.patch.object(log_uploader.config, "load_config", return_value={}))
+            stack.enter_context(
+                mock.patch.object(log_uploader.retroarch_cfg, "is_retroarch_patched", return_value=False)
+            )
+            stack.enter_context(mock.patch.object(log_uploader.ppsspp_cfg, "is_ppsspp_patched", return_value=True))
+
+            metadata = log_uploader._upload_metadata()
+
+            self.assertEqual(metadata["emulator"], ["PPSSPP"])
+
+    def test_upload_metadata_includes_both_emulators_when_both_patched(self) -> None:
+        with ExitStack() as stack:
+            stack.enter_context(mock.patch.object(log_uploader, "_platform_label", return_value="ROCKNIX"))
+            stack.enter_context(mock.patch.object(log_uploader, "_device_label", return_value="ROCKNIX"))
+            stack.enter_context(mock.patch.object(log_uploader, "_os_version_value", return_value=None))
+            stack.enter_context(mock.patch.object(log_uploader.config, "APP_VERSION", "1.8.0-alpha1"))
+            stack.enter_context(mock.patch.object(log_uploader.config, "load_config", return_value={}))
+            stack.enter_context(
+                mock.patch.object(log_uploader.retroarch_cfg, "is_retroarch_patched", return_value=True)
+            )
+            stack.enter_context(mock.patch.object(log_uploader.ppsspp_cfg, "is_ppsspp_patched", return_value=True))
+
+            metadata = log_uploader._upload_metadata()
+
+            self.assertEqual(metadata["emulator"], ["RetroArch", "PPSSPP"])
 
     def test_read_stripped_trims_whitespace(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -252,7 +296,11 @@ class LinuxLogUploaderTests(unittest.TestCase):
             stack.enter_context(mock.patch.object(log_uploader, "_device_label", return_value="Anbernic RG35XX Plus"))
             stack.enter_context(mock.patch.object(log_uploader, "_os_version_value", return_value="42 2025/05/24 18:15:00"))
             stack.enter_context(mock.patch.object(log_uploader.config, "APP_VERSION", "1.8.0-alpha1"))
-            stack.enter_context(mock.patch.object(log_uploader.state, "load_patch_state", return_value=None))
+            stack.enter_context(mock.patch.object(log_uploader.config, "load_config", return_value={}))
+            stack.enter_context(
+                mock.patch.object(log_uploader.retroarch_cfg, "is_retroarch_patched", return_value=False)
+            )
+            stack.enter_context(mock.patch.object(log_uploader.ppsspp_cfg, "is_ppsspp_patched", return_value=False))
 
             metadata = log_uploader._upload_metadata()
 

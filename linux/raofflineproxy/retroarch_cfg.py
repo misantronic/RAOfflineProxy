@@ -139,6 +139,18 @@ def is_patched_content(content: str, proxy_address: str) -> bool:
     return _extract_config_value(content, HOST_KEY) == proxy_address
 
 
+def is_retroarch_patched(cfg_path: str, config_data: dict) -> bool:
+    """Read-only, ground-truth check: reads the cfg directly rather than trusting
+    state.load_patch_state(), which only tells you a patch was applied at some point in the
+    past — it goes stale if revert_retroarch_cfg() never ran (crash, manual edit, etc.)."""
+    target = Path(cfg_path)
+    if not target.exists():
+        return False
+
+    content = target.read_text(encoding="utf-8", errors="replace")
+    return is_patched_content(content, proxy_value(config_data))
+
+
 def build_patched_content(content: str, proxy_address: str) -> str:
     sanitized = _remove_orphan_boolean_lines(content)
     with_host = _upsert_config_value(sanitized, HOST_KEY, proxy_address)

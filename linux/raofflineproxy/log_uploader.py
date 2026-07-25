@@ -8,7 +8,7 @@ import urllib.request
 import zipfile
 from pathlib import Path
 
-from . import config, state
+from . import config, ppsspp_cfg, retroarch_cfg
 from .network import configured_ssl_context
 from .utils import redact_query_tokens
 
@@ -211,8 +211,16 @@ def _upload_metadata() -> dict[str, str | list[str]]:
     }
     if version_value:
         metadata["os_version"] = version_value
-    if state.load_patch_state() is not None:
-        metadata["emulator"] = ["RetroArch"]
+
+    config_data = config.load_config()
+    emulators: list[str] = []
+    if retroarch_cfg.is_retroarch_patched(config.detect_retroarch_cfg(), config_data):
+        emulators.append("RetroArch")
+    if ppsspp_cfg.is_ppsspp_patched(config_data):
+        emulators.append("PPSSPP")
+    if emulators:
+        metadata["emulator"] = emulators
+
     return metadata
 
 

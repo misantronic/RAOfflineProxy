@@ -9,6 +9,23 @@ HOST_KEY = "AchievementsHost"
 CHALLENGE_MODE_KEY = "AchievementsChallengeMode"
 
 
+def is_ppsspp_patched(config_data: dict) -> bool:
+    """Read-only check, unlike patch_ppsspp_ini() which writes. PPSSPP has no persisted
+    patch-state file (unlike RetroArch's state.load_patch_state()), so this reads the ini
+    directly — same idempotency check patch_ppsspp_ini() does internally to decide whether a
+    rewrite is needed."""
+    ini_path = detect_ppsspp_ini(config_data)
+    if ini_path is None:
+        return False
+
+    target = Path(ini_path)
+    if not target.exists():
+        return False
+
+    content = target.read_text(encoding="utf-8", errors="replace")
+    return _extract_achievements_value(content, HOST_KEY) == proxy_value(config_data)
+
+
 def patch_ppsspp_ini(config_data: dict) -> dict:
     ini_path = detect_ppsspp_ini(config_data)
     if ini_path is None:
