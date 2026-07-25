@@ -47,6 +47,8 @@ GitHub issue reports are also welcome at [github.com/misantronic/RAOfflineProxy/
 
 [![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/M4M81YDHD4)
 
+You can also [donate via Stripe](https://raofflineproxy.com/donate.html) (one-time or monthly).
+
 ## License
 
 Released under the [GNU GENERAL PUBLIC License](LICENSE).
