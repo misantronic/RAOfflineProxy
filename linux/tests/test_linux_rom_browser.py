@@ -226,6 +226,27 @@ class LinuxRomBrowserTests(unittest.TestCase):
             finally:
                 platform.DEFAULT_ONION_ROMS_ROOT = original_onion_root
 
+    def test_resolve_rom_root_ignores_stale_rgui_browser_directory(self) -> None:
+        # RetroArch persists rgui_browser_directory as wherever its own file
+        # browser was last pointed (e.g. a themes folder), not the ROM
+        # library location, so resolve_rom_root must not treat it as one.
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            cfg_path = root / "retroarch.cfg"
+            stale_browser_dir = root / "themes"
+            stale_browser_dir.mkdir()
+            content_dir = root / "roms"
+            content_dir.mkdir()
+            cfg_path.write_text(
+                f'rgui_browser_directory = "{stale_browser_dir}"\n'
+                f'content_directory = "{content_dir}"\n',
+                encoding="utf-8",
+            )
+
+            resolved = platform.resolve_rom_root({"retroarch_cfg": str(cfg_path)})
+
+            self.assertEqual(resolved, content_dir)
+
     @unittest.skipUnless(
         _NATIVE_HASH_AVAILABLE, "native libraproxy_rchash not loadable on this host"
     )

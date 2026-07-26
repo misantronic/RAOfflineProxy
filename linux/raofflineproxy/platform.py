@@ -22,7 +22,6 @@ ROCKNIX_MODULES_DIR = Path("/storage/.config/modules")
 ROCKNIX_MODULES_LAUNCHER = ROCKNIX_MODULES_DIR / "RAOfflineProxy.sh"
 ROCKNIX_TOOL_SOURCE = Path("/storage/.local/share/raofflineproxy/RAOfflineProxy.sh")
 ROM_DIRECTORY_KEYS = [
-    "rgui_browser_directory",
     "content_directory",
 ]
 AUTOSTART_SENTINEL_START = "# RAOfflineProxy autostart start"
@@ -38,6 +37,10 @@ def resolve_rom_root(config_data: dict) -> Path:
     if DEFAULT_MUOS_ROMS_ROOT.exists() and DEFAULT_MUOS_ROMS_ROOT.is_dir():
         return DEFAULT_MUOS_ROMS_ROOT
 
+    # rgui_browser_directory deliberately isn't consulted here: RetroArch
+    # overwrites it with wherever its own file browser was last pointed,
+    # including non-ROM folders (e.g. a themes directory), so using it as a
+    # stand-in for the ROM library silently redirects the browser there.
     cfg_path = Path(resolve_retroarch_cfg(config_data))
     values = read_retroarch_cfg_values(cfg_path)
     for key in ROM_DIRECTORY_KEYS:
