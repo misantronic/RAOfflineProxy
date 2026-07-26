@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from collections.abc import Sequence
 from pathlib import Path
 import socket
@@ -15,7 +16,16 @@ from urllib.parse import urlsplit
 from . import cache_keys
 from .auth import resolve_credentials
 from .award_signing import sign_award
-from .config import FALLBACK_USER_AGENT, RA_MEDIA_HOST, image_caching_enabled, proxy_host, proxy_port, upstream_host
+from .config import (
+    DATABASE_FILE,
+    FALLBACK_USER_AGENT,
+    LOG_FILE,
+    RA_MEDIA_HOST,
+    image_caching_enabled,
+    proxy_host,
+    proxy_port,
+    upstream_host,
+)
 from .flusher import flush_pending_awards
 from .image_cache import (
     IMAGE_PATH_PREFIXES,
@@ -901,12 +911,33 @@ class ProxyRuntimeServer(ThreadingTCPServer):
             }
 
 
+def _capture_file_inodes(paths: list[Path]) -> dict[Path, int]:
+    inodes: dict[Path, int] = {}
+    for path in paths:
+        try:
+            inodes[path] = path.stat().st_ino
+        except OSError:
+            continue
+    return inodes
+
+
+def _files_replaced_underneath(inodes: dict[Path, int]) -> bool:
+    for path, inode in inodes.items():
+        try:
+            if path.stat().st_ino != inode:
+                return True
+        except OSError:
+            return True
+    return False
+
+
 class ConnectivityMonitor(threading.Thread):
     def __init__(self, server: ProxyRuntimeServer, interval_seconds: int = 15):
         super().__init__(daemon=True)
         self.server = server
         self.interval_seconds = interval_seconds
         self.stop_event = threading.Event()
+        self.watched_inodes = _capture_file_inodes([LOG_FILE, DATABASE_FILE])
 
     def stop(self) -> None:
         self.stop_event.set()
@@ -915,6 +946,13 @@ class ConnectivityMonitor(threading.Thread):
         was_online = self.server.refresh_reachability(force_probe=True)
         save_online_state(was_online)
         while not self.stop_event.wait(self.interval_seconds):
+            if self.watched_inodes and _files_replaced_underneath(self.watched_inodes):
+                # A reinstall deleted our log/database out from under this
+                # process while it kept them open; exit so the next
+                # "start proxy" spawns a fresh process against current files
+                # instead of silently running as an invisible orphan.
+                LOGGER.error("Data files were deleted or replaced underneath this process; exiting")
+                os._exit(1)
             is_online = self.server.refresh_reachability(force_probe=True)
             if is_online and not was_online:
                 LOGGER.info("Connectivity restored; attempting flush")

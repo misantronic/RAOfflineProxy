@@ -8,7 +8,7 @@ import subprocess
 import sys
 import time
 
-from .config import CONFIG_DIR, LOG_FILE, configure_logging
+from .config import CONFIG_DIR, DATABASE_FILE, LOG_FILE, configure_logging
 from .proxy_service import run_proxy_service
 from .state import (
     clear_pid,
@@ -44,6 +44,27 @@ def process_matches_service(pid: int) -> bool:
     command = _proc_command_line(pid)
     if command:
         return any(marker in command for marker in SERVICE_COMMAND_MARKERS)
+    return False
+
+
+def process_is_orphaned(pid: int) -> bool:
+    """True if the process still has our log/database files open by fd, but
+    the paths were deleted (e.g. by a reinstall that removed the app folder
+    while this process — from the previous install — was still running)."""
+    fd_dir = Path("/proc") / str(pid) / "fd"
+    watched = (str(LOG_FILE), str(DATABASE_FILE))
+    try:
+        fd_entries = list(fd_dir.iterdir())
+    except OSError:
+        return False
+
+    for fd_entry in fd_entries:
+        try:
+            target = os.readlink(fd_entry)
+        except OSError:
+            continue
+        if target.endswith(" (deleted)") and target[: -len(" (deleted)")] in watched:
+            return True
     return False
 
 
@@ -162,12 +183,36 @@ def save_running_service_state(
     )
 
 
+def _kill_orphaned_pid(pid: int, timeout_seconds: int = 5) -> None:
+    try:
+        os.kill(pid, signal.SIGTERM)
+    except OSError:
+        return
+
+    deadline = time.time() + timeout_seconds
+    while time.time() < deadline and not process_has_exited(pid):
+        time.sleep(0.25)
+
+    if not process_has_exited(pid):
+        try:
+            os.kill(pid, signal.SIGKILL)
+        except OSError:
+            pass
+
+
 def start_service_process(config_data: dict) -> dict:
-    existing_pids = discover_service_pids()
-    if existing_pids:
-        pid = existing_pids[0]
+    discovered_pids = discover_service_pids()
+    healthy_pids = [pid for pid in discovered_pids if not process_is_orphaned(pid)]
+    if healthy_pids:
+        pid = healthy_pids[0]
         save_running_service_state(pid, config_data)
-        return {"started": False, "already_running": True, "pid": pid, "pids": existing_pids}
+        return {"started": False, "already_running": True, "pid": pid, "pids": healthy_pids}
+
+    for orphaned_pid in discovered_pids:
+        _kill_orphaned_pid(orphaned_pid)
+    if discovered_pids:
+        clear_pid()
+        clear_service_status()
 
     LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
     with LOG_FILE.open("a", encoding="utf-8") as log_handle:
