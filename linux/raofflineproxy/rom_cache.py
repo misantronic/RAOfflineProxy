@@ -39,24 +39,6 @@ def filter_warning_achievement_ids(ids: list[int]) -> list[int]:
 def filter_warning_achievement_definitions(payload: dict) -> dict:
     filtered_payload = json.loads(json.dumps(payload))
 
-    patch_data = filtered_payload.get("PatchData")
-    if isinstance(patch_data, dict):
-        achievements = patch_data.get("Achievements")
-        if isinstance(achievements, list):
-            patch_data["Achievements"] = [
-                achievement
-                for achievement in achievements
-                if isinstance(achievement, dict)
-                and achievement.get("Flags", RC_ACHIEVEMENT_FLAG_CORE) == RC_ACHIEVEMENT_FLAG_CORE
-            ]
-        elif isinstance(achievements, dict):
-            patch_data["Achievements"] = {
-                key: achievement
-                for key, achievement in achievements.items()
-                if isinstance(achievement, dict)
-                and achievement.get("Flags", RC_ACHIEVEMENT_FLAG_CORE) == RC_ACHIEVEMENT_FLAG_CORE
-            }
-
     sets = filtered_payload.get("Sets")
     if isinstance(sets, list):
         for achievement_set in sets:
@@ -73,6 +55,34 @@ def filter_warning_achievement_definitions(payload: dict) -> dict:
                 if isinstance(achievement, dict)
                 and achievement.get("Flags", RC_ACHIEVEMENT_FLAG_CORE) == RC_ACHIEVEMENT_FLAG_CORE
             ]
+
+    return filtered_payload
+
+
+def filter_warning_achievement_from_patch_payload(payload: dict) -> dict:
+    # Legacy "patch" responses don't reliably flag official vs. unofficial
+    # achievements the way "achievementsets" does, so only the synthetic
+    # warning achievement is stripped here — filtering by Flags would also
+    # drop legitimate achievement sets (e.g. homebrew/test-kit ROMs).
+    filtered_payload = json.loads(json.dumps(payload))
+
+    patch_data = filtered_payload.get("PatchData")
+    if isinstance(patch_data, dict):
+        achievements = patch_data.get("Achievements")
+        if isinstance(achievements, list):
+            patch_data["Achievements"] = [
+                achievement
+                for achievement in achievements
+                if isinstance(achievement, dict)
+                and achievement.get("ID") != WARNING_ACHIEVEMENT_ID
+            ]
+        elif isinstance(achievements, dict):
+            patch_data["Achievements"] = {
+                key: achievement
+                for key, achievement in achievements.items()
+                if isinstance(achievement, dict)
+                and achievement.get("ID") != WARNING_ACHIEVEMENT_ID
+            }
 
     return filtered_payload
 
@@ -101,6 +111,8 @@ def filter_warning_achievements_for_action(action: str | None, response_body: st
         payload = filter_warning_achievement_from_unlocks_payload(payload)
     elif action == "startsession":
         payload = filter_warning_achievement_from_start_session_payload(payload)
+    elif action == "patch":
+        payload = filter_warning_achievement_from_patch_payload(payload)
     else:
         payload = filter_warning_achievement_definitions(payload)
     return json.dumps(payload, separators=(",", ":"))
@@ -149,7 +161,7 @@ def refresh_game_patch(
     if not payload.get("Success"):
         raise CacheGameError(api_error_message("patch", payload))
 
-    payload = filter_warning_achievement_definitions(payload)
+    payload = filter_warning_achievement_from_patch_payload(payload)
     response_body = json.dumps(payload, separators=(",", ":"))
 
     storage.upsert_cache(cache_keys.patch(game_id, credentials["user"]), response_body)
