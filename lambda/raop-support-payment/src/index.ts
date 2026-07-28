@@ -619,14 +619,18 @@ async function linkRaUsernameFromCheckoutSession(session: Stripe.Checkout.Sessio
 async function notifyDiscordOfDonation(paymentIntent: Stripe.PaymentIntent): Promise<void> {
     const stripe = await getStripeClient();
 
-    // A PaymentIntent tied to an Invoice came from a subscription (our monthly donations,
-    // whether the first payment or a later renewal); one without is always one-time. This API
-    // version puts that reference at payment_details.order_reference (an "in_..." invoice id)
+    // A PaymentIntent can be tied to an Invoice for two different reasons: a subscription
+    // (our monthly donations) or the one-time email-invoice fallback (sendStripeHostedInvoice,
+    // which also bills through a real Stripe Invoice). So the mere presence of an invoice isn't
+    // enough — only one whose parent is a subscription is actually recurring. This API version
+    // puts the invoice reference at payment_details.order_reference (an "in_..." invoice id)
     // rather than a top-level `invoice` field — confirmed against a real subscription payment;
     // neither field is in the installed SDK's types.
-    const isMonthly = Boolean(
-        (paymentIntent as unknown as { payment_details?: { order_reference?: string | null } }).payment_details?.order_reference
-    );
+    const orderReference = (paymentIntent as unknown as { payment_details?: { order_reference?: string | null } })
+        .payment_details?.order_reference;
+    const isMonthly = orderReference
+        ? Boolean((await stripe.invoices.retrieve(orderReference)).parent?.subscription_details)
+        : false;
 
     let email = paymentIntent.receipt_email ?? undefined;
     if (!email) {
