@@ -27,10 +27,13 @@ android {
         versionCode = 25
         versionName = "1.9.0-alpha1"
 
+        // The backend (lambda/raop-support-payment) is a single shared live instance, not
+        // separate dev/prod ones, so every build type needs the live publishable key to match
+        // the live client secrets it issues — a debug build with the test key can't check out.
         buildConfigField(
             "String",
             "STRIPE_PUBLISHABLE_KEY",
-            "\"${localProperties.getProperty("STRIPE_PUBLISHABLE_KEY", "")}\""
+            "\"${localProperties.getProperty("STRIPE_PUBLISHABLE_KEY_LIVE", "")}\""
         )
     }
 
@@ -49,12 +52,6 @@ android {
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             signingConfig = signingConfigs.getByName("release")
-
-            buildConfigField(
-                "String",
-                "STRIPE_PUBLISHABLE_KEY",
-                "\"${localProperties.getProperty("STRIPE_PUBLISHABLE_KEY_LIVE", "")}\""
-            )
         }
     }
 
