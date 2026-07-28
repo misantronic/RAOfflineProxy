@@ -576,12 +576,32 @@ async function handleStripeWebhook(event: any): Promise<any> {
     // keep retrying delivery — we only subscribed to specific event types when creating the
     // endpoint, but staying tolerant here avoids breakage if that ever changes.
     if (stripeEvent.type === 'payment_intent.succeeded') {
+        const paymentIntent = stripeEvent.data.object as Stripe.PaymentIntent;
+        let details: DonationDetails | null = null;
         try {
-            await notifyDiscordOfDonation(stripeEvent.data.object as Stripe.PaymentIntent);
+            details = await getDonationDetails(paymentIntent);
         } catch (error) {
-            // Never fail the webhook response over a Discord hiccup — Stripe would just
-            // retry and re-notify, and the payment itself already succeeded regardless.
-            console.error('Failed to post donation notification to Discord', error);
+            console.error('Failed to resolve donation details', error);
+        }
+
+        if (details) {
+            try {
+                await notifyDiscordOfDonation(details);
+            } catch (error) {
+                // Never fail the webhook response over a Discord hiccup — Stripe would just
+                // retry and re-notify, and the payment itself already succeeded regardless.
+                console.error('Failed to post donation notification to Discord', error);
+            }
+
+            // Only the first payment of a subscription, not every monthly renewal — a donor
+            // doesn't need a fresh thank-you email every month.
+            if (details.email && (!details.isMonthly || details.isFirstPayment)) {
+                try {
+                    await sendDonationThankYouEmail(details.email, details.amount);
+                } catch (error) {
+                    console.error('Failed to send donation thank-you email', error);
+                }
+            }
         }
     }
 
@@ -616,7 +636,14 @@ async function linkRaUsernameFromCheckoutSession(session: Stripe.Checkout.Sessio
     });
 }
 
-async function notifyDiscordOfDonation(paymentIntent: Stripe.PaymentIntent): Promise<void> {
+interface DonationDetails {
+    isMonthly: boolean;
+    isFirstPayment: boolean;
+    email: string | undefined;
+    amount: string;
+}
+
+async function getDonationDetails(paymentIntent: Stripe.PaymentIntent): Promise<DonationDetails> {
     const stripe = await getStripeClient();
 
     // A PaymentIntent can be tied to an Invoice for two different reasons: a subscription
@@ -628,9 +655,13 @@ async function notifyDiscordOfDonation(paymentIntent: Stripe.PaymentIntent): Pro
     // neither field is in the installed SDK's types.
     const orderReference = (paymentIntent as unknown as { payment_details?: { order_reference?: string | null } })
         .payment_details?.order_reference;
-    const isMonthly = orderReference
-        ? Boolean((await stripe.invoices.retrieve(orderReference)).parent?.subscription_details)
-        : false;
+    let isMonthly = false;
+    let isFirstPayment = true;
+    if (orderReference) {
+        const invoice = await stripe.invoices.retrieve(orderReference);
+        isMonthly = Boolean(invoice.parent?.subscription_details);
+        isFirstPayment = invoice.billing_reason === 'subscription_create';
+    }
 
     let email = paymentIntent.receipt_email ?? undefined;
     if (!email) {
@@ -648,13 +679,17 @@ async function notifyDiscordOfDonation(paymentIntent: Stripe.PaymentIntent): Pro
         currency: paymentIntent.currency.toUpperCase()
     });
 
+    return { isMonthly, isFirstPayment, email, amount };
+}
+
+async function notifyDiscordOfDonation(details: DonationDetails): Promise<void> {
     const embed = {
-        title: `New ${isMonthly ? 'monthly' : 'one-time'} donation received 💛`,
+        title: `New ${details.isMonthly ? 'monthly' : 'one-time'} donation received 💛`,
         color: 0xd2a448,
         fields: [
-            { name: 'Amount', value: amount, inline: true },
-            { name: 'Type', value: isMonthly ? 'Monthly' : 'One-time', inline: true },
-            { name: 'Donor', value: email ?? 'Unknown', inline: false }
+            { name: 'Amount', value: details.amount, inline: true },
+            { name: 'Type', value: details.isMonthly ? 'Monthly' : 'One-time', inline: true },
+            { name: 'Donor', value: details.email ?? 'Unknown', inline: false }
         ]
     };
 
@@ -669,6 +704,59 @@ async function notifyDiscordOfDonation(paymentIntent: Stripe.PaymentIntent): Pro
         const body = await response.text();
         throw new Error(`Discord webhook failed ${response.status}: ${body.slice(0, 300)}`);
     }
+}
+
+async function sendDonationThankYouEmail(email: string, amount: string): Promise<void> {
+    await ses.send(new SendEmailCommand({
+        Source: SES_SENDER_EMAIL,
+        Destination: { ToAddresses: [email] },
+        Message: {
+            Subject: { Data: 'Thank you for supporting RAOfflineProxy!', Charset: 'UTF-8' },
+            Body: {
+                Text: {
+                    Charset: 'UTF-8',
+                    Data: `Just a quick note to say thank you for your ${amount} donation to RAOfflineProxy, I really appreciate it!\n\nSupport like this helps keep the project going. If you ever run into issues or have feedback, feel free to reach out on Discord: https://discord.gg/aSuFFUsgqb\n\nThanks again!\n\nCheers,\nmisantronic`
+                },
+                Html: {
+                    Charset: 'UTF-8',
+                    Data: donationThankYouEmailHtml(amount)
+                }
+            }
+        }
+    }));
+}
+
+function donationThankYouEmailHtml(amount: string): string {
+    return `<!DOCTYPE html>
+<html>
+  <body style="margin:0; padding:0; background-color:#f4f4f5; font-family:Helvetica,Arial,sans-serif;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f4f4f5; padding:32px 16px;">
+      <tr>
+        <td align="center">
+          <table role="presentation" width="480" cellpadding="0" cellspacing="0" style="background-color:#ffffff; border-radius:12px; overflow:hidden; max-width:480px; width:100%;">
+            <tr>
+              <td align="center" style="background-color:#1c5182; padding:32px 24px;">
+                <img src="https://raofflineproxy.com/logo-320.png" width="72" height="72" alt="RAOfflineProxy" style="display:block; border-radius:16px;" />
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:32px 32px 8px 32px;">
+                <p style="margin:0 0 16px 0; font-size:16px; line-height:1.5; color:#1a1a1a;">Just a quick note to say thank you for your ${amount} donation to RAOfflineProxy, I really appreciate it!</p>
+                <p style="margin:0 0 16px 0; font-size:16px; line-height:1.5; color:#1a1a1a;">Support like this helps keep the project going. If you ever run into issues or have feedback, feel free to <a href="https://discord.gg/aSuFFUsgqb" style="color:#1c5182;">reach out on Discord</a>.</p>
+                <p style="margin:0; font-size:16px; line-height:1.5; color:#1a1a1a;">Thanks again!</p>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:0 32px 32px 32px;">
+                <p style="margin:0; font-size:15px; line-height:1.5; color:#1a1a1a;">Cheers,<br/>misantronic</p>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>`;
 }
 
 exports.handler = async (event: any): Promise<any> => {
