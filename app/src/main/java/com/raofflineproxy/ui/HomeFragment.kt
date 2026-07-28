@@ -390,6 +390,18 @@ class HomeFragment : Fragment() {
 
         dialog.setCanceledOnTouchOutside(false)
         dialog.show()
+
+        // AlertDialog sizes itself as a percentage of screen width by default, which on
+        // squarish/4:3 handheld screens (this app's target devices) leaves it uncomfortably
+        // narrow — target most of the screen width there, capped so it doesn't get absurdly
+        // wide on tablets/desktops.
+        dialog.window?.let { window ->
+            val density = resources.displayMetrics.density
+            val screenWidthPx = resources.displayMetrics.widthPixels
+            val targetWidthPx = maxOf((340 * density).toInt(), (screenWidthPx * 0.92f).toInt())
+            val maxWidthPx = minOf((600 * density).toInt(), (screenWidthPx * 0.95f).toInt())
+            window.setLayout(minOf(targetWidthPx, maxWidthPx), ViewGroup.LayoutParams.WRAP_CONTENT)
+        }
     }
 
     private fun setButtonLoading(button: Button, loading: Boolean) {
