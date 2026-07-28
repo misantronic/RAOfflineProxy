@@ -25,20 +25,23 @@ data class SubscriptionCheckout(
 
 object DonationManager {
 
-    fun createPaymentIntent(amountCents: Int): Result<String> = runCatching {
-        val json = post("$SUPPORT_PAYMENT_BASE_URL/payment-intent", JSONObject().put("amount", amountCents))
+    fun createPaymentIntent(amountCents: Int, test: Boolean = false): Result<String> = runCatching {
+        val body = JSONObject().put("amount", amountCents)
+        if (test) body.put("test", true)
+        val json = post("$SUPPORT_PAYMENT_BASE_URL/payment-intent", body)
         json.getString("clientSecret")
     }.onFailure { error ->
         Log.e(TAG, "createPaymentIntent failed: ${error.message}", error)
     }
 
-    fun createSubscription(amountCents: Int, raCredentials: LoginCredentials?): Result<SubscriptionCheckout> = runCatching {
+    fun createSubscription(amountCents: Int, raCredentials: LoginCredentials?, test: Boolean = false): Result<SubscriptionCheckout> = runCatching {
         val body = JSONObject().put("amount", amountCents)
         if (raCredentials != null) {
             body.put("raUsername", raCredentials.user)
             body.put("raToken", raCredentials.token)
             body.put("raUserAgent", RA_USER_AGENT)
         }
+        if (test) body.put("test", true)
         val json = post("$SUPPORT_PAYMENT_BASE_URL/subscription", body)
         SubscriptionCheckout(
             clientSecret = json.getString("clientSecret"),
@@ -65,7 +68,8 @@ object DonationManager {
         amountCents: Int,
         frequency: String,
         email: String,
-        raCredentials: LoginCredentials?
+        raCredentials: LoginCredentials?,
+        test: Boolean = false
     ): Result<Unit> = runCatching {
         val body = JSONObject()
             .put("amount", amountCents)
@@ -76,6 +80,7 @@ object DonationManager {
             body.put("raToken", raCredentials.token)
             body.put("raUserAgent", RA_USER_AGENT)
         }
+        if (test) body.put("test", true)
         post("$SUPPORT_PAYMENT_BASE_URL/email-invoice", body)
         Unit
     }.onFailure { error ->

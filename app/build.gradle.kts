@@ -35,6 +35,13 @@ android {
             "STRIPE_PUBLISHABLE_KEY",
             "\"${localProperties.getProperty("STRIPE_PUBLISHABLE_KEY_LIVE", "")}\""
         )
+        // Used only behind the debug-only "test" checkbox in the donation dialog, to pair with
+        // client secrets the backend issues in Stripe test mode.
+        buildConfigField(
+            "String",
+            "STRIPE_PUBLISHABLE_KEY_TEST",
+            "\"${localProperties.getProperty("STRIPE_PUBLISHABLE_KEY_TEST", "")}\""
+        )
     }
 
     signingConfigs {

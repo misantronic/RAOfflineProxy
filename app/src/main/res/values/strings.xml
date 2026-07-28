@@ -63,6 +63,7 @@
     <string name="donation_email_hint">Email address</string>
     <string name="donation_submit">Donate</string>
     <string name="donation_kofi_alt">Support on Ko-fi instead</string>
+    <string name="donation_test_mode">Test (Stripe sandbox, no real charge)</string>
     <string name="donation_amount_required">Enter an amount</string>
     <string name="donation_amount_invalid">Enter an amount between $1 and $1000</string>
     <string name="donation_email_required">Enter your email address</string>

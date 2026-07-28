@@ -27,6 +27,7 @@ import com.google.android.material.button.MaterialButton
 import com.google.android.material.button.MaterialButtonToggleGroup
 import com.google.android.material.textfield.TextInputEditText
 import com.google.android.material.textfield.TextInputLayout
+import com.raofflineproxy.BuildConfig
 import com.raofflineproxy.R
 import com.raofflineproxy.donation.DonationManager
 import kotlin.math.roundToInt
@@ -287,6 +288,8 @@ class HomeFragment : Fragment() {
         val emailInput = dialogView.findViewById<TextInputLayout>(R.id.input_donation_email)
         val emailEdit = dialogView.findViewById<TextInputEditText>(R.id.et_donation_email)
         val kofiButton = dialogView.findViewById<Button>(R.id.btn_donation_kofi)
+        val testCheckbox = dialogView.findViewById<CheckBox>(R.id.cb_donation_test)
+        testCheckbox.visibility = if (BuildConfig.DEBUG) View.VISIBLE else View.GONE
 
         frequencyToggle.check(R.id.btn_donation_monthly)
         deliveryToggle.check(R.id.btn_donation_pay_now)
@@ -329,6 +332,7 @@ class HomeFragment : Fragment() {
                 val amountCents = (amountDollars!! * 100).roundToInt()
                 val isMonthly = frequencyToggle.checkedButtonId == R.id.btn_donation_monthly
                 val isEmailDelivery = deliveryToggle.checkedButtonId == R.id.btn_donation_email_link
+                val useTestMode = BuildConfig.DEBUG && testCheckbox.isChecked
 
                 if (isEmailDelivery) {
                     val email = emailEdit.text?.toString()?.trim().orEmpty()
@@ -348,7 +352,7 @@ class HomeFragment : Fragment() {
                         val frequency = if (isMonthly) "monthly" else "once"
                         val raCredentials = if (isMonthly) viewModel.currentRaCredentials() else null
                         val result = withContext(Dispatchers.IO) {
-                            DonationManager.requestEmailInvoice(amountCents, frequency, email, raCredentials)
+                            DonationManager.requestEmailInvoice(amountCents, frequency, email, raCredentials, useTestMode)
                         }
                         setButtonLoading(positiveButton, false)
                         result.onSuccess {
@@ -365,17 +369,17 @@ class HomeFragment : Fragment() {
                         val raCredentials = if (isMonthly) viewModel.currentRaCredentials() else null
                         val result = withContext(Dispatchers.IO) {
                             if (isMonthly) {
-                                DonationManager.createSubscription(amountCents, raCredentials).map { checkout ->
+                                DonationManager.createSubscription(amountCents, raCredentials, useTestMode).map { checkout ->
                                     Triple(checkout.clientSecret, checkout.customerId, checkout.ephemeralKey)
                                 }
                             } else {
-                                DonationManager.createPaymentIntent(amountCents).map { clientSecret -> Triple(clientSecret, null, null) }
+                                DonationManager.createPaymentIntent(amountCents, useTestMode).map { clientSecret -> Triple(clientSecret, null, null) }
                             }
                         }
                         setButtonLoading(positiveButton, false)
                         result.onSuccess { (clientSecret, customerId, ephemeralKey) ->
                             dialog.dismiss()
-                            (activity as? MainActivity)?.presentDonationCheckout(clientSecret, customerId, ephemeralKey)
+                            (activity as? MainActivity)?.presentDonationCheckout(clientSecret, customerId, ephemeralKey, useTestMode)
                         }.onFailure {
                             showOutcomeDialog(R.string.support_dialog_title, R.string.donation_error_message)
                         }
