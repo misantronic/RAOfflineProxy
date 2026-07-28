@@ -249,6 +249,15 @@ class ProxyRequestHandler(BaseHTTPRequestHandler):
             self.command, self.path, body, headers
         )
         self.wfile.write(response)
+        self.wfile.flush()
+        # Close gracefully (FIN, not RST): shut down the write side and let
+        # the client finish reading before the socket is torn down, rather
+        # than an abrupt close that can reset the connection out from under
+        # a client still draining its receive buffer.
+        try:
+            self.connection.shutdown(socket.SHUT_WR)
+        except OSError:
+            pass
 
 
 class ProxyRuntimeServer(ThreadingTCPServer):
