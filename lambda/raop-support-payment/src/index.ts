@@ -686,21 +686,29 @@ interface DonationDetails {
 async function getDonationDetails(paymentIntent: Stripe.PaymentIntent, test = false): Promise<DonationDetails> {
     const stripe = await getStripeClient(test);
 
-    // A PaymentIntent can be tied to an Invoice for two different reasons: a subscription
-    // (our monthly donations) or the one-time email-invoice fallback (sendStripeHostedInvoice,
-    // which also bills through a real Stripe Invoice). So the mere presence of an invoice isn't
-    // enough — only one whose parent is a subscription is actually recurring. This API version
-    // puts the invoice reference at payment_details.order_reference (an "in_..." invoice id)
-    // rather than a top-level `invoice` field — confirmed against a real subscription payment;
-    // neither field is in the installed SDK's types.
+    // This API version puts the "what generated this payment" reference at
+    // payment_details.order_reference rather than a top-level `invoice` field — confirmed
+    // against real payments; neither field is in the installed SDK's types. It can point to
+    // either an Invoice ("in_...", the subscription and hosted-invoice-fallback flows) or a
+    // Checkout Session ("cs_...", the Payment Link/email flow), so it has to be resolved
+    // differently depending on which — treating it as always an invoice throws "No such
+    // invoice" for Payment Link donations and silently drops their Discord/thank-you-email
+    // notifications.
     const orderReference = (paymentIntent as unknown as { payment_details?: { order_reference?: string | null } })
         .payment_details?.order_reference;
     let isMonthly = false;
     let isFirstPayment = true;
-    if (orderReference) {
+    if (orderReference?.startsWith('in_')) {
         const invoice = await stripe.invoices.retrieve(orderReference);
         isMonthly = Boolean(invoice.parent?.subscription_details);
         isFirstPayment = invoice.billing_reason === 'subscription_create';
+    } else if (orderReference?.startsWith('cs_')) {
+        // A subscription created via a Payment Link's Checkout Session is always its first
+        // payment — renewals bill through the subscription's invoices directly (the "in_..."
+        // branch above), never through a new Checkout Session.
+        const session = await stripe.checkout.sessions.retrieve(orderReference);
+        isMonthly = session.mode === 'subscription';
+        isFirstPayment = true;
     }
 
     let email = paymentIntent.receipt_email ?? undefined;
