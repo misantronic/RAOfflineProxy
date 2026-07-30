@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ctypes
 import logging
 import os
 from pathlib import Path
@@ -23,6 +24,20 @@ SERVICE_COMMAND_MARKERS = [
     "-m raofflineproxy.main run-service",
     "-m linux.raofflineproxy.main run-service",
 ]
+
+PR_SET_NAME = 15
+
+
+def _rename_process(name: str) -> None:
+    """Rename this process's kernel-visible name (/proc/pid/comm) away from
+    "python3" so blunt cleanup commands some launchers run on game exit
+    (e.g. dArkOS's game-end hook runs `killall python3`, which matches by
+    comm, not argv/cgroup) don't kill the service by accident."""
+    try:
+        libc = ctypes.CDLL(None, use_errno=True)
+        libc.prctl(PR_SET_NAME, name.encode("utf-8"), 0, 0, 0)
+    except (OSError, AttributeError):
+        pass
 
 
 def process_is_running(pid: int) -> bool:
@@ -304,6 +319,8 @@ def service_status() -> dict:
 
 
 def run_service_foreground(config_data: dict) -> None:
+    _rename_process("raofflineproxy")
+
     stop_requested = False
 
     def handle_signal(_signum: int, _frame: object) -> None:
