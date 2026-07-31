@@ -36,8 +36,12 @@ def _rename_process(name: str) -> None:
     try:
         libc = ctypes.CDLL(None, use_errno=True)
         libc.prctl(PR_SET_NAME, name.encode("utf-8"), 0, 0, 0)
-    except (OSError, AttributeError):
-        pass
+    except (OSError, AttributeError) as exc:
+        logging.getLogger("raofflineproxy").warning(
+            "Failed to rename process via prctl; comm name stays %r (%s)",
+            name,
+            exc,
+        )
 
 
 def process_is_running(pid: int) -> bool:
