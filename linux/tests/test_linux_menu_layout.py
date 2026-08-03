@@ -631,6 +631,142 @@ class MenuLayoutTests(unittest.TestCase):
 
         self.assertEqual(update_calls, ["knulli", "knulli"])
 
+    def test_storage_corruption_notice_noop_without_incident(self) -> None:
+        session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
+        session.view = "main"
+        session.storage_corruption_notice_seen = False
+        session.storage_corruption_active = False
+
+        with patch.object(menu_sdl.storage_corruption, "load_incident", return_value=None):
+            menu_sdl.MenuSdlSession.maybe_show_storage_corruption_notice(session)
+
+        self.assertFalse(session.storage_corruption_notice_seen)
+        self.assertEqual(session.view, "main")
+
+    def test_storage_corruption_notice_shows_already_reported_incident(self) -> None:
+        session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
+        session.view = "main"
+        session.view_positions = {}
+        session.selected_index = 3
+        session.scroll_offset = 1
+        session.storage_corruption_notice_seen = False
+        session.storage_corruption_active = False
+
+        incident = {
+            "reported": True,
+            "upload_id": "abc123",
+            "notified": False,
+            "lost_pending_awards": 0,
+        }
+
+        with (
+            patch.object(menu_sdl.storage_corruption, "load_incident", return_value=incident),
+            patch.object(menu_sdl.storage_corruption, "mark_notified") as mark_notified,
+        ):
+            menu_sdl.MenuSdlSession.maybe_show_storage_corruption_notice(session)
+
+        mark_notified.assert_called_once()
+        self.assertTrue(session.storage_corruption_notice_seen)
+        self.assertTrue(session.storage_corruption_active)
+        self.assertTrue(session.storage_corruption_done)
+        self.assertEqual(session.view, "send_logs_progress")
+        self.assertEqual(
+            session.log_upload_progress_text,
+            "A corrupted data file was found and reset.\n"
+            "No pending achievements were affected.\n"
+            "Support ID: abc123",
+        )
+        self.assertEqual(session.selected_index, 0)
+        self.assertEqual(session.storage_corruption_lost_awards, 0)
+
+    def test_storage_corruption_progress_not_dismissible_while_uploading(self) -> None:
+        session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
+        session.view = "send_logs_progress"
+        session.storage_corruption_active = True
+        session.storage_corruption_done = False
+
+        self.assertEqual(
+            menu_sdl.MenuSdlSession.labels(session, running=False),
+            [],
+        )
+
+    def test_storage_corruption_progress_dismissible_once_done(self) -> None:
+        session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
+        session.view = "send_logs_progress"
+        session.storage_corruption_active = True
+        session.storage_corruption_done = True
+
+        self.assertEqual(
+            menu_sdl.MenuSdlSession.labels(session, running=False),
+            ["Back"],
+        )
+
+    def test_dismiss_storage_corruption_progress_resets_state(self) -> None:
+        session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
+        session.view = "send_logs_progress"
+        session.view_positions = {"main": (2, 0)}
+        session.storage_corruption_active = True
+        session.storage_corruption_done = True
+        session.storage_corruption_lost_awards = 3
+        session.log_upload_progress_text = "3 pending achievements may not have synced."
+
+        menu_sdl.MenuSdlSession.dismiss_storage_corruption_progress(session)
+
+        self.assertEqual(session.view, "main")
+        self.assertFalse(session.storage_corruption_active)
+        self.assertFalse(session.storage_corruption_done)
+        self.assertIsNone(session.storage_corruption_lost_awards)
+        self.assertIsNone(session.log_upload_progress_text)
+
+    def test_storage_corruption_result_text_no_awards_lost(self) -> None:
+        session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
+        session.storage_corruption_lost_awards = 0
+
+        text = menu_sdl.MenuSdlSession.storage_corruption_result_text(session, True, "abc123")
+
+        self.assertEqual(text, "No pending achievements were affected.\nSupport ID: abc123")
+        self.assertNotIn("Discord", text)
+
+    def test_storage_corruption_result_text_awards_lost_singular(self) -> None:
+        session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
+        session.storage_corruption_lost_awards = 1
+
+        text = menu_sdl.MenuSdlSession.storage_corruption_result_text(session, True, "abc123")
+
+        self.assertEqual(
+            text,
+            "1 pending achievement may not have synced.\n"
+            "Support ID: abc123\n"
+            "Please reach out on Discord.",
+        )
+
+    def test_storage_corruption_result_text_awards_lost_plural(self) -> None:
+        session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
+        session.storage_corruption_lost_awards = 3
+
+        text = menu_sdl.MenuSdlSession.storage_corruption_result_text(session, True, "abc123")
+
+        self.assertTrue(text.startswith("3 pending achievements may not have synced."))
+        self.assertIn("Discord", text)
+
+    def test_storage_corruption_result_text_unknown_defaults_to_cautious(self) -> None:
+        session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
+        session.storage_corruption_lost_awards = None
+
+        text = menu_sdl.MenuSdlSession.storage_corruption_result_text(session, True, "abc123")
+
+        self.assertIn("Support ID: abc123", text)
+        self.assertIn("Discord", text)
+
+    def test_storage_corruption_result_text_upload_failure(self) -> None:
+        session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
+        session.storage_corruption_lost_awards = 2
+
+        text = menu_sdl.MenuSdlSession.storage_corruption_result_text(session, False, "network error")
+
+        self.assertIn("Log upload failed: network error", text)
+        self.assertIn("Discord", text)
+
     def test_smart_cache_prompt_labels(self) -> None:
         session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
         session.view = "smart_cache_prompt"

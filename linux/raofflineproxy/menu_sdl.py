@@ -18,6 +18,11 @@ from .ppsspp_cfg import (
     revert_ppsspp_ini,
     store_ppsspp_previous,
 )
+from .dolphin_cfg import (
+    patch_dolphin_ini,
+    revert_dolphin_ini,
+    store_dolphin_previous,
+)
 from .config import (
     APP_VERSION,
     CONFIG_DIR,
@@ -76,6 +81,7 @@ from .smart_cache import (
 )
 from .state import load_patch_state, save_patch_state
 from .storage import Storage
+from . import storage_corruption
 from .update import (
     download_knulli_update_installer,
     download_muos_update_archive,
@@ -84,7 +90,7 @@ from .update import (
     install_onion_update_archive,
     update_status,
 )
-from .log_uploader import upload_logs
+from .log_uploader import report_storage_corruption, upload_logs
 from .menu_input import (
     BTN_DPAD_DOWN,
     BTN_DPAD_LEFT,
@@ -369,9 +375,11 @@ def start_proxy_inline() -> None:
     enforce_patched_cfg(cfg_path, config_data)
     batocera = patch_batocera_conf(config_data)
     ppsspp = patch_ppsspp_ini(config_data)
+    dolphin = patch_dolphin_ini(config_data)
     patch_state = load_patch_state() or {}
     store_batocera_previous(patch_state, batocera)
     store_ppsspp_previous(patch_state, ppsspp)
+    store_dolphin_previous(patch_state, dolphin)
     save_patch_state(patch_state)
     start_service_process(config_data)
 
@@ -385,6 +393,7 @@ def stop_proxy_inline() -> None:
     previous_batocera = patch_state.get("batocera_previous", {})
     revert_batocera_conf(config_data, previous_batocera)
     revert_ppsspp_ini(config_data, patch_state.get("ppsspp_previous", {}))
+    revert_dolphin_ini(config_data, patch_state.get("dolphin_previous", {}))
 
     if patch_state:
         revert_retroarch_cfg(revert_cfg_path, patch_state)
@@ -448,6 +457,10 @@ class MenuSdlSession:
         self.log_upload_thread: threading.Thread | None = None
         self.log_upload_progress_text: str | None = None
         self.log_upload_result: tuple[bool, str] | None = None
+        self.storage_corruption_active = False
+        self.storage_corruption_notice_seen = False
+        self.storage_corruption_lost_awards: int | None = None
+        self.storage_corruption_done = False
         self.preview_surface = None
         self.preview_game_id = None
         self.achievement_preview_surface = None
@@ -558,15 +571,11 @@ class MenuSdlSession:
 
         running = self.proxy_running()
         status_text = self.status_text(running)
-        status = self.status_font.render(status_text, False, STATUS_COLOR)
-        status_rect = status.get_rect(topleft=(LEFT_MARGIN, title_rect.bottom + 20))
-        self.surface.blit(status, status_rect)
-
-        body_bottom = status_rect.bottom
+        body_bottom = self.render_wrapped_status(status_text, title_rect.bottom + 20)
         if self.view == "support_me":
-            body_bottom = self.render_support_description(status_rect.bottom + 16)
+            body_bottom = self.render_support_description(body_bottom + 16)
         elif self.view in ("support_me_monthly", "support_me_qr"):
-            body_bottom = self.render_support_scan_hint(status_rect.bottom + 16)
+            body_bottom = self.render_support_scan_hint(body_bottom + 16)
             if self.view == "support_me_qr":
                 body_bottom = self.render_support_qr(body_bottom + 16)
 
@@ -657,6 +666,8 @@ class MenuSdlSession:
             return ["YES", "NO"]
 
         if self.view == "send_logs_progress":
+            if self.storage_corruption_active and self.storage_corruption_done:
+                return ["Back"]
             return []
 
         if self.view == "send_logs_result":
@@ -770,7 +781,7 @@ class MenuSdlSession:
         if self.view == "send_logs_confirm":
             return "Send Logs?"
         if self.view == "send_logs_progress":
-            return "Sending Logs"
+            return "Data Reset" if self.storage_corruption_active else "Sending Logs"
         if self.view == "send_logs_result":
             return "Send Logs" if self.log_upload_result and self.log_upload_result[0] else "Send Logs Failed"
         if self.view == "support_me":
@@ -913,6 +924,8 @@ class MenuSdlSession:
             if self.view == "send_logs_confirm":
                 return self.confirm_cancel_hint("confirm", "cancel")
             if self.view == "send_logs_progress":
+                if self.storage_corruption_active and self.storage_corruption_done:
+                    return self.confirm_cancel_hint("dismiss", None)
                 return None
             if self.view == "send_logs_result":
                 return self.confirm_cancel_hint("dismiss", None)
@@ -1059,6 +1072,8 @@ class MenuSdlSession:
             return
 
         if self.view == "send_logs_progress":
+            if self.storage_corruption_active and self.storage_corruption_done:
+                self.dismiss_storage_corruption_progress()
             return
 
         if self.view == "send_logs_result":
@@ -1481,12 +1496,10 @@ class MenuSdlSession:
         title_rect = title.get_rect(topleft=(LEFT_MARGIN, max(36, self.height // 12)))
         self.surface.blit(title, title_rect)
 
-        status = self.status_font.render(self.status_text(False), False, STATUS_COLOR)
-        status_rect = status.get_rect(topleft=(LEFT_MARGIN, title_rect.bottom + 20))
-        self.surface.blit(status, status_rect)
+        status_bottom = self.render_wrapped_status(self.status_text(False), title_rect.bottom + 20)
 
         gap = max(self.item_font.get_height() + 6, self.height // 18)
-        y = status_rect.bottom + 34
+        y = status_bottom + 34
         for key in self.key_log:
             name = KEY_NAMES.get(key, "unknown")
             line = f"  {key}  0x{key:03X}  {name}"
@@ -1771,6 +1784,8 @@ class MenuSdlSession:
             return
 
         if self.view == "send_logs_progress":
+            if self.storage_corruption_active and self.storage_corruption_done:
+                self.dismiss_storage_corruption_progress()
             return
 
         if self.view == "send_logs_result":
@@ -2003,6 +2018,27 @@ class MenuSdlSession:
             lines.append(current)
         return lines
 
+    def render_wrapped_status(self, text: str, top_y: int) -> int:
+        # Each "\n"-separated segment forces its own line (e.g. one sentence
+        # per line for the storage-corruption notice); word-wrap only kicks
+        # in within a segment that's still too wide for the screen on its own.
+        max_width = self.width - (2 * LEFT_MARGIN)
+        segments = text.split("\n") if text else [""]
+        lines = [
+            line
+            for segment in segments
+            for line in (self.wrap_text_to_width(segment, self.status_font, max_width) or [""])
+        ]
+        bottom = top_y
+        y = top_y
+        for line in lines:
+            surface = self.status_font.render(line, False, STATUS_COLOR)
+            rect = surface.get_rect(topleft=(LEFT_MARGIN, y))
+            self.surface.blit(surface, rect)
+            bottom = rect.bottom
+            y = rect.bottom + 4
+        return bottom
+
     def render_support_description(self, top_y: int) -> int:
         max_width = self.width - (2 * LEFT_MARGIN)
         y = top_y
@@ -2229,6 +2265,14 @@ class MenuSdlSession:
             self.main_update_asset_url = None
         if not hasattr(self, "main_update_dialog_seen"):
             self.main_update_dialog_seen = False
+        if not hasattr(self, "storage_corruption_active"):
+            self.storage_corruption_active = False
+        if not hasattr(self, "storage_corruption_notice_seen"):
+            self.storage_corruption_notice_seen = False
+        if not hasattr(self, "storage_corruption_lost_awards"):
+            self.storage_corruption_lost_awards = None
+        if not hasattr(self, "storage_corruption_done"):
+            self.storage_corruption_done = False
 
         if not force and self.view != "main":
             return
@@ -2276,6 +2320,63 @@ class MenuSdlSession:
             self.view = "update_prompt"
             self.reset_selection()
 
+        self.maybe_show_storage_corruption_notice()
+
+    def maybe_show_storage_corruption_notice(self) -> None:
+        if self.storage_corruption_notice_seen or self.view != "main":
+            return
+
+        incident = storage_corruption.load_incident()
+        if incident is None or incident.get("notified"):
+            return
+
+        self.storage_corruption_notice_seen = True
+        storage_corruption.mark_notified()
+        self.storage_corruption_active = True
+        self.storage_corruption_lost_awards = incident.get("lost_pending_awards")
+        self.storage_corruption_done = False
+        self.save_view_position("main")
+        self.reset_selection()
+        self.log_upload_result = None
+        self.view = "send_logs_progress"
+
+        intro = "A corrupted data file was found and reset."
+
+        if incident.get("reported") and incident.get("upload_id"):
+            result_text = self.storage_corruption_result_text(True, incident["upload_id"])
+            self.log_upload_progress_text = f"{intro}\n{result_text}"
+            self.storage_corruption_done = True
+            return
+
+        self.log_upload_progress_text = f"{intro}\nUploading diagnostic logs..."
+
+        def worker() -> None:
+            try:
+                upload_id = report_storage_corruption(incident)
+                storage_corruption.mark_reported(upload_id)
+                result_text = self.storage_corruption_result_text(True, upload_id)
+            except Exception as exc:
+                result_text = self.storage_corruption_result_text(False, str(exc))
+            self.log_upload_progress_text = f"{intro}\n{result_text}"
+            self.storage_corruption_done = True
+
+        self.log_upload_thread = threading.Thread(target=worker, daemon=True)
+        self.log_upload_thread.start()
+
+    def storage_corruption_result_text(self, success: bool, message: str) -> str:
+        lost = self.storage_corruption_lost_awards
+        upload_part = f"Support ID: {message}" if success else f"Log upload failed: {message}"
+
+        if lost == 0:
+            return f"No pending achievements were affected.\n{upload_part}"
+        if lost is None:
+            return f"{upload_part}\nSome progress may not have synced, please reach out on Discord."
+        plural = "achievement" if lost == 1 else "achievements"
+        return (
+            f"{lost} pending {plural} may not have synced.\n{upload_part}\n"
+            "Please reach out on Discord."
+        )
+
     def dismiss_update_prompt(self) -> None:
         self.view = "main"
         self.restore_view_position("main")
@@ -2299,6 +2400,8 @@ class MenuSdlSession:
         self.restore_view_position("main")
 
     def start_send_logs(self) -> None:
+        self.storage_corruption_active = False
+        self.storage_corruption_lost_awards = None
         self.log_upload_progress_text = "Uploading logs..."
         self.log_upload_result = None
         self.view = "send_logs_progress"
@@ -2321,6 +2424,15 @@ class MenuSdlSession:
 
     def dismiss_send_logs_result(self) -> None:
         self.log_upload_result = None
+        self.storage_corruption_active = False
+        self.view = "main"
+        self.restore_view_position("main")
+
+    def dismiss_storage_corruption_progress(self) -> None:
+        self.storage_corruption_active = False
+        self.storage_corruption_done = False
+        self.storage_corruption_lost_awards = None
+        self.log_upload_progress_text = None
         self.view = "main"
         self.restore_view_position("main")
 

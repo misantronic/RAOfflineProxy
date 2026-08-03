@@ -2,18 +2,22 @@ from __future__ import annotations
 
 import contextlib
 import json
+import logging
+import os
 import threading
 import time
 from pathlib import Path
 from typing import Any
 
-from . import cache_keys, es_export
+from . import cache_keys, es_export, storage_corruption
 from .config import DATABASE_FILE, ensure_config_dir
 
 try:
     import fcntl
 except ModuleNotFoundError:
     fcntl = None
+
+LOGGER = logging.getLogger("raofflineproxy")
 
 try:
     import sqlite3
@@ -138,10 +142,19 @@ class Storage:
 
     def _reload_json_state_unlocked(self) -> None:
         if self._json_path.exists():
-            with self._json_path.open(encoding="utf-8") as handle:
-                data = json.load(handle)
-            if not isinstance(data, dict):
-                raise ValueError(f"Invalid JSON storage file: {self._json_path}")
+            try:
+                with self._json_path.open(encoding="utf-8") as handle:
+                    data = json.load(handle)
+                if not isinstance(data, dict):
+                    raise ValueError(f"Invalid JSON storage file: {self._json_path}")
+            except (json.JSONDecodeError, ValueError) as exc:
+                LOGGER.error(
+                    "Storage file %s is corrupt (%s); resetting to empty state",
+                    self._json_path,
+                    exc,
+                )
+                self._quarantine_corrupt_json_unlocked(str(exc))
+                data = {"api_cache": [], "pending_awards": []}
             self._json_state = data
         else:
             self._json_state = {"api_cache": [], "pending_awards": []}
@@ -149,13 +162,50 @@ class Storage:
         self._json_state.setdefault("api_cache", [])
         self._json_state.setdefault("pending_awards", [])
 
+    def _quarantine_corrupt_json_unlocked(self, reason: str) -> None:
+        quarantine_path = self._json_path.with_name(
+            f"{self._json_path.name}.corrupt-{current_millis()}"
+        )
+        try:
+            size_bytes = self._json_path.stat().st_size
+            self._json_path.replace(quarantine_path)
+        except OSError as exc:
+            LOGGER.error(
+                "Failed to quarantine corrupt storage file %s: %s",
+                self._json_path,
+                exc,
+            )
+            return
+        lost_pending_awards = _salvage_pending_award_count(quarantine_path)
+        storage_corruption.record_incident(
+            quarantine_path, reason, size_bytes, lost_pending_awards
+        )
+
     def _write_json_state_unlocked(self) -> None:
         assert self._json_state is not None
-        temp_path = self._json_path.with_suffix(f"{self._json_path.suffix}.tmp")
+        temp_path = self._json_path.with_suffix(
+            f"{self._json_path.suffix}.tmp.{os.getpid()}"
+        )
         with temp_path.open("w", encoding="utf-8") as handle:
             json.dump(self._json_state, handle, indent=2, sort_keys=True)
             handle.write("\n")
+            handle.flush()
+            os.fsync(handle.fileno())
         temp_path.replace(self._json_path)
+        self._fsync_dir_best_effort(self._json_path.parent)
+
+    @staticmethod
+    def _fsync_dir_best_effort(directory: Path) -> None:
+        try:
+            dir_fd = os.open(directory, os.O_RDONLY)
+        except OSError:
+            return
+        try:
+            os.fsync(dir_fd)
+        except OSError:
+            pass
+        finally:
+            os.close(dir_fd)
 
     def upsert_cache(
         self,
@@ -689,6 +739,26 @@ class Storage:
             return fallback
         user_agent = entry.get("responseBody", "")
         return user_agent if user_agent else fallback
+
+
+def _salvage_pending_award_count(quarantined_path: Path) -> int | None:
+    # "Extra data" corruption (a valid document with garbage appended after it,
+    # the pattern actually seen in the field) still has an intact JSON value at
+    # the start of the file — raw_decode() reads just that and ignores the
+    # trailing bytes that made json.load() fail. Other corruption shapes (a
+    # truncated write, interleaved writes) won't parse even this far; the
+    # caller treats None as "unknown", not "zero".
+    try:
+        text = quarantined_path.read_text(encoding="utf-8")
+        data, _ = json.JSONDecoder().raw_decode(text)
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    pending_awards = data.get("pending_awards")
+    if not isinstance(pending_awards, list):
+        return None
+    return len(pending_awards)
 
 
 def migrate_user_case_in_cache_keys(store: Storage) -> None:

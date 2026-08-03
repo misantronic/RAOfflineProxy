@@ -3,6 +3,7 @@ from __future__ import annotations
 import io
 import json
 import logging
+import re
 import urllib.error
 import urllib.request
 import zipfile
@@ -39,6 +40,18 @@ DEVICETREE_MODEL_FILE = Path("/sys/firmware/devicetree/base/model")
 DMI_SYS_VENDOR_FILE = Path("/sys/class/dmi/id/sys_vendor")
 DMI_PRODUCT_NAME_FILE = Path("/sys/class/dmi/id/product_name")
 
+QUARANTINED_STORAGE_GLOB = "*.json.corrupt-*"
+# Matches a pending_awards/api_cache JSON object whose cacheKey identifies it as
+# holding RA credentials (login2:: responses carry a session Token; the
+# auth::invalid_token entry's responseBody *is* a raw token), and blanks only
+# that object's responseBody value. DOTALL + non-greedy so it stops at the
+# first responseBody after the matched cacheKey, i.e. the same object's.
+_SENSITIVE_CACHE_ENTRY = re.compile(
+    r'("cacheKey":\s*"(?:login2::|auth::invalid_token)[^"]*".*?"responseBody":\s*")'
+    r'((?:\\.|[^"\\])*)(")',
+    re.DOTALL,
+)
+
 
 def _log_file_paths() -> list[Path]:
     # RotatingFileHandler renames the active file to "<name>.1" on rollover, so the
@@ -48,6 +61,22 @@ def _log_file_paths() -> list[Path]:
     # (key logger output, controller calibration, crashes) — not covered by service.log.
     menu_sdl_log = config.CONFIG_DIR / "menu-sdl.log"
     return [backup, config.LOG_FILE, menu_sdl_log, config.UPDATE_STATUS_FILE, config.STATUS_FILE]
+
+
+def _redact_storage_json(text: str) -> str:
+    text = _SENSITIVE_CACHE_ENTRY.sub(r"\1<redacted>\3", text)
+    return "\n".join(redact_query_tokens(line) for line in text.splitlines())
+
+
+def _quarantined_storage_files() -> dict[str, str]:
+    files: dict[str, str] = {}
+    for path in sorted(config.CONFIG_DIR.glob(QUARANTINED_STORAGE_GLOB)):
+        try:
+            content = path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        files[path.name] = _redact_storage_json(content)
+    return files
 
 
 def _read_redacted_log_files() -> dict[str, str]:
@@ -63,6 +92,7 @@ def _read_redacted_log_files() -> dict[str, str]:
             continue
         redacted_lines = (redact_query_tokens(line) for line in content.splitlines())
         files[path.name] = "\n".join(redacted_lines)
+    files.update(_quarantined_storage_files())
     return files
 
 
@@ -258,8 +288,10 @@ def _put_log_archive(upload_url: str, zip_bytes: bytes) -> None:
         raise RuntimeError(f"Upload failed: {error.reason}") from error
 
 
-def upload_logs() -> str:
+def upload_logs(extra_files: dict[str, str] | None = None) -> str:
     files = _read_redacted_log_files()
+    if extra_files:
+        files.update(extra_files)
     zip_bytes = _zip_logs(files)
     try:
         upload_id, upload_url = _request_upload_target()
@@ -270,3 +302,16 @@ def upload_logs() -> str:
         LOGGER.exception("Log upload failed unexpectedly")
         raise RuntimeError(f"Log upload failed: {error}") from error
     return upload_id
+
+
+def report_storage_corruption(incident: dict) -> str:
+    lost_pending_awards = incident.get("lost_pending_awards")
+    note = (
+        "A corrupted local data file was detected and automatically reset.\n"
+        f"Detected at (ms since epoch): {incident.get('detected_at')}\n"
+        f"Quarantined file: {incident.get('quarantined_path')}\n"
+        f"Corrupted file size (bytes): {incident.get('size_bytes')}\n"
+        f"Parse error: {incident.get('reason')}\n"
+        f"Salvaged pending_awards count: {lost_pending_awards if lost_pending_awards is not None else 'unknown (unrecoverable)'}\n"
+    )
+    return upload_logs({"storage_corruption.txt": note})

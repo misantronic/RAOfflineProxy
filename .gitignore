@@ -17,11 +17,12 @@ node_modules
 docs/.vitepress/dist
 docs/.vitepress/cache
 keystore.properties
+.claude
+.agents
 AGENTS.md
 CLAUDE.md
 RELEASING.md
 SUPPORT-TRIAGE.md
-.agents/
 linux/knulli/dist/
 linux/knulli/native/
 linux/onion/native/

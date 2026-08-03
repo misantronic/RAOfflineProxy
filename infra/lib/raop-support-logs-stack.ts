@@ -101,6 +101,12 @@ export class RaopSupportLogsStack extends cdk.Stack {
         const DONATION_DISCORD_WEBHOOK_URL_PARAM = '/raop/support-payment/discord-webhook-url';
         const STRIPE_MONTHLY_PRODUCT_ID = 'prod_UwXVoGHCZgyLHr';
         const STRIPE_ONETIME_PRODUCT_ID = 'prod_UwXVN3Ib6UUpFE';
+        // Stripe test-mode counterparts, used only by the debug-only "test" checkbox in the
+        // app's donation dialog so the checkout flow can be exercised without real money.
+        const STRIPE_SECRET_KEY_PARAM_TEST = '/raop/support-payment/stripe-secret-key-test';
+        const STRIPE_WEBHOOK_SECRET_PARAM_TEST = '/raop/support-payment/stripe-webhook-secret-test';
+        const STRIPE_MONTHLY_PRODUCT_ID_TEST = 'prod_UwXRSyJpaF1FmT';
+        const STRIPE_ONETIME_PRODUCT_ID_TEST = 'prod_UwXWrdkTIRAO2g';
 
         const paymentRole = new iam.Role(this, 'PaymentLambdaRole', {
             roleName: 'raop-support-payment-lambda-role',
@@ -116,7 +122,9 @@ export class RaopSupportLogsStack extends cdk.Stack {
                             resources: [
                                 `arn:aws:ssm:${this.region}:${this.account}:parameter${STRIPE_SECRET_KEY_PARAM}`,
                                 `arn:aws:ssm:${this.region}:${this.account}:parameter${STRIPE_WEBHOOK_SECRET_PARAM}`,
-                                `arn:aws:ssm:${this.region}:${this.account}:parameter${DONATION_DISCORD_WEBHOOK_URL_PARAM}`
+                                `arn:aws:ssm:${this.region}:${this.account}:parameter${DONATION_DISCORD_WEBHOOK_URL_PARAM}`,
+                                `arn:aws:ssm:${this.region}:${this.account}:parameter${STRIPE_SECRET_KEY_PARAM_TEST}`,
+                                `arn:aws:ssm:${this.region}:${this.account}:parameter${STRIPE_WEBHOOK_SECRET_PARAM_TEST}`
                             ]
                         }),
                         new iam.PolicyStatement({
@@ -170,7 +178,11 @@ export class RaopSupportLogsStack extends cdk.Stack {
                 STRIPE_WEBHOOK_SECRET_PARAM,
                 DISCORD_WEBHOOK_URL_PARAM: DONATION_DISCORD_WEBHOOK_URL_PARAM,
                 STRIPE_MONTHLY_PRODUCT_ID,
-                STRIPE_ONETIME_PRODUCT_ID
+                STRIPE_ONETIME_PRODUCT_ID,
+                STRIPE_SECRET_KEY_PARAM_TEST,
+                STRIPE_WEBHOOK_SECRET_PARAM_TEST,
+                STRIPE_MONTHLY_PRODUCT_ID_TEST,
+                STRIPE_ONETIME_PRODUCT_ID_TEST
             },
             timeout: cdk.Duration.seconds(10),
             memorySize: 256

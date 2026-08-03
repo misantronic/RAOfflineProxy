@@ -69,6 +69,48 @@ class LinuxLogUploaderTests(unittest.TestCase):
             self.assertEqual(files["update_status.json"], '{"status": "up_to_date"}')
             self.assertEqual(files["service_status.json"], '{"running": true}')
 
+    def test_read_redacted_log_files_attaches_redacted_quarantined_storage(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            quarantined = tmp_path / "proxy.json.corrupt-1700000000000"
+            quarantined.write_text(
+                '{\n'
+                '  "api_cache": [\n'
+                '    {\n'
+                '      "cacheKey": "login2::misantronic",\n'
+                '      "responseBody": "{\\"Success\\":true,\\"User\\":\\"misantronic\\",\\"Token\\":\\"abc123\\"}"\n'
+                '    },\n'
+                '    {\n'
+                '      "cacheKey": "auth::invalid_token",\n'
+                '      "responseBody": "rawinvalidtoken456"\n'
+                '    },\n'
+                '    {\n'
+                '      "cacheKey": "gameid:abcd",\n'
+                '      "responseBody": "{\\"GameID\\":10701}"\n'
+                '    }\n'
+                '  ],\n'
+                '  "pending_awards": [\n'
+                '    {\n'
+                '      "achievementId": 52114,\n'
+                '      "queryString": "/dorequest.php?r=awardachievement&t=secrettoken&h=0"\n'
+                '    }\n'
+                '  ]\n'
+                '}\n',
+                encoding="utf-8",
+            )
+
+            with patched_config_paths(tmp_path):
+                files = log_uploader._read_redacted_log_files()
+
+            attached = files["proxy.json.corrupt-1700000000000"]
+            self.assertNotIn("abc123", attached)
+            self.assertNotIn("rawinvalidtoken456", attached)
+            self.assertNotIn("secrettoken", attached)
+            self.assertIn("<redacted>", attached)
+            self.assertIn('"cacheKey": "gameid:abcd"', attached)
+            self.assertIn('GameID', attached)
+            self.assertIn('10701', attached)
+
     def test_read_redacted_log_files_tolerates_missing_files(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp_path = Path(tmp_dir)

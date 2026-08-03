@@ -13,7 +13,7 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler
 from urllib.parse import urlsplit
 
-from . import cache_keys
+from . import cache_keys, log_uploader, storage_corruption
 from .auth import resolve_credentials
 from .award_signing import sign_award
 from .config import (
@@ -248,6 +248,15 @@ class ProxyRequestHandler(BaseHTTPRequestHandler):
             self.command, self.path, body, headers
         )
         self.wfile.write(response)
+        self.wfile.flush()
+        # Close gracefully (FIN, not RST): shut down the write side and let
+        # the client finish reading before the socket is torn down, rather
+        # than an abrupt close that can reset the connection out from under
+        # a client still draining its receive buffer.
+        try:
+            self.connection.shutdown(socket.SHUT_WR)
+        except OSError:
+            pass
 
 
 class ProxyRuntimeServer(ThreadingTCPServer):
@@ -1017,6 +1026,22 @@ class PeriodicRefresh(threading.Thread):
             self.server.storage.evict_cache_older_than(before)
 
 
+def retry_storage_corruption_report() -> None:
+    # The menu only ever attempts this once (on first open after the incident) and shows
+    # the user the outcome regardless of success, so it doesn't nag them again — if that
+    # one attempt happened while offline, the report would otherwise never reach us. The
+    # service retries silently on every startup until it actually gets through.
+    incident = storage_corruption.load_incident()
+    if incident is None or incident.get("reported"):
+        return
+    try:
+        upload_id = log_uploader.report_storage_corruption(incident)
+    except Exception as exc:
+        LOGGER.warning("Storage corruption report retry failed: %s", exc)
+        return
+    storage_corruption.mark_reported(upload_id)
+
+
 def run_proxy_service(
     config_data: dict, stop_event: threading.Event | None = None
 ) -> None:
@@ -1031,6 +1056,7 @@ def run_proxy_service(
         save_online_state(initial_online)
         if initial_online:
             server.flush_pending_awards()
+            retry_storage_corruption_report()
         connectivity_monitor.start()
         periodic_refresh.start()
 

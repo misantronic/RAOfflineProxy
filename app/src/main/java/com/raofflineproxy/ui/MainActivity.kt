@@ -471,7 +471,15 @@ class MainActivity : AppCompatActivity() {
         viewModel.stopProxy(treeUri = PrefsConstants.loadSafUri(this))
     }
 
-    fun presentDonationCheckout(clientSecret: String, customerId: String?, ephemeralKey: String?) {
+    fun presentDonationCheckout(clientSecret: String, customerId: String?, ephemeralKey: String?, useTestMode: Boolean = false) {
+        // The client secret's mode (test vs live) has to match the publishable key PaymentSheet
+        // is configured with, or it fails immediately — see the debug-only "test" checkbox in
+        // the donation dialog, which routes the backend request through Stripe test mode.
+        PaymentConfiguration.init(
+            applicationContext,
+            if (useTestMode) BuildConfig.STRIPE_PUBLISHABLE_KEY_TEST else BuildConfig.STRIPE_PUBLISHABLE_KEY
+        )
+
         val configuration = PaymentSheet.Configuration.Builder(getString(R.string.app_name))
             .apply {
                 if (customerId != null && ephemeralKey != null) {
