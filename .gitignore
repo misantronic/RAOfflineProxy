@@ -25,6 +25,8 @@ RELEASING.md
 SUPPORT-TRIAGE.md
 linux/**/dist/
 linux/**/native/
+linux/**/runtime-cache/
+linux/**/tmp_assets/
 **/__pycache__
 infra/dist/
 infra/cdk.out/
