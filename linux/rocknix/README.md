@@ -128,9 +128,11 @@ Confirmed on-device (ROCKNIX `next`, `OS_NAME="ROCKNIX"` in `/etc/os-release`):
 - Add-on apps install under `/storage/.local/share/` (Heroic, Steam, m8c, and this app)
 - The **Tools** system runs `.sh` scripts from `/storage/.config/modules/` inside a `foot`
   terminal via `/usr/bin/foot %ROM%`. The launcher `source`s `/etc/profile`, calls
-  `set_kill` (so the frontend kill-combo works), then runs the SDL menu. The menu requests
-  SDL fullscreen itself; sway honors it (verified `fullscreen_mode=1`), so no `sway_fullscreen`
-  call is needed.
+  `set_kill` (so the frontend kill-combo works), backgrounds a `sway_fullscreen "python3"`
+  call (matches PortMaster's own ROCKNIX python tools, e.g. `GPcal.sh`), then runs the SDL
+  menu. SDL's own `pygame.FULLSCREEN` request was sufficient on SM8550 (single output) but not
+  proven on multi-output devices (RG DS, issue #55) — the explicit `swaymsg fullscreen enable`
+  is needed for sway to actually give the window fullscreen compositor treatment there.
 - Autostart drops an executable script into `/storage/.config/autostart/`; ROCKNIX's
   `/usr/bin/autostart` runs every script there at boot (no separate registration step)
 - Some devices (e.g. RK3326 with the `libmali` blob) segfaulted inside SDL's wayland/EGL init
