@@ -14,6 +14,10 @@ updates:
     directory: "/lambda"
     schedule:
       interval: "weekly"
+    groups:
+      aws-sdk:
+        patterns:
+          - "@aws-sdk/*"
 
   - package-ecosystem: "pip"
     directory: "/discord/honeypot-bot"
