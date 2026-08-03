@@ -307,6 +307,11 @@ def run_menu_sdl(command_runner: str) -> None:
         if running_on_onion():
             surface = _init_onion_display(pygame)
         else:
+            log_menu_sdl(
+                f"display probe driver={pygame.display.get_driver()} "
+                f"num_displays={pygame.display.get_num_displays()} "
+                f"desktop_sizes={pygame.display.get_desktop_sizes()}"
+            )
             try:
                 surface = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
             except pygame.error as exc:
@@ -322,6 +327,7 @@ def run_menu_sdl(command_runner: str) -> None:
                 else:
                     raise
         width, height = surface.get_size()
+        log_menu_sdl(f"display set_mode surface_size={width}x{height}")
         session = MenuSdlSession(command_runner, surface, width, height, pygame)
         session.run()
     except Exception:
