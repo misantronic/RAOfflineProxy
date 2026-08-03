@@ -17,7 +17,7 @@ junit = "4.13.2"
 zstdJni = "1.5.7-8"
 shizuku = "13.1.5"
 orgJson = "20240303"
-stripeAndroid = "23.13.0"
+stripeAndroid = "23.13.1"
 swiperefreshlayout = "1.2.0"
 
 [libraries]
