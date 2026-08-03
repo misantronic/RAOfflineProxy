@@ -11,9 +11,9 @@ VERSION="${RAOFFLINEPROXY_APP_VERSION:-1.9.0-alpha1}"
 INSTALLER_PATH="${DIST_DIR}/RAOfflineProxy-Rocknix-v${VERSION}-Install.sh"
 TEMP_TARBALL="${DIST_DIR}/.raofflineproxy-rocknix-bundle.tar.gz"
 
-if [ ! -d "${SCRIPT_DIR}/vendor/pygame" ] || [ ! -d "${SCRIPT_DIR}/vendor/pygame.libs" ]; then
-  echo "Missing vendored pygame. Populate linux/rocknix/vendor/{pygame,pygame.libs}" >&2
-  echo "from a pygame cp313 aarch64 manylinux wheel before building." >&2
+if [ ! -d "${SCRIPT_DIR}/vendor/pygame" ] || [ ! -d "${SCRIPT_DIR}/vendor/pygame_ce.libs" ]; then
+  echo "Missing vendored pygame-ce. Populate linux/rocknix/vendor/{pygame,pygame_ce.libs}" >&2
+  echo "from a pygame-ce cp313 aarch64 manylinux wheel before building." >&2
   exit 1
 fi
 
@@ -31,7 +31,7 @@ cp -r "${LINUX_DIR}/raofflineproxy" "${APP_DIR}/raofflineproxy"
 cp "${LINUX_DIR}/requirements.txt" "${APP_DIR}/requirements.txt"
 cp "${LINUX_DIR}/../docs/public/logo-320.png" "${APP_DIR}/raofflineproxy/logo-320.png"
 cp -R "${SCRIPT_DIR}/vendor/pygame/." "${APP_DIR}/pygame/"
-cp -R "${SCRIPT_DIR}/vendor/pygame.libs/." "${APP_DIR}/pygame.libs/"
+cp -R "${SCRIPT_DIR}/vendor/pygame_ce.libs/." "${APP_DIR}/pygame_ce.libs/"
 cp -r "${SCRIPT_DIR}/scripts" "${BUILD_DIR}/scripts"
 cp "${SCRIPT_DIR}/native/libraproxy_rchash.so" "${LIB_DIR}/libraproxy_rchash.so"
 cp "${SCRIPT_DIR}/scripts/install.sh" "${BUILD_DIR}/install.sh"
