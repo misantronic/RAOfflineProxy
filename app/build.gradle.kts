@@ -18,7 +18,7 @@ val localProperties = Properties().also { props ->
 
 android {
     namespace = "com.raofflineproxy"
-    compileSdk = 36
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "com.raofflineproxy"
