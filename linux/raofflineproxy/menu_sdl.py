@@ -18,6 +18,11 @@ from .ppsspp_cfg import (
     revert_ppsspp_ini,
     store_ppsspp_previous,
 )
+from .dolphin_cfg import (
+    patch_dolphin_ini,
+    revert_dolphin_ini,
+    store_dolphin_previous,
+)
 from .config import (
     APP_VERSION,
     CONFIG_DIR,
@@ -369,9 +374,11 @@ def start_proxy_inline() -> None:
     enforce_patched_cfg(cfg_path, config_data)
     batocera = patch_batocera_conf(config_data)
     ppsspp = patch_ppsspp_ini(config_data)
+    dolphin = patch_dolphin_ini(config_data)
     patch_state = load_patch_state() or {}
     store_batocera_previous(patch_state, batocera)
     store_ppsspp_previous(patch_state, ppsspp)
+    store_dolphin_previous(patch_state, dolphin)
     save_patch_state(patch_state)
     start_service_process(config_data)
 
@@ -385,6 +392,7 @@ def stop_proxy_inline() -> None:
     previous_batocera = patch_state.get("batocera_previous", {})
     revert_batocera_conf(config_data, previous_batocera)
     revert_ppsspp_ini(config_data, patch_state.get("ppsspp_previous", {}))
+    revert_dolphin_ini(config_data, patch_state.get("dolphin_previous", {}))
 
     if patch_state:
         revert_retroarch_cfg(revert_cfg_path, patch_state)
