@@ -16,7 +16,7 @@
         "@aws-sdk/s3-request-presigner": "^3.1099.0",
         "@types/node": "^22.13.13",
         "archiver": "^7.0.1",
-        "esbuild": "^0.24.2",
+        "esbuild": "^0.28.1",
         "typescript": "5.4.5"
     }
 }
