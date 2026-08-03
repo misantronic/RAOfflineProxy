@@ -55,7 +55,7 @@ jobs:
           distribution: temurin
           java-version: "21"
 
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v6.2.0
         if: steps.changes.outputs.android == 'true'
 
       - name: Install NDK
