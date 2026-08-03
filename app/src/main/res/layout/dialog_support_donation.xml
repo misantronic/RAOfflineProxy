@@ -84,17 +84,17 @@
 
     <com.google.android.material.textfield.TextInputLayout
         android:id="@+id/input_donation_amount"
+        style="@style/Widget.MaterialComponents.TextInputLayout.FilledBox.ExposedDropdownMenu"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="16dp"
         android:hint="@string/donation_amount_hint">
 
-        <com.google.android.material.textfield.TextInputEditText
-            android:id="@+id/et_donation_amount"
+        <com.google.android.material.textfield.MaterialAutoCompleteTextView
+            android:id="@+id/dropdown_donation_amount"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:inputType="numberDecimal"
-            android:singleLine="true" />
+            android:inputType="none" />
     </com.google.android.material.textfield.TextInputLayout>
 
     <com.google.android.material.textfield.TextInputLayout

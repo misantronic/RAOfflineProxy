@@ -12,6 +12,7 @@ import android.text.style.ForegroundColorSpan
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.CheckBox
 import android.widget.ImageView
@@ -25,12 +26,14 @@ import androidx.core.net.toUri
 import androidx.swiperefreshlayout.widget.CircularProgressDrawable
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.button.MaterialButtonToggleGroup
+import com.google.android.material.textfield.MaterialAutoCompleteTextView
 import com.google.android.material.textfield.TextInputEditText
 import com.google.android.material.textfield.TextInputLayout
 import com.raofflineproxy.BuildConfig
 import com.raofflineproxy.R
+import com.raofflineproxy.donation.DonationAmountOption
+import com.raofflineproxy.donation.DonationLinks
 import com.raofflineproxy.donation.DonationManager
-import kotlin.math.roundToInt
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -283,21 +286,36 @@ class HomeFragment : Fragment() {
         val dialogView = LayoutInflater.from(requireContext()).inflate(R.layout.dialog_support_donation, null, false)
         val frequencyToggle = dialogView.findViewById<MaterialButtonToggleGroup>(R.id.toggle_donation_frequency)
         val deliveryToggle = dialogView.findViewById<MaterialButtonToggleGroup>(R.id.toggle_donation_delivery)
-        val amountInput = dialogView.findViewById<TextInputLayout>(R.id.input_donation_amount)
-        val amountEdit = dialogView.findViewById<TextInputEditText>(R.id.et_donation_amount)
+        val amountDropdown = dialogView.findViewById<MaterialAutoCompleteTextView>(R.id.dropdown_donation_amount)
         val emailInput = dialogView.findViewById<TextInputLayout>(R.id.input_donation_email)
         val emailEdit = dialogView.findViewById<TextInputEditText>(R.id.et_donation_email)
         val kofiButton = dialogView.findViewById<Button>(R.id.btn_donation_kofi)
         val testCheckbox = dialogView.findViewById<CheckBox>(R.id.cb_donation_test)
-        testCheckbox.visibility = if (BuildConfig.DEBUG) View.VISIBLE else View.GONE
+
+        fun amountOptionsFor(isMonthly: Boolean) = if (isMonthly) DonationLinks.MONTHLY else DonationLinks.ONE_TIME
+        fun defaultIndexFor(isMonthly: Boolean) = if (isMonthly) DonationLinks.MONTHLY_DEFAULT_INDEX else DonationLinks.ONE_TIME_DEFAULT_INDEX
+        fun selectedAmountOption(isMonthly: Boolean): DonationAmountOption {
+            val options = amountOptionsFor(isMonthly)
+            val selectedLabel = amountDropdown.text.toString()
+            return options.firstOrNull { it.label == selectedLabel } ?: options[defaultIndexFor(isMonthly)]
+        }
 
         frequencyToggle.check(R.id.btn_donation_monthly)
         deliveryToggle.check(R.id.btn_donation_pay_now)
-        deliveryToggle.addOnButtonCheckedListener { _, checkedId, isChecked ->
-            if (isChecked) {
-                emailInput.visibility = if (checkedId == R.id.btn_donation_email_link) View.VISIBLE else View.GONE
-            }
+
+        fun updateFieldVisibility() {
+            val isMonthly = frequencyToggle.checkedButtonId == R.id.btn_donation_monthly
+            val isEmailDelivery = deliveryToggle.checkedButtonId == R.id.btn_donation_email_link
+            emailInput.visibility = if (isEmailDelivery) View.VISIBLE else View.GONE
+            testCheckbox.visibility = if (BuildConfig.DEBUG && isEmailDelivery) View.VISIBLE else View.GONE
+
+            val labels = amountOptionsFor(isMonthly).map { it.label }
+            amountDropdown.setAdapter(ArrayAdapter(requireContext(), android.R.layout.simple_list_item_1, labels))
+            amountDropdown.setText(labels.getOrElse(defaultIndexFor(isMonthly)) { labels.first() }, false)
         }
+        updateFieldVisibility()
+        frequencyToggle.addOnButtonCheckedListener { _, _, isChecked -> if (isChecked) updateFieldVisibility() }
+        deliveryToggle.addOnButtonCheckedListener { _, _, isChecked -> if (isChecked) updateFieldVisibility() }
 
         val dialog = AlertDialog.Builder(requireContext())
             .setTitle(R.string.support_dialog_title)
@@ -314,75 +332,60 @@ class HomeFragment : Fragment() {
         dialog.setOnShowListener {
             val positiveButton = dialog.getButton(AlertDialog.BUTTON_POSITIVE)
             positiveButton.setOnClickListener {
-                amountInput.error = null
                 emailInput.error = null
 
-                val amountText = amountEdit.text?.toString()?.trim().orEmpty()
-                val amountDollars = amountText.toDoubleOrNull()
+                val isMonthly = frequencyToggle.checkedButtonId == R.id.btn_donation_monthly
+                val isEmailDelivery = deliveryToggle.checkedButtonId == R.id.btn_donation_email_link
+                val amountOption = selectedAmountOption(isMonthly)
+
+                if (!isEmailDelivery) {
+                    // Pay now: no backend call, just open the matching hosted Stripe link. Pass
+                    // the RA username along as client_reference_id when logged in — monthly
+                    // links use it to tie the subscription to the account (see the webhook's
+                    // linkRaUsernameFromCheckoutSession); one-time links carry it too for
+                    // consistency, even though nothing on the backend reads it there yet.
+                    viewLifecycleOwner.lifecycleScope.launch {
+                        val raUsername = viewModel.currentRaCredentials()?.user
+                        val url = if (raUsername != null) {
+                            amountOption.url.toUri().buildUpon()
+                                .appendQueryParameter("client_reference_id", raUsername)
+                                .build()
+                        } else {
+                            amountOption.url.toUri()
+                        }
+                        startActivity(Intent(Intent.ACTION_VIEW, url))
+                        dialog.dismiss()
+                    }
+                    return@setOnClickListener
+                }
+
+                val useTestMode = BuildConfig.DEBUG && testCheckbox.isChecked
+                val email = emailEdit.text?.toString()?.trim().orEmpty()
                 when {
-                    amountText.isBlank() -> {
-                        amountInput.error = getString(R.string.donation_amount_required)
+                    email.isBlank() -> {
+                        emailInput.error = getString(R.string.donation_email_required)
                         return@setOnClickListener
                     }
-                    amountDollars == null || amountDollars < 1.0 || amountDollars > 1000.0 -> {
-                        amountInput.error = getString(R.string.donation_amount_invalid)
+                    !android.util.Patterns.EMAIL_ADDRESS.matcher(email).matches() -> {
+                        emailInput.error = getString(R.string.donation_email_invalid)
                         return@setOnClickListener
                     }
                 }
-                val amountCents = (amountDollars!! * 100).roundToInt()
-                val isMonthly = frequencyToggle.checkedButtonId == R.id.btn_donation_monthly
-                val isEmailDelivery = deliveryToggle.checkedButtonId == R.id.btn_donation_email_link
-                val useTestMode = BuildConfig.DEBUG && testCheckbox.isChecked
 
-                if (isEmailDelivery) {
-                    val email = emailEdit.text?.toString()?.trim().orEmpty()
-                    when {
-                        email.isBlank() -> {
-                            emailInput.error = getString(R.string.donation_email_required)
-                            return@setOnClickListener
-                        }
-                        !android.util.Patterns.EMAIL_ADDRESS.matcher(email).matches() -> {
-                            emailInput.error = getString(R.string.donation_email_invalid)
-                            return@setOnClickListener
-                        }
+                setButtonLoading(positiveButton, true)
+                viewLifecycleOwner.lifecycleScope.launch {
+                    val frequency = if (isMonthly) "monthly" else "once"
+                    val raCredentials = if (isMonthly) viewModel.currentRaCredentials() else null
+                    val result = withContext(Dispatchers.IO) {
+                        DonationManager.requestEmailInvoice(amountOption.amountCents, frequency, email, raCredentials, useTestMode)
                     }
-
-                    setButtonLoading(positiveButton, true)
-                    viewLifecycleOwner.lifecycleScope.launch {
-                        val frequency = if (isMonthly) "monthly" else "once"
-                        val raCredentials = if (isMonthly) viewModel.currentRaCredentials() else null
-                        val result = withContext(Dispatchers.IO) {
-                            DonationManager.requestEmailInvoice(amountCents, frequency, email, raCredentials, useTestMode)
-                        }
-                        setButtonLoading(positiveButton, false)
-                        result.onSuccess {
-                            viewModel.setHideSupportButtonEnabled(true)
-                            dialog.dismiss()
-                            showOutcomeDialog(R.string.donation_email_sent_title, R.string.donation_email_sent_message)
-                        }.onFailure {
-                            showOutcomeDialog(R.string.support_dialog_title, R.string.donation_error_message)
-                        }
-                    }
-                } else {
-                    setButtonLoading(positiveButton, true)
-                    viewLifecycleOwner.lifecycleScope.launch {
-                        val raCredentials = if (isMonthly) viewModel.currentRaCredentials() else null
-                        val result = withContext(Dispatchers.IO) {
-                            if (isMonthly) {
-                                DonationManager.createSubscription(amountCents, raCredentials, useTestMode).map { checkout ->
-                                    Triple(checkout.clientSecret, checkout.customerId, checkout.ephemeralKey)
-                                }
-                            } else {
-                                DonationManager.createPaymentIntent(amountCents, useTestMode).map { clientSecret -> Triple(clientSecret, null, null) }
-                            }
-                        }
-                        setButtonLoading(positiveButton, false)
-                        result.onSuccess { (clientSecret, customerId, ephemeralKey) ->
-                            dialog.dismiss()
-                            (activity as? MainActivity)?.presentDonationCheckout(clientSecret, customerId, ephemeralKey, useTestMode)
-                        }.onFailure {
-                            showOutcomeDialog(R.string.support_dialog_title, R.string.donation_error_message)
-                        }
+                    setButtonLoading(positiveButton, false)
+                    result.onSuccess {
+                        viewModel.setHideSupportButtonEnabled(true)
+                        dialog.dismiss()
+                        showOutcomeDialog(R.string.donation_email_sent_title, R.string.donation_email_sent_message)
+                    }.onFailure {
+                        showOutcomeDialog(R.string.support_dialog_title, R.string.donation_error_message)
                     }
                 }
             }

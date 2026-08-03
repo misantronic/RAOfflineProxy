@@ -17,7 +17,6 @@ junit = "4.13.2"
 zstdJni = "1.5.7-12"
 shizuku = "13.1.5"
 orgJson = "20260719"
-stripeAndroid = "23.13.1"
 swiperefreshlayout = "1.2.0"
 
 [libraries]
@@ -41,7 +40,6 @@ zstd-jni = { group = "com.github.luben", name = "zstd-jni", version.ref = "zstdJ
 shizuku-api = { group = "dev.rikka.shizuku", name = "api", version.ref = "shizuku" }
 shizuku-provider = { group = "dev.rikka.shizuku", name = "provider", version.ref = "shizuku" }
 org-json = { group = "org.json", name = "json", version.ref = "orgJson" }
-stripe-android = { group = "com.stripe", name = "stripe-android", version.ref = "stripeAndroid" }
 swiperefreshlayout = { group = "androidx.swiperefreshlayout", name = "swiperefreshlayout", version.ref = "swiperefreshlayout" }
 
 [plugins]
