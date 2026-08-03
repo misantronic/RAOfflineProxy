@@ -17,6 +17,6 @@
         "@types/node": "^22.13.13",
         "archiver": "^7.0.1",
         "esbuild": "^0.28.1",
-        "typescript": "5.4.5"
+        "typescript": "7.0.2"
     }
 }
