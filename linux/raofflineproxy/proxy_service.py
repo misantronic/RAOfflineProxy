@@ -19,7 +19,6 @@ from .award_signing import sign_award
 from .config import (
     DATABASE_FILE,
     FALLBACK_USER_AGENT,
-    LOG_FILE,
     RA_MEDIA_HOST,
     image_caching_enabled,
     proxy_host,
@@ -937,7 +936,7 @@ class ConnectivityMonitor(threading.Thread):
         self.server = server
         self.interval_seconds = interval_seconds
         self.stop_event = threading.Event()
-        self.watched_inodes = _capture_file_inodes([LOG_FILE, DATABASE_FILE])
+        self.watched_inodes = _capture_file_inodes([DATABASE_FILE])
 
     def stop(self) -> None:
         self.stop_event.set()
