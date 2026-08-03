@@ -9,7 +9,7 @@ enum class SnackbarDuration { Short, Long, Indefinite }
 sealed interface SnackbarEvent {
     data class Error(val message: String) : SnackbarEvent
 
-    data class Progress(val message: String?) : SnackbarEvent
+    data class Progress(val message: String?, val onAbort: (() -> Unit)? = null) : SnackbarEvent
 
     data class Message(
         val message: String,
@@ -30,8 +30,8 @@ object SnackbarManager {
         _events.tryEmit(SnackbarEvent.Error(message))
     }
 
-    fun showProgress(message: String?) {
-        _events.tryEmit(SnackbarEvent.Progress(message?.takeIf { it.isNotBlank() }))
+    fun showProgress(message: String?, onAbort: (() -> Unit)? = null) {
+        _events.tryEmit(SnackbarEvent.Progress(message?.takeIf { it.isNotBlank() }, onAbort))
     }
 
     fun showMessage(message: String, duration: SnackbarDuration = SnackbarDuration.Long) {

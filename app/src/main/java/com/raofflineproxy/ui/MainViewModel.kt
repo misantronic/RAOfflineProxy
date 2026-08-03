@@ -70,7 +70,9 @@ import com.raofflineproxy.proxy.SmartCacheEmulator
 import com.raofflineproxy.service.ProxyService
 import com.raofflineproxy.update.AppUpdateChecker
 import com.raofflineproxy.update.AppUpdateInfo
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -82,6 +84,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import kotlin.time.Duration.Companion.milliseconds
+
+private const val TOKEN_VALIDATION_COOLDOWN_MS = 60_000L
 
 enum class AuthState { Unknown, Valid, Invalid }
 
@@ -114,6 +118,7 @@ data class MainUiState(
     val manualEmulatorPatchingEnabled: Boolean = false,
     val smartCachingEnabled: Boolean = true,
     val appUpdateCheckEnabled: Boolean = true,
+    val hideSupportButton: Boolean = false,
     val proxyPort: Int = PrefsConstants.DEFAULT_PROXY_PORT,
     val retroArchInstalled: Boolean = false,
     val dolphinInstalled: Boolean = false,
@@ -188,6 +193,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private var smartCacheAllFilesRejectedThisRun = false
     private var pendingAddRomUris = emptyList<Uri>()
     private var pendingCredentialAction: PendingCredentialAction? = null
+    private var lastTokenValidationAttemptAt: Long = 0L
     private fun str(resId: Int): String = getApplication<Application>().getString(resId)
     private fun str(resId: Int, vararg args: Any): String = getApplication<Application>().getString(resId, *args)
 
@@ -206,6 +212,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     init {
+        PrefsConstants.resetHideSupportButtonOnAppUpdate(app, BuildConfig.VERSION_CODE.toLong())
+
         _state.value = _state.value.copy(
             isOnline = hasValidatedInternet(connectivityManager) && isRetroAchievementsReachable()
         )
@@ -236,6 +244,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             manualEmulatorPatchingEnabled = loadManualEmulatorPatchingEnabled(),
             smartCachingEnabled = loadSmartCachingEnabled(),
             appUpdateCheckEnabled = loadAppUpdateCheckEnabled(),
+            hideSupportButton = loadHideSupportButtonEnabled(),
             proxyPort = PrefsConstants.loadProxyPort(app),
             retroArchInstalled = emulatorSupport.retroArchInstalled,
             dolphinInstalled = emulatorSupport.dolphinInstalled,
@@ -293,8 +302,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 val hasLoginCredentials = loginEntries.isNotEmpty()
                 val pendingAwardsByGameId = buildPendingAwardsByGameId(entries, awards)
                 val games = run {
-                    val sessionKeys = db.cacheDao().getAllByPrefix(CacheKeys.PREFIX_UNLOCKS).map { it.cacheKey }
-                    Log.d("RAProxy/Games", "patch entries=${entries.size}, unlocks keys in DB=${sessionKeys.size}")
                     entries.mapNotNull { entry ->
                         val parts = entry.cacheKey.split(":")
                         if (parts.size < 3) return@mapNotNull null
@@ -364,7 +371,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         hasLoginCredentials = hasLoginCredentials
                     )
                     if (_state.value.proxyRunning && games.isNotEmpty() && _state.value.authState != AuthState.Valid) {
-                        validateToken()
+                        validateToken(force = false)
                     }
                 }
         }
@@ -667,6 +674,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
         return credentials
     }
+
+    // Used to optionally tie a monthly donation to the logged-in RA account (for the
+    // manage-subscription feature), and to look up/manage that subscription from Settings.
+    // Unlike requireCredentials, this doesn't prompt for login — both donating and checking
+    // subscription status are meant to work fine even when logged out.
+    suspend fun currentRaCredentials(): LoginCredentials? =
+        withContext(Dispatchers.IO) { loadLoginCredentials(db) }
 
     private fun refreshReachability(
         forceProbe: Boolean,
@@ -986,7 +1000,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun validateToken() {
+    fun validateToken(force: Boolean = true) {
         viewModelScope.launch {
             val credentials = withContext(Dispatchers.IO) { loadLoginCredentials(db) }
             if (credentials == null) {
@@ -1008,6 +1022,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 _state.value = _state.value.copy(authState = AuthState.Valid)
                 return@launch
             }
+            val now = System.currentTimeMillis()
+            if (!force && now - lastTokenValidationAttemptAt < TOKEN_VALIDATION_COOLDOWN_MS) {
+                Log.i("RAProxy/Auth", "validateToken: skipped — within cooldown of previous attempt")
+                return@launch
+            }
+            lastTokenValidationAttemptAt = now
             val valid = withContext(Dispatchers.IO) {
                 val userAgent = proxyUserAgent(loadUserAgent(db))
                 val url = buildApiUrl(
@@ -1922,9 +1942,19 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    private var scanJob: Job? = null
+
+    fun cancelScan() {
+        if (scanJob?.isActive != true) return
+        val abortingMessage = str(R.string.scan_aborting)
+        _state.value = _state.value.copy(scanProgress = abortingMessage)
+        SnackbarManager.showProgress(abortingMessage)
+        scanJob?.cancel()
+    }
+
     fun scanRoms(treeUri: Uri) {
         val app = getApplication<Application>()
-        viewModelScope.launch {
+        scanJob = viewModelScope.launch {
             if (_state.value.cachedGames.size >= MAX_CACHED_GAMES) {
                 SnackbarManager.showMessage(str(R.string.cached_games_limit_reached, MAX_CACHED_GAMES), SnackbarDuration.Indefinite)
                 return@launch
@@ -1932,15 +1962,16 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             val credentials = requireCredentials(PendingCredentialAction.ScanRoms(treeUri)) ?: return@launch
             val startingMessage = str(R.string.scan_starting)
             _state.value = _state.value.copy(scanInProgress = true, scanProgress = startingMessage)
-            SnackbarManager.showProgress(startingMessage)
+            SnackbarManager.showProgress(startingMessage, onAbort = ::cancelScan)
             var completionMessage: String? = null
+            var completionDuration = SnackbarDuration.Indefinite
             try {
                 val userAgent = withContext(Dispatchers.IO) { proxyUserAgent(loadUserAgent(db)) }
                 val result = withContext(Dispatchers.IO) {
                     scanRomFolder(app, treeUri, credentials, userAgent, db) { current, total, fileName ->
                         val progressMessage = str(R.string.scan_progress, current, total, fileName)
                         _state.value = _state.value.copy(scanProgress = progressMessage)
-                        SnackbarManager.showProgress(progressMessage)
+                        SnackbarManager.showProgress(progressMessage, onAbort = ::cancelScan)
                     }
                 }
                 completionMessage = if (result.limitReached) {
@@ -1948,6 +1979,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 } else {
                     str(R.string.scan_complete, result.matched, result.total, result.skipped)
                 }
+            } catch (c: CancellationException) {
+                Log.i("RAProxy/Scan", "scanRoms aborted for treeUri=$treeUri")
+                completionMessage = str(R.string.scan_aborted)
+                completionDuration = SnackbarDuration.Short
             } catch (t: Throwable) {
                 Log.e("RAProxy/Scan", "scanRoms failed for treeUri=$treeUri", t)
                 SnackbarManager.showError(t.message ?: "ROM scan failed.")
@@ -1959,7 +1994,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 SnackbarManager.showProgress(null)
             }
             completionMessage?.let {
-                SnackbarManager.showMessage(it, SnackbarDuration.Indefinite)
+                SnackbarManager.showMessage(it, completionDuration)
             }
         }
     }
@@ -2277,6 +2312,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun setSmartCachingEnabled(enabled: Boolean) {
         PrefsConstants.saveSmartCachingEnabled(getApplication(), enabled)
         _state.value = _state.value.copy(smartCachingEnabled = enabled)
+    }
+
+    fun setHideSupportButtonEnabled(enabled: Boolean) {
+        PrefsConstants.saveHideSupportButtonEnabled(getApplication(), enabled)
+        _state.value = _state.value.copy(hideSupportButton = enabled)
     }
 
     fun setAppUpdateCheckEnabled(enabled: Boolean) {
@@ -2667,6 +2707,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun loadAppUpdateCheckEnabled(): Boolean =
         PrefsConstants.loadAppUpdateCheckEnabled(getApplication())
+
+    private fun loadHideSupportButtonEnabled(): Boolean =
+        PrefsConstants.loadHideSupportButtonEnabled(getApplication())
 
     private fun loadManualEmulatorPatchingEnabled(): Boolean =
         PrefsConstants.loadManualEmulatorPatchingEnabled(getApplication())

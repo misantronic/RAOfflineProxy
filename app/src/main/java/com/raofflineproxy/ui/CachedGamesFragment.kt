@@ -29,7 +29,7 @@ import java.io.File
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-private const val TAG = "CachedGamesFragment"
+private const val TAG = "RAProxy/CachedGamesFragment"
 private const val KEY_COLLAPSED_CONSOLES = "collapsed_console_ids"
 
 class CachedGamesFragment : Fragment() {

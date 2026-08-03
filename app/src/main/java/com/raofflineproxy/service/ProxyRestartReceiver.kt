@@ -11,7 +11,7 @@ class ProxyRestartReceiver : BroadcastReceiver() {
             return
         }
 
-        Log.i("ProxyRestartReceiver", "Restarting proxy service after unexpected shutdown")
+        Log.i("RAProxy/ProxyRestartReceiver", "Restarting proxy service after unexpected shutdown")
         ProxyService.start(context)
     }
 }

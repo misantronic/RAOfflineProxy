@@ -10,7 +10,7 @@ import org.json.JSONArray
 private const val CONNECT_TIMEOUT_MS = 10_000
 private const val READ_TIMEOUT_MS = 10_000
 private const val RELEASES_URL = "https://api.github.com/repos/misantronic/RAOfflineProxy/releases"
-private const val TAG = "AppUpdateChecker"
+private const val TAG = "RAProxy/AppUpdateChecker"
 
 data class AppUpdateInfo(
     val versionName: String,
@@ -45,7 +45,8 @@ internal object AppUpdateChecker {
         return try {
             val statusCode = connection.responseCode
             if (statusCode !in 200..299) {
-                Log.w(TAG, "GitHub releases request failed with HTTP $statusCode")
+                val errorBody = connection.errorStream?.bufferedReader()?.use { it.readText() }.orEmpty()
+                Log.w(TAG, "GitHub releases request failed with HTTP $statusCode: ${errorBody.take(512)}")
                 return null
             }
 
@@ -62,38 +63,19 @@ internal object AppUpdateChecker {
     private fun parseReleases(body: String): List<ReleaseInfo> {
         val releases = JSONArray(body)
 
-        return buildList {
+        val accepted = buildList {
             for (index in 0 until releases.length()) {
                 val release = releases.optJSONObject(index) ?: continue
-                if (release.optBoolean("draft")) {
-                    Log.d(TAG, "Skipping draft release at index=$index")
-                    continue
-                }
+                if (release.optBoolean("draft")) continue
 
                 val versionName = release.optString("tag_name")
                     .trim()
                     .removePrefix("v")
                     .takeIf { it.isNotBlank() }
-                    ?: run {
-                        Log.d(TAG, "Skipping release at index=$index; missing tag_name")
-                        continue
-                    }
-                val version = parseVersion(versionName) ?: run {
-                    Log.d(TAG, "Skipping release tag=$versionName; unsupported version format")
-                    continue
-                }
-                val releaseUrl = release.optString("html_url").takeIf { it.isNotBlank() } ?: run {
-                    Log.d(TAG, "Skipping release tag=$versionName; missing html_url")
-                    continue
-                }
-                val apkUrl = release.optJSONArray("assets")
-                    ?.let(::findApkUrl)
-                    ?: run {
-                        Log.d(TAG, "Skipping release tag=$versionName; no APK asset found")
-                        continue
-                    }
-
-                Log.d(TAG, "Accepted Android release tag=$versionName apkUrl=$apkUrl")
+                    ?: continue
+                val version = parseVersion(versionName) ?: continue
+                val releaseUrl = release.optString("html_url").takeIf { it.isNotBlank() } ?: continue
+                val apkUrl = release.optJSONArray("assets")?.let(::findApkUrl) ?: continue
 
                 add(
                     ReleaseInfo(
@@ -105,6 +87,8 @@ internal object AppUpdateChecker {
                 )
             }
         }
+        Log.d(TAG, "Parsed releases: total=${releases.length()} accepted=${accepted.size}")
+        return accepted
     }
 
     private fun findApkUrl(assets: JSONArray): String? {
@@ -120,7 +104,6 @@ internal object AppUpdateChecker {
 
             val downloadUrl = asset.optString("browser_download_url")
             if (downloadUrl.isNotBlank()) {
-                Log.d(TAG, "Found APK asset name=$assetName")
                 return downloadUrl
             }
         }

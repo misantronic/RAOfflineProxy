@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import os
 import subprocess
 import sys
@@ -21,7 +23,15 @@ from .dolphin_cfg import (
     revert_dolphin_ini,
     store_dolphin_previous,
 )
-from .config import APP_VERSION, CONFIG_DIR, load_config, running_on_rocknix, save_config
+from .config import (
+    APP_VERSION,
+    CONFIG_DIR,
+    DEFAULT_ONION_APP_DIR,
+    load_config,
+    running_on_onion,
+    running_on_rocknix,
+    save_config,
+)
 from .platform import (
     autostart_supported,
     disable_autostart,
@@ -45,8 +55,9 @@ from .rom_browser import (
     cached_unlock_count,
     cached_unlock_titles,
     clear_cached_games,
+    directory_has_supported_roms,
     ensure_game_preview,
-    list_browser_files_fast,
+    list_scannable_files_recursive,
     list_browser_entries,
     list_cached_games,
     remove_cached_game,
@@ -69,12 +80,16 @@ from .smart_cache import (
 )
 from .state import load_patch_state, save_patch_state
 from .storage import Storage
+from . import storage_corruption
 from .update import (
     download_knulli_update_installer,
     download_muos_update_archive,
+    download_onion_update_archive,
     install_muos_update_archive,
+    install_onion_update_archive,
     update_status,
 )
+from .log_uploader import report_storage_corruption, upload_logs
 from .menu_input import (
     BTN_DPAD_DOWN,
     BTN_DPAD_LEFT,
@@ -140,8 +155,29 @@ FONT_FILE_CANDIDATES = [
     ),
 ]
 LOGO_PATH = Path(__file__).resolve().parent / "logo-320.png"
+ASSETS_DIR = Path(__file__).resolve().parent / "assets"
+SUPPORT_SUBTITLE = "Free & open source, made in my spare time"
+SUPPORT_DESCRIPTION = "If it's been useful to you, a small donation helps keep it going. Thank you!"
+SUPPORT_DONATE_URL = "https://raofflineproxy.com/donate.html"
+# Monthly-only: Stripe can't combine a customer-chosen amount with a
+# recurring price, so unlike one-time (any amount), monthly is a fixed set
+# of preset tiers, each its own Payment Link/QR image.
+SUPPORT_ONETIME_QR = ASSETS_DIR / "support_qr_onetime.png"
+SUPPORT_MONTHLY_TIERS: list[tuple[str, str, Path]] = [
+    ("$1 / month", "monthly_1", ASSETS_DIR / "support_qr_monthly_1.png"),
+    ("$3 / month", "monthly_3", ASSETS_DIR / "support_qr_monthly_3.png"),
+    ("$5 / month", "monthly_5", ASSETS_DIR / "support_qr_monthly_5.png"),
+    ("$8 / month", "monthly_8", ASSETS_DIR / "support_qr_monthly_8.png"),
+    ("$10 / month", "monthly_10", ASSETS_DIR / "support_qr_monthly_10.png"),
+    ("$15 / month", "monthly_15", ASSETS_DIR / "support_qr_monthly_15.png"),
+]
+# Onion has no fontconfig and no reliable system-wide monospace font (its
+# only TTFs are bundled inside individual, optional third-party apps), so a
+# monospace face ships directly alongside this module rather than being
+# looked up on the filesystem.
+ONION_FONT_REGULAR = Path(__file__).resolve().parent / "font-mono.ttf"
+ONION_FONT_BOLD = Path(__file__).resolve().parent / "font-mono-bold.ttf"
 MUOS_SDCARD_ROOT = Path("/mnt/sdcard/ROMS")
-CALIBRATION_FACE_BUTTONS = {BTN_SOUTH, BTN_EAST}
 KEY_NAMES = {
     103: "KEY_UP",
     108: "KEY_DOWN",
@@ -173,6 +209,90 @@ KEY_NAMES = {
     546: "BTN_DPAD_LEFT",
     547: "BTN_DPAD_RIGHT",
 }
+# Calibration accepts any button that isn't a d-pad direction, rather than a
+# fixed whitelist: gpio-keys-polled handhelds (Onion) emit raw evdev KEY_*
+# codes for their face buttons (e.g. KEY_LEFTCTRL), not the BTN_SOUTH/BTN_EAST
+# joystick codes other platforms' controllers use, and there's no complete
+# enumeration of every device's button codes to whitelist against.
+CALIBRATION_EXCLUDED_KEYS = {
+    KEY_UP,
+    KEY_DOWN,
+    KEY_LEFT,
+    KEY_RIGHT,
+    BTN_DPAD_UP,
+    BTN_DPAD_DOWN,
+    BTN_DPAD_LEFT,
+    BTN_DPAD_RIGHT,
+}
+
+
+ONION_DEFAULT_PANEL_SIZE = (640, 480)
+ONION_SCREEN_RESOLUTION_FILE = Path("/tmp/screen_resolution")
+
+
+def _onion_panel_size() -> tuple[int, int]:
+    """The vendored "Mini" SDL2 driver ignores whatever size is passed to
+    SDL_SetDisplayMode/pygame.display.set_mode: it self-detects the real
+    framebuffer via its own `fbset` probe at init (640x480, or 750x560 on
+    devices whose fbset mode reports "750", e.g. the Miyoo Mini Flip) and
+    presents at that size
+    regardless. So the window/texture here must match what the driver will
+    actually use, or the two sizes fight each other. Onion's own
+    runtime.sh writes the same underlying panel probe result to
+    /tmp/screen_resolution, so read that rather than re-deriving it (and
+    rather than assuming 640x480, which is only one of Onion's panel
+    variants).
+    """
+    try:
+        raw = ONION_SCREEN_RESOLUTION_FILE.read_text(encoding="utf-8").strip()
+        width_str, height_str = raw.split("x", 1)
+        width, height = int(width_str), int(height_str)
+        if width > 0 and height > 0:
+            return (width, height)
+    except (OSError, ValueError):
+        pass
+    return ONION_DEFAULT_PANEL_SIZE
+
+
+def _init_onion_display(pygame):
+    """Onion's SDL2 video driver only presents through the SDL_Renderer +
+    streaming-texture path; SDL_UpdateWindowSurface (what pygame.display.flip
+    normally uses) silently no-ops there. Route flip() through a renderer
+    instead, keeping the surface pygame draws onto in RGB565 (the only pixel
+    format that doesn't crash the renderer's texture upload on this driver).
+    """
+    from pygame._sdl2.video import Renderer, Texture, Window
+
+    panel_size = _onion_panel_size()
+    pygame.display.set_mode(panel_size, 0)
+    window = Window.from_display_module()
+    renderer = Renderer(window, accelerated=-1, vsync=False)
+    draw_surface = pygame.Surface(panel_size, depth=16)
+
+    try:
+        texture = Texture(renderer, panel_size, streaming=True)
+        texture_surface = draw_surface
+    except RuntimeError:
+        # The vendored "Mini" SDL2 driver's swiftshader renderer caps
+        # streaming textures at 640x480 regardless of the actual panel
+        # (e.g. the Miyoo Mini Flip's 750x560 screen exceeds it). Present
+        # through a capped-size texture and let SDL_RenderCopy scale it
+        # back up to the real panel size.
+        texture_surface = pygame.Surface(ONION_DEFAULT_PANEL_SIZE, depth=16)
+        texture = Texture(renderer, ONION_DEFAULT_PANEL_SIZE, streaming=True)
+
+    def _present() -> None:
+        if texture_surface is draw_surface:
+            texture.update(draw_surface)
+        else:
+            pygame.transform.scale(draw_surface, texture_surface.get_size(), texture_surface)
+            texture.update(texture_surface)
+        renderer.clear()
+        texture.draw(dstrect=(0, 0, panel_size[0], panel_size[1]))
+        renderer.present()
+
+    pygame.display.flip = _present
+    return draw_surface
 
 
 def run_menu_sdl(command_runner: str) -> None:
@@ -184,20 +304,23 @@ def run_menu_sdl(command_runner: str) -> None:
         pygame.init()
         pygame.font.init()
 
-        try:
-            surface = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
-        except pygame.error as exc:
-            configured_driver = os.environ.get("SDL_VIDEODRIVER", "")
-            if configured_driver != "" and "not available" in str(exc):
-                log_menu_sdl(
-                    f"display fallback from driver={configured_driver} error={exc}"
-                )
-                os.environ.pop("SDL_VIDEODRIVER", None)
-                pygame.display.quit()
-                pygame.display.init()
+        if running_on_onion():
+            surface = _init_onion_display(pygame)
+        else:
+            try:
                 surface = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
-            else:
-                raise
+            except pygame.error as exc:
+                configured_driver = os.environ.get("SDL_VIDEODRIVER", "")
+                if configured_driver != "" and "not available" in str(exc):
+                    log_menu_sdl(
+                        f"display fallback from driver={configured_driver} error={exc}"
+                    )
+                    os.environ.pop("SDL_VIDEODRIVER", None)
+                    pygame.display.quit()
+                    pygame.display.init()
+                    surface = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
+                else:
+                    raise
         width, height = surface.get_size()
         session = MenuSdlSession(command_runner, surface, width, height, pygame)
         session.run()
@@ -330,12 +453,25 @@ class MenuSdlSession:
         self.cache_return_view = "cached_games"
         self.cache_return_browser_dir: Path | None = None
         self.cache_return_browser_restore = False
+        self.log_upload_thread: threading.Thread | None = None
+        self.log_upload_progress_text: str | None = None
+        self.log_upload_result: tuple[bool, str] | None = None
+        self.storage_corruption_active = False
+        self.storage_corruption_notice_seen = False
+        self.storage_corruption_lost_awards: int | None = None
+        self.storage_corruption_done = False
         self.preview_surface = None
         self.preview_game_id = None
         self.achievement_preview_surface = None
         self.achievement_preview_game_id = None
         self.achievement_preview_title = None
         self.logo_surface = None
+        self.support_qr_surface_cache: dict[str, object] = {}
+        # "onetime" or one of SUPPORT_MONTHLY_TIERS' keys — set right before entering
+        # support_me_qr so it knows which QR/label to show, and go_back()/dismiss know
+        # which list to return to.
+        self.support_selected_tier: str | None = None
+        self.support_qr_return_view = "support_me"
         self.main_state_refreshed_at = 0.0
         self.main_running = False
         self.main_online = False
@@ -360,6 +496,7 @@ class MenuSdlSession:
         self._badge_path_cache: dict[str, object] = {}
         self._badge_surface_cache: dict[str, object] = {}
         self.input_handles = open_input_devices()
+        self.last_key_press: dict[int, float] = {}
         self.title_font = self.load_font(max(30, height // 19), bold=True)
         self.status_font = self.load_font(max(20, height // 30))
         self.item_font = self.load_font(max(22, height // 30), bold=False)
@@ -370,6 +507,14 @@ class MenuSdlSession:
         self.refresh_cached_games()
 
     def load_font(self, size: int, bold: bool = False):
+        if running_on_onion():
+            font_path = ONION_FONT_BOLD if bold else ONION_FONT_REGULAR
+            if font_path.exists():
+                return self.pygame.font.Font(str(font_path), size)
+            font = self.pygame.font.Font(None, size)
+            font.set_bold(bold)
+            return font
+
         if running_on_muos() or running_on_rocknix():
             for regular_path, bold_path in FONT_FILE_CANDIDATES:
                 chosen = bold_path if bold else regular_path
@@ -425,16 +570,21 @@ class MenuSdlSession:
 
         running = self.proxy_running()
         status_text = self.status_text(running)
-        status = self.status_font.render(status_text, False, STATUS_COLOR)
-        status_rect = status.get_rect(topleft=(LEFT_MARGIN, title_rect.bottom + 20))
-        self.surface.blit(status, status_rect)
+        body_bottom = self.render_wrapped_status(status_text, title_rect.bottom + 20)
+        if self.view == "support_me":
+            body_bottom = self.render_support_description(body_bottom + 16)
+        elif self.view in ("support_me_monthly", "support_me_qr"):
+            body_bottom = self.render_support_scan_hint(body_bottom + 16)
+            if self.view == "support_me_qr":
+                body_bottom = self.render_support_qr(body_bottom + 16)
 
         items = self.current_labels(running)
-        start_y = status_rect.bottom + 34
+        start_y = body_bottom + 34
         gap = max(self.item_font.get_height() + 6, self.height // 18)
         self.normalize_selection(items, start_y, gap)
         self.render_game_preview()
         self.render_home_logo()
+        self.render_support_monthly_preview(start_y)
         positions = self.item_positions(items, start_y, gap)
         visible_offset, visible_items = self.visible_items(items, positions, start_y)
         scroll_base_y = positions[visible_offset] - start_y if visible_items else 0
@@ -511,9 +661,29 @@ class MenuSdlSession:
         if self.view == "update_prompt":
             return ["Download and install", "Later"]
 
+        if self.view == "send_logs_confirm":
+            return ["YES", "NO"]
+
+        if self.view == "send_logs_progress":
+            if self.storage_corruption_active and self.storage_corruption_done:
+                return ["Back"]
+            return []
+
+        if self.view == "send_logs_result":
+            return ["Back"]
+
         if self.view == "game_actions":
             unlock_titles = self.game_actions_unlock_titles()
             return ["Remove cache", *unlock_titles, "Back"]
+
+        if self.view == "support_me":
+            return ["Monthly", "One time", "Back"]
+
+        if self.view == "support_me_monthly":
+            return [tier_label for tier_label, _key, _qr in SUPPORT_MONTHLY_TIERS] + ["Back"]
+
+        if self.view == "support_me_qr":
+            return ["Back"]
 
         if self.view == "file_browser":
             if self.browser_dir is None:
@@ -546,6 +716,8 @@ class MenuSdlSession:
             )
         if (self.is_knulli_platform() and not service_mode) or running_on_muos() or running_on_rocknix():
             labels.append("Uninstall")
+        labels.append("Support me")
+        labels.append("Send Logs")
         if os.environ.get("RAOFFLINEPROXY_DEBUG"):
             labels.append("Key Logger")
         labels.append("Exit Menu")
@@ -556,12 +728,18 @@ class MenuSdlSession:
             self.refresh_main_menu_state()
             return bool(getattr(self, "main_logged_in", False))
 
-        if self.storage.load_login_credentials() is not None:
-            return True
+        cached_credentials = self.storage.load_login_credentials()
+        if cached_credentials is not None:
+            return not self.storage.is_token_invalid(cached_credentials["token"])
 
-        return (
-            load_retroarch_credentials(resolve_retroarch_cfg(config_data)) is not None
-        )
+        cfg_credentials = load_retroarch_credentials(resolve_retroarch_cfg(config_data))
+        if cfg_credentials is None:
+            return False
+
+        token = cfg_credentials.get("token")
+        if token is not None:
+            return not self.storage.is_token_invalid(token)
+        return True
 
     def current_labels(self, running: bool | None = None) -> list[str]:
         return self.labels(self.proxy_running() if running is None else running)
@@ -595,7 +773,38 @@ class MenuSdlSession:
             return "Clear Cache?"
         if self.view == "cache_progress":
             return self.cache_progress_title or "Caching"
+        if self.view == "send_logs_confirm":
+            return "Send Logs?"
+        if self.view == "send_logs_progress":
+            return "Data Reset" if self.storage_corruption_active else "Sending Logs"
+        if self.view == "send_logs_result":
+            return "Send Logs" if self.log_upload_result and self.log_upload_result[0] else "Send Logs Failed"
+        if self.view == "support_me":
+            return "Support RAOfflineProxy"
+        if self.view == "support_me_monthly":
+            return "Choose a Monthly Amount"
+        if self.view == "support_me_qr":
+            return self.support_qr_display_label()
         return "RAOfflineProxy"
+
+    def support_qr_display_label(self) -> str:
+        if self.support_selected_tier == "onetime":
+            return "Scan to Donate"
+        for tier_label, key, _qr in SUPPORT_MONTHLY_TIERS:
+            if key == self.support_selected_tier:
+                return f"Scan to Donate {tier_label}"
+        return "Scan to Donate"
+
+    def support_qr_path(self) -> Path | None:
+        return self.support_qr_path_for_tier(self.support_selected_tier)
+
+    def support_qr_path_for_tier(self, tier_key: str | None) -> Path | None:
+        if tier_key == "onetime":
+            return SUPPORT_ONETIME_QR
+        for _label, key, qr_path in SUPPORT_MONTHLY_TIERS:
+            if key == tier_key:
+                return qr_path
+        return None
 
     def item_text_color(self, label: str) -> tuple[int, int, int]:
         if label in {"Back", "Cancel", ""}:
@@ -660,6 +869,19 @@ class MenuSdlSession:
                 if self.main_update_version is not None
                 else "A new version is available."
             )
+        if self.view == "send_logs_confirm":
+            return "Send logs for support?"
+        if self.view == "send_logs_progress":
+            return self.log_upload_progress_text or "Uploading logs..."
+        if self.view == "send_logs_result":
+            if self.log_upload_result is None:
+                return ""
+            success, message = self.log_upload_result
+            return f"Support ID: {message}" if success else f"Upload failed: {message}"
+        if self.view == "support_me":
+            return SUPPORT_SUBTITLE
+        if self.view in ("support_me_monthly", "support_me_qr"):
+            return ""
         self.refresh_main_menu_state()
         logged_in = bool(getattr(self, "main_logged_in", False))
         proxy_status = "RUNNING" if running else "STOPPED"
@@ -680,9 +902,9 @@ class MenuSdlSession:
 
         if self.view == "controller_calibration":
             if self.calibration_step == "confirm":
-                return "Face buttons only. Press the labeled A button to continue."
+                return "Face buttons only. Press A to continue."
             if self.calibration_step == "cancel":
-                return "Now press the labeled B button."
+                return "Now press B."
             return None
 
         if self.view != "main":
@@ -694,6 +916,16 @@ class MenuSdlSession:
                 return None
             if self.view == "update_prompt":
                 return self.confirm_cancel_hint("install", None)
+            if self.view == "send_logs_confirm":
+                return self.confirm_cancel_hint("confirm", "cancel")
+            if self.view == "send_logs_progress":
+                if self.storage_corruption_active and self.storage_corruption_done:
+                    return self.confirm_cancel_hint("dismiss", None)
+                return None
+            if self.view == "send_logs_result":
+                return self.confirm_cancel_hint("dismiss", None)
+            if self.view == "support_me_qr":
+                return None
             if self.view == "file_browser" and self.browser_at_switchable_root():
                 alt = resolve_rom_root(load_config()) if self.browser_root == MUOS_SDCARD_ROOT else MUOS_SDCARD_ROOT
                 return f"L/R: switch to {alt}"
@@ -726,17 +958,31 @@ class MenuSdlSession:
         return "Login to RetroAchievements in system settings."
 
     def handle_events(self) -> None:
+        # Onion's vendored SDL2 build runs a generic Linux evdev keyboard
+        # backend independent of its video driver, so the same physical
+        # press arrives here as KEYDOWN *and* via handle_raw_input reading
+        # the device directly, double-firing navigation. This is confirmed
+        # on Onion specifically (verified with a dual-logging capture that
+        # showed both a "RAW" and an "SDL KEYDOWN" line ~20ms apart for one
+        # tap) — it is NOT known to happen on muOS/Knulli/ROCKNIX, so the
+        # skip is scoped to Onion rather than applied whenever raw input
+        # happens to be available, to avoid silently disabling their
+        # existing KEYDOWN path on unverified assumptions. Keep draining the
+        # event queue regardless (QUIT still matters, and an undrained SDL
+        # event queue can back up).
+        skip_keydown = running_on_onion() and bool(getattr(self, "input_handles", None))
         for event in self.pygame.event.get():
             if event.type == self.pygame.QUIT:
                 self.running = False
                 return
 
             if event.type == self.pygame.KEYDOWN:
-                self.handle_key(event.key)
+                if not skip_keydown:
+                    self.handle_key(event.key)
                 continue
 
     def handle_raw_input(self) -> None:
-        for key in read_keys(self.input_handles):
+        for key in read_keys(self.input_handles, self.last_key_press):
             if self.handle_calibration_key(key):
                 continue
 
@@ -816,12 +1062,37 @@ class MenuSdlSession:
             self.activate_update_prompt_selected()
             return
 
+        if self.view == "send_logs_confirm":
+            self.activate_send_logs_confirm_selected()
+            return
+
+        if self.view == "send_logs_progress":
+            if self.storage_corruption_active and self.storage_corruption_done:
+                self.dismiss_storage_corruption_progress()
+            return
+
+        if self.view == "send_logs_result":
+            self.dismiss_send_logs_result()
+            return
+
         if self.view == "game_actions":
             self.activate_game_actions_selected()
             return
 
         if self.view == "file_browser":
             self.activate_file_browser_selected()
+            return
+
+        if self.view == "support_me":
+            self.activate_support_me_selected()
+            return
+
+        if self.view == "support_me_monthly":
+            self.activate_support_me_monthly_selected()
+            return
+
+        if self.view == "support_me_qr":
+            self.dismiss_support_me_qr()
             return
 
         if self.view == "cache_progress":
@@ -864,6 +1135,10 @@ class MenuSdlSession:
             self.uninstall()
             return
 
+        if selected_label == "Send Logs":
+            self.activate_send_logs_confirm()
+            return
+
         if selected_label == "Key Logger":
             self.save_view_position("main")
             self.key_log = []
@@ -871,7 +1146,61 @@ class MenuSdlSession:
             self.reset_selection()
             return
 
+        if selected_label == "Support me":
+            self.save_view_position("main")
+            self.view = "support_me"
+            self.restore_view_position("support_me")
+            return
+
         self.running = False
+
+    def activate_support_me_selected(self) -> None:
+        labels = self.current_labels()
+        selected_label = labels[self.selected_index] if labels else ""
+
+        if selected_label == "Monthly":
+            self.save_view_position("support_me")
+            self.view = "support_me_monthly"
+            self.restore_view_position("support_me_monthly")
+            return
+
+        if selected_label == "One time":
+            self.save_view_position("support_me")
+            self.support_selected_tier = "onetime"
+            self.support_qr_return_view = "support_me"
+            self.view = "support_me_qr"
+            self.reset_selection()
+            return
+
+        if selected_label == "Back":
+            self.save_view_position("support_me")
+            self.view = "main"
+            self.restore_view_position("main")
+            return
+
+    def activate_support_me_monthly_selected(self) -> None:
+        labels = self.current_labels()
+        selected_label = labels[self.selected_index] if labels else ""
+
+        if selected_label == "Back":
+            self.save_view_position("support_me_monthly")
+            self.view = "support_me"
+            self.restore_view_position("support_me")
+            return
+
+        for tier_label, key, _qr in SUPPORT_MONTHLY_TIERS:
+            if selected_label == tier_label:
+                self.save_view_position("support_me_monthly")
+                self.support_selected_tier = key
+                self.support_qr_return_view = "support_me_monthly"
+                self.view = "support_me_qr"
+                self.reset_selection()
+                return
+
+    def dismiss_support_me_qr(self) -> None:
+        self.support_selected_tier = None
+        self.view = self.support_qr_return_view
+        self.restore_view_position(self.support_qr_return_view)
 
     def activate_cached_games_selected(self) -> None:
         labels = self.current_labels()
@@ -975,6 +1304,8 @@ class MenuSdlSession:
     def update_platform(self) -> str:
         if running_on_muos():
             return "muos"
+        if running_on_onion():
+            return "onion"
         if running_on_rocknix():
             return "rocknix"
         return "knulli"
@@ -1009,7 +1340,7 @@ class MenuSdlSession:
         if self.view != "controller_calibration":
             return False
 
-        if key not in CALIBRATION_FACE_BUTTONS:
+        if key in CALIBRATION_EXCLUDED_KEYS:
             return True
 
         if self.calibration_step == "confirm":
@@ -1050,11 +1381,11 @@ class MenuSdlSession:
     def confirm_cancel_hint(self, confirm_action: str, cancel_action: str | None) -> str:
         confirm_label = self.confirm_button_name()
         if cancel_action is None:
-            return f"Press START or {confirm_label} to {confirm_action}."
+            return f"Press {confirm_label} to {confirm_action}."
 
         cancel_label = self.cancel_button_name()
         return (
-            f"Press {confirm_label} or START to {confirm_action}. "
+            f"Press {confirm_label} to {confirm_action}. "
             f"{cancel_label} to {cancel_action}."
         )
 
@@ -1155,12 +1486,10 @@ class MenuSdlSession:
         title_rect = title.get_rect(topleft=(LEFT_MARGIN, max(36, self.height // 12)))
         self.surface.blit(title, title_rect)
 
-        status = self.status_font.render(self.status_text(False), False, STATUS_COLOR)
-        status_rect = status.get_rect(topleft=(LEFT_MARGIN, title_rect.bottom + 20))
-        self.surface.blit(status, status_rect)
+        status_bottom = self.render_wrapped_status(self.status_text(False), title_rect.bottom + 20)
 
         gap = max(self.item_font.get_height() + 6, self.height // 18)
-        y = status_rect.bottom + 34
+        y = status_bottom + 34
         for key in self.key_log:
             name = KEY_NAMES.get(key, "unknown")
             line = f"  {key}  0x{key:03X}  {name}"
@@ -1220,7 +1549,9 @@ class MenuSdlSession:
         self.pending_awards = list_pending_awards(self.storage)
 
     def browser_has_cacheable_files(self) -> bool:
-        return any(entry.is_file() for entry in self.browser_entries)
+        if self.browser_dir is None:
+            return False
+        return directory_has_supported_roms(self.browser_dir)
 
     def start_single_rom_cache(self, path: Path) -> None:
         self.save_browser_position()
@@ -1271,7 +1602,7 @@ class MenuSdlSession:
             return
 
         current_dir = self.browser_dir
-        cache_paths = list_browser_files_fast(current_dir)
+        cache_paths = list_scannable_files_recursive(current_dir)
         self.save_browser_position()
         self.cache_progress_title = f"Caching: {current_dir.name}"
         if cache_paths:
@@ -1437,6 +1768,20 @@ class MenuSdlSession:
         if self.view == "cache_progress":
             return
 
+        if self.view == "send_logs_confirm":
+            self.view = "main"
+            self.restore_view_position("main")
+            return
+
+        if self.view == "send_logs_progress":
+            if self.storage_corruption_active and self.storage_corruption_done:
+                self.dismiss_storage_corruption_progress()
+            return
+
+        if self.view == "send_logs_result":
+            self.dismiss_send_logs_result()
+            return
+
         if self.view == "pending_award_actions":
             self.active_pending_award = None
             self.view = "pending_awards"
@@ -1448,6 +1793,22 @@ class MenuSdlSession:
             self.clear_active_game_unlocks()
             self.view = "cached_games"
             self.restore_view_position("cached_games")
+            return
+
+        if self.view == "support_me":
+            self.save_view_position("support_me")
+            self.view = "main"
+            self.restore_view_position("main")
+            return
+
+        if self.view == "support_me_monthly":
+            self.save_view_position("support_me_monthly")
+            self.view = "support_me"
+            self.restore_view_position("support_me")
+            return
+
+        if self.view == "support_me_qr":
+            self.dismiss_support_me_qr()
             return
 
         self.running = False
@@ -1629,6 +1990,149 @@ class MenuSdlSession:
         scale = min(max_width / max(1, width), max_height / max(1, height), 4.0)
         return max(1, int(width * scale)), max(1, int(height * scale))
 
+    def wrap_text_to_width(self, text: str, font, max_width: int) -> list[str]:
+        # Word-wrap measured in actual rendered pixel width rather than character
+        # count, since these fonts aren't monospace — a char-count wrap either
+        # overflows or wastes space depending on the word mix.
+        words = text.split()
+        lines: list[str] = []
+        current = ""
+        for word in words:
+            candidate = f"{current} {word}".strip()
+            if not current or font.size(candidate)[0] <= max_width:
+                current = candidate
+            else:
+                lines.append(current)
+                current = word
+        if current:
+            lines.append(current)
+        return lines
+
+    def render_wrapped_status(self, text: str, top_y: int) -> int:
+        # Each "\n"-separated segment forces its own line (e.g. one sentence
+        # per line for the storage-corruption notice); word-wrap only kicks
+        # in within a segment that's still too wide for the screen on its own.
+        max_width = self.width - (2 * LEFT_MARGIN)
+        segments = text.split("\n") if text else [""]
+        lines = [
+            line
+            for segment in segments
+            for line in (self.wrap_text_to_width(segment, self.status_font, max_width) or [""])
+        ]
+        bottom = top_y
+        y = top_y
+        for line in lines:
+            surface = self.status_font.render(line, False, STATUS_COLOR)
+            rect = surface.get_rect(topleft=(LEFT_MARGIN, y))
+            self.surface.blit(surface, rect)
+            bottom = rect.bottom
+            y = rect.bottom + 4
+        return bottom
+
+    def render_support_description(self, top_y: int) -> int:
+        max_width = self.width - (2 * LEFT_MARGIN)
+        y = top_y
+        for line in self.wrap_text_to_width(SUPPORT_DESCRIPTION, self.status_font, max_width):
+            surface = self.status_font.render(line, False, TEXT_COLOR)
+            rect = surface.get_rect(topleft=(LEFT_MARGIN, y))
+            self.surface.blit(surface, rect)
+            y = rect.bottom + 4
+        return y
+
+    def render_support_scan_hint(self, top_y: int) -> int:
+        # Wrapped rather than a single status-bar line, since combining "scan"
+        # and the fallback URL into one message can easily run past screen
+        # width on smaller handhelds.
+        max_width = self.width - (2 * LEFT_MARGIN)
+        text = f"Scan with your phone's camera, or visit {SUPPORT_DONATE_URL}"
+        y = top_y
+        for line in self.wrap_text_to_width(text, self.meta_font, max_width):
+            surface = self.meta_font.render(line, False, SECONDARY_TEXT_COLOR)
+            rect = surface.get_rect(topleft=(LEFT_MARGIN, y))
+            self.surface.blit(surface, rect)
+            y = rect.bottom + 4
+        return y
+
+    def fit_qr_size(self, width: int, height: int) -> tuple[int, int]:
+        # QR assets are already high-resolution (512x512) squares, so this only
+        # ever scales down — sized generously since it needs to stay scannable.
+        target = max(120, min(self.width // 2, int(self.height * 0.45)))
+        scale = target / max(1, max(width, height))
+        return max(1, int(width * scale)), max(1, int(height * scale))
+
+    def load_support_qr_surface(self, tier_key: str | None, *, large: bool):
+        if tier_key is None:
+            return None
+
+        cache_key = f"{tier_key}:{'large' if large else 'small'}"
+        if cache_key in self.support_qr_surface_cache:
+            return self.support_qr_surface_cache[cache_key]
+
+        qr_path = self.support_qr_path_for_tier(tier_key)
+        if qr_path is None or not qr_path.exists():
+            self.support_qr_surface_cache[cache_key] = None
+            return None
+
+        try:
+            image = self.pygame.image.load(str(qr_path))
+            image = (
+                image.convert_alpha()
+                if image.get_alpha() is not None
+                else image.convert()
+            )
+            scaled_size = (
+                self.fit_qr_size(image.get_width(), image.get_height())
+                if large
+                else self.fit_preview_size(image.get_width(), image.get_height())
+            )
+            surface = self.pygame.transform.smoothscale(image, scaled_size)
+            self.support_qr_surface_cache[cache_key] = surface
+            return surface
+        except Exception as exc:
+            log_menu_sdl(f"support qr load failed path={qr_path} error={exc}")
+            self.support_qr_surface_cache[cache_key] = None
+            return None
+
+    def render_support_qr(self, top_y: int) -> int:
+        qr_surface = self.load_support_qr_surface(self.support_selected_tier, large=True)
+        if qr_surface is None:
+            text = self.status_font.render(
+                f"QR unavailable — visit {SUPPORT_DONATE_URL}", False, TEXT_COLOR
+            )
+            rect = text.get_rect(topleft=(LEFT_MARGIN, top_y))
+            self.surface.blit(text, rect)
+            return rect.bottom
+
+        qr_rect = qr_surface.get_rect(midtop=(self.width // 2, top_y))
+        self.surface.blit(qr_surface, qr_rect)
+        return qr_rect.bottom
+
+    def support_monthly_preview_tier_key(self) -> str | None:
+        if self.view != "support_me_monthly":
+            return None
+
+        labels = self.current_labels()
+        if not labels or not (0 <= self.selected_index < len(labels)):
+            return None
+
+        selected_label = labels[self.selected_index]
+        for tier_label, key, _qr in SUPPORT_MONTHLY_TIERS:
+            if selected_label == tier_label:
+                return key
+        return None
+
+    def render_support_monthly_preview(self, top_y: int) -> None:
+        tier_key = self.support_monthly_preview_tier_key()
+        if tier_key is None:
+            return
+
+        qr_surface = self.load_support_qr_surface(tier_key, large=True)
+        if qr_surface is None:
+            return
+
+        qr_rect = qr_surface.get_rect(topright=(self.width - 24, top_y))
+        self.surface.blit(qr_surface, qr_rect)
+
     def item_start_y(self) -> int:
         title_top = max(36, self.height // 12)
         title_height = self.title_font.get_height()
@@ -1751,6 +2255,14 @@ class MenuSdlSession:
             self.main_update_asset_url = None
         if not hasattr(self, "main_update_dialog_seen"):
             self.main_update_dialog_seen = False
+        if not hasattr(self, "storage_corruption_active"):
+            self.storage_corruption_active = False
+        if not hasattr(self, "storage_corruption_notice_seen"):
+            self.storage_corruption_notice_seen = False
+        if not hasattr(self, "storage_corruption_lost_awards"):
+            self.storage_corruption_lost_awards = None
+        if not hasattr(self, "storage_corruption_done"):
+            self.storage_corruption_done = False
 
         if not force and self.view != "main":
             return
@@ -1798,6 +2310,63 @@ class MenuSdlSession:
             self.view = "update_prompt"
             self.reset_selection()
 
+        self.maybe_show_storage_corruption_notice()
+
+    def maybe_show_storage_corruption_notice(self) -> None:
+        if self.storage_corruption_notice_seen or self.view != "main":
+            return
+
+        incident = storage_corruption.load_incident()
+        if incident is None or incident.get("notified"):
+            return
+
+        self.storage_corruption_notice_seen = True
+        storage_corruption.mark_notified()
+        self.storage_corruption_active = True
+        self.storage_corruption_lost_awards = incident.get("lost_pending_awards")
+        self.storage_corruption_done = False
+        self.save_view_position("main")
+        self.reset_selection()
+        self.log_upload_result = None
+        self.view = "send_logs_progress"
+
+        intro = "A corrupted data file was found and reset."
+
+        if incident.get("reported") and incident.get("upload_id"):
+            result_text = self.storage_corruption_result_text(True, incident["upload_id"])
+            self.log_upload_progress_text = f"{intro}\n{result_text}"
+            self.storage_corruption_done = True
+            return
+
+        self.log_upload_progress_text = f"{intro}\nUploading diagnostic logs..."
+
+        def worker() -> None:
+            try:
+                upload_id = report_storage_corruption(incident)
+                storage_corruption.mark_reported(upload_id)
+                result_text = self.storage_corruption_result_text(True, upload_id)
+            except Exception as exc:
+                result_text = self.storage_corruption_result_text(False, str(exc))
+            self.log_upload_progress_text = f"{intro}\n{result_text}"
+            self.storage_corruption_done = True
+
+        self.log_upload_thread = threading.Thread(target=worker, daemon=True)
+        self.log_upload_thread.start()
+
+    def storage_corruption_result_text(self, success: bool, message: str) -> str:
+        lost = self.storage_corruption_lost_awards
+        upload_part = f"Support ID: {message}" if success else f"Log upload failed: {message}"
+
+        if lost == 0:
+            return f"No pending achievements were affected.\n{upload_part}"
+        if lost is None:
+            return f"{upload_part}\nSome progress may not have synced, please reach out on Discord."
+        plural = "achievement" if lost == 1 else "achievements"
+        return (
+            f"{lost} pending {plural} may not have synced.\n{upload_part}\n"
+            "Please reach out on Discord."
+        )
+
     def dismiss_update_prompt(self) -> None:
         self.view = "main"
         self.restore_view_position("main")
@@ -1807,6 +2376,55 @@ class MenuSdlSession:
             self.install_update()
             return
         self.dismiss_update_prompt()
+
+    def activate_send_logs_confirm(self) -> None:
+        self.save_view_position("main")
+        self.view = "send_logs_confirm"
+        self.reset_selection()
+
+    def activate_send_logs_confirm_selected(self) -> None:
+        if self.selected_index == 0:
+            self.start_send_logs()
+            return
+        self.view = "main"
+        self.restore_view_position("main")
+
+    def start_send_logs(self) -> None:
+        self.storage_corruption_active = False
+        self.storage_corruption_lost_awards = None
+        self.log_upload_progress_text = "Uploading logs..."
+        self.log_upload_result = None
+        self.view = "send_logs_progress"
+        self.reset_selection()
+
+        def worker() -> None:
+            try:
+                upload_id = upload_logs()
+                self.log_upload_result = (True, upload_id)
+            except Exception as exc:
+                self.log_upload_result = (False, str(exc))
+            finally:
+                self.log_upload_progress_text = None
+                if self.view == "send_logs_progress":
+                    self.view = "send_logs_result"
+                    self.reset_selection()
+
+        self.log_upload_thread = threading.Thread(target=worker, daemon=True)
+        self.log_upload_thread.start()
+
+    def dismiss_send_logs_result(self) -> None:
+        self.log_upload_result = None
+        self.storage_corruption_active = False
+        self.view = "main"
+        self.restore_view_position("main")
+
+    def dismiss_storage_corruption_progress(self) -> None:
+        self.storage_corruption_active = False
+        self.storage_corruption_done = False
+        self.storage_corruption_lost_awards = None
+        self.log_upload_progress_text = None
+        self.view = "main"
+        self.restore_view_position("main")
 
     def clear_active_game_unlocks(self) -> None:
         self.active_game_unlock_game_id = None
@@ -2022,11 +2640,22 @@ class MenuSdlSession:
         self.main_update_available = update.update_available
         return update.asset_url
 
+    def show_update_progress(self, text: str) -> None:
+        # The update install runs synchronously with no event loop, so this
+        # paints the message immediately instead of waiting for the next frame.
+        self.message = (text, time.monotonic() + 120)
+        self.render()
+        self.pygame.event.pump()
+
     def install_update(self) -> None:
         if running_on_muos():
             self.install_update_muos()
             return
+        if running_on_onion():
+            self.install_update_onion()
+            return
 
+        self.show_update_progress("Checking for update...")
         asset_url = self.resolve_update_asset_url()
         if not asset_url:
             self.message = ("Update install failed: no installer URL", time.monotonic() + ERROR_SECONDS)
@@ -2034,8 +2663,11 @@ class MenuSdlSession:
             return
 
         try:
+            self.show_update_progress("Stopping proxy...")
             stop_proxy_inline()
+            self.show_update_progress("Downloading update...")
             installer_path = download_knulli_update_installer(asset_url)
+            self.show_update_progress("Installing update...")
             self.storage.close()
             close_input_devices(self.input_handles)
             self.pygame.quit()
@@ -2044,7 +2676,33 @@ class MenuSdlSession:
             self.message = (f"Update install failed: {exc}", time.monotonic() + ERROR_SECONDS)
             self.dismiss_update_prompt()
 
+    def install_update_onion(self) -> None:
+        self.show_update_progress("Checking for update...")
+        asset_url = self.resolve_update_asset_url()
+        if not asset_url:
+            self.message = ("Update install failed: no installer URL", time.monotonic() + ERROR_SECONDS)
+            self.dismiss_update_prompt()
+            return
+
+        app_dir = DEFAULT_ONION_APP_DIR
+        try:
+            self.show_update_progress("Stopping proxy...")
+            stop_proxy_inline()
+            self.show_update_progress("Downloading update...")
+            archive_path = download_onion_update_archive(asset_url)
+            self.show_update_progress("Installing update...")
+            install_onion_update_archive(archive_path, app_dir)
+            self.storage.close()
+            close_input_devices(self.input_handles)
+            self.pygame.quit()
+            launch_script = str(app_dir / "launch.sh")
+            os.execv("/bin/sh", ["/bin/sh", launch_script, "menu-sdl"])
+        except Exception as exc:
+            self.message = (f"Update install failed: {exc}", time.monotonic() + ERROR_SECONDS)
+            self.dismiss_update_prompt()
+
     def install_update_muos(self) -> None:
+        self.show_update_progress("Checking for update...")
         asset_url = self.resolve_update_asset_url()
         if not asset_url:
             self.message = ("Update install failed: no installer URL", time.monotonic() + ERROR_SECONDS)
@@ -2053,10 +2711,13 @@ class MenuSdlSession:
 
         app_dir = Path("/run/muos/storage/application/RAOfflineProxy")
         try:
+            self.show_update_progress("Stopping proxy...")
             stop_proxy_inline()
             # Download outside app_dir so the in-place swap never touches the archive.
             archive_dest = app_dir.parent / ".raofflineproxy-update.muxapp"
+            self.show_update_progress("Downloading update...")
             archive_path = download_muos_update_archive(asset_url, archive_dest)
+            self.show_update_progress("Installing update...")
             install_muos_update_archive(archive_path, app_dir)
             self.storage.close()
             close_input_devices(self.input_handles)

@@ -24,6 +24,11 @@ mkdir -p "${BIN_DIR}"
 mkdir -p "${LIB_DIR}"
 mkdir -p "${TOOLS_DIR}"
 
+# Clear the stale "update available" cache before any step that could fail
+# and abort the script under set -e, so a partial install never leaves the
+# update prompt stuck on forever.
+rm -f "${UPDATE_STATUS_FILE}"
+
 if [ -x "${OLD_BIN}" ]; then
   if status_output="$(${OLD_BIN} status 2>/dev/null)" && printf '%s' "${status_output}" | grep -q 'running: yes'; then
     WAS_RUNNING=1
@@ -36,8 +41,6 @@ cp -r "${SCRIPT_DIR}/lib/"* "${LIB_DIR}/"
 
 cp "${SCRIPT_DIR}/scripts/launcher-raofflineproxy" "${BIN_DIR}/raofflineproxy"
 cp "${SCRIPT_DIR}/scripts/launcher-raofflineproxy-uninstall" "${BIN_DIR}/raofflineproxy-uninstall"
-
-rm -f "${UPDATE_STATUS_FILE}"
 
 chmod +x "${BIN_DIR}/raofflineproxy"
 chmod +x "${BIN_DIR}/raofflineproxy-uninstall"

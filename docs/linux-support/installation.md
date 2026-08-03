@@ -10,7 +10,8 @@ Before using `RAOfflineProxy` on Linux:
 
 == KNULLI
 
-- Enter your RetroAchievements account details in RetroArch
+- Enter your RetroAchievements account details<br>
+  > Game Settings -> Retroachievement settings
 
 == Onion
 
@@ -27,10 +28,15 @@ Before using `RAOfflineProxy` on Linux:
   > muOS stores these credentials in the `retroarch.cheevos.cfg` appendconfig, which RAOfflineProxy reads automatically.
 - Make sure the system clock is correct so award timestamps are accurate
 
+== ROCKNIX
+
+- Enter your RetroAchievements account details<br>
+  > Game Settings -> Retroachievement settings
+
 :::
 
-::: warning RetroArch config is patched automatically
-RAOfflineProxy patches the RetroArch config it needs in order to redirect RetroAchievements traffic through the local proxy. For target-specific details, see [Emulator Patching](/linux-support/cfg-patching).
+::: warning Emulator configs are patched automatically
+RAOfflineProxy patches the emulator configs it needs in order to redirect RetroAchievements traffic through the local proxy (RetroArch everywhere, plus standalone PPSSPP on ROCKNIX). For target-specific details, see [Emulator Patching](/linux-support/cfg-patching).
 :::
 
 ## Setup
@@ -48,12 +54,11 @@ RAOfflineProxy patches the RetroArch config it needs in order to redirect RetroA
 /userdata/roms/tools
 ```
 
-3. Refresh or update gamelists so **RAOfflineProxy Install** appears in the **Tools** menu
+3. Update gamelists so **RAOfflineProxy Install** appears in the **Tools** menu
 4. Launch **RAOfflineProxy Install** from **Tools**
-5. Refresh or update gamelists again so the main **RAOfflineProxy** entry appears
-6. Launch **RAOfflineProxy** from the **Tools** menu
-7. Start the proxy while online
-8. Cache games either from **Cached Games** then **Add ROM** or by launching them once in RetroArch
+5. Launch **RAOfflineProxy** from the **Tools** menu
+6. Start the proxy while online
+7. Cache games either from **Cached Games** then **Add ROM** or by launching them once in RetroArch
 
 == Onion
 
@@ -91,6 +96,30 @@ RAOfflineProxy patches the RetroArch config it needs in order to redirect RetroA
 
 5. Start the proxy while online
 6. Launch a game once so its data is cached
+
+== ROCKNIX
+
+> ROCKNIX support is currently in alpha.
+
+1. Download the latest `RAOfflineProxy-Rocknix-*-Install.sh` from [GitHub Releases](https://github.com/misantronic/RAOfflineProxy/releases)
+2. Copy the installer into:
+
+```text
+/storage/.config/modules
+```
+
+3. Update gamelists so the installer appears in the **Tools** menu
+4. Launch the installer from **Tools**
+
+   The app payload is installed under:
+
+```text
+/storage/.local/share/raofflineproxy
+```
+
+5. Launch **RAOfflineProxy** from the **Tools** menu
+6. Start the proxy while online
+7. Cache games either from **Cached Games** then **Add ROM** or by launching them once in RetroArch
 
 :::
 

@@ -9,11 +9,7 @@ private val UI_RETROARCH_PACKAGE_CANDIDATES = listOf(
     "com.retroarch"
 )
 
-private val UI_DOLPHIN_PACKAGE_CANDIDATES = listOf(
-    "org.dolphinemu.dolphinemu",
-    "org.dolphinemu.dolphinemu.beta",
-    "org.dolphinemu.dolphinemu.debug"
-)
+private val UI_DOLPHIN_PACKAGE_CANDIDATES = DOLPHIN_PACKAGE_CANDIDATES
 
 internal const val UI_PPSSPP_PACKAGE = "org.ppsspp.ppsspp"
 internal const val UI_PPSSPP_GOLD_PACKAGE = "org.ppsspp.ppssppgold"

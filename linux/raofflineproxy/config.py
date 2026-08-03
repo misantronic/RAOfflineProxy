@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import json
 import logging
 import logging.handlers
@@ -28,6 +30,10 @@ def running_on_rocknix() -> bool:
     return 'OS_NAME="ROCKNIX"' in content
 
 
+def running_on_onion() -> bool:
+    return DEFAULT_ONION_APP_DIR.exists()
+
+
 def resolve_config_dir() -> Path:
     configured = os.environ.get("RAOFFLINEPROXY_CONFIG_DIR")
     if configured:
@@ -54,9 +60,9 @@ def resolve_config_dir() -> Path:
 
 RA_HOST = "https://retroachievements.org"
 RA_MEDIA_HOST = "https://media.retroachievements.org"
-PROXY_UA_TAG = "RAOfflineProxy/Linux/1.6.0-alpha1"
+PROXY_UA_TAG = "RAOfflineProxy/Linux/1.9.0-alpha1"
 FALLBACK_USER_AGENT = "RetroArch/1.21.0 (Linux)"
-APP_VERSION = os.environ.get("RAOFFLINEPROXY_APP_VERSION") or "1.6.0-alpha1"
+APP_VERSION = os.environ.get("RAOFFLINEPROXY_APP_VERSION") or "1.9.0-alpha1"
 
 DEFAULT_PROXY_PORT = 8080
 MIN_PROXY_PORT = 1024
@@ -96,7 +102,13 @@ def load_config() -> dict:
         return {}
 
     with CONFIG_FILE.open(encoding="utf-8") as handle:
-        data = json.load(handle)
+        try:
+            data = json.load(handle)
+        except json.JSONDecodeError:
+            logging.getLogger("raofflineproxy").warning(
+                "Config file %s is empty or corrupt, resetting to defaults", CONFIG_FILE
+            )
+            return {}
 
     if not isinstance(data, dict):
         raise ValueError(f"Invalid config file: {CONFIG_FILE}")

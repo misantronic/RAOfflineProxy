@@ -27,8 +27,8 @@ export default defineConfig({
     nav: [
       { text: 'Guide', link: '/introduction', activeMatch: '^/(?!$)' },
       {
-        text: 'Contact',
-        link: '/contact',
+        text: 'Donate',
+        link: '/donate',
       },
       {
         text: 'GitHub',
@@ -78,7 +78,9 @@ export default defineConfig({
         text: 'Help',
         items: [
           { text: 'Troubleshooting / FAQ', link: '/troubleshooting' },
+          { text: 'Get Support', link: '/support' },
           { text: 'Contact / Feedback', link: '/contact' },
+          { text: 'Donate', link: '/donate' },
           { text: 'Privacy Policy', link: '/privacy-policy' },
         ],
       },

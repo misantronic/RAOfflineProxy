@@ -9,6 +9,7 @@ import com.raofflineproxy.MAX_CACHED_GAMES
 import com.raofflineproxy.R
 import com.raofflineproxy.RA_HOST
 import com.raofflineproxy.RequestFailureNotifier
+import com.raofflineproxy.applyScanBatchCooldown
 import com.raofflineproxy.buildApiUrl
 import com.raofflineproxy.proxy.hash.hashRomCandidates
 import com.raofflineproxy.proxyHost
@@ -40,6 +41,8 @@ private const val HTTP_GET_MAX_429_RETRIES = 4
 private const val HTTP_GET_INITIAL_429_BACKOFF_MS = 2_000L
 private const val HTTP_GET_MAX_429_BACKOFF_MS = 15_000L
 private const val SCAN_CACHE_PIPELINE_LIMIT = 6
+private const val MAX_SCAN_ENTRIES = 5000
+private const val MAX_SCAN_DEPTH = 12
 
 private val FALLBACK_USER_AGENT = "RetroArch/1.21.0 (Android ${Build.VERSION.RELEASE ?: "Unknown"})"
 
@@ -374,8 +377,7 @@ suspend fun scanRomFolder(
         val f = DocumentFile.fromSingleUri(context, treeUri)
         if (f != null && shouldScanFile(f)) listOf(f) else emptyList()
     } else {
-        DocumentFile.fromTreeUri(context, treeUri)?.listFiles()
-            ?.filter(::shouldScanFile)
+        DocumentFile.fromTreeUri(context, treeUri)?.let { collectScannableFiles(it, MAX_SCAN_ENTRIES) }
             ?: emptyList()
     }
     val total = files.size
@@ -386,11 +388,13 @@ suspend fun scanRomFolder(
 
     supervisorScope {
         for ((index, file) in files.withIndex()) {
-            if (cachedGameIds.size + inFlight.size >= MAX_CACHED_GAMES) {
+            if (cachedGameIds.size >= MAX_CACHED_GAMES) {
                 skipped += total - index
                 limitReached = true
                 break
             }
+            applyScanBatchCooldown(index, TAG)
+
             onProgress(index + 1, total, file.name ?: "")
             val sourceRomPath = resolveDocumentAbsolutePath(file)
             val normalizedPath = sourceRomPath?.normalizeCachedRomPath()
@@ -460,12 +464,70 @@ internal fun String.normalizeCachedRomPath(): String =
     replace('\\', '/')
         .trim()
 
+private fun collectScannableFiles(root: DocumentFile, maxEntries: Int): List<DocumentFile> {
+    val result = mutableListOf<DocumentFile>()
+    if (maxEntries <= 0) return result
+    val stack = ArrayDeque<Pair<DocumentFile, Int>>()
+    stack.addLast(root to 0)
+    while (stack.isNotEmpty() && result.size < maxEntries) {
+        val (dir, depth) = stack.removeLast()
+        val children = dir.listFiles()
+        for (child in children) {
+            if (result.size >= maxEntries) break
+            if (child.isDirectory) {
+                if (depth < MAX_SCAN_DEPTH) {
+                    stack.addLast(child to depth + 1)
+                }
+            } else if (shouldScanFile(child)) {
+                result.add(child)
+            }
+        }
+    }
+    return result
+}
+
+// Extensions the app's hashing pipeline can actually turn into a cache entry.
+// Unlike supportedArchiveRomExtensions in RomHashing.kt (which only need cover
+// a single unlabeled file inside a zip), this list is meant to be exhaustive:
+// anything not here gets skipped before it ever reaches the hasher.
+private val ROM_EXTENSIONS = setOf(
+    // Nintendo cartridge / handheld
+    "nes", "fds", "smc", "sfc", "fig", "swc", "bs", "gb", "gbc", "gba",
+    "nds", "n64", "z64", "v64", "ndd",
+    // Sega
+    "md", "gen", "smd", "32x", "sms", "gg", "sg", "gdi",
+    // NEC
+    "pce", "sgx",
+    // Atari
+    "a26", "a78", "lnx", "jag", "j64",
+    // Other cartridge consoles
+    "col", "int", "vec", "vb", "ws", "wsc", "ngp", "ngc", "min", "sv", "chf",
+    // GameCube/Wii disc containers
+    "iso", "gcm", "gcz", "ciso", "wbfs", "rvz", "wad",
+    // Other disc images / sheets, hashed directly by rc_hash
+    // (also covers Sega CD/Saturn, Dreamcast, 3DO, Neo Geo CD, PC Engine CD,
+    // PC-FX, and Atari Jaguar CD, which have no dedicated extension)
+    "bin", "cart", "cue", "m3u", "chd", "pbp",
+    // Home computers / disk-based
+    "d88", "dsk", "nib", "woz", "cas", "mx1", "mx2", "ri", "rom",
+    // Homebrew platforms
+    "arduboy", "hex", "pgm", "tvc", "uze", "wasm",
+    // Archives
+    "zip", "7z",
+)
+
+// zip/7z are only ever arcade sets or zipped cartridges here (see RomHashing.kt) —
+// never zipped disc images — so a huge archive can't be a valid ROM for this app.
+private val ARCHIVE_EXTENSIONS = setOf("zip", "7z")
+private const val MAX_ARCHIVE_SIZE_BYTES = 512L * 1024 * 1024
+
 private fun shouldScanFile(file: DocumentFile): Boolean {
     val name = file.name ?: return false
+    val extension = name.substringAfterLast('.', missingDelimiterValue = "").lowercase()
+    if (extension in ARCHIVE_EXTENSIONS && file.length() > MAX_ARCHIVE_SIZE_BYTES) return false
     return file.isFile
         && !name.startsWith(".")
-        && !name.endsWith(".txt", ignoreCase = true)
-        && !name.endsWith(".xml", ignoreCase = true)
+        && extension in ROM_EXTENSIONS
 }
 
 /** Tries each candidate hash in order, returning the first that resolves to a

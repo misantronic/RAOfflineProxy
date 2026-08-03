@@ -54,6 +54,8 @@ object PrefsConstants {
     const val KEY_APP_UPDATE_CHECK_ENABLED = "app_update_check_enabled"
     const val KEY_APP_UPDATE_LAST_CHECKED_AT = "app_update_last_checked_at"
     const val KEY_APP_UPDATE_LAST_PROMPTED_AT = "app_update_last_prompted_at"
+    const val KEY_HIDE_SUPPORT_BUTTON = "hide_support_button"
+    private const val KEY_LAST_SEEN_VERSION_CODE = "last_seen_version_code"
     private const val KEY_AVAILABLE_APP_UPDATE = "available_app_update"
 
     const val DEFAULT_PROXY_PORT = 8080
@@ -310,6 +312,26 @@ object PrefsConstants {
     fun clearAvailableAppUpdate(context: Context) {
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .edit { remove(KEY_AVAILABLE_APP_UPDATE) }
+    }
+
+    fun loadHideSupportButtonEnabled(context: Context): Boolean =
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getBoolean(KEY_HIDE_SUPPORT_BUTTON, false)
+
+    fun saveHideSupportButtonEnabled(context: Context, enabled: Boolean) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit { putBoolean(KEY_HIDE_SUPPORT_BUTTON, enabled) }
+    }
+
+    fun resetHideSupportButtonOnAppUpdate(context: Context, currentVersionCode: Long) {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val lastSeenVersionCode = prefs.getLong(KEY_LAST_SEEN_VERSION_CODE, -1L)
+        if (lastSeenVersionCode == currentVersionCode) return
+
+        prefs.edit {
+            remove(KEY_HIDE_SUPPORT_BUTTON)
+            putLong(KEY_LAST_SEEN_VERSION_CODE, currentVersionCode)
+        }
     }
 
     fun isValidProxyPort(port: Int): Boolean = port in MIN_PROXY_PORT..MAX_PROXY_PORT

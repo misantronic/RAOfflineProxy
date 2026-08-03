@@ -1,0 +1,22 @@
+{
+    "name": "raop-infra",
+    "version": "0.0.1",
+    "private": true,
+    "scripts": {
+        "build": "tsc",
+        "watch": "tsc -w",
+        "synth": "cdk synth",
+        "deploy": "cdk deploy --all",
+        "diff": "cdk diff"
+    },
+    "devDependencies": {
+        "@types/node": "^22.13.13",
+        "aws-cdk": "^2.1111.0",
+        "ts-node": "^10.9.2",
+        "typescript": "5.4.5"
+    },
+    "dependencies": {
+        "aws-cdk-lib": "^2.243.0",
+        "constructs": "^10.5.1"
+    }
+}

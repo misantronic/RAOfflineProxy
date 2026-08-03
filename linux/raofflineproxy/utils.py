@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import hashlib
 from urllib.parse import parse_qsl, quote_plus, unquote_plus, urlencode, urlsplit
 
@@ -84,8 +86,9 @@ def canonical_reason_phrase(code: int) -> str:
     return phrases.get(code, "Response")
 
 
-def redact_query_tokens(value: str) -> str:
-    parts = value.split("t=")
+def _redact_query_key(value: str, key: str) -> str:
+    marker = f"{key}="
+    parts = value.split(marker)
     if len(parts) < 2:
         return value
 
@@ -96,7 +99,13 @@ def redact_query_tokens(value: str) -> str:
             rebuilt.append("<token>")
         else:
             rebuilt.append(f"<token>&{token_tail[1]}")
-    return "t=".join(rebuilt)
+    return marker.join(rebuilt)
+
+
+def redact_query_tokens(value: str) -> str:
+    for key in ("t", "p"):
+        value = _redact_query_key(value, key)
+    return value
 
 
 def redact_form_tokens(value: str) -> str:

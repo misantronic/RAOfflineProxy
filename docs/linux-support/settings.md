@@ -50,6 +50,18 @@ It also enables muOS user init so that script runs on boot:
 /opt/muos/config/settings/advanced/user_init
 ```
 
+== ROCKNIX
+
+ROCKNIX autostart is available from the app menu.
+
+If you enable it, RAOfflineProxy installs a boot hook under ROCKNIX's autostart directory:
+
+```text
+/storage/.config/autostart/raofflineproxy.sh
+```
+
+ROCKNIX runs every script in that directory on boot. The hook re-adds the **Tools** menu entry (ROCKNIX rebuilds that menu from a read-only source on each boot) and, when autostart is enabled, starts the proxy.
+
 :::
 
 ## Start / Stop Behavior

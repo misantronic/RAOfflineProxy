@@ -2,7 +2,7 @@
 
 Questions, bug reports, and general feedback are welcome.
 
-[Open the Contact / Feedback Form](https://forms.gle/XPRfWe2hAqzYy3JX9)
+For bug reports, use the [Get Support](./support) page - it collects the details needed to help you (device, version, logs) and sends them directly.
 
 ## Discord
 
@@ -14,6 +14,4 @@ If the problem is clearly a bug and you prefer a public report, you can also ope
 
 ## Support
 
-I've worked really hard on RAOfflineProxy. If you'd like to support the project and future development, you can support it on Ko-fi:
-
-- [ko-fi.com/misantronic](https://ko-fi.com/misantronic)
+I've worked really hard on RAOfflineProxy. If you'd like to support the project and future development, see the [Donate](./donate) page for one-time and monthly options.

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import argparse
 import json
 import logging
@@ -50,7 +52,7 @@ from .service import (
     stop_service_process,
 )
 from .menu_sdl import run_menu_sdl
-from .network import online_check
+from .network import apply_scan_batch_cooldown, online_check
 from .pending_awards import list_pending_awards
 from .rom_browser import (
     add_rom_to_cache,
@@ -550,6 +552,7 @@ def main() -> None:
             storage = Storage()
             try:
                 for index, rom_path in enumerate(rom_paths, start=1):
+                    apply_scan_batch_cooldown(index - 1)
                     label = rom_path.name
                     if not rom_path.is_file():
                         failed_count += 1

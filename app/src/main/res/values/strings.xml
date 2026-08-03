@@ -14,6 +14,21 @@
     <string name="title_manual_emulator_setup">Manual Emulator Setup</string>
     <string name="title_quit">Quit</string>
 
+    <!-- Send logs -->
+    <string name="btn_send_logs">Send logs</string>
+    <string name="send_logs_success_title">Logs sent</string>
+    <string name="send_logs_success_message">Share this ID when reporting an issue:\n\n%s</string>
+    <string name="send_logs_copy_id">Copy ID</string>
+    <string name="send_logs_id_copied">ID copied to clipboard.</string>
+    <string name="send_logs_failed">Failed to send logs: %s</string>
+    <string name="send_logs_details_dialog_title">Send Logs</string>
+    <string name="send_logs_details_intro">This uploads recent logs from the app to help diagnose an issue.</string>
+    <string name="send_logs_details_label">Add more details</string>
+    <string name="send_logs_details_email_label">Email address</string>
+    <string name="send_logs_details_description_label">What happened?</string>
+    <string name="send_logs_details_field_required">Required</string>
+    <string name="send_logs_support_request_failed">Logs were sent, but the support request could not be delivered: %s</string>
+
     <!-- Proxy button -->
     <string name="proxy_start">Start proxy</string>
     <string name="proxy_stop">Stop proxy</string>
@@ -35,7 +50,30 @@
     <string name="home_manual_setup_warning">With your Android version (%1$s), automatic emulator setup will most likely not work on this device. Please consider using Manual Emulator Setup instead. Android builds can differ, so you can still try Start proxy with automatic setup if you want.</string>
     <string name="home_shizuku_info">You are running the proxy through Shizuku.</string>
     <string name="home_no_emulator_warning">No supported emulator was found. Install RetroArch, Dolphin, PPSSPP, ARMSX2, Flycast, melonDualDS, Mupen64Plus, or EmuCoreX to use RAOfflineProxy.</string>
-    <string name="home_go_to_cached_games">Go to Cached Games</string>
+    <string name="home_go_to_cached_games">Cached Games</string>
+    <string name="btn_support_development">💛 Support me</string>
+    <string name="support_dialog_title">💛 Support RAOfflineProxy</string>
+    <string name="support_dialog_message">RAOfflineProxy is free and open source, built and maintained by one person in their spare time. If it\'s been useful to you, a small donation helps keep it going. Thank you!</string>
+    <string name="support_kofi_url">https://ko-fi.com/misantronic</string>
+    <string name="donation_frequency_onetime">One-time</string>
+    <string name="donation_frequency_monthly">Monthly</string>
+    <string name="donation_delivery_pay_now">Pay now</string>
+    <string name="donation_delivery_email_link">Email me a link</string>
+    <string name="donation_amount_hint">Amount (USD)</string>
+    <string name="donation_email_hint">Email address</string>
+    <string name="donation_submit">Donate</string>
+    <string name="donation_kofi_alt">Support on Ko-fi instead</string>
+    <string name="donation_test_mode">Test (Stripe sandbox, no real charge)</string>
+    <string name="donation_amount_required">Enter an amount</string>
+    <string name="donation_amount_invalid">Enter an amount between $1 and $1000</string>
+    <string name="donation_email_required">Enter your email address</string>
+    <string name="donation_email_invalid">Enter a valid email address</string>
+    <string name="donation_success_title">Thank you! 💛</string>
+    <string name="donation_success_message">Your support means a lot. Thank you for helping keep RAOfflineProxy going!</string>
+    <string name="donation_email_sent_title">Check your email</string>
+    <string name="donation_email_sent_message">We\'ve sent a payment link to your email. You can complete it from any device.</string>
+    <string name="donation_error_message">Something went wrong. Please try again later.</string>
+    <string name="donation_canceled_message">Donation canceled.</string>
     <string name="emulator_retroarch">RetroArch</string>
     <string name="emulator_dolphin">Dolphin</string>
     <string name="emulator_ppsspp">PPSSPP</string>
@@ -45,6 +83,10 @@
     <string name="emulator_mupen64">Mupen64Plus</string>
     <string name="emulator_emucorex">EmuCoreX</string>
     <string name="emulator_toggle_icon_cd">Installed emulator icon</string>
+    <string name="emulator_selector_caret">▼</string>
+    <string name="emulator_selector_cd">Enabled emulators, tap to change</string>
+    <string name="emulator_selector_select_all">Select all</string>
+    <string name="emulator_selector_select_none">Select none</string>
     <string name="proxy_start_requires_emulator">Enable at least one installed emulator to start the proxy.</string>
     <string name="proxy_start_aborted_retroarch_saf_rejected">Proxy not started because RetroArch folder access was rejected.</string>
     <string name="proxy_start_aborted_dolphin_saf_rejected">Proxy not started because Dolphin folder access was rejected.</string>
@@ -68,6 +110,7 @@
     <string name="smart_cache_rom_saf_dialog_message">Smart Cache needs access to your ROM folder so it can read the recent game paths from RetroArch history and hash those ROM files.</string>
     <string name="saf_dialog_grant">Grant Access</string>
     <string name="action_ok">OK</string>
+    <string name="action_abort">Abort</string>
     <!-- CFG patcher messages -->
     <string name="patch_could_not_read">Could not read %s via folder access.</string>
     <string name="patch_already_configured">Already configured — no changes needed.</string>
@@ -156,9 +199,11 @@
     <string name="scan_add_complete">Added: %1$d of %2$d game(s) cached, %3$d skipped.</string>
     <string name="scan_add_complete_limit">Added: %1$d of %2$d game(s) cached, %3$d skipped. Reached the %4$d-game cache limit.</string>
     <string name="scan_starting">Starting scan…</string>
+    <string name="scan_aborting">Aborting scan…</string>
     <string name="scan_progress">Scanning %1$d/%2$d: %3$s</string>
     <string name="scan_complete">Scan complete: %1$d game(s) matched out of %2$d file(s), %3$d skipped.</string>
     <string name="scan_complete_limit">Scan complete: %1$d game(s) matched out of %2$d file(s), %3$d skipped. Reached the %4$d-game cache limit.</string>
+    <string name="scan_aborted">Scan aborted.</string>
     <string name="smart_cache_starting">Starting Smart Cache…</string>
     <string name="smart_cache_progress">Smart Cache %1$d/%2$d: %3$s</string>
     <string name="smart_cache_complete">Smart Cache complete: %1$d game(s) cached from %2$d candidate(s), %3$d skipped.</string>
@@ -234,6 +279,9 @@
     <!-- Settings fragment -->
     <string name="setting_smart_caching_label">Enable smart caching</string>
     <string name="setting_app_update_check_label">Enable app update checker</string>
+    <string name="setting_hide_support_button_label">Hide "Support me"-button</string>
+    <string name="btn_manage_subscription">Manage subscription</string>
+    <string name="manage_subscription_error">Could not open subscription management. Please try again later.</string>
     <string name="setting_proxy_port_label">Proxy port</string>
     <string name="setting_proxy_port_hint">Used for the local emulator proxy. Range: 1024 to 65535. Stop the proxy to change it.</string>
     <string name="setting_proxy_port_invalid">Enter a port between 1024 and 65535.</string>

@@ -3,7 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LINUX_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
-VERSION="${RAOFFLINEPROXY_APP_VERSION:-1.6.0-alpha1}"
+VERSION="${RAOFFLINEPROXY_APP_VERSION:-1.9.0-alpha1}"
 DIST_DIR="${SCRIPT_DIR}/dist/RAOfflineProxy"
 APP_DIR="${DIST_DIR}/app"
 LIB_DIR="${DIST_DIR}/lib"
@@ -31,6 +31,7 @@ cp "${SCRIPT_DIR}/uninstall.sh" "${DIST_DIR}/uninstall.sh"
 
 find "${APP_DIR}" -name "__pycache__" -type d -prune -exec rm -rf {} +
 find "${APP_DIR}" -name "*.pyc" -delete
+find "${APP_DIR}" -name "font-mono*.ttf" -delete
 
 chmod +x "${DIST_DIR}/launch.sh"
 chmod +x "${DIST_DIR}/mux_launch.sh"

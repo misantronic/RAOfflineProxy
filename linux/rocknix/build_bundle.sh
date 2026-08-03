@@ -7,7 +7,7 @@ DIST_DIR="${SCRIPT_DIR}/dist"
 BUILD_DIR="${DIST_DIR}/raofflineproxy-rocknix-bundle"
 APP_DIR="${BUILD_DIR}/app"
 LIB_DIR="${BUILD_DIR}/lib"
-VERSION="${RAOFFLINEPROXY_APP_VERSION:-1.6.0-alpha1}"
+VERSION="${RAOFFLINEPROXY_APP_VERSION:-1.9.0-alpha1}"
 INSTALLER_PATH="${DIST_DIR}/RAOfflineProxy-Rocknix-v${VERSION}-Install.sh"
 TEMP_TARBALL="${DIST_DIR}/.raofflineproxy-rocknix-bundle.tar.gz"
 
@@ -39,6 +39,7 @@ cp "${SCRIPT_DIR}/scripts/uninstall.sh" "${BUILD_DIR}/uninstall.sh"
 
 find "${APP_DIR}/raofflineproxy" -name "__pycache__" -type d -prune -exec rm -rf {} +
 find "${APP_DIR}/raofflineproxy" -name "*.pyc" -delete
+find "${APP_DIR}/raofflineproxy" -name "font-mono*.ttf" -delete
 find "${APP_DIR}/pygame" -name "__pycache__" -type d -prune -exec rm -rf {} +
 find "${APP_DIR}/pygame" -name "*.pyc" -delete
 
@@ -70,7 +71,19 @@ fi
 payload_line=$((marker_line + 1))
 rm -rf "${TARGET_DIR}"
 mkdir -p "${SHARE_DIR}"
-tail -n +"${payload_line}" "${SCRIPT_PATH}" | base64 -d | tar -xzf - -C "${SHARE_DIR}" --no-same-owner
+
+PAYLOAD_TARBALL="$(mktemp "${SHARE_DIR}/.raofflineproxy-payload.XXXXXX")"
+trap 'rm -f "${PAYLOAD_TARBALL}"' EXIT
+tail -n +"${payload_line}" "${SCRIPT_PATH}" | base64 -d > "${PAYLOAD_TARBALL}"
+tar -xzf "${PAYLOAD_TARBALL}" -C "${SHARE_DIR}" --no-same-owner
+
+SENTINEL="${SHARE_DIR}/raofflineproxy-rocknix-bundle/app/raofflineproxy/main.py"
+if [ ! -f "${SENTINEL}" ]; then
+  echo "Installer payload did not extract correctly (missing ${SENTINEL})."
+  echo "Your device's base64/tar may have truncated the payload."
+  exit 1
+fi
+
 mv "${SHARE_DIR}/raofflineproxy-rocknix-bundle" "${TARGET_DIR}"
 cd "${TARGET_DIR}"
 ./install.sh
@@ -80,7 +93,7 @@ exit 0
 __RAOFFLINEPROXY_PAYLOAD_BELOW__
 EOF
 
-base64 -i "${TEMP_TARBALL}" >> "${INSTALLER_PATH}"
+base64 < "${TEMP_TARBALL}" | fold -w 76 >> "${INSTALLER_PATH}"
 chmod +x "${INSTALLER_PATH}"
 
 rm -f "${TEMP_TARBALL}"

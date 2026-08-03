@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import json
 import logging
 import time
@@ -8,7 +10,14 @@ from .auth import resolve_credentials
 from .award_signing import public_key_base64, sign_award, verify_award
 from .config import FALLBACK_USER_AGENT, MAX_PROXY_PORT, upstream_host
 from .network import build_api_url, http_post
-from .rom_cache import build_achievement_game_ids, cache_session, cache_unlocks, refresh_game_patch
+from .rom_cache import (
+    CacheGameAuthError,
+    CacheGameError,
+    build_achievement_game_ids,
+    cache_session,
+    cache_unlocks,
+    refresh_game_patch,
+)
 from .storage import (
     PENDING_AWARD_STATUS_DELETED,
     PENDING_AWARD_STATUS_FLUSHED,
@@ -73,8 +82,12 @@ def clamp_award_offset_seconds(raw_offset_seconds: int) -> int:
     return max(0, min(MAX_AWARD_OFFSET_SECONDS, raw_offset_seconds))
 
 
-def build_award_request_body(award: dict, now_millis: int | None = None) -> str:
+def build_award_request_body(
+    award: dict, now_millis: int | None = None, current_token: str | None = None
+) -> str:
     body = award["requestBody"]
+    if current_token:
+        body = replace_or_append_form_param(body, "t", current_token)
     current_time = now_millis or int(time.time() * 1000)
     raw_offset = int((current_time - award["queuedAt"]) / 1000)
     offset_seconds = clamp_award_offset_seconds(raw_offset)
@@ -193,11 +206,22 @@ def refresh_and_load_achievement_ids(
     achievement_ids: set[int] = set()
     proxied_user_agent = proxy_user_agent(user_agent)
     for game_id in game_ids:
-        response_body = refresh_game_patch(
-            game_id, credentials, proxied_user_agent, storage, config_data
-        )
-        if response_body is None:
+        try:
+            response_body = refresh_game_patch(
+                game_id, credentials, proxied_user_agent, storage, config_data
+            )
+        except CacheGameAuthError as exc:
+            storage.mark_token_invalid(credentials["token"])
+            LOGGER.warning(
+                "Flush marked token invalid: user=%s reason=%s",
+                credentials["user"],
+                exc,
+            )
             return None
+        except CacheGameError as exc:
+            LOGGER.warning("Flush could not refresh patch data: %s", exc)
+            return None
+        storage.clear_invalid_token()
         try:
             payload = json.loads(response_body)
             achievements = payload.get("PatchData", {}).get("Achievements", [])
@@ -211,10 +235,10 @@ def refresh_and_load_achievement_ids(
     return achievement_ids, game_ids, achievement_game_ids
 
 
-def send_award(award: dict, config_data: dict) -> tuple[str, str]:
+def send_award(award: dict, config_data: dict, credentials: dict) -> tuple[str, str]:
     url = f"{upstream_host(config_data)}{award['queryString']}"
     offset_seconds, was_clamped = award_offset_seconds(award)
-    body = build_award_request_body(award)
+    body = build_award_request_body(award, current_token=credentials.get("token"))
     user_agent = proxy_user_agent(award["userAgent"] or FALLBACK_USER_AGENT)
     LOGGER.info(
         "Flush sending: achievementId=%s offsetSeconds=%s clamped=%s userAgent=%s url=%s",
@@ -399,11 +423,12 @@ def flush_pending_awards(storage: Storage, config_data: dict) -> FlushOutcome:
             )
             continue
 
-        outcome, message = send_award(award, config_data)
+        outcome, message = send_award(award, config_data, credentials)
         if outcome == "success":
             award["status"] = PENDING_AWARD_STATUS_FLUSHED
             award["lastError"] = None
             storage.update_pending_award(award)
+            storage.clear_invalid_token()
             flushed += 1
             LOGGER.info("Flush succeeded: achievementId=%s", achievement_id)
         elif outcome == "auth_error":

@@ -8,6 +8,7 @@ import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import android.provider.DocumentsContract
+import android.util.Log
 import android.view.Menu
 import android.view.MenuItem
 import android.view.LayoutInflater
@@ -35,11 +36,17 @@ import com.raofflineproxy.update.AppUpdateInfo
 import com.raofflineproxy.update.ApkDownloader
 import java.util.ArrayDeque
 import androidx.core.net.toUri
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import com.raofflineproxy.donation.DonationManager
 import com.google.android.material.textfield.TextInputEditText
 import com.google.android.material.textfield.TextInputLayout
+import com.stripe.android.PaymentConfiguration
+import com.stripe.android.paymentsheet.PaymentSheet
+import com.stripe.android.paymentsheet.PaymentSheetResult
 import rikka.shizuku.Shizuku
 
 class MainActivity : AppCompatActivity() {
@@ -52,11 +59,14 @@ class MainActivity : AppCompatActivity() {
     private val pendingErrors = ArrayDeque<QueuedError>()
     private var pendingMessage: SnackbarEvent.Message? = null
     private var progressMessage: String? = null
+    private var progressOnAbort: (() -> Unit)? = null
     private var activeSnackbarKind: ActiveSnackbarKind? = null
     private var suppressNextDismissCallback = false
     private var activeSafGrantTarget: SafGrantTarget? = null
     private var attemptedGenericAllFilesAccess = false
     private var pendingQuit = false
+    private lateinit var paymentSheet: PaymentSheet
+    private var pendingSubscriptionSync: Pair<String, String>? = null
     private val shizukuPermissionListener = Shizuku.OnRequestPermissionResultListener { requestCode, grantResult ->
         if (requestCode != SHIZUKU_PERMISSION_REQUEST_CODE) return@OnRequestPermissionResultListener
         if (grantResult == PackageManager.PERMISSION_GRANTED) {
@@ -176,6 +186,9 @@ class MainActivity : AppCompatActivity() {
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
+        PaymentConfiguration.init(applicationContext, BuildConfig.STRIPE_PUBLISHABLE_KEY)
+        paymentSheet = PaymentSheet.Builder(::onPaymentSheetResult).build(this)
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
             ContextCompat.checkSelfPermission(this, android.Manifest.permission.POST_NOTIFICATIONS)
                 != PackageManager.PERMISSION_GRANTED
@@ -259,7 +272,7 @@ class MainActivity : AppCompatActivity() {
             SnackbarManager.events.collect { event ->
                 when (event) {
                     is SnackbarEvent.Error -> enqueueError(event.message)
-                    is SnackbarEvent.Progress -> showOrClearProgress(event.message)
+                    is SnackbarEvent.Progress -> showOrClearProgress(event.message, event.onAbort)
                     is SnackbarEvent.Message -> showOrQueueMessage(event)
                 }
             }
@@ -456,6 +469,75 @@ class MainActivity : AppCompatActivity() {
 
     fun requestStopProxy() {
         viewModel.stopProxy(treeUri = PrefsConstants.loadSafUri(this))
+    }
+
+    fun presentDonationCheckout(clientSecret: String, customerId: String?, ephemeralKey: String?, useTestMode: Boolean = false) {
+        // The client secret's mode (test vs live) has to match the publishable key PaymentSheet
+        // is configured with, or it fails immediately — see the debug-only "test" checkbox in
+        // the donation dialog, which routes the backend request through Stripe test mode.
+        PaymentConfiguration.init(
+            applicationContext,
+            if (useTestMode) BuildConfig.STRIPE_PUBLISHABLE_KEY_TEST else BuildConfig.STRIPE_PUBLISHABLE_KEY
+        )
+
+        val configuration = PaymentSheet.Configuration.Builder(getString(R.string.app_name))
+            .apply {
+                if (customerId != null && ephemeralKey != null) {
+                    customer(PaymentSheet.CustomerConfiguration(customerId, ephemeralKey))
+                    // Only require an email for recurring donations, so we can identify the
+                    // subscriber (e.g. for receipts) — one-time "buy me a coffee" payments stay
+                    // frictionless and anonymous.
+                    billingDetailsCollectionConfiguration(
+                        PaymentSheet.BillingDetailsCollectionConfiguration(
+                            email = PaymentSheet.BillingDetailsCollectionConfiguration.CollectionMode.Always
+                        )
+                    )
+                }
+            }
+            .build()
+
+        pendingSubscriptionSync = customerId?.let { id ->
+            // clientSecret is "<payment_intent_id>_secret_<...>" — the ID alone is what the
+            // sync-email endpoint needs to look up the confirmed PaymentMethod's billing details.
+            clientSecret.substringBefore("_secret_") to id
+        }
+
+        paymentSheet.presentWithPaymentIntent(clientSecret, configuration)
+    }
+
+    private fun onPaymentSheetResult(result: PaymentSheetResult) {
+        val subscriptionSync = pendingSubscriptionSync
+        pendingSubscriptionSync = null
+
+        when (result) {
+            is PaymentSheetResult.Completed -> {
+                // Whichever payment method the user picked, sync whatever email PaymentSheet
+                // collected back onto the Stripe Customer — best-effort, doesn't block the
+                // thank-you dialog.
+                subscriptionSync?.let { (paymentIntentId, customerId) ->
+                    lifecycleScope.launch {
+                        withContext(Dispatchers.IO) {
+                            DonationManager.syncCustomerEmail(paymentIntentId, customerId)
+                        }
+                    }
+                }
+                viewModel.setHideSupportButtonEnabled(true)
+                showDonationOutcomeDialog(R.string.donation_success_title, R.string.donation_success_message)
+            }
+            is PaymentSheetResult.Canceled -> Unit
+            is PaymentSheetResult.Failed -> {
+                Log.e("RAProxy/Donation", "PaymentSheet failed", result.error)
+                showDonationOutcomeDialog(R.string.support_dialog_title, R.string.donation_error_message)
+            }
+        }
+    }
+
+    private fun showDonationOutcomeDialog(titleRes: Int, messageRes: Int) {
+        AlertDialog.Builder(this)
+            .setTitle(titleRes)
+            .setMessage(messageRes)
+            .setPositiveButton(android.R.string.ok, null)
+            .show()
     }
 
     private fun quitApp() {
@@ -769,10 +851,12 @@ class MainActivity : AppCompatActivity() {
         showNextSnackbar()
     }
 
-    private fun showOrClearProgress(message: String?) {
+    private fun showOrClearProgress(message: String?, onAbort: (() -> Unit)? = null) {
+        val previousOnAbort = progressOnAbort
         progressMessage = message
+        progressOnAbort = onAbort
         if (activeSnackbarKind == ActiveSnackbarKind.Error) return
-        if (message != null && activeSnackbarKind == ActiveSnackbarKind.Progress && snackbar != null) {
+        if (message != null && activeSnackbarKind == ActiveSnackbarKind.Progress && snackbar != null && onAbort === previousOnAbort) {
             snackbar?.setText(message)
             return
         }
@@ -790,7 +874,7 @@ class MainActivity : AppCompatActivity() {
 
         when {
             pendingErrors.isNotEmpty() -> showCurrentError()
-            progressMessage != null -> showCurrentProgress(progressMessage!!)
+            progressMessage != null -> showCurrentProgress(progressMessage!!, progressOnAbort)
             pendingMessage != null -> showCurrentMessage(pendingMessage!!)
             else -> activeSnackbarKind = null
         }
@@ -860,10 +944,13 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun showCurrentProgress(message: String) {
+    private fun showCurrentProgress(message: String, onAbort: (() -> Unit)?) {
         activeSnackbarKind = ActiveSnackbarKind.Progress
         snackbar = Snackbar.make(binding.fragmentContainer, message, Snackbar.LENGTH_INDEFINITE)
             .also {
+                if (onAbort != null) {
+                    it.setAction(R.string.action_abort) { onAbort() }
+                }
                 it.addCallback(object : Snackbar.Callback() {
                     override fun onDismissed(transientBottomBar: Snackbar?, event: Int) {
                         if (suppressNextDismissCallback) {

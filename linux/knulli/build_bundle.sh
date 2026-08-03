@@ -7,7 +7,7 @@ DIST_DIR="${SCRIPT_DIR}/dist"
 BUILD_DIR="${DIST_DIR}/raofflineproxy-knulli-bundle"
 APP_DIR="${BUILD_DIR}/app"
 LIB_DIR="${BUILD_DIR}/lib"
-INSTALLER_PATH="${DIST_DIR}/RAOfflineProxy-Knulli-v1.6.0-alpha1-Install.sh"
+INSTALLER_PATH="${DIST_DIR}/RAOfflineProxy-Knulli-v1.9.0-alpha1-Install.sh"
 TEMP_TARBALL="${DIST_DIR}/.raofflineproxy-knulli-bundle.tar.gz"
 
 TARGET="aarch64-linux-gnu.2.17" OUT_DIR="${SCRIPT_DIR}/native" \
@@ -30,6 +30,7 @@ cp "${SCRIPT_DIR}/scripts/uninstall.sh" "${BUILD_DIR}/uninstall.sh"
 
 find "${APP_DIR}" -name "__pycache__" -type d -prune -exec rm -rf {} +
 find "${APP_DIR}" -name "*.pyc" -delete
+find "${APP_DIR}" -name "font-mono*.ttf" -delete
 
 chmod +x "${BUILD_DIR}/install.sh"
 chmod +x "${BUILD_DIR}/uninstall.sh"

@@ -1,5 +1,8 @@
+from __future__ import annotations
+
 import json
 import logging
+import os
 from collections.abc import Sequence
 from pathlib import Path
 import socket
@@ -10,10 +13,19 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler
 from urllib.parse import urlsplit
 
-from . import cache_keys
+from . import cache_keys, log_uploader, storage_corruption
 from .auth import resolve_credentials
 from .award_signing import sign_award
-from .config import FALLBACK_USER_AGENT, RA_MEDIA_HOST, image_caching_enabled, proxy_host, proxy_port, upstream_host
+from .config import (
+    DATABASE_FILE,
+    FALLBACK_USER_AGENT,
+    LOG_FILE,
+    RA_MEDIA_HOST,
+    image_caching_enabled,
+    proxy_host,
+    proxy_port,
+    upstream_host,
+)
 from .flusher import flush_pending_awards
 from .image_cache import (
     IMAGE_PATH_PREFIXES,
@@ -237,6 +249,15 @@ class ProxyRequestHandler(BaseHTTPRequestHandler):
             self.command, self.path, body, headers
         )
         self.wfile.write(response)
+        self.wfile.flush()
+        # Close gracefully (FIN, not RST): shut down the write side and let
+        # the client finish reading before the socket is torn down, rather
+        # than an abrupt close that can reset the connection out from under
+        # a client still draining its receive buffer.
+        try:
+            self.connection.shutdown(socket.SHUT_WR)
+        except OSError:
+            pass
 
 
 class ProxyRuntimeServer(ThreadingTCPServer):
@@ -899,12 +920,33 @@ class ProxyRuntimeServer(ThreadingTCPServer):
             }
 
 
+def _capture_file_inodes(paths: list[Path]) -> dict[Path, int]:
+    inodes: dict[Path, int] = {}
+    for path in paths:
+        try:
+            inodes[path] = path.stat().st_ino
+        except OSError:
+            continue
+    return inodes
+
+
+def _files_replaced_underneath(inodes: dict[Path, int]) -> bool:
+    for path, inode in inodes.items():
+        try:
+            if path.stat().st_ino != inode:
+                return True
+        except OSError:
+            return True
+    return False
+
+
 class ConnectivityMonitor(threading.Thread):
     def __init__(self, server: ProxyRuntimeServer, interval_seconds: int = 15):
         super().__init__(daemon=True)
         self.server = server
         self.interval_seconds = interval_seconds
         self.stop_event = threading.Event()
+        self.watched_inodes = _capture_file_inodes([LOG_FILE, DATABASE_FILE])
 
     def stop(self) -> None:
         self.stop_event.set()
@@ -913,6 +955,13 @@ class ConnectivityMonitor(threading.Thread):
         was_online = self.server.refresh_reachability(force_probe=True)
         save_online_state(was_online)
         while not self.stop_event.wait(self.interval_seconds):
+            if self.watched_inodes and _files_replaced_underneath(self.watched_inodes):
+                # A reinstall deleted our log/database out from under this
+                # process while it kept them open; exit so the next
+                # "start proxy" spawns a fresh process against current files
+                # instead of silently running as an invisible orphan.
+                LOGGER.error("Data files were deleted or replaced underneath this process; exiting")
+                os._exit(1)
             is_online = self.server.refresh_reachability(force_probe=True)
             if is_online and not was_online:
                 LOGGER.info("Connectivity restored; attempting flush")
@@ -978,6 +1027,22 @@ class PeriodicRefresh(threading.Thread):
             self.server.storage.evict_cache_older_than(before)
 
 
+def retry_storage_corruption_report() -> None:
+    # The menu only ever attempts this once (on first open after the incident) and shows
+    # the user the outcome regardless of success, so it doesn't nag them again — if that
+    # one attempt happened while offline, the report would otherwise never reach us. The
+    # service retries silently on every startup until it actually gets through.
+    incident = storage_corruption.load_incident()
+    if incident is None or incident.get("reported"):
+        return
+    try:
+        upload_id = log_uploader.report_storage_corruption(incident)
+    except Exception as exc:
+        LOGGER.warning("Storage corruption report retry failed: %s", exc)
+        return
+    storage_corruption.mark_reported(upload_id)
+
+
 def run_proxy_service(
     config_data: dict, stop_event: threading.Event | None = None
 ) -> None:
@@ -992,6 +1057,7 @@ def run_proxy_service(
         save_online_state(initial_online)
         if initial_online:
             server.flush_pending_awards()
+            retry_storage_corruption_report()
         connectivity_monitor.start()
         periodic_refresh.start()
 

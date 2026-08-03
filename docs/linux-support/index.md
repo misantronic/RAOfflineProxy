@@ -11,14 +11,14 @@ The Linux version is for handheld Linux devices where you want the same basic of
 - Keep earning casual achievements while offline
 - Let queued awards sync later when you reconnect
 
-Use the `KNULLI`, `Onion`, and `muOS` tabs throughout the Linux section to switch target-specific instructions.
+Use the `KNULLI`, `Onion`, `muOS`, and `ROCKNIX` tabs throughout the Linux section to switch target-specific instructions.
 
 ## Supported Targets
 
 - KNULLI (alpha)
 - Onion (alpha)
 - muOS (alpha)
-- ROCKNIX (planned)
+- ROCKNIX (alpha)
 
 ## Specifics
 
@@ -28,19 +28,11 @@ Use the `KNULLI`, `Onion`, and `muOS` tabs throughout the Linux section to switc
 
 It is currently intended for [KNULLI Scarab](https://github.com/knulli-cfw/knulli-linux/releases/tag/20260511) and [KNULLI Gladiator II](https://github.com/knulli-cfw/distribution/releases/tag/20250813).
 
-Current rough edges:
-
-- Install and update flow are still alpha-quality
-- Autostart is currently implemented for KNULLI/Batocera-style startup hooks, not every Linux environment
-
 == Onion
 
-It is currently compatible with [OnionOS v4.3.1-1](https://github.com/OnionUI/Onion/releases/tag/v4.3.1-1) and [Onion V4.4.0-beta-20260120](https://github.com/OnionUI/Onion/releases/tag/latest).
+It is currently compatible with [Onion V4.4.0-beta-20260120](https://github.com/OnionUI/Onion/releases/tag/latest).
 
-Current rough edges:
-
-- The bundled runtime is still larger than ideal and takes time to copy to SD storage
-- Patch-state persistence still deserves more cleanup
+[OnionOS v4.3.1-1](https://github.com/OnionUI/Onion/releases/tag/v4.3.1-1) ships an older bundled RetroArch build whose achievements client is not reliably compatible with a custom host, so achievements may fail to appear there even though the proxy and caching work correctly.
 
 == muOS
 
@@ -48,10 +40,13 @@ It is currently compatible with [MustardOS 2601.1 Funky Jacaranda](https://muos.
 
 The muOS target ships as a `.muxapp` package installed through Archive Manager and runs the same SDL menu used on the other Linux targets.
 
-Current rough edges:
+== ROCKNIX
 
-- The bundled runtime (including `pygame`, which stock muOS does not ship) is larger than ideal and takes time to copy to SD storage
-- Patching has to keep both `retroarch.cfg` and the `retroarch.cheevos.cfg` appendconfig in sync
+It is currently compatible with [ROCKNIX 20260701](https://github.com/ROCKNIX/distribution/releases/tag/20260701) or newer.
+
+The ROCKNIX target ships as a self-extracting installer and runs the same SDL menu used on the other Linux targets. The app installs under `/storage/.local/share/raofflineproxy` and appears in the **Tools** menu.
+
+Both RetroArch and standalone PPSSPP are supported on ROCKNIX. Starting the proxy patches both `retroarch.cfg` and, when present, `ppsspp.ini`.
 
 :::
 
@@ -59,4 +54,4 @@ Current rough edges:
 
 - Linux support is currently in alpha and should still be treated as a prerelease feature.
 - Linux install, startup, and UI behavior can vary a lot by firmware and frontend.
-- Always check the correct tab for your device instead of assuming KNULLI, Onion, and muOS behave the same way.
+- Always check the correct tab for your device instead of assuming KNULLI, Onion, muOS, and ROCKNIX behave the same way.

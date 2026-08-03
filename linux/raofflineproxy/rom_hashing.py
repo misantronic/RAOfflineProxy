@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """RetroAchievements ROM hashing for the Linux proxy.
 
 This is a thin ctypes binding over ``libraproxy_rchash`` — the shared library

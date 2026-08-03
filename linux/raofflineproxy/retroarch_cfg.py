@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import re
 from pathlib import Path
 from typing import Optional
@@ -137,11 +139,56 @@ def is_patched_content(content: str, proxy_address: str) -> bool:
     return _extract_config_value(content, HOST_KEY) == proxy_address
 
 
+def is_retroarch_patched(cfg_path: str, config_data: dict) -> bool:
+    """Read-only, ground-truth check: reads the cfg directly rather than trusting
+    state.load_patch_state(), which only tells you a patch was applied at some point in the
+    past — it goes stale if revert_retroarch_cfg() never ran (crash, manual edit, etc.)."""
+    target = Path(cfg_path)
+    if not target.exists():
+        return False
+
+    content = target.read_text(encoding="utf-8", errors="replace")
+    return is_patched_content(content, proxy_value(config_data))
+
+
 def build_patched_content(content: str, proxy_address: str) -> str:
     sanitized = _remove_orphan_boolean_lines(content)
     with_host = _upsert_config_value(sanitized, HOST_KEY, proxy_address)
     with_enable = _upsert_config_value(with_host, ENABLE_KEY, "true")
     return _upsert_config_value(with_enable, HARDCORE_KEY, "false")
+
+
+def _ensure_cheevos_token(content: str, config_data: dict) -> str:
+    """Some RetroArch cheevos client versions handle password-based login
+    through a custom host unreliably (it's only exercised on a cold login;
+    once a token exists they always use that path instead, which works
+    fine). Resolve a real token ourselves and write it in ahead of time so
+    RetroArch never has to take the password path through our proxy."""
+    if _extract_config_value(content, TOKEN_KEY):
+        return content
+
+    username = _extract_config_value(content, USERNAME_KEY)
+    password = _extract_config_value(content, PASSWORD_KEY)
+    if not username or not password:
+        return content
+
+    from .auth import login_and_cache_token
+    from .config import FALLBACK_USER_AGENT
+    from .storage import Storage
+
+    storage = Storage()
+    try:
+        credentials = login_and_cache_token(
+            storage, config_data, {"user": username, "password": password}, FALLBACK_USER_AGENT
+        )
+    finally:
+        storage.close()
+
+    if not credentials or not credentials.get("token"):
+        return content
+
+    with_token = _upsert_config_value(content, TOKEN_KEY, credentials["token"])
+    return _upsert_config_value(with_token, PASSWORD_KEY, "")
 
 
 def build_reverted_content(
@@ -174,6 +221,7 @@ def patch_retroarch_cfg(cfg_path: str, config_data: dict) -> dict:
     previous_enable = _extract_config_value(original, ENABLE_KEY)
     hardcore_was_enabled = detect_hardcore_enabled(original)
     transformed = build_patched_content(original, proxy_address)
+    transformed = _ensure_cheevos_token(transformed, config_data)
     was_already_patched = transformed == original and is_patched_content(
         original, proxy_address
     )

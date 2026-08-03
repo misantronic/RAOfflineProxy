@@ -4,8 +4,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RUNTIME_CACHE_DIR="${SCRIPT_DIR}/runtime-cache"
 RELEASE_REPO="astral-sh/python-build-standalone"
-RELEASE_TAG="20260510"
-ASSET_NAME="${1:-cpython-3.10.20+20260510-armv7-unknown-linux-gnueabihf-install_only_stripped.tar.gz}"
+RELEASE_TAG="20241016"
+ASSET_NAME="${1:-cpython-3.9.20+20241016-armv7-unknown-linux-gnueabihf-install_only_stripped.tar.gz}"
 ASSET_PATH="${RUNTIME_CACHE_DIR}/${ASSET_NAME}"
 
 mkdir -p "${RUNTIME_CACHE_DIR}"

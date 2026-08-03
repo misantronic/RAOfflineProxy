@@ -54,15 +54,19 @@ features:
         </div>
         <div class="supported-platforms__item">
           <img class="supported-platforms__logo--rounded" src="/armsx2.webp" alt="ARMSX2 logo">
-          <span>ARMSX2 / Refresh</span>
+          <span>ARMSX2</span>
         </div>
         <div class="supported-platforms__item">
-          <img class="supported-platforms__logo--rounded" src="/argosy-launcher.png" alt="Argosy Launcher logo">
-          <span>Argosy Launcher</span>
+          <img src="/melonds.png" alt="MelonDualDS logo">
+          <span>MelonDualDS</span>
         </div>
         <div class="supported-platforms__item">
           <img src="/mupen64plus-ae.png" alt="Mupen64Plus logo">
           <span>Mupen64Plus AE (fork)</span>
+        </div>
+        <div class="supported-platforms__item">
+          <img class="supported-platforms__logo--rounded" src="/argosy-launcher.png" alt="Argosy Launcher logo">
+          <span>Argosy Launcher</span>
         </div>
         <div class="supported-platforms__item">
           <img src="/emucorex.svg" alt="EmuCoreX logo">
@@ -84,6 +88,10 @@ features:
         <div class="supported-platforms__item">
           <img src="/muos.png" alt="muOS logo">
           <span>muOS</span>
+        </div>
+        <div class="supported-platforms__item">
+          <img class="supported-platforms__logo--rounded" src="/rocknix.png" alt="ROCKNIX logo">
+          <span>ROCKNIX</span>
         </div>
       </div>
     </div>

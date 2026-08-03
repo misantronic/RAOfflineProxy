@@ -20,6 +20,105 @@ The alpha ROCKNIX flow has been verified end to end on real hardware (SM8550, aa
 
 `RAOfflineProxy` is the primary interactive fullscreen UI (Start, Stop, Autostart, Cached Games, Pending Awards, Uninstall, Exit), identical to the KNULLI/muOS SDL menu.
 
+## Emulator Support
+
+| Emulator | Status | Notes |
+|---|---|---|
+| RetroArch | Supported | `cheevos_custom_host` patched in `retroarch.cfg` |
+| PPSSPP | Supported | `AchievementsHost` patched in `ppsspp.ini` |
+| AetherSX2 (PS2, default core) | **Not supported** | See below |
+| flycast (standalone) | **Not supported** | See below |
+| flycast (RetroArch core) | Supported | goes through `retroarch.cfg`, same as any other libretro core |
+| DuckStation (standalone) | **Not supported** | See below |
+| DuckStation (RetroArch core) | Supported | goes through `retroarch.cfg`, same as any other libretro core |
+| melonDS (standalone) | **Not supported** | See below |
+| melonDS (RetroArch core) | Supported | goes through `retroarch.cfg`, same as any other libretro core |
+
+### Why AetherSX2 is unsupported
+
+ROCKNIX's `ps2` system ships two selectable cores: `aethersx2-sa` (the default, and the only
+one documented on rocknix.org) and `pcsx2-sa`. Only `pcsx2-sa` can be host-overridden.
+
+`aethersx2-sa`'s binary has no reachable code path for a custom RetroAchievements host:
+
+- No `Achievements/Host`-style config key is read anywhere in the binary (confirmed via
+  `strings` on `/usr/share/aethersx2-sa/aethersx2` — no `"Using custom host"` log line exists,
+  unlike the `pcsx2-sa` binary which has it).
+- The RA request URL (`https://retroachievements.org/dorequest.php`) is a hardcoded literal.
+  `cheevos_aethersx2.sh` never writes a `Host` key, consistent with the binary never reading one.
+- This is an older PCSX2 fork predating upstream's host-override support in `Achievements.cpp`
+  (`Host::GetBaseStringSettingValue("Achievements", "Host", "")` → `rc_client_set_host()`).
+
+Unlike the Dolphin case (fixed upstream via
+[ROCKNIX/distribution#3038](https://github.com/ROCKNIX/distribution/pull/3038), where the
+binary already supported a custom host and only the launch script needed a 2-line fix),
+AetherSX2's binary itself lacks the feature entirely. Supporting it would require porting the
+host-override code from upstream PCSX2 into ROCKNIX's AetherSX2 fork and rebuilding the
+binary — a real code change to the emulator, not a client-side or launch-script fix.
+
+The `pcsx2-sa` alt-core's binary does support this, and its `cheevos_pcsx2.sh` does targeted
+`sed` edits (not a full config regen), so it's a viable client-side integration target for a
+future release.
+
+### Why standalone flycast is unsupported
+
+`/usr/bin/flycast`'s `[achievements]` section in `/storage/.config/flycast/emu.cfg` only has
+`Enabled`, `HardcoreMode`, `UserName`, and `Token` keys — `cheevos_flycast.sh` writes exactly
+those and nothing else. Confirmed via `strings` on the binary: no `Host`/`HostUrl`-style config
+key is read anywhere, and every RA request URL
+(`https://retroachievements.org/dorequest.php`, `http://media.retroachievements.org`, ...) is a
+hardcoded literal reachable from `achievements.cpp`. Unlike PPSSPP or RetroArch, there's no
+config hook to redirect at all — supporting it would mean porting host-override support into
+ROCKNIX's flycast fork and rebuilding the binary, the same class of work as the AetherSX2 case
+above.
+
+flycast is also available as a RetroArch core (`flycast_libretro.so` /
+`flycast2021_libretro.so`), which already works through the existing `retroarch.cfg` patching —
+that's the supported path for offline Dreamcast achievements on ROCKNIX today.
+
+### Why standalone DuckStation is unsupported
+
+Unlike AetherSX2 and flycast, DuckStation's binary genuinely has full achievements support,
+including what looks like a `Host` override — `/usr/bin/duckstation-sa` is an AppImage-style
+self-extracting stub (an ELF wrapper with a compressed squashfs payload appended), and the real
+`duckstation-qt` binary inside it is unstripped with debug info. It contains `Cheevos`, `Host`,
+`Username`, `Token`, `ChallengeMode`, `LoginTimestamp`, `RichPresencePatch`, and a
+`Using host: %s` log format string. On-device, `/var/log/exec.log` shows achievements working
+live end to end (`RA Login successful`, `RA: game N loaded ... achievements 1 leaderboards 1`)
+once a user logs in through DuckStation's own in-game menu.
+
+The blocker is the automatic login path, not the achievements engine. ROCKNIX's own
+`/usr/bin/start_duckstation.sh` unconditionally forces `Enabled = false` in the `[Cheevos]`
+section before every launch, and has `/usr/bin/cheevos_duckstation.sh` (the script that would
+inject the RA username/token from Emulation Station into DuckStation's ini, the same way
+`cheevos_ppsspp.sh`/`cheevos_pcsx2.sh` do) commented out entirely, with the comment
+`Disabled, not working. Seems like Duckstation changed the token encryption...`. Without that
+injection working, RAOfflineProxy has no way to get the emulator logged in and pointed at the
+proxy automatically — the user would have to manually re-enter their RA username/password
+inside DuckStation's own menu on every session, which isn't a viable integration for this
+project. Revisit this once ROCKNIX's launch script (or an upstream DuckStation change) fixes the
+token injection.
+
+DuckStation is also available as a RetroArch core (`duckstation_libretro.so`), which already
+works through the existing `retroarch.cfg` patching — that's the supported path for offline
+PS1 achievements on ROCKNIX today.
+
+### Why standalone melonDS is unsupported
+
+Same class of problem as AetherSX2 and flycast: `/usr/bin/cheevos_melonds.sh` writes only
+`RA_Enabled`, `RA_Username`, `RA_Password`, `RA_Token`, `RA_HardcoreMode`, `RA_EncoreMode`, and
+`RA_Unofficial` into the flat (no-section) `melonDS.ini` — confirmed via `strings` on
+`/usr/bin/melonDS` that those are exactly the `RA_*` config keys the binary reads, with no
+`RA_Host`/`Host`-style key among them. The RA request URL
+(`https://retroachievements.org/dorequest.php`) is a hardcoded literal at a fixed offset in the
+binary, with no config, env var, or CLI flag to redirect it. Supporting it would mean porting
+host-override support into melonDS and rebuilding the binary, the same class of work as the
+AetherSX2 and flycast cases above.
+
+melonDS is also available as a RetroArch core (`melonds_libretro.so` / `melondsds_libretro.so`),
+which already works through the existing `retroarch.cfg` patching — that's the supported path
+for offline NDS/DSi achievements on ROCKNIX today.
+
 ## Platform Specifics
 
 Confirmed on-device (ROCKNIX `next`, `OS_NAME="ROCKNIX"` in `/etc/os-release`):
@@ -29,11 +128,17 @@ Confirmed on-device (ROCKNIX `next`, `OS_NAME="ROCKNIX"` in `/etc/os-release`):
 - Add-on apps install under `/storage/.local/share/` (Heroic, Steam, m8c, and this app)
 - The **Tools** system runs `.sh` scripts from `/storage/.config/modules/` inside a `foot`
   terminal via `/usr/bin/foot %ROM%`. The launcher `source`s `/etc/profile`, calls
-  `set_kill` (so the frontend kill-combo works), then execs the SDL menu. The menu requests
+  `set_kill` (so the frontend kill-combo works), then runs the SDL menu. The menu requests
   SDL fullscreen itself; sway honors it (verified `fullscreen_mode=1`), so no `sway_fullscreen`
   call is needed.
 - Autostart drops an executable script into `/storage/.config/autostart/`; ROCKNIX's
   `/usr/bin/autostart` runs every script there at boot (no separate registration step)
+- Some devices (e.g. RK3326 with the `libmali` blob) segfault inside SDL's wayland/EGL init
+  before the app's own `pygame.error` fallback can run — a native crash never reaches Python.
+  `tool-launcher.sh` tries `SDL_VIDEODRIVER` candidates (`wayland`, `kmsdrm`, `x11`) as separate
+  attempts, detects a crash via exit code (`>=128` means signal death), falls back to the next
+  candidate, and caches the first one that works in
+  `/storage/.config/raofflineproxy/rocknix_video_driver` so later launches skip straight to it.
 
 ### pygame
 

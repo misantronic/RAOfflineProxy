@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.util.Log
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import okhttp3.OkHttpClient
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
@@ -20,13 +21,17 @@ private const val PROXY_HOST = "127.0.0.1"
 const val PROXY_UA_TAG = "RAOfflineProxy"
 private const val REQUEST_THROTTLE_TAG = "RAProxy/RateLimit"
 private const val REACHABILITY_TAG = "RAProxy/Reachability"
-private const val RETROACHIEVEMENTS_API_MIN_INTERVAL_MS = 500L
+private const val RETROACHIEVEMENTS_API_MIN_INTERVAL_MS = 300L
 private const val RETROACHIEVEMENTS_PROBE_INTERVAL_MS = 30_000L
+const val RETROACHIEVEMENTS_SCAN_BATCH_SIZE = 50
+const val RETROACHIEVEMENTS_SCAN_BATCH_COOLDOWN_MS = 30_000L
 
 val sharedHttpClient: OkHttpClient = OkHttpClient.Builder().build()
 
-private val TOKEN_QUERY_REGEX = Regex("""([?&])t=[^&]*""")
-private val TOKEN_FORM_REGEX = Regex("""(^|&)t=[^&]*""")
+private val TOKEN_QUERY_REGEX = Regex("""([?&])(t|p)=[^&]*""")
+private val TOKEN_FORM_REGEX = Regex("""(^|&)(t|p)=[^&]*""")
+
+private fun redactedValue(key: String): String = if (key == "p") "<password>" else "<token>"
 
 data class RetroAchievementsReachability(
     val reachable: Boolean = false,
@@ -171,10 +176,10 @@ internal fun isLoopbackPortAvailable(port: Int): Boolean = runCatching {
 }.getOrDefault(false)
 
 fun redactTokens(input: String): String =
-    TOKEN_QUERY_REGEX.replace(input) { "${it.groupValues[1]}t=<token>" }
+    TOKEN_QUERY_REGEX.replace(input) { "${it.groupValues[1]}${it.groupValues[2]}=${redactedValue(it.groupValues[2])}" }
 
 fun redactFormBody(input: String): String =
-    TOKEN_FORM_REGEX.replace(input) { "${it.groupValues[1]}t=<token>" }
+    TOKEN_FORM_REGEX.replace(input) { "${it.groupValues[1]}${it.groupValues[2]}=${redactedValue(it.groupValues[2])}" }
 
 private object RetroAchievementsRequestThrottle {
     private var nextAllowedAtMillis = 0L
@@ -193,4 +198,11 @@ private object RetroAchievementsRequestThrottle {
 
 fun throttleRetroAchievementsApiRequest(action: String) {
     RetroAchievementsRequestThrottle.await(action)
+}
+
+suspend fun applyScanBatchCooldown(index: Int, tag: String) {
+    if (index > 0 && index % RETROACHIEVEMENTS_SCAN_BATCH_SIZE == 0) {
+        Log.i(tag, "Scan batch cooldown after $index scanned, sleeping ${RETROACHIEVEMENTS_SCAN_BATCH_COOLDOWN_MS}ms")
+        delay(RETROACHIEVEMENTS_SCAN_BATCH_COOLDOWN_MS)
+    }
 }

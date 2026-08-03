@@ -379,6 +379,167 @@ class LinuxAwardParityTests(unittest.TestCase):
                 flusher.refresh_and_load_achievement_ids = original_refresh
                 store.close()
 
+    def test_refresh_and_load_achievement_ids_marks_token_invalid_on_auth_error(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            store = storage.Storage(database_path=Path(temp_dir) / "test.sqlite3")
+            original_refresh_game_patch = flusher.refresh_game_patch
+            try:
+                store.upsert_cache(
+                    "patch:42:testuser",
+                    json.dumps(
+                        {"PatchData": {"Achievements": [{"ID": 22}]}},
+                        separators=(",", ":"),
+                    ),
+                )
+
+                def fake_refresh_game_patch(*_args, **_kwargs):
+                    raise rom_cache.CacheGameAuthError("HTTP Error 401: Unauthorized")
+
+                flusher.refresh_game_patch = fake_refresh_game_patch
+                credentials = {"user": "testuser", "token": "stale-token"}
+
+                result = flusher.refresh_and_load_achievement_ids(
+                    store, credentials, "RetroArch/1.21.0 (Linux)", {}, [{**self.award(22), "id": 1}]
+                )
+
+                self.assertIsNone(result)
+                self.assertTrue(store.is_token_invalid("stale-token"))
+            finally:
+                flusher.refresh_game_patch = original_refresh_game_patch
+                store.close()
+
+    def test_refresh_and_load_achievement_ids_recovers_from_generic_error(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            store = storage.Storage(database_path=Path(temp_dir) / "test.sqlite3")
+            original_refresh_game_patch = flusher.refresh_game_patch
+            try:
+                store.upsert_cache(
+                    "patch:42:testuser",
+                    json.dumps(
+                        {"PatchData": {"Achievements": [{"ID": 22}]}},
+                        separators=(",", ":"),
+                    ),
+                )
+
+                def fake_refresh_game_patch(*_args, **_kwargs):
+                    raise rom_cache.CacheGameError("patch request failed: boom")
+
+                flusher.refresh_game_patch = fake_refresh_game_patch
+                credentials = {"user": "testuser", "token": "some-token"}
+
+                result = flusher.refresh_and_load_achievement_ids(
+                    store, credentials, "RetroArch/1.21.0 (Linux)", {}, [{**self.award(22), "id": 1}]
+                )
+
+                self.assertIsNone(result)
+                self.assertFalse(store.is_token_invalid("some-token"))
+            finally:
+                flusher.refresh_game_patch = original_refresh_game_patch
+                store.close()
+
+    def test_refresh_and_load_achievement_ids_clears_invalid_token_on_success(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            store = storage.Storage(database_path=Path(temp_dir) / "test.sqlite3")
+            original_refresh_game_patch = flusher.refresh_game_patch
+            try:
+                store.upsert_cache(
+                    "patch:42:testuser",
+                    json.dumps(
+                        {"PatchData": {"Achievements": [{"ID": 22}]}},
+                        separators=(",", ":"),
+                    ),
+                )
+                store.mark_token_invalid("fresh-token")
+
+                def fake_refresh_game_patch(*_args, **_kwargs):
+                    return json.dumps(
+                        {"PatchData": {"Achievements": [{"ID": 22}]}},
+                        separators=(",", ":"),
+                    )
+
+                flusher.refresh_game_patch = fake_refresh_game_patch
+                credentials = {"user": "testuser", "token": "fresh-token"}
+
+                result = flusher.refresh_and_load_achievement_ids(
+                    store, credentials, "RetroArch/1.21.0 (Linux)", {}, [{**self.award(22), "id": 1}]
+                )
+
+                self.assertIsNotNone(result)
+                self.assertFalse(store.is_token_invalid("fresh-token"))
+            finally:
+                flusher.refresh_game_patch = original_refresh_game_patch
+                store.close()
+
+    def test_send_award_replaces_stale_embedded_token_with_current_credentials(
+        self,
+    ) -> None:
+        award = {
+            "achievementId": 22,
+            "queryString": "/dorequest.php",
+            "requestBody": "r=awardachievement&u=testuser&t=stale-token&a=22&h=0",
+            "userAgent": "RetroArch/1.21.0 (Linux)",
+            "queuedAt": 1_000,
+        }
+        original_http_post = flusher.http_post
+        try:
+            captured = {}
+
+            def fake_http_post(_url, body, headers=None):
+                captured["body"] = body
+                return 200, "OK", '{"Success":true}'
+
+            flusher.http_post = fake_http_post
+
+            outcome, _message = flusher.send_award(
+                award, {}, {"user": "testuser", "token": "fresh-token"}
+            )
+
+            self.assertEqual(outcome, "success")
+            self.assertEqual(
+                utils.parse_form_params(captured["body"])["t"], "fresh-token"
+            )
+        finally:
+            flusher.http_post = original_http_post
+
+    def test_flush_pending_awards_does_not_invalidate_token_on_per_award_auth_error(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            store = storage.Storage(database_path=Path(temp_dir) / "test.sqlite3")
+            original_resolve_credentials = flusher.resolve_credentials
+            original_refresh = flusher.refresh_and_load_achievement_ids
+            original_send_award = flusher.send_award
+            try:
+                store.upsert_pending_award(self.award(22))
+
+                flusher.resolve_credentials = lambda *_args, **_kwargs: {
+                    "user": "testuser",
+                    "token": "current-valid-token",
+                }
+                flusher.refresh_and_load_achievement_ids = (
+                    lambda *_args, **_kwargs: (set(), [], {})
+                )
+                flusher.send_award = lambda *_args, **_kwargs: (
+                    "auth_error",
+                    "Token rejected by server (HTTP 401)",
+                )
+
+                outcome = flusher.flush_pending_awards(store, {})
+
+                self.assertEqual(outcome.pending_remaining, 1)
+                self.assertFalse(store.is_token_invalid("current-valid-token"))
+            finally:
+                flusher.resolve_credentials = original_resolve_credentials
+                flusher.refresh_and_load_achievement_ids = original_refresh
+                flusher.send_award = original_send_award
+                store.close()
+
     def test_queue_award_skips_cached_already_unlocked_achievement(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             store = storage.Storage(database_path=Path(temp_dir) / "test.sqlite3")

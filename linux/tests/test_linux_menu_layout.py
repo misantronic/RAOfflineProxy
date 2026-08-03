@@ -74,7 +74,7 @@ class MenuLayoutTests(unittest.TestCase):
 
         self.assertEqual(
             menu_sdl.MenuSdlSession.bottom_hint_text(session),
-            "Press A or START to confirm. B to cancel.",
+            "Press A to confirm. B to cancel.",
         )
 
     def test_bottom_hint_for_clear_cache_confirm_uses_fixed_face_labels(self) -> None:
@@ -87,7 +87,7 @@ class MenuLayoutTests(unittest.TestCase):
 
         self.assertEqual(
             menu_sdl.MenuSdlSession.bottom_hint_text(session),
-            "Press A or START to confirm. B to cancel.",
+            "Press A to confirm. B to cancel.",
         )
 
     def test_bottom_hint_for_controller_calibration_prompt(self) -> None:
@@ -97,7 +97,7 @@ class MenuLayoutTests(unittest.TestCase):
 
         self.assertEqual(
             menu_sdl.MenuSdlSession.bottom_hint_text(session),
-            "Face buttons only. Press the labeled A button to continue.",
+            "Face buttons only. Press A to continue.",
         )
 
     def test_status_text_for_controller_calibration_confirm_step(self) -> None:
@@ -630,6 +630,142 @@ class MenuLayoutTests(unittest.TestCase):
             menu_sdl.MenuSdlSession.refresh_main_menu_state(session, force=True)
 
         self.assertEqual(update_calls, ["knulli", "knulli"])
+
+    def test_storage_corruption_notice_noop_without_incident(self) -> None:
+        session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
+        session.view = "main"
+        session.storage_corruption_notice_seen = False
+        session.storage_corruption_active = False
+
+        with patch.object(menu_sdl.storage_corruption, "load_incident", return_value=None):
+            menu_sdl.MenuSdlSession.maybe_show_storage_corruption_notice(session)
+
+        self.assertFalse(session.storage_corruption_notice_seen)
+        self.assertEqual(session.view, "main")
+
+    def test_storage_corruption_notice_shows_already_reported_incident(self) -> None:
+        session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
+        session.view = "main"
+        session.view_positions = {}
+        session.selected_index = 3
+        session.scroll_offset = 1
+        session.storage_corruption_notice_seen = False
+        session.storage_corruption_active = False
+
+        incident = {
+            "reported": True,
+            "upload_id": "abc123",
+            "notified": False,
+            "lost_pending_awards": 0,
+        }
+
+        with (
+            patch.object(menu_sdl.storage_corruption, "load_incident", return_value=incident),
+            patch.object(menu_sdl.storage_corruption, "mark_notified") as mark_notified,
+        ):
+            menu_sdl.MenuSdlSession.maybe_show_storage_corruption_notice(session)
+
+        mark_notified.assert_called_once()
+        self.assertTrue(session.storage_corruption_notice_seen)
+        self.assertTrue(session.storage_corruption_active)
+        self.assertTrue(session.storage_corruption_done)
+        self.assertEqual(session.view, "send_logs_progress")
+        self.assertEqual(
+            session.log_upload_progress_text,
+            "A corrupted data file was found and reset.\n"
+            "No pending achievements were affected.\n"
+            "Support ID: abc123",
+        )
+        self.assertEqual(session.selected_index, 0)
+        self.assertEqual(session.storage_corruption_lost_awards, 0)
+
+    def test_storage_corruption_progress_not_dismissible_while_uploading(self) -> None:
+        session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
+        session.view = "send_logs_progress"
+        session.storage_corruption_active = True
+        session.storage_corruption_done = False
+
+        self.assertEqual(
+            menu_sdl.MenuSdlSession.labels(session, running=False),
+            [],
+        )
+
+    def test_storage_corruption_progress_dismissible_once_done(self) -> None:
+        session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
+        session.view = "send_logs_progress"
+        session.storage_corruption_active = True
+        session.storage_corruption_done = True
+
+        self.assertEqual(
+            menu_sdl.MenuSdlSession.labels(session, running=False),
+            ["Back"],
+        )
+
+    def test_dismiss_storage_corruption_progress_resets_state(self) -> None:
+        session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
+        session.view = "send_logs_progress"
+        session.view_positions = {"main": (2, 0)}
+        session.storage_corruption_active = True
+        session.storage_corruption_done = True
+        session.storage_corruption_lost_awards = 3
+        session.log_upload_progress_text = "3 pending achievements may not have synced."
+
+        menu_sdl.MenuSdlSession.dismiss_storage_corruption_progress(session)
+
+        self.assertEqual(session.view, "main")
+        self.assertFalse(session.storage_corruption_active)
+        self.assertFalse(session.storage_corruption_done)
+        self.assertIsNone(session.storage_corruption_lost_awards)
+        self.assertIsNone(session.log_upload_progress_text)
+
+    def test_storage_corruption_result_text_no_awards_lost(self) -> None:
+        session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
+        session.storage_corruption_lost_awards = 0
+
+        text = menu_sdl.MenuSdlSession.storage_corruption_result_text(session, True, "abc123")
+
+        self.assertEqual(text, "No pending achievements were affected.\nSupport ID: abc123")
+        self.assertNotIn("Discord", text)
+
+    def test_storage_corruption_result_text_awards_lost_singular(self) -> None:
+        session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
+        session.storage_corruption_lost_awards = 1
+
+        text = menu_sdl.MenuSdlSession.storage_corruption_result_text(session, True, "abc123")
+
+        self.assertEqual(
+            text,
+            "1 pending achievement may not have synced.\n"
+            "Support ID: abc123\n"
+            "Please reach out on Discord.",
+        )
+
+    def test_storage_corruption_result_text_awards_lost_plural(self) -> None:
+        session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
+        session.storage_corruption_lost_awards = 3
+
+        text = menu_sdl.MenuSdlSession.storage_corruption_result_text(session, True, "abc123")
+
+        self.assertTrue(text.startswith("3 pending achievements may not have synced."))
+        self.assertIn("Discord", text)
+
+    def test_storage_corruption_result_text_unknown_defaults_to_cautious(self) -> None:
+        session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
+        session.storage_corruption_lost_awards = None
+
+        text = menu_sdl.MenuSdlSession.storage_corruption_result_text(session, True, "abc123")
+
+        self.assertIn("Support ID: abc123", text)
+        self.assertIn("Discord", text)
+
+    def test_storage_corruption_result_text_upload_failure(self) -> None:
+        session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
+        session.storage_corruption_lost_awards = 2
+
+        text = menu_sdl.MenuSdlSession.storage_corruption_result_text(session, False, "network error")
+
+        self.assertIn("Log upload failed: network error", text)
+        self.assertIn("Discord", text)
 
     def test_smart_cache_prompt_labels(self) -> None:
         session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
@@ -1325,10 +1461,18 @@ class MenuLayoutTests(unittest.TestCase):
         session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
         session.main_update_asset_url = "https://example.com/installer.sh"
         session.message = None
+        session.render = lambda: None
         session.dismiss_update_prompt = lambda: None
         session.storage = type("Storage", (), {"close": lambda self: None})()
         session.input_handles = []
-        session.pygame = type("Pygame", (), {"quit": lambda self: None})()
+        session.pygame = type(
+            "Pygame",
+            (),
+            {
+                "quit": lambda self: None,
+                "event": type("Event", (), {"pump": staticmethod(lambda: None)})(),
+            },
+        )()
 
         original_download = menu_sdl.download_knulli_update_installer
         original_update_status = menu_sdl.update_status
@@ -1358,6 +1502,306 @@ class MenuLayoutTests(unittest.TestCase):
             menu_sdl.close_input_devices = original_close_input_devices
             menu_sdl.stop_proxy_inline = original_stop_proxy_inline
             menu_sdl.os.execv = original_execv
+
+
+class SupportMeTests(unittest.TestCase):
+    def test_support_me_appears_in_main_labels(self) -> None:
+        session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
+        session.view = "main"
+        session.cached_games = []
+        session.pending_awards = []
+        session.storage = object()
+
+        original_load_config = menu_sdl.load_config
+        original_autostart_supported = menu_sdl.autostart_supported
+        original_online_check = menu_sdl.online_check
+        original_is_logged_in = menu_sdl.MenuSdlSession.is_logged_in
+        try:
+            menu_sdl.load_config = lambda: {}
+            menu_sdl.autostart_supported = lambda _config: False
+            menu_sdl.online_check = lambda _config: True
+            menu_sdl.MenuSdlSession.is_logged_in = lambda self, _config=None: True
+
+            labels = menu_sdl.MenuSdlSession.labels(session, running=False)
+
+            self.assertIn("Support me", labels)
+        finally:
+            menu_sdl.load_config = original_load_config
+            menu_sdl.autostart_supported = original_autostart_supported
+            menu_sdl.online_check = original_online_check
+            menu_sdl.MenuSdlSession.is_logged_in = original_is_logged_in
+
+    def test_support_me_labels_offer_monthly_and_onetime(self) -> None:
+        session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
+        session.view = "support_me"
+
+        self.assertEqual(
+            menu_sdl.MenuSdlSession.labels(session, running=False),
+            ["Monthly", "One time", "Back"],
+        )
+
+    def test_support_me_monthly_labels_match_tier_table(self) -> None:
+        session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
+        session.view = "support_me_monthly"
+
+        expected = [label for label, _key, _qr in menu_sdl.SUPPORT_MONTHLY_TIERS] + ["Back"]
+        self.assertEqual(
+            menu_sdl.MenuSdlSession.labels(session, running=False), expected
+        )
+
+    def test_support_me_qr_labels_is_back_only(self) -> None:
+        session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
+        session.view = "support_me_qr"
+
+        self.assertEqual(
+            menu_sdl.MenuSdlSession.labels(session, running=False), ["Back"]
+        )
+
+    def test_activate_support_me_selected_monthly_opens_monthly_view(self) -> None:
+        session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
+        session.view = "support_me"
+        session.selected_index = 0
+
+        original_current_labels = menu_sdl.MenuSdlSession.current_labels
+        original_save_view_position = menu_sdl.MenuSdlSession.save_view_position
+        original_restore_view_position = menu_sdl.MenuSdlSession.restore_view_position
+        try:
+            menu_sdl.MenuSdlSession.current_labels = lambda self, running=None: [
+                "Monthly",
+                "One time",
+                "Back",
+            ]
+            menu_sdl.MenuSdlSession.save_view_position = lambda self, key: None
+            menu_sdl.MenuSdlSession.restore_view_position = lambda self, key: None
+
+            menu_sdl.MenuSdlSession.activate_support_me_selected(session)
+
+            self.assertEqual(session.view, "support_me_monthly")
+        finally:
+            menu_sdl.MenuSdlSession.current_labels = original_current_labels
+            menu_sdl.MenuSdlSession.save_view_position = original_save_view_position
+            menu_sdl.MenuSdlSession.restore_view_position = (
+                original_restore_view_position
+            )
+
+    def test_activate_support_me_selected_onetime_opens_qr_with_onetime_tier(self) -> None:
+        session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
+        session.view = "support_me"
+        session.selected_index = 1
+
+        original_current_labels = menu_sdl.MenuSdlSession.current_labels
+        original_save_view_position = menu_sdl.MenuSdlSession.save_view_position
+        original_reset_selection = menu_sdl.MenuSdlSession.reset_selection
+        try:
+            menu_sdl.MenuSdlSession.current_labels = lambda self, running=None: [
+                "Monthly",
+                "One time",
+                "Back",
+            ]
+            menu_sdl.MenuSdlSession.save_view_position = lambda self, key: None
+            menu_sdl.MenuSdlSession.reset_selection = lambda self: None
+
+            menu_sdl.MenuSdlSession.activate_support_me_selected(session)
+
+            self.assertEqual(session.view, "support_me_qr")
+            self.assertEqual(session.support_selected_tier, "onetime")
+            self.assertEqual(session.support_qr_return_view, "support_me")
+        finally:
+            menu_sdl.MenuSdlSession.current_labels = original_current_labels
+            menu_sdl.MenuSdlSession.save_view_position = original_save_view_position
+            menu_sdl.MenuSdlSession.reset_selection = original_reset_selection
+
+    def test_activate_support_me_monthly_selected_picks_correct_tier(self) -> None:
+        session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
+        session.view = "support_me_monthly"
+        tier_labels = [label for label, _key, _qr in menu_sdl.SUPPORT_MONTHLY_TIERS]
+        session.selected_index = 2  # third tier
+
+        original_current_labels = menu_sdl.MenuSdlSession.current_labels
+        original_save_view_position = menu_sdl.MenuSdlSession.save_view_position
+        original_reset_selection = menu_sdl.MenuSdlSession.reset_selection
+        try:
+            menu_sdl.MenuSdlSession.current_labels = lambda self, running=None: [
+                *tier_labels,
+                "Back",
+            ]
+            menu_sdl.MenuSdlSession.save_view_position = lambda self, key: None
+            menu_sdl.MenuSdlSession.reset_selection = lambda self: None
+
+            menu_sdl.MenuSdlSession.activate_support_me_monthly_selected(session)
+
+            self.assertEqual(session.view, "support_me_qr")
+            self.assertEqual(
+                session.support_selected_tier, menu_sdl.SUPPORT_MONTHLY_TIERS[2][1]
+            )
+            self.assertEqual(session.support_qr_return_view, "support_me_monthly")
+        finally:
+            menu_sdl.MenuSdlSession.current_labels = original_current_labels
+            menu_sdl.MenuSdlSession.save_view_position = original_save_view_position
+            menu_sdl.MenuSdlSession.reset_selection = original_reset_selection
+
+    def test_dismiss_support_me_qr_returns_to_tracked_view(self) -> None:
+        session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
+        session.support_selected_tier = "monthly_5"
+        session.support_qr_return_view = "support_me_monthly"
+
+        original_restore_view_position = menu_sdl.MenuSdlSession.restore_view_position
+        try:
+            menu_sdl.MenuSdlSession.restore_view_position = lambda self, key: None
+
+            menu_sdl.MenuSdlSession.dismiss_support_me_qr(session)
+
+            self.assertIsNone(session.support_selected_tier)
+            self.assertEqual(session.view, "support_me_monthly")
+        finally:
+            menu_sdl.MenuSdlSession.restore_view_position = (
+                original_restore_view_position
+            )
+
+    def test_go_back_from_support_me_returns_to_main(self) -> None:
+        session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
+        session.view = "support_me"
+
+        original_save_view_position = menu_sdl.MenuSdlSession.save_view_position
+        original_restore_view_position = menu_sdl.MenuSdlSession.restore_view_position
+        try:
+            menu_sdl.MenuSdlSession.save_view_position = lambda self, key: None
+            menu_sdl.MenuSdlSession.restore_view_position = lambda self, key: None
+
+            menu_sdl.MenuSdlSession.go_back(session)
+
+            self.assertEqual(session.view, "main")
+        finally:
+            menu_sdl.MenuSdlSession.save_view_position = original_save_view_position
+            menu_sdl.MenuSdlSession.restore_view_position = (
+                original_restore_view_position
+            )
+
+    def test_go_back_from_support_me_qr_dismisses(self) -> None:
+        session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
+        session.view = "support_me_qr"
+        session.support_selected_tier = "onetime"
+        session.support_qr_return_view = "support_me"
+
+        original_restore_view_position = menu_sdl.MenuSdlSession.restore_view_position
+        try:
+            menu_sdl.MenuSdlSession.restore_view_position = lambda self, key: None
+
+            menu_sdl.MenuSdlSession.go_back(session)
+
+            self.assertEqual(session.view, "support_me")
+            self.assertIsNone(session.support_selected_tier)
+        finally:
+            menu_sdl.MenuSdlSession.restore_view_position = (
+                original_restore_view_position
+            )
+
+    def test_support_qr_display_label_and_path_for_onetime(self) -> None:
+        session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
+        session.support_selected_tier = "onetime"
+
+        self.assertEqual(
+            menu_sdl.MenuSdlSession.support_qr_display_label(session), "Scan to Donate"
+        )
+        self.assertEqual(
+            menu_sdl.MenuSdlSession.support_qr_path(session), menu_sdl.SUPPORT_ONETIME_QR
+        )
+
+    def test_support_qr_display_label_and_path_for_monthly_tier(self) -> None:
+        session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
+        label, key, qr_path = menu_sdl.SUPPORT_MONTHLY_TIERS[0]
+        session.support_selected_tier = key
+
+        self.assertEqual(
+            menu_sdl.MenuSdlSession.support_qr_display_label(session),
+            f"Scan to Donate {label}",
+        )
+        self.assertEqual(menu_sdl.MenuSdlSession.support_qr_path(session), qr_path)
+
+    def test_wrap_text_to_width_breaks_on_pixel_width(self) -> None:
+        session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
+
+        class FixedWidthFont:
+            def size(self, text: str) -> tuple[int, int]:
+                return (len(text) * 10, 20)
+
+        max_width = 39
+        lines = menu_sdl.MenuSdlSession.wrap_text_to_width(
+            session, "one two three four five", FixedWidthFont(), max_width
+        )
+
+        # Every wrapped line fits within max_width, except a lone word that's
+        # too wide on its own (the wrapper never splits a single word).
+        for line in lines:
+            self.assertTrue(len(line) * 10 <= max_width or " " not in line)
+        self.assertEqual(" ".join(lines), "one two three four five")
+
+    def test_support_monthly_preview_tier_key_returns_none_outside_view(self) -> None:
+        session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
+        session.view = "support_me"
+
+        self.assertIsNone(
+            menu_sdl.MenuSdlSession.support_monthly_preview_tier_key(session)
+        )
+
+    def test_support_monthly_preview_tier_key_maps_selected_index_to_tier(self) -> None:
+        session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
+        session.view = "support_me_monthly"
+        session.selected_index = 3
+
+        original_current_labels = menu_sdl.MenuSdlSession.current_labels
+        try:
+            tier_labels = [label for label, _key, _qr in menu_sdl.SUPPORT_MONTHLY_TIERS]
+            menu_sdl.MenuSdlSession.current_labels = lambda self, running=None: [
+                *tier_labels,
+                "Back",
+            ]
+
+            self.assertEqual(
+                menu_sdl.MenuSdlSession.support_monthly_preview_tier_key(session),
+                menu_sdl.SUPPORT_MONTHLY_TIERS[3][1],
+            )
+        finally:
+            menu_sdl.MenuSdlSession.current_labels = original_current_labels
+
+    def test_support_monthly_preview_tier_key_returns_none_for_back(self) -> None:
+        session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
+        session.view = "support_me_monthly"
+        tier_labels = [label for label, _key, _qr in menu_sdl.SUPPORT_MONTHLY_TIERS]
+        session.selected_index = len(tier_labels)  # the trailing "Back" row
+
+        original_current_labels = menu_sdl.MenuSdlSession.current_labels
+        try:
+            menu_sdl.MenuSdlSession.current_labels = lambda self, running=None: [
+                *tier_labels,
+                "Back",
+            ]
+
+            self.assertIsNone(
+                menu_sdl.MenuSdlSession.support_monthly_preview_tier_key(session)
+            )
+        finally:
+            menu_sdl.MenuSdlSession.current_labels = original_current_labels
+
+    def test_load_support_qr_surface_caches_large_and_small_separately(self) -> None:
+        session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
+        session.support_qr_surface_cache = {
+            "monthly_5:large": "LARGE_SURFACE",
+            "monthly_5:small": "SMALL_SURFACE",
+        }
+
+        self.assertEqual(
+            menu_sdl.MenuSdlSession.load_support_qr_surface(
+                session, "monthly_5", large=True
+            ),
+            "LARGE_SURFACE",
+        )
+        self.assertEqual(
+            menu_sdl.MenuSdlSession.load_support_qr_surface(
+                session, "monthly_5", large=False
+            ),
+            "SMALL_SURFACE",
+        )
 
 
 if __name__ == "__main__":

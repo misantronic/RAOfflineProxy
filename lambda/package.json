@@ -1,0 +1,22 @@
+{
+    "name": "raop-lambda",
+    "version": "1.0.0",
+    "private": true,
+    "workspaces": [
+        "raop-log-upload",
+        "raop-support-report",
+        "raop-support-payment"
+    ],
+    "scripts": {
+        "build": "node build.mjs",
+        "typecheck": "npm run typecheck --workspaces"
+    },
+    "devDependencies": {
+        "@aws-sdk/client-s3": "^3.1092.0",
+        "@aws-sdk/s3-request-presigner": "^3.1092.0",
+        "@types/node": "^22.13.13",
+        "archiver": "^7.0.1",
+        "esbuild": "^0.24.2",
+        "typescript": "5.4.5"
+    }
+}

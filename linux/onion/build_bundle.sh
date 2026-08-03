@@ -8,9 +8,10 @@ BUILD_DIR="${DIST_DIR}/raofflineproxy-onion-app"
 APP_DIR="${BUILD_DIR}/App/RAOfflineProxy"
 LIB_DIR="${APP_DIR}/lib"
 RUNTIME_CACHE_DIR="${SCRIPT_DIR}/runtime-cache"
-RUNTIME_ARCHIVE_NAME="cpython-3.10.20+20260510-armv7-unknown-linux-gnueabihf-install_only_stripped.tar.gz"
+RUNTIME_ARCHIVE_NAME="cpython-3.9.20+20241016-armv7-unknown-linux-gnueabihf-install_only_stripped.tar.gz"
 RUNTIME_ARCHIVE_PATH="${RUNTIME_CACHE_DIR}/${RUNTIME_ARCHIVE_NAME}"
-ZIP_NAME="RAOfflineProxy-Onion-v1.6.0-alpha1.zip"
+VENDOR_DIR="${SCRIPT_DIR}/vendor"
+ZIP_NAME="RAOfflineProxy-Onion-v1.9.0-alpha1.zip"
 
 TARGET="arm-linux-gnueabihf.2.17" OUT_DIR="${SCRIPT_DIR}/native" \
   "${LINUX_DIR}/build_rchash.sh"
@@ -26,6 +27,7 @@ export COPYFILE_DISABLE=1
 cp -R "${SCRIPT_DIR}/app/RAOfflineProxy/." "${APP_DIR}/"
 mkdir -p "${APP_DIR}/app"
 cp -R "${LINUX_DIR}/raofflineproxy" "${APP_DIR}/app/raofflineproxy"
+cp "${LINUX_DIR}/../docs/public/logo-320.png" "${APP_DIR}/app/raofflineproxy/logo-320.png"
 cp "${SCRIPT_DIR}/native/libraproxy_rchash.so" "${LIB_DIR}/libraproxy_rchash.so"
 cp "${LINUX_DIR}/requirements.txt" "${APP_DIR}/app/requirements.txt"
 sips -z 74 74 "${LINUX_DIR}/../docs/public/logo.png" --out "${APP_DIR}/icon.png" >/dev/null
@@ -36,6 +38,17 @@ if [ -f "${RUNTIME_ARCHIVE_PATH}" ]; then
   mkdir -p "${APP_DIR}/runtime"
   tar -xzf "${RUNTIME_ARCHIVE_PATH}" -C "${APP_DIR}/runtime" --strip-components 1
   python3 "${SCRIPT_DIR}/flatten_symlinks.py" "${APP_DIR}/runtime"
+fi
+
+if [ -d "${VENDOR_DIR}/pygame" ] && [ -d "${VENDOR_DIR}/pygame.libs" ]; then
+  SITE_PACKAGES="${APP_DIR}/runtime/lib/python3.9/site-packages"
+  mkdir -p "${SITE_PACKAGES}"
+  rm -rf "${SITE_PACKAGES}/pygame"
+  cp -R "${VENDOR_DIR}/pygame" "${SITE_PACKAGES}/pygame"
+  cp "${VENDOR_DIR}"/pygame.libs/* "${LIB_DIR}/"
+  echo "Included pygame + SDL2 vendor libs from ${VENDOR_DIR}"
+else
+  echo "No vendor directory found at ${VENDOR_DIR} — run ./linux/onion/fetch_vendor.sh first (menu-sdl will be unavailable)"
 fi
 
 find "${APP_DIR}" -name "__pycache__" -type d -prune -exec rm -rf {} +
@@ -57,7 +70,7 @@ import zipfile
 
 dist_dir = Path(r"/Users/dschkalee/src/RAOfflineProxy/linux/onion/dist")
 build_dir = dist_dir / "raofflineproxy-onion-app"
-zip_path = dist_dir / "RAOfflineProxy-Onion-v1.6.0-alpha1.zip"
+zip_path = dist_dir / "RAOfflineProxy-Onion-v1.9.0-alpha1.zip"
 
 with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
     for path in sorted(build_dir.rglob("*")):

@@ -49,8 +49,8 @@ Smart Cache can use recent activity from:
 
 If Smart Cache does not find anything new, it simply finishes without adding more games.
 
-::: warning ARMSX2, ARMSX2 Refresh, and Flycast are not Smart Cache sources
-**ARMSX2**, **ARMSX2 Refresh**, and **Flycast** do not expose a recent-games list that the app can read. To cache games from these emulators, use **Scan ROM Folder** or **Add Individual ROM(s)** instead.
+::: warning ARMSX2 and Flycast are not Smart Cache sources
+**ARMSX2** and **Flycast** do not expose a recent-games list that the app can read. To cache games from these emulators, use **Scan ROM Folder** or **Add Individual ROM(s)** instead.
 :::
 
 ### Scan ROM Folder

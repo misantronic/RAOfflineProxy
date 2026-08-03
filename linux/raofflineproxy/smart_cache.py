@@ -1,23 +1,29 @@
+from __future__ import annotations
+
 import json
+import logging
 import re
 import time
 from dataclasses import dataclass
 from pathlib import Path
 
 from .config import detect_dolphin_config_dir, detect_ppsspp_ini
+from .network import RA_MIN_REQUEST_INTERVAL_SECONDS, apply_scan_batch_cooldown
 from .platform import read_retroarch_cfg_values, resolve_retroarch_cfg
 from .rom_browser import (
     MAX_CACHED_GAMES,
     add_rom_to_cache,
-    list_browser_files_fast,
     list_cached_games,
+    list_scannable_files_recursive,
     load_cached_rom_paths,
     normalize_cached_rom_path,
 )
 from .storage import Storage
 
+LOGGER = logging.getLogger("raofflineproxy")
+
 SMART_CACHE_LIMIT = MAX_CACHED_GAMES
-SMART_CACHE_DELAY_SECONDS = 0.5
+SMART_CACHE_DELAY_SECONDS = RA_MIN_REQUEST_INTERVAL_SECONDS
 MUOS_HISTORY_DIR = Path("/run/muos/storage/info/history")
 DOLPHIN_RECENT_WINDOW_SECONDS = 60 * 24 * 60 * 60
 DOLPHIN_GCI_CODE_REGEX = re.compile(r"^\d{2}-([A-Za-z0-9]{4})-.*\.gci$", re.IGNORECASE)
@@ -148,7 +154,7 @@ def run_folder_cache(
     return run_cache_paths(
         storage,
         config_data,
-        list_browser_files_fast(current_dir) if paths is None else paths,
+        list_scannable_files_recursive(current_dir) if paths is None else paths,
         limit=MAX_CACHED_GAMES,
         should_abort=should_abort,
         on_progress=on_progress,
@@ -194,7 +200,7 @@ def run_cache_paths(
         if should_abort is not None and should_abort():
             break
 
-        if scanned < total:
+        if scanned < total and not apply_scan_batch_cooldown(scanned):
             time.sleep(SMART_CACHE_DELAY_SECONDS)
 
     skipped = max(0, scanned - cached)

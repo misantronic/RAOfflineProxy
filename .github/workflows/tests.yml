@@ -1,0 +1,67 @@
+name: Tests
+
+on:
+  pull_request:
+    branches: ["**"]
+
+jobs:
+  linux-tests:
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dorny/paths-filter@v3
+        id: changes
+        with:
+          filters: |
+            linux:
+              - 'linux/**'
+
+      - uses: actions/setup-python@v5
+        if: steps.changes.outputs.linux == 'true'
+        with:
+          python-version: "3.14"
+
+      - name: Install test dependencies
+        if: steps.changes.outputs.linux == 'true'
+        run: pip install pytest
+
+      - name: Run linux tests
+        if: steps.changes.outputs.linux == 'true'
+        run: python3 -m pytest linux/tests/
+
+  android-tests:
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dorny/paths-filter@v3
+        id: changes
+        with:
+          filters: |
+            android:
+              - 'app/**'
+              - 'build.gradle.kts'
+              - 'settings.gradle.kts'
+              - 'gradle.properties'
+              - 'gradle/**'
+              - 'gradlew'
+
+      - uses: actions/setup-java@v4
+        if: steps.changes.outputs.android == 'true'
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - uses: gradle/actions/setup-gradle@v4
+        if: steps.changes.outputs.android == 'true'
+
+      - name: Install NDK
+        if: steps.changes.outputs.android == 'true'
+        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;28.0.13004108" "cmake;3.22.1"
+
+      - name: Run android unit tests
+        if: steps.changes.outputs.android == 'true'
+        run: ./gradlew testDebugUnitTest
