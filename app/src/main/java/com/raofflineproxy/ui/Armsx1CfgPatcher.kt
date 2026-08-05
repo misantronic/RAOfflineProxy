@@ -16,10 +16,11 @@ internal val UI_ARMSX1_PACKAGE_CANDIDATES = listOf(
     UI_ARMSX1_PACKAGE
 )
 
-// ARMSX1 has no shipped RetroAchievements integration yet (tracked upstream), so this
-// class name follows the ARMSX2/EmuCoreX convention speculatively and will need to be
-// verified once ARMSX1 actually ships a host-override receiver.
-private const val ARMSX1_RECEIVER_CLASS = "com.nanodata.armsx.RetroAchievementsHostOverrideReceiver"
+// The receiver ships under the com.armsx2 Java package (ARMSX1's Android app reuses
+// ARMSX2's Compose UI tree and only repointed the Gradle namespace, not every package
+// statement) even though the app's own applicationId is com.nanodata.armsx. Verified
+// against the actual 0.1 release APK via `aapt dump xmltree`, not just source.
+private const val ARMSX1_RECEIVER_CLASS = "com.armsx2.RetroAchievementsHostOverrideReceiver"
 private const val ARMSX1_SET_ACTION_SUFFIX = ".action.SET_RETROACHIEVEMENTS_HOST_OVERRIDE"
 private const val ARMSX1_CLEAR_ACTION_SUFFIX = ".action.CLEAR_RETROACHIEVEMENTS_HOST_OVERRIDE"
 private const val ARMSX1_HOST_OVERRIDE_EXTRA = "host"
