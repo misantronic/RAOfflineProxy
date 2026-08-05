@@ -33,6 +33,7 @@ internal data class EmulatorSupport(
     val melonDualDsInstalled: Boolean,
     val mupen64Installed: Boolean,
     val emuCoreXInstalled: Boolean,
+    val armsx1Installed: Boolean,
     val retroArchEnabled: Boolean,
     val dolphinEnabled: Boolean,
     val ppssppEnabled: Boolean,
@@ -40,10 +41,11 @@ internal data class EmulatorSupport(
     val flycastEnabled: Boolean,
     val melonDualDsEnabled: Boolean,
     val mupen64Enabled: Boolean,
-    val emuCoreXEnabled: Boolean
+    val emuCoreXEnabled: Boolean,
+    val armsx1Enabled: Boolean
 ) {
-    val installedCount: Int = listOf(retroArchInstalled, dolphinInstalled, ppssppInstalled, armsx2Installed, flycastInstalled, melonDualDsInstalled, mupen64Installed, emuCoreXInstalled).count { it }
-    val hasAnyEnabled: Boolean = retroArchEnabled || dolphinEnabled || ppssppEnabled || armsx2Enabled || flycastEnabled || melonDualDsEnabled || mupen64Enabled || emuCoreXEnabled
+    val installedCount: Int = listOf(retroArchInstalled, dolphinInstalled, ppssppInstalled, armsx2Installed, flycastInstalled, melonDualDsInstalled, mupen64Installed, emuCoreXInstalled, armsx1Installed).count { it }
+    val hasAnyEnabled: Boolean = retroArchEnabled || dolphinEnabled || ppssppEnabled || armsx2Enabled || flycastEnabled || melonDualDsEnabled || mupen64Enabled || emuCoreXEnabled || armsx1Enabled
     val hasAnyShizukuManagedEnabled: Boolean = retroArchEnabled || dolphinEnabled || ppssppEnabled
 }
 
@@ -57,6 +59,7 @@ internal fun loadEmulatorSupport(context: Context): EmulatorSupport {
     val melonDualDsPackage = resolveInstalledPackage(context, UI_MELONDUALDS_PACKAGE_CANDIDATES)
     val mupen64Package = resolveInstalledPackage(context, UI_MUPEN64_PACKAGE_CANDIDATES)
     val emuCoreXPackage = resolveInstalledPackage(context, UI_EMUCOREX_PACKAGE_CANDIDATES)
+    val armsx1Package = resolveInstalledPackage(context, UI_ARMSX1_PACKAGE_CANDIDATES)
     val retroArchInstalled = retroArchPackage != null
     val dolphinInstalled = dolphinPackage != null
     val ppssppInstalled = ppssppPackage != null
@@ -65,10 +68,11 @@ internal fun loadEmulatorSupport(context: Context): EmulatorSupport {
     val melonDualDsInstalled = melonDualDsPackage != null && supportsMelonDualDsBroadcastOverride(context, melonDualDsPackage)
     val mupen64Installed = mupen64Package != null && supportsMupen64BroadcastOverride(context, mupen64Package)
     val emuCoreXInstalled = emuCoreXPackage != null && supportsEmuCoreXBroadcastOverride(context, emuCoreXPackage)
+    val armsx1Installed = armsx1Package != null && supportsArmsx1BroadcastOverride(context, armsx1Package)
 
-    Log.i("RAProxy/Emulators", "resolved packages retroArch=$retroArchPackage dolphin=$dolphinPackage ppsspp=$ppssppPackage armsx2=$armsx2Package flycast=$flycastPackage melonDualDs=$melonDualDsPackage mupen64=$mupen64Package emuCoreX=$emuCoreXPackage")
+    Log.i("RAProxy/Emulators", "resolved packages retroArch=$retroArchPackage dolphin=$dolphinPackage ppsspp=$ppssppPackage armsx2=$armsx2Package flycast=$flycastPackage melonDualDs=$melonDualDsPackage mupen64=$mupen64Package emuCoreX=$emuCoreXPackage armsx1=$armsx1Package")
 
-    val installedCount = listOf(retroArchInstalled, dolphinInstalled, ppssppInstalled, armsx2Installed, flycastInstalled, melonDualDsInstalled, mupen64Installed, emuCoreXInstalled).count { it }
+    val installedCount = listOf(retroArchInstalled, dolphinInstalled, ppssppInstalled, armsx2Installed, flycastInstalled, melonDualDsInstalled, mupen64Installed, emuCoreXInstalled, armsx1Installed).count { it }
 
     val retroArchEnabled = when {
         !retroArchInstalled -> false
@@ -118,6 +122,12 @@ internal fun loadEmulatorSupport(context: Context): EmulatorSupport {
         else -> prefs.getBoolean(PrefsConstants.KEY_ENABLE_EMUCOREX, true)
     }
 
+    val armsx1Enabled = when {
+        !armsx1Installed -> false
+        installedCount == 1 -> true
+        else -> prefs.getBoolean(PrefsConstants.KEY_ENABLE_ARMSX1, true)
+    }
+
     return EmulatorSupport(
         retroArchInstalled = retroArchInstalled,
         dolphinInstalled = dolphinInstalled,
@@ -127,6 +137,7 @@ internal fun loadEmulatorSupport(context: Context): EmulatorSupport {
         melonDualDsInstalled = melonDualDsInstalled,
         mupen64Installed = mupen64Installed,
         emuCoreXInstalled = emuCoreXInstalled,
+        armsx1Installed = armsx1Installed,
         retroArchEnabled = retroArchEnabled,
         dolphinEnabled = dolphinEnabled,
         ppssppEnabled = ppssppEnabled,
@@ -134,6 +145,7 @@ internal fun loadEmulatorSupport(context: Context): EmulatorSupport {
         flycastEnabled = flycastEnabled,
         melonDualDsEnabled = melonDualDsEnabled,
         mupen64Enabled = mupen64Enabled,
-        emuCoreXEnabled = emuCoreXEnabled
+        emuCoreXEnabled = emuCoreXEnabled,
+        armsx1Enabled = armsx1Enabled
     )
 }

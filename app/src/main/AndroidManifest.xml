@@ -32,6 +32,7 @@
         <package android:name="org.mupen64plusae.v3.alpha" />
         <package android:name="org.mupen64plusae.v3.alpha.debug" />
         <package android:name="com.sbro.emucorex" />
+        <package android:name="com.nanodata.armsx" />
         <package android:name="moe.shizuku.privileged.api" />
     </queries>
 

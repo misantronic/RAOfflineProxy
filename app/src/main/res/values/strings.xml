@@ -49,7 +49,7 @@
     <string name="home_emulators_label">Enabled Emulators</string>
     <string name="home_manual_setup_warning">With your Android version (%1$s), automatic emulator setup will most likely not work on this device. Please consider using Manual Emulator Setup instead. Android builds can differ, so you can still try Start proxy with automatic setup if you want.</string>
     <string name="home_shizuku_info">You are running the proxy through Shizuku.</string>
-    <string name="home_no_emulator_warning">No supported emulator was found. Install RetroArch, Dolphin, PPSSPP, ARMSX2, Flycast, melonDualDS, Mupen64Plus, or EmuCoreX to use RAOfflineProxy.</string>
+    <string name="home_no_emulator_warning">No supported emulator was found. Install RetroArch, Dolphin, PPSSPP, ARMSX2, Flycast, melonDualDS, Mupen64Plus, EmuCoreX, or ARMSX1 to use RAOfflineProxy.</string>
     <string name="home_go_to_cached_games">Cached Games</string>
     <string name="btn_support_development">💛 Support me</string>
     <string name="support_dialog_title">💛 Support RAOfflineProxy</string>
@@ -78,6 +78,7 @@
     <string name="emulator_melondualds">melonDualDS</string>
     <string name="emulator_mupen64">Mupen64Plus</string>
     <string name="emulator_emucorex">EmuCoreX</string>
+    <string name="emulator_armsx1">ARMSX1</string>
     <string name="emulator_toggle_icon_cd">Installed emulator icon</string>
     <string name="emulator_selector_caret">▼</string>
     <string name="emulator_selector_cd">Enabled emulators, tap to change</string>
@@ -141,6 +142,8 @@
     <string name="mupen64_patch_error_unavailable">Could not patch Mupen64Plus automatically. Make sure a supported Mupen64Plus build is installed and try again.</string>
     <string name="emucorex_patch_success">EmuCoreX patched successfully.</string>
     <string name="emucorex_patch_error_unavailable">Could not patch EmuCoreX automatically. Make sure a supported EmuCoreX build is installed and try again.</string>
+    <string name="armsx1_patch_success">ARMSX1 patched successfully.</string>
+    <string name="armsx1_patch_error_unavailable">Could not patch ARMSX1 automatically. Make sure a supported ARMSX1 build is installed and try again.</string>
     <!-- CFG revert messages -->
     <string name="revert_already_reverted">Already reverted — no changes needed.</string>
     <string name="revert_success_saf">Reverted successfully via folder access.</string>
@@ -170,6 +173,8 @@
     <string name="mupen64_revert_error_unavailable">Could not revert Mupen64Plus automatically. Reopen the app and try again.</string>
     <string name="emucorex_revert_success">EmuCoreX reverted successfully.</string>
     <string name="emucorex_revert_error_unavailable">Could not revert EmuCoreX automatically. Reopen the app and try again.</string>
+    <string name="armsx1_revert_success">ARMSX1 reverted successfully.</string>
+    <string name="armsx1_revert_error_unavailable">Could not revert ARMSX1 automatically. Reopen the app and try again.</string>
 
     <!-- Flush messages -->
     <string name="flush_started">Flushing awards…</string>

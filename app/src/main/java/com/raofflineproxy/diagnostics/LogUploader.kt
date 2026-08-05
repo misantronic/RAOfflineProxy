@@ -112,6 +112,7 @@ object LogUploader {
             if (emulators.melonDualDsEnabled) add("melonDualDS")
             if (emulators.mupen64Enabled) add("Mupen64Plus")
             if (emulators.emuCoreXEnabled) add("EmuCoreX")
+            if (emulators.armsx1Enabled) add("ARMSX1")
         }
 
         return DeviceInfo(

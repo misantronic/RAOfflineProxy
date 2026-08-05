@@ -128,6 +128,7 @@ data class MainUiState(
     val melonDualDsInstalled: Boolean = false,
     val mupen64Installed: Boolean = false,
     val emuCoreXInstalled: Boolean = false,
+    val armsx1Installed: Boolean = false,
     val retroArchEnabled: Boolean = false,
     val dolphinEnabled: Boolean = false,
     val ppssppEnabled: Boolean = false,
@@ -136,6 +137,7 @@ data class MainUiState(
     val melonDualDsEnabled: Boolean = false,
     val mupen64Enabled: Boolean = false,
     val emuCoreXEnabled: Boolean = false,
+    val armsx1Enabled: Boolean = false,
     val pendingAwards: List<PendingAwardUi> = emptyList(),
     val awardHistory: List<PendingAwardUi> = emptyList(),
     val cachedGames: List<CachedGame> = emptyList(),
@@ -154,7 +156,7 @@ data class MainUiState(
     val flushInProgress: Boolean = false,
     val availableAppUpdate: AppUpdateInfo? = null
 ) {
-    val hasEnabledEmulator: Boolean = retroArchEnabled || dolphinEnabled || ppssppEnabled || armsx2Enabled || flycastEnabled || melonDualDsEnabled || mupen64Enabled || emuCoreXEnabled
+    val hasEnabledEmulator: Boolean = retroArchEnabled || dolphinEnabled || ppssppEnabled || armsx2Enabled || flycastEnabled || melonDualDsEnabled || mupen64Enabled || emuCoreXEnabled || armsx1Enabled
     val hasShizukuManagedEnabledEmulator: Boolean = hasEnabledEmulator && (retroArchEnabled || dolphinEnabled || ppssppEnabled)
 
     fun clearedPermissions(): MainUiState = copy(
@@ -237,7 +239,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val emulatorSupport = loadEmulatorSupport(app)
         Log.i(
             "RAProxy/Emulators",
-            "init support retroArchInstalled=${emulatorSupport.retroArchInstalled} dolphinInstalled=${emulatorSupport.dolphinInstalled} ppssppInstalled=${emulatorSupport.ppssppInstalled} armsx2Installed=${emulatorSupport.armsx2Installed} flycastInstalled=${emulatorSupport.flycastInstalled} melonDualDsInstalled=${emulatorSupport.melonDualDsInstalled} mupen64Installed=${emulatorSupport.mupen64Installed} emuCoreXInstalled=${emulatorSupport.emuCoreXInstalled} retroArchEnabled=${emulatorSupport.retroArchEnabled} dolphinEnabled=${emulatorSupport.dolphinEnabled} ppssppEnabled=${emulatorSupport.ppssppEnabled} armsx2Enabled=${emulatorSupport.armsx2Enabled} flycastEnabled=${emulatorSupport.flycastEnabled} melonDualDsEnabled=${emulatorSupport.melonDualDsEnabled} mupen64Enabled=${emulatorSupport.mupen64Enabled} emuCoreXEnabled=${emulatorSupport.emuCoreXEnabled}"
+            "init support retroArchInstalled=${emulatorSupport.retroArchInstalled} dolphinInstalled=${emulatorSupport.dolphinInstalled} ppssppInstalled=${emulatorSupport.ppssppInstalled} armsx2Installed=${emulatorSupport.armsx2Installed} flycastInstalled=${emulatorSupport.flycastInstalled} melonDualDsInstalled=${emulatorSupport.melonDualDsInstalled} mupen64Installed=${emulatorSupport.mupen64Installed} emuCoreXInstalled=${emulatorSupport.emuCoreXInstalled} armsx1Installed=${emulatorSupport.armsx1Installed} retroArchEnabled=${emulatorSupport.retroArchEnabled} dolphinEnabled=${emulatorSupport.dolphinEnabled} ppssppEnabled=${emulatorSupport.ppssppEnabled} armsx2Enabled=${emulatorSupport.armsx2Enabled} flycastEnabled=${emulatorSupport.flycastEnabled} melonDualDsEnabled=${emulatorSupport.melonDualDsEnabled} mupen64Enabled=${emulatorSupport.mupen64Enabled} emuCoreXEnabled=${emulatorSupport.emuCoreXEnabled} armsx1Enabled=${emulatorSupport.armsx1Enabled}"
         )
         _state.value = _state.value.copy(
             autostartProxy = loadAutostartPref(),
@@ -254,6 +256,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             melonDualDsInstalled = emulatorSupport.melonDualDsInstalled,
             mupen64Installed = emulatorSupport.mupen64Installed,
             emuCoreXInstalled = emulatorSupport.emuCoreXInstalled,
+            armsx1Installed = emulatorSupport.armsx1Installed,
             retroArchEnabled = emulatorSupport.retroArchEnabled,
             dolphinEnabled = emulatorSupport.dolphinEnabled,
             ppssppEnabled = emulatorSupport.ppssppEnabled,
@@ -262,6 +265,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             melonDualDsEnabled = emulatorSupport.melonDualDsEnabled,
             mupen64Enabled = emulatorSupport.mupen64Enabled,
             emuCoreXEnabled = emulatorSupport.emuCoreXEnabled,
+            armsx1Enabled = emulatorSupport.armsx1Enabled,
             shizukuStatus = resolveShizukuStatus(app),
             shizukuManualPatchingEnabled = loadShizukuManualPatchingEnabled(),
             ppssppShizukuRootModeUnknown = loadPpssppRootMode() == PrefsConstants.PpssppRootMode.Unknown
@@ -437,6 +441,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                             SnackbarManager.showError(emuCoreXResult.message)
                         }
                     }
+                    if (prefs.getBoolean(PrefsConstants.KEY_ARMSX1_PATCHED_THIS_RUN, false)) {
+                        val armsx1Result = withContext(Dispatchers.IO) { revertArmsx1Cfg(app) }
+                        if (armsx1Result.success) {
+                            prefs.edit { remove(PrefsConstants.KEY_ARMSX1_PATCHED_THIS_RUN) }
+                        } else {
+                            SnackbarManager.showError(armsx1Result.message)
+                        }
+                    }
                 }
                 _state.value = _state.value.copy(
                     proxyRunning = proxyRunning,
@@ -459,7 +471,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             val melonDualDsPatched = withContext(Dispatchers.IO) { checkIsMelonDualDsPatched(app) }
             val mupen64Patched = withContext(Dispatchers.IO) { checkIsMupen64Patched(app) }
             val emuCoreXPatched = withContext(Dispatchers.IO) { checkIsEmuCoreXPatched(app) }
-            val anyPatched = retroArchPatched || dolphinPatched || ppssppPatched || armsx2Patched || flycastPatched || melonDualDsPatched || mupen64Patched || emuCoreXPatched
+            val armsx1Patched = withContext(Dispatchers.IO) { checkIsArmsx1Patched(app) }
+            val anyPatched = retroArchPatched || dolphinPatched || ppssppPatched || armsx2Patched || flycastPatched || melonDualDsPatched || mupen64Patched || emuCoreXPatched || armsx1Patched
             val proxyRunning = ProxyService.isRunning(app)
             val prefs = app.getSharedPreferences(PrefsConstants.PREFS_NAME, Context.MODE_PRIVATE)
             val retroArchPatchedThisRun = prefs.getBoolean(PrefsConstants.KEY_RETROARCH_PATCHED_THIS_RUN, false)
@@ -470,6 +483,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             val melonDualDsPatchedThisRun = prefs.getBoolean(PrefsConstants.KEY_MELONDUALDS_PATCHED_THIS_RUN, false)
             val mupen64PatchedThisRun = prefs.getBoolean(PrefsConstants.KEY_MUPEN64_PATCHED_THIS_RUN, false)
             val emuCoreXPatchedThisRun = prefs.getBoolean(PrefsConstants.KEY_EMUCOREX_PATCHED_THIS_RUN, false)
+            val armsx1PatchedThisRun = prefs.getBoolean(PrefsConstants.KEY_ARMSX1_PATCHED_THIS_RUN, false)
 
             if (!proxyRunning && shouldKeepRunning) {
                 ProxyService.start(app)
@@ -483,7 +497,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 return@launch
             }
 
-            if ((!anyPatched && !retroArchPatchedThisRun && !dolphinPatchedThisRun && !ppssppPatchedThisRun && !armsx2PatchedThisRun && !flycastPatchedThisRun && !melonDualDsPatchedThisRun && !mupen64PatchedThisRun && !emuCoreXPatchedThisRun) || proxyRunning) {
+            if ((!anyPatched && !retroArchPatchedThisRun && !dolphinPatchedThisRun && !ppssppPatchedThisRun && !armsx2PatchedThisRun && !flycastPatchedThisRun && !melonDualDsPatchedThisRun && !mupen64PatchedThisRun && !emuCoreXPatchedThisRun && !armsx1PatchedThisRun) || proxyRunning) {
                 _state.value = _state.value.copy(
                     proxyRunning = proxyRunning,
                     cfgIsPatched = anyPatched
@@ -566,6 +580,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             }
             val emuCoreXRevertedTarget = emuCoreXResult.success
 
+            val armsx1Result = if (armsx1PatchedThisRun || armsx1Patched) {
+                withContext(Dispatchers.IO) {
+                    revertArmsx1Cfg(app)
+                }
+            } else {
+                Armsx1PatchResult(success = true, message = "ARMSX1 not patched this run.", skippedNotInstalled = true)
+            }
+            val armsx1RevertedTarget = armsx1Result.success
+
             if (retroArchRevertedTarget) {
                 prefs.edit {
                     remove(PrefsConstants.KEY_RETROARCH_HARDCORE_WAS_ENABLED)
@@ -617,6 +640,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 }
             }
 
+            if (armsx1RevertedTarget) {
+                prefs.edit {
+                    remove(PrefsConstants.KEY_ARMSX1_PATCHED_THIS_RUN)
+                }
+            }
+
             val needsSafGrant = retroArchResult.needsSafGrant || dolphinResult.needsSafGrant || ppssppResult.needsSafGrant
             val safGrantTarget = when {
                 retroArchResult.needsSafGrant -> SafGrantTarget.RetroArch
@@ -628,7 +657,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
             _state.value = _state.value.copy(
                 proxyRunning = false,
-                cfgIsPatched = !(retroArchRevertedTarget && dolphinRevertedTarget && ppssppRevertedTarget && armsx2RevertedTarget && flycastRevertedTarget && melonDualDsRevertedTarget && mupen64RevertedTarget && emuCoreXRevertedTarget),
+                cfgIsPatched = !(retroArchRevertedTarget && dolphinRevertedTarget && ppssppRevertedTarget && armsx2RevertedTarget && flycastRevertedTarget && melonDualDsRevertedTarget && mupen64RevertedTarget && emuCoreXRevertedTarget && armsx1RevertedTarget),
                 needsSafGrant = needsSafGrant,
                 safGrantTarget = safGrantTarget,
                 cfgCopyBackPath = cfgCopyBackPath
@@ -650,6 +679,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 SnackbarManager.showError(mupen64Result.message)
             } else if (!emuCoreXRevertedTarget) {
                 SnackbarManager.showError(emuCoreXResult.message)
+            } else if (!armsx1RevertedTarget) {
+                SnackbarManager.showError(armsx1Result.message)
             }
         }
     }
@@ -1218,6 +1249,24 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         prefs.edit { remove(PrefsConstants.KEY_EMUCOREX_PATCHED_THIS_RUN) }
                     }
 
+                    val armsx1Result = if (emulatorSupport.armsx1Enabled) {
+                        withContext(Dispatchers.IO) { patchArmsx1Cfg(app) }
+                    } else {
+                        Armsx1PatchResult(success = true, message = "ARMSX1 disabled.", skippedNotInstalled = true)
+                    }
+                    if (emulatorSupport.armsx1Enabled) {
+                        if (!armsx1Result.success && !armsx1Result.skippedNotInstalled) {
+                            pendingProxyStart = false
+                            SnackbarManager.showError(armsx1Result.message)
+                            return@launch
+                        }
+                        if (armsx1Result.success && !armsx1Result.skippedNotInstalled) {
+                            prefs.edit { putBoolean(PrefsConstants.KEY_ARMSX1_PATCHED_THIS_RUN, true) }
+                        }
+                    } else {
+                        prefs.edit { remove(PrefsConstants.KEY_ARMSX1_PATCHED_THIS_RUN) }
+                    }
+
                     ProxyService.start(app)
                     pendingProxyStart = false
                     _state.value = _state.value.copy(
@@ -1458,6 +1507,27 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     prefs.edit { remove(PrefsConstants.KEY_EMUCOREX_PATCHED_THIS_RUN) }
                 }
 
+                val armsx1Result = if (emulatorSupport.armsx1Enabled) {
+                    withContext(Dispatchers.IO) {
+                        patchArmsx1Cfg(app)
+                    }
+                } else {
+                    Armsx1PatchResult(success = true, message = "ARMSX1 disabled.", skippedNotInstalled = true)
+                }
+                if (emulatorSupport.armsx1Enabled) {
+                    if (!armsx1Result.success && !armsx1Result.skippedNotInstalled) {
+                        SnackbarManager.showError(armsx1Result.message)
+                        pendingProxyStart = false
+                        return@launch
+                    } else if (armsx1Result.success && !armsx1Result.skippedNotInstalled) {
+                        prefs.edit {
+                            putBoolean(PrefsConstants.KEY_ARMSX1_PATCHED_THIS_RUN, true)
+                        }
+                    }
+                } else {
+                    prefs.edit { remove(PrefsConstants.KEY_ARMSX1_PATCHED_THIS_RUN) }
+                }
+
                 val credentialsToCache = selectImportedCredentials(
                     retroArch = result.credentials,
                     dolphin = dolphinResult.credentials,
@@ -1578,6 +1648,16 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         prefs.edit { remove(PrefsConstants.KEY_EMUCOREX_PATCHED_THIS_RUN) }
                     }
 
+                    val armsx1PatchedThisRun = prefs.getBoolean(PrefsConstants.KEY_ARMSX1_PATCHED_THIS_RUN, false)
+                    val armsx1Result = if (armsx1PatchedThisRun) {
+                        withContext(Dispatchers.IO) { revertArmsx1Cfg(app) }
+                    } else {
+                        Armsx1PatchResult(success = true, message = "ARMSX1 not patched this run.", skippedNotInstalled = true)
+                    }
+                    if (armsx1Result.success) {
+                        prefs.edit { remove(PrefsConstants.KEY_ARMSX1_PATCHED_THIS_RUN) }
+                    }
+
                     ProxyService.stop(app)
                     _state.value = _state.value.copy(
                         proxyRunning = false,
@@ -1586,7 +1666,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         safGrantTarget = null,
                         cfgCopyBackPath = null
                     )
-                    if ((shizukuResult == null || shizukuResult.success) && armsx2Result.success && flycastResult.success && melonDualDsResult.success && mupen64Result.success && emuCoreXResult.success) {
+                    if ((shizukuResult == null || shizukuResult.success) && armsx2Result.success && flycastResult.success && melonDualDsResult.success && mupen64Result.success && emuCoreXResult.success && armsx1Result.success) {
                         SnackbarManager.showMessage(str(R.string.proxy_stopped_success))
                     } else if (!armsx2Result.success) {
                         SnackbarManager.showError(armsx2Result.message)
@@ -1598,6 +1678,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         SnackbarManager.showError(mupen64Result.message)
                     } else if (!emuCoreXResult.success) {
                         SnackbarManager.showError(emuCoreXResult.message)
+                    } else if (!armsx1Result.success) {
+                        SnackbarManager.showError(armsx1Result.message)
                     } else {
                         SnackbarManager.showError(shizukuResult?.message ?: "Failed to stop proxy.")
                     }
@@ -1682,6 +1764,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     EmuCoreXPatchResult(success = true, message = "EmuCoreX not patched this run.", skippedNotInstalled = true)
                 }
 
+                val armsx1PatchedThisRun = prefs.getBoolean(PrefsConstants.KEY_ARMSX1_PATCHED_THIS_RUN, false)
+                val armsx1Result = if (armsx1PatchedThisRun) {
+                    withContext(Dispatchers.IO) {
+                        revertArmsx1Cfg(app)
+                    }
+                } else {
+                    Armsx1PatchResult(success = true, message = "ARMSX1 not patched this run.", skippedNotInstalled = true)
+                }
+
                 if (revertedTarget) {
                     prefs.edit {
                         remove(PrefsConstants.KEY_RETROARCH_HARDCORE_WAS_ENABLED)
@@ -1722,6 +1813,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 if (emuCoreXResult.success) {
                     prefs.edit {
                         remove(PrefsConstants.KEY_EMUCOREX_PATCHED_THIS_RUN)
+                    }
+                }
+
+                if (armsx1Result.success) {
+                    prefs.edit {
+                        remove(PrefsConstants.KEY_ARMSX1_PATCHED_THIS_RUN)
                     }
                 }
 
@@ -1787,6 +1884,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     SnackbarManager.showError(mupen64Result.message)
                 } else if (!emuCoreXResult.success && !emuCoreXResult.skippedNotInstalled) {
                     SnackbarManager.showError(emuCoreXResult.message)
+                } else if (!armsx1Result.success && !armsx1Result.skippedNotInstalled) {
+                    SnackbarManager.showError(armsx1Result.message)
                 }
             } finally {
                 delay(250.milliseconds)
@@ -1816,7 +1915,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     checkIsFlycastPatched(app) ||
                     checkIsMelonDualDsPatched(app) ||
                     checkIsMupen64Patched(app) ||
-                    checkIsEmuCoreXPatched(app)
+                    checkIsEmuCoreXPatched(app) ||
+                    checkIsArmsx1Patched(app)
             }
             _state.value = _state.value.copy(cfgIsPatched = patched)
         }
@@ -2481,7 +2581,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             flycastEnabled = updated.flycastEnabled,
             melonDualDsEnabled = updated.melonDualDsEnabled,
             mupen64Enabled = updated.mupen64Enabled,
-            emuCoreXEnabled = updated.emuCoreXEnabled
+            emuCoreXEnabled = updated.emuCoreXEnabled,
+            armsx1Enabled = updated.armsx1Enabled
         )
     }
 
@@ -2507,7 +2608,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             flycastEnabled = updated.flycastEnabled,
             melonDualDsEnabled = updated.melonDualDsEnabled,
             mupen64Enabled = updated.mupen64Enabled,
-            emuCoreXEnabled = updated.emuCoreXEnabled
+            emuCoreXEnabled = updated.emuCoreXEnabled,
+            armsx1Enabled = updated.armsx1Enabled
         )
     }
 
@@ -2533,7 +2635,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             flycastEnabled = updated.flycastEnabled,
             melonDualDsEnabled = updated.melonDualDsEnabled,
             mupen64Enabled = updated.mupen64Enabled,
-            emuCoreXEnabled = updated.emuCoreXEnabled
+            emuCoreXEnabled = updated.emuCoreXEnabled,
+            armsx1Enabled = updated.armsx1Enabled
         )
     }
 
@@ -2555,7 +2658,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             flycastEnabled = updated.flycastEnabled,
             melonDualDsEnabled = updated.melonDualDsEnabled,
             mupen64Enabled = updated.mupen64Enabled,
-            emuCoreXEnabled = updated.emuCoreXEnabled
+            emuCoreXEnabled = updated.emuCoreXEnabled,
+            armsx1Enabled = updated.armsx1Enabled
         )
     }
 
@@ -2577,7 +2681,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             flycastEnabled = updated.flycastEnabled,
             melonDualDsEnabled = updated.melonDualDsEnabled,
             mupen64Enabled = updated.mupen64Enabled,
-            emuCoreXEnabled = updated.emuCoreXEnabled
+            emuCoreXEnabled = updated.emuCoreXEnabled,
+            armsx1Enabled = updated.armsx1Enabled
         )
     }
 
@@ -2599,7 +2704,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             flycastEnabled = updated.flycastEnabled,
             melonDualDsEnabled = updated.melonDualDsEnabled,
             mupen64Enabled = updated.mupen64Enabled,
-            emuCoreXEnabled = updated.emuCoreXEnabled
+            emuCoreXEnabled = updated.emuCoreXEnabled,
+            armsx1Enabled = updated.armsx1Enabled
         )
     }
 
@@ -2621,7 +2727,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             flycastEnabled = updated.flycastEnabled,
             melonDualDsEnabled = updated.melonDualDsEnabled,
             mupen64Enabled = updated.mupen64Enabled,
-            emuCoreXEnabled = updated.emuCoreXEnabled
+            emuCoreXEnabled = updated.emuCoreXEnabled,
+            armsx1Enabled = updated.armsx1Enabled
         )
     }
 
@@ -2643,7 +2750,31 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             flycastEnabled = updated.flycastEnabled,
             melonDualDsEnabled = updated.melonDualDsEnabled,
             mupen64Enabled = updated.mupen64Enabled,
-            emuCoreXEnabled = updated.emuCoreXEnabled
+            emuCoreXEnabled = updated.emuCoreXEnabled,
+            armsx1Enabled = updated.armsx1Enabled
+        )
+    }
+
+    fun setArmsx1Enabled(enabled: Boolean) {
+        val app = getApplication<Application>()
+        val support = loadEmulatorSupport(app)
+        if (!support.armsx1Installed || (support.installedCount == 1) || _state.value.proxyRunning) {
+            return
+        }
+
+        app.getSharedPreferences(PrefsConstants.PREFS_NAME, Context.MODE_PRIVATE)
+            .edit { putBoolean(PrefsConstants.KEY_ENABLE_ARMSX1, enabled) }
+        val updated = loadEmulatorSupport(app)
+        _state.value = _state.value.copy(
+            retroArchEnabled = updated.retroArchEnabled,
+            dolphinEnabled = updated.dolphinEnabled,
+            ppssppEnabled = updated.ppssppEnabled,
+            armsx2Enabled = updated.armsx2Enabled,
+            flycastEnabled = updated.flycastEnabled,
+            melonDualDsEnabled = updated.melonDualDsEnabled,
+            mupen64Enabled = updated.mupen64Enabled,
+            emuCoreXEnabled = updated.emuCoreXEnabled,
+            armsx1Enabled = updated.armsx1Enabled
         )
     }
 
