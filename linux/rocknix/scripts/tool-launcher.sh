@@ -42,12 +42,6 @@ done
 
 exit_code=0
 for driver in "${drivers_to_try[@]}"; do
-  # SDL defaults the wayland app_id to the binary name (python3 here), which
-  # is not enough on its own for sway to give the window fullscreen
-  # compositor treatment on every device (RG DS, issue #55) - PortMaster's
-  # own ROCKNIX python tools (e.g. GPcal.sh) always pair SDL_FULLSCREEN with
-  # an explicit `swaymsg fullscreen enable`, so do the same here.
-  sway_fullscreen "python3" &
   SDL_VIDEODRIVER="${driver}" /usr/bin/python3 -m raofflineproxy.main menu
   exit_code=$?
 
