@@ -53,6 +53,10 @@ features:
           <span>PPSSPP</span>
         </div>
         <div class="supported-platforms__item">
+          <img class="supported-platforms__logo--rounded" src="/armsx1.png" alt="ARMSX1 logo">
+          <span>ARMSX1</span>
+        </div>
+        <div class="supported-platforms__item">
           <img class="supported-platforms__logo--rounded" src="/armsx2.webp" alt="ARMSX2 logo">
           <span>ARMSX2</span>
         </div>
