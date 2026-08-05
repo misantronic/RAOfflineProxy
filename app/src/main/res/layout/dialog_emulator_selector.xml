@@ -32,6 +32,13 @@
         layout="@layout/view_emulator_toggle" />
 
     <include
+        android:id="@+id/layout_armsx1_toggle"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:visibility="gone"
+        layout="@layout/view_emulator_toggle" />
+
+    <include
         android:id="@+id/layout_armsx2_toggle"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -61,13 +68,6 @@
 
     <include
         android:id="@+id/layout_emucorex_toggle"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:visibility="gone"
-        layout="@layout/view_emulator_toggle" />
-
-    <include
-        android:id="@+id/layout_armsx1_toggle"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:visibility="gone"

@@ -68,21 +68,21 @@ class HomeFragment : Fragment() {
         val retroArchToggle = bindToggle(emulatorSelectorDialogView.findViewById(R.id.layout_retroarch_toggle), R.string.emulator_retroarch)
         val dolphinToggle = bindToggle(emulatorSelectorDialogView.findViewById(R.id.layout_dolphin_toggle), R.string.emulator_dolphin)
         val ppssppToggle = bindToggle(emulatorSelectorDialogView.findViewById(R.id.layout_ppsspp_toggle), R.string.emulator_ppsspp)
+        val armsx1Toggle = bindToggle(emulatorSelectorDialogView.findViewById(R.id.layout_armsx1_toggle), R.string.emulator_armsx1)
         val armsx2Toggle = bindToggle(emulatorSelectorDialogView.findViewById(R.id.layout_armsx2_toggle), R.string.emulator_armsx2)
         val flycastToggle = bindToggle(emulatorSelectorDialogView.findViewById(R.id.layout_flycast_toggle), R.string.emulator_flycast)
         val melonDualDsToggle = bindToggle(emulatorSelectorDialogView.findViewById(R.id.layout_melondualds_toggle), R.string.emulator_melondualds)
         val mupen64Toggle = bindToggle(emulatorSelectorDialogView.findViewById(R.id.layout_mupen64_toggle), R.string.emulator_mupen64)
         val emuCoreXToggle = bindToggle(emulatorSelectorDialogView.findViewById(R.id.layout_emucorex_toggle), R.string.emulator_emucorex)
-        val armsx1Toggle = bindToggle(emulatorSelectorDialogView.findViewById(R.id.layout_armsx1_toggle), R.string.emulator_armsx1)
         val retroArchAppIcon = loadInstalledAppIcon(RETROARCH_PACKAGE_CANDIDATES)
         val dolphinAppIcon = loadInstalledAppIcon(DOLPHIN_PACKAGE_CANDIDATES)
         val ppssppAppIcon = loadInstalledAppIcon(UI_PPSSPP_PACKAGE_CANDIDATES)
+        val armsx1AppIcon = loadInstalledAppIcon(UI_ARMSX1_PACKAGE_CANDIDATES)
         val armsx2AppIcon = loadInstalledAppIcon(UI_ARMSX2_PACKAGE_CANDIDATES)
         val flycastAppIcon = loadInstalledAppIcon(UI_FLYCAST_PACKAGE_CANDIDATES)
         val melonDualDsAppIcon = loadInstalledAppIcon(UI_MELONDUALDS_PACKAGE_CANDIDATES)
         val mupen64AppIcon = loadInstalledAppIcon(UI_MUPEN64_PACKAGE_CANDIDATES)
         val emuCoreXAppIcon = loadInstalledAppIcon(UI_EMUCOREX_PACKAGE_CANDIDATES)
-        val armsx1AppIcon = loadInstalledAppIcon(UI_ARMSX1_PACKAGE_CANDIDATES)
 
         if (resources.getBoolean(R.bool.show_home_description)) {
             val fullText = getString(R.string.home_description)
@@ -146,6 +146,11 @@ class HomeFragment : Fragment() {
                 viewModel.setPpssppEnabled(!viewModel.state.value.ppssppEnabled)
             }
         }
+        armsx1Toggle.row.setOnClickListener {
+            if (armsx1Toggle.row.isEnabled) {
+                viewModel.setArmsx1Enabled(!viewModel.state.value.armsx1Enabled)
+            }
+        }
         armsx2Toggle.row.setOnClickListener {
             if (armsx2Toggle.row.isEnabled) {
                 viewModel.setArmsx2Enabled(!viewModel.state.value.armsx2Enabled)
@@ -169,11 +174,6 @@ class HomeFragment : Fragment() {
         emuCoreXToggle.row.setOnClickListener {
             if (emuCoreXToggle.row.isEnabled) {
                 viewModel.setEmuCoreXEnabled(!viewModel.state.value.emuCoreXEnabled)
-            }
-        }
-        armsx1Toggle.row.setOnClickListener {
-            if (armsx1Toggle.row.isEnabled) {
-                viewModel.setArmsx1Enabled(!viewModel.state.value.armsx1Enabled)
             }
         }
 
@@ -220,24 +220,24 @@ class HomeFragment : Fragment() {
                 retroArchToggle.row.visibility = if (state.retroArchInstalled) View.VISIBLE else View.GONE
                 dolphinToggle.row.visibility = if (state.dolphinInstalled) View.VISIBLE else View.GONE
                 ppssppToggle.row.visibility = if (state.ppssppInstalled) View.VISIBLE else View.GONE
+                armsx1Toggle.row.visibility = if (state.armsx1Installed) View.VISIBLE else View.GONE
                 armsx2Toggle.row.visibility = if (state.armsx2Installed) View.VISIBLE else View.GONE
                 flycastToggle.row.visibility = if (state.flycastInstalled) View.VISIBLE else View.GONE
                 melonDualDsToggle.row.visibility = if (state.melonDualDsInstalled) View.VISIBLE else View.GONE
                 mupen64Toggle.row.visibility = if (state.mupen64Installed) View.VISIBLE else View.GONE
                 emuCoreXToggle.row.visibility = if (state.emuCoreXInstalled) View.VISIBLE else View.GONE
-                armsx1Toggle.row.visibility = if (state.armsx1Installed) View.VISIBLE else View.GONE
 
                 retroArchToggle.row.isEnabled = state.retroArchInstalled && !state.proxyRunning && !onlyOneInstalled
                 dolphinToggle.row.isEnabled = state.dolphinInstalled && !state.proxyRunning && !onlyOneInstalled
                 ppssppToggle.row.isEnabled = state.ppssppInstalled && !state.proxyRunning && !onlyOneInstalled
+                armsx1Toggle.row.isEnabled = state.armsx1Installed && !state.proxyRunning && !onlyOneInstalled
                 armsx2Toggle.row.isEnabled = state.armsx2Installed && !state.proxyRunning && !onlyOneInstalled
                 flycastToggle.row.isEnabled = state.flycastInstalled && !state.proxyRunning && !onlyOneInstalled
                 melonDualDsToggle.row.isEnabled = state.melonDualDsInstalled && !state.proxyRunning && !onlyOneInstalled
                 mupen64Toggle.row.isEnabled = state.mupen64Installed && !state.proxyRunning && !onlyOneInstalled
                 emuCoreXToggle.row.isEnabled = state.emuCoreXInstalled && !state.proxyRunning && !onlyOneInstalled
-                armsx1Toggle.row.isEnabled = state.armsx1Installed && !state.proxyRunning && !onlyOneInstalled
 
-                listOf(retroArchToggle, dolphinToggle, ppssppToggle, armsx2Toggle, flycastToggle, melonDualDsToggle, mupen64Toggle, emuCoreXToggle, armsx1Toggle).forEach { toggle ->
+                listOf(retroArchToggle, dolphinToggle, ppssppToggle, armsx1Toggle, armsx2Toggle, flycastToggle, melonDualDsToggle, mupen64Toggle, emuCoreXToggle).forEach { toggle ->
                     toggle.row.alpha = if (toggle.row.isEnabled) 1f else 0.5f
                     toggle.checkBox.isEnabled = toggle.row.isEnabled
                 }
@@ -245,22 +245,22 @@ class HomeFragment : Fragment() {
                 retroArchToggle.icon.setImageDrawable(retroArchAppIcon)
                 dolphinToggle.icon.setImageDrawable(dolphinAppIcon)
                 ppssppToggle.icon.setImageDrawable(ppssppAppIcon)
+                armsx1Toggle.icon.setImageDrawable(armsx1AppIcon)
                 armsx2Toggle.icon.setImageDrawable(armsx2AppIcon)
                 flycastToggle.icon.setImageDrawable(flycastAppIcon)
                 melonDualDsToggle.icon.setImageDrawable(melonDualDsAppIcon)
                 mupen64Toggle.icon.setImageDrawable(mupen64AppIcon)
                 emuCoreXToggle.icon.setImageDrawable(emuCoreXAppIcon)
-                armsx1Toggle.icon.setImageDrawable(armsx1AppIcon)
 
                 applyToggleRowStyle(toggle = retroArchToggle, isSelected = state.retroArchEnabled)
                 applyToggleRowStyle(toggle = dolphinToggle, isSelected = state.dolphinEnabled)
                 applyToggleRowStyle(toggle = ppssppToggle, isSelected = state.ppssppEnabled)
+                applyToggleRowStyle(toggle = armsx1Toggle, isSelected = state.armsx1Enabled)
                 applyToggleRowStyle(toggle = armsx2Toggle, isSelected = state.armsx2Enabled)
                 applyToggleRowStyle(toggle = flycastToggle, isSelected = state.flycastEnabled)
                 applyToggleRowStyle(toggle = melonDualDsToggle, isSelected = state.melonDualDsEnabled)
                 applyToggleRowStyle(toggle = mupen64Toggle, isSelected = state.mupen64Enabled)
                 applyToggleRowStyle(toggle = emuCoreXToggle, isSelected = state.emuCoreXEnabled)
-                applyToggleRowStyle(toggle = armsx1Toggle, isSelected = state.armsx1Enabled)
 
                 enabledEmulatorIcons.removeAllViews()
                 val iconSizePx = (28 * resources.displayMetrics.density).toInt()
@@ -269,12 +269,12 @@ class HomeFragment : Fragment() {
                     (state.retroArchInstalled && state.retroArchEnabled) to retroArchAppIcon,
                     (state.dolphinInstalled && state.dolphinEnabled) to dolphinAppIcon,
                     (state.ppssppInstalled && state.ppssppEnabled) to ppssppAppIcon,
+                    (state.armsx1Installed && state.armsx1Enabled) to armsx1AppIcon,
                     (state.armsx2Installed && state.armsx2Enabled) to armsx2AppIcon,
                     (state.flycastInstalled && state.flycastEnabled) to flycastAppIcon,
                     (state.melonDualDsInstalled && state.melonDualDsEnabled) to melonDualDsAppIcon,
                     (state.mupen64Installed && state.mupen64Enabled) to mupen64AppIcon,
-                    (state.emuCoreXInstalled && state.emuCoreXEnabled) to emuCoreXAppIcon,
-                    (state.armsx1Installed && state.armsx1Enabled) to armsx1AppIcon
+                    (state.emuCoreXInstalled && state.emuCoreXEnabled) to emuCoreXAppIcon
                 ).forEach { (enabled, icon) ->
                     if (enabled && icon != null) {
                         // Never share the Drawable instance with the dialog row's icon ImageView:
@@ -496,12 +496,12 @@ class HomeFragment : Fragment() {
             if (state.retroArchInstalled) add(viewModel::setRetroArchEnabled to state.retroArchEnabled)
             if (state.dolphinInstalled) add(viewModel::setDolphinEnabled to state.dolphinEnabled)
             if (state.ppssppInstalled) add(viewModel::setPpssppEnabled to state.ppssppEnabled)
+            if (state.armsx1Installed) add(viewModel::setArmsx1Enabled to state.armsx1Enabled)
             if (state.armsx2Installed) add(viewModel::setArmsx2Enabled to state.armsx2Enabled)
             if (state.flycastInstalled) add(viewModel::setFlycastEnabled to state.flycastEnabled)
             if (state.melonDualDsInstalled) add(viewModel::setMelonDualDsEnabled to state.melonDualDsEnabled)
             if (state.mupen64Installed) add(viewModel::setMupen64Enabled to state.mupen64Enabled)
             if (state.emuCoreXInstalled) add(viewModel::setEmuCoreXEnabled to state.emuCoreXEnabled)
-            if (state.armsx1Installed) add(viewModel::setArmsx1Enabled to state.armsx1Enabled)
         }
     }
 
