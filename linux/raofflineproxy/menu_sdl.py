@@ -342,6 +342,23 @@ def run_menu_sdl(command_runner: str) -> None:
             pygame.quit()
 
 
+_DEBUG_DUMP_FRAME_PATH = CONFIG_DIR / "debug_frame.png"
+_debug_frame_dumped = False
+
+
+def maybe_dump_debug_frame(surface, pygame) -> None:
+    global _debug_frame_dumped
+    if _debug_frame_dumped or os.environ.get("RAOFFLINEPROXY_DEBUG_DUMP_FRAME") != "1":
+        return
+    _debug_frame_dumped = True
+    try:
+        CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+        pygame.image.save(surface, str(_DEBUG_DUMP_FRAME_PATH))
+        log_menu_sdl(f"debug frame dumped to {_DEBUG_DUMP_FRAME_PATH}")
+    except Exception as exc:
+        log_menu_sdl(f"debug frame dump failed: {exc}")
+
+
 def log_menu_sdl(message: str) -> None:
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
     timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
@@ -569,6 +586,7 @@ class MenuSdlSession:
 
         if self.view == "key_logger":
             self.render_key_logger_view()
+            maybe_dump_debug_frame(self.surface, self.pygame)
             self.pygame.display.flip()
             return
 
@@ -633,6 +651,7 @@ class MenuSdlSession:
             )
             self.surface.blit(version, version_rect)
 
+        maybe_dump_debug_frame(self.surface, self.pygame)
         self.pygame.display.flip()
 
     def labels(self, running: bool) -> list[str]:
