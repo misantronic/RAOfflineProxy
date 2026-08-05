@@ -2,8 +2,7 @@
 # RAOfflineProxy Tools launcher for ROCKNIX.
 # Placed in /storage/.config/modules and launched by EmulationStation via foot.
 # Runs the controller-driven SDL menu fullscreen under the sway compositor.
-# SDL's own fullscreen request isn't enough on every device, so this also
-# backgrounds a sway_fullscreen call to force it via swaymsg.
+# The menu requests SDL fullscreen itself, so no sway_fullscreen call is needed.
 #
 # Some devices (e.g. RK3326 with the libmali blob) segfault inside SDL's
 # wayland/EGL init before the app's own pygame.error fallback can run, since a
@@ -43,11 +42,12 @@ done
 
 exit_code=0
 for driver in "${drivers_to_try[@]}"; do
-  # SDL's wayland app_id isn't reliably "python3" across pygame/SDL builds
-  # (confirmed: `[app_id=python3] fullscreen enable` reports "No matching
-  # node" on RG DS/pygame-ce, issue #55), so match by PID instead - matches
-  # the process, not a wayland property that varies by SDL version.
-  sway_fullscreen "python3" "pgrep" &
+  # SDL defaults the wayland app_id to the binary name (python3 here), which
+  # is not enough on its own for sway to give the window fullscreen
+  # compositor treatment on every device (RG DS, issue #55) - PortMaster's
+  # own ROCKNIX python tools (e.g. GPcal.sh) always pair SDL_FULLSCREEN with
+  # an explicit `swaymsg fullscreen enable`, so do the same here.
+  sway_fullscreen "python3" &
   SDL_VIDEODRIVER="${driver}" /usr/bin/python3 -m raofflineproxy.main menu
   exit_code=$?
 
