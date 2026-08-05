@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from . import cache_keys, es_export, storage_corruption
-from .config import DATABASE_FILE, ensure_config_dir
+from .config import CACHE_DATABASE_FILE, DATABASE_FILE, ensure_cache_dir, ensure_config_dir
 
 try:
     import fcntl
@@ -34,9 +34,26 @@ WARNING_ACHIEVEMENT_ID = 101000001
 
 
 class Storage:
-    def __init__(self, database_path: Path = DATABASE_FILE):
+    def __init__(
+        self,
+        database_path: Path = DATABASE_FILE,
+        cache_database_path: Path | None = None,
+    ):
         ensure_config_dir()
+        ensure_cache_dir()
+        if cache_database_path is None:
+            # Only route to the dedicated cache dir when the caller is using
+            # the real config-dir default. Callers that pass a custom
+            # database_path (tests, alternate install roots) get the cache
+            # file placed alongside it instead, so everything stays under
+            # one self-contained directory.
+            cache_database_path = (
+                CACHE_DATABASE_FILE
+                if database_path == DATABASE_FILE
+                else database_path.with_name("cache.sqlite3")
+            )
         self._database_path = database_path
+        self._cache_database_path = cache_database_path
         self._lock = threading.RLock()
         self._use_sqlite = sqlite3 is not None
         self._json_path = database_path.with_suffix(".json")
@@ -45,12 +62,17 @@ class Storage:
         )
         self._json_state: dict[str, Any] | None = None
         self._connection = None
+        self._cache_connection = None
 
         if self._use_sqlite:
             self._connection = sqlite3.connect(
                 self._database_path, check_same_thread=False, timeout=5.0
             )
             self._connection.row_factory = sqlite3.Row
+            self._cache_connection = sqlite3.connect(
+                self._cache_database_path, check_same_thread=False, timeout=5.0
+            )
+            self._cache_connection.row_factory = sqlite3.Row
             self._initialize_sqlite()
         else:
             self._initialize_json()
@@ -59,17 +81,20 @@ class Storage:
         with self._lock:
             if self._connection is not None:
                 self._connection.close()
+            if self._cache_connection is not None:
+                self._cache_connection.close()
 
     def _initialize_sqlite(self) -> None:
         assert self._connection is not None
+        assert self._cache_connection is not None
         with self._lock:
             try:
-                self._connection.execute("PRAGMA journal_mode=WAL;").fetchone()
+                self._cache_connection.execute("PRAGMA journal_mode=WAL;").fetchone()
             except sqlite3.OperationalError:
                 # WAL requires shared-memory/locking semantics that FAT32
                 # (e.g. Miyoo Mini / Onion SD cards) doesn't provide.
-                self._connection.execute("PRAGMA journal_mode=DELETE;")
-            self._connection.executescript(
+                self._cache_connection.execute("PRAGMA journal_mode=DELETE;")
+            self._cache_connection.executescript(
                 """
                 CREATE TABLE IF NOT EXISTS api_cache (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -79,6 +104,28 @@ class Storage:
                     cachedAt INTEGER NOT NULL,
                     firstCachedAt INTEGER NOT NULL
                 );
+                """
+            )
+            cache_columns = {
+                row["name"]
+                for row in self._cache_connection.execute(
+                    "PRAGMA table_info(api_cache)"
+                ).fetchall()
+            }
+            if "sourceRomPath" not in cache_columns:
+                self._cache_connection.execute(
+                    "ALTER TABLE api_cache ADD COLUMN sourceRomPath TEXT"
+                )
+            self._cache_connection.commit()
+
+            try:
+                self._connection.execute("PRAGMA journal_mode=WAL;").fetchone()
+            except sqlite3.OperationalError:
+                # WAL requires shared-memory/locking semantics that FAT32
+                # (e.g. Miyoo Mini / Onion SD cards) doesn't provide.
+                self._connection.execute("PRAGMA journal_mode=DELETE;")
+            self._connection.executescript(
+                """
                 CREATE TABLE IF NOT EXISTS pending_awards (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     achievementId INTEGER NOT NULL UNIQUE,
@@ -96,17 +143,6 @@ class Storage:
                 );
                 """
             )
-            cache_columns = {
-                row["name"]
-                for row in self._connection.execute(
-                    "PRAGMA table_info(api_cache)"
-                ).fetchall()
-            }
-            if "sourceRomPath" not in cache_columns:
-                self._connection.execute(
-                    "ALTER TABLE api_cache ADD COLUMN sourceRomPath TEXT"
-                )
-
             columns = {
                 row["name"]
                 for row in self._connection.execute(
@@ -232,9 +268,9 @@ class Storage:
         source_rom_path: str | None,
         now: int,
     ) -> None:
-        assert self._connection is not None
+        assert self._cache_connection is not None
         with self._lock:
-            row = self._connection.execute(
+            row = self._cache_connection.execute(
                 "SELECT firstCachedAt, sourceRomPath FROM api_cache WHERE cacheKey = ? LIMIT 1",
                 (cache_key,),
             ).fetchone()
@@ -244,7 +280,7 @@ class Storage:
                 if row is not None and row["sourceRomPath"] is not None
                 else None
             )
-            self._connection.execute(
+            self._cache_connection.execute(
                 """
                 INSERT INTO api_cache(cacheKey, responseBody, sourceRomPath, cachedAt, firstCachedAt)
                 VALUES(?, ?, ?, ?, ?)
@@ -261,7 +297,7 @@ class Storage:
                     first_cached_at,
                 ),
             )
-            self._connection.commit()
+            self._cache_connection.commit()
 
     def _upsert_cache_json(
         self,
@@ -302,9 +338,9 @@ class Storage:
 
     def get_cache(self, cache_key: str) -> dict | None:
         if self._use_sqlite:
-            assert self._connection is not None
+            assert self._cache_connection is not None
             with self._lock:
-                row = self._connection.execute(
+                row = self._cache_connection.execute(
                     "SELECT * FROM api_cache WHERE cacheKey = ? LIMIT 1",
                     (cache_key,),
                 ).fetchone()
@@ -326,9 +362,9 @@ class Storage:
 
     def get_cache_by_prefix(self, prefix: str) -> dict | None:
         if self._use_sqlite:
-            assert self._connection is not None
+            assert self._cache_connection is not None
             with self._lock:
-                row = self._connection.execute(
+                row = self._cache_connection.execute(
                     "SELECT * FROM api_cache WHERE cacheKey LIKE ? LIMIT 1",
                     (f"{prefix}%",),
                 ).fetchone()
@@ -350,9 +386,9 @@ class Storage:
 
     def get_all_cache_by_prefix(self, prefix: str) -> list[dict]:
         if self._use_sqlite:
-            assert self._connection is not None
+            assert self._cache_connection is not None
             with self._lock:
-                rows = self._connection.execute(
+                rows = self._cache_connection.execute(
                     "SELECT * FROM api_cache WHERE cacheKey LIKE ? ORDER BY cachedAt DESC",
                     (f"{prefix}%",),
                 ).fetchall()
@@ -371,12 +407,12 @@ class Storage:
 
     def delete_cache_by_prefix(self, prefix: str) -> None:
         if self._use_sqlite:
-            assert self._connection is not None
+            assert self._cache_connection is not None
             with self._lock:
-                self._connection.execute(
+                self._cache_connection.execute(
                     "DELETE FROM api_cache WHERE cacheKey LIKE ?", (f"{prefix}%",)
                 )
-                self._connection.commit()
+                self._cache_connection.commit()
             self._after_cache_mutation(prefix)
             return
 
@@ -394,13 +430,13 @@ class Storage:
 
     def rename_cache_key(self, old_key: str, new_key: str) -> None:
         if self._use_sqlite:
-            assert self._connection is not None
+            assert self._cache_connection is not None
             with self._lock:
-                self._connection.execute(
+                self._cache_connection.execute(
                     "UPDATE api_cache SET cacheKey = ? WHERE cacheKey = ?",
                     (new_key, old_key),
                 )
-                self._connection.commit()
+                self._cache_connection.commit()
             self._after_cache_mutation(old_key, new_key)
             return
 
@@ -417,12 +453,12 @@ class Storage:
 
     def delete_cache(self, cache_key: str) -> None:
         if self._use_sqlite:
-            assert self._connection is not None
+            assert self._cache_connection is not None
             with self._lock:
-                self._connection.execute(
+                self._cache_connection.execute(
                     "DELETE FROM api_cache WHERE cacheKey = ?", (cache_key,)
                 )
-                self._connection.commit()
+                self._cache_connection.commit()
             self._after_cache_mutation(cache_key)
             return
 
@@ -440,9 +476,9 @@ class Storage:
 
     def clear_cache(self) -> None:
         if self._use_sqlite:
-            assert self._connection is not None
+            assert self._cache_connection is not None
             with self._lock:
-                self._connection.execute(
+                self._cache_connection.execute(
                     """
                 DELETE FROM api_cache
                 WHERE cacheKey LIKE 'patch:%'
@@ -452,7 +488,7 @@ class Storage:
                        OR cacheKey LIKE 'gameid:%'
                     """
                 )
-                self._connection.commit()
+                self._cache_connection.commit()
             self._after_cache_mutation(None)
             return
 
@@ -478,9 +514,9 @@ class Storage:
 
     def evict_cache_older_than(self, before: int) -> None:
         if self._use_sqlite:
-            assert self._connection is not None
+            assert self._cache_connection is not None
             with self._lock:
-                self._connection.execute(
+                self._cache_connection.execute(
                     """
                     DELETE FROM api_cache
                     WHERE cachedAt < ?
@@ -489,7 +525,7 @@ class Storage:
                     """,
                     (before, cache_keys.USER_AGENT),
                 )
-                self._connection.commit()
+                self._cache_connection.commit()
             self._after_cache_mutation(None)
             return
 

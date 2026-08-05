@@ -199,6 +199,33 @@ def resolve_config_dir() -> Path:
     return Path.home() / ".config" / "raofflineproxy"
 
 
+def resolve_cache_dir() -> Path:
+    configured = os.environ.get("RAOFFLINEPROXY_CACHE_DIR")
+    if configured:
+        return Path(configured).expanduser()
+
+    xdg_cache_home = os.environ.get("XDG_CACHE_HOME")
+    if xdg_cache_home:
+        return Path(xdg_cache_home).expanduser() / "raofflineproxy"
+
+    # Devices below don't distinguish config vs. cache storage (no separate
+    # backup/restore concern), so the API response cache lives alongside
+    # config there rather than under a distro-specific cache convention.
+    if DEFAULT_ONION_APP_DIR.exists():
+        return DEFAULT_ONION_APP_DIR / "data"
+
+    if DEFAULT_MUOS_APPLICATION_DIR.exists():
+        return DEFAULT_MUOS_APPLICATION_DIR / "data"
+
+    if Path("/userdata/system").exists():
+        return Path("/userdata/system/.config/raofflineproxy")
+
+    if running_on_rocknix():
+        return DEFAULT_ROCKNIX_CONFIG_DIR
+
+    return Path.home() / ".cache" / "raofflineproxy"
+
+
 RA_HOST = "https://retroachievements.org"
 RA_MEDIA_HOST = "https://media.retroachievements.org"
 APP_VERSION = os.environ.get("RAOFFLINEPROXY_APP_VERSION") or "1.13.0-alpha1"
@@ -223,10 +250,18 @@ ONLINE_STATE_FILE = CONFIG_DIR / "online_state.json"
 AWARD_SECRET_FILE = CONFIG_DIR / "award_secret.key"
 UPDATE_STATUS_FILE = CONFIG_DIR / "update_status.json"
 
+CACHE_DIR = resolve_cache_dir()
+CACHE_DATABASE_FILE = CACHE_DIR / "cache.sqlite3"
+
 
 def ensure_config_dir() -> Path:
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
     return CONFIG_DIR
+
+
+def ensure_cache_dir() -> Path:
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    return CACHE_DIR
 
 
 def configure_logging() -> None:
