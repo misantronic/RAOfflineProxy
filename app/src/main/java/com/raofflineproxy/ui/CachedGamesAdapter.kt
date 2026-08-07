@@ -43,8 +43,6 @@ class CachedGamesAdapter(
     private val dateFormat = SimpleDateFormat("MMM d, HH:mm", Locale.getDefault())
     private val expandedGameIds = mutableSetOf<String>()
 
-    // When false (the default), locked achievements are hidden and only unlocked ones are
-    // listed. Toggled from Settings via the "Show locked achievements" preference.
     var showLocked: Boolean = false
         @SuppressLint("NotifyDataSetChanged")
         set(value) {
@@ -116,7 +114,6 @@ class CachedGamesAdapter(
             achievement: CachedAchievement
         ): View {
             val view = inflater.inflate(R.layout.item_unlocked_achievement, parent, false)
-            // Dim locked achievements so unlocked progress stands out at a glance.
             view.alpha = if (achievement.unlocked) 1f else LOCKED_ACHIEVEMENT_ALPHA
             view.findViewById<ImageView>(R.id.iv_badge).loadOrClear(achievement.badgeUrl)
             view.findViewById<TextView>(R.id.tv_achievement_title).text = achievement.title

@@ -2370,10 +2370,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         return params["a"]?.toIntOrNull()
     }
 
-    // Builds the full achievement list for a cached game (both locked and unlocked),
-    // mirroring the core-achievement filter used to compute totalAchievements. Unlocked
-    // entries are sorted first so a game's progress reads top-down; within each group the
-    // game's own display order is preserved.
     private fun buildAchievements(
         patchData: JSONObject?,
         unlockedIds: Set<Int>
