@@ -130,6 +130,7 @@ class CachedGamesFragment : Fragment() {
 
         viewLifecycleOwner.lifecycleScope.launch {
             viewModel.state.collect { state ->
+                gamesAdapter?.showLocked = state.showLockedAchievements
                 val actionsEnabled = state.isOnline
                     && !state.scanInProgress
                 val showSmartCache = !viewModel.isSmartCacheDisabledForShizuku(state)

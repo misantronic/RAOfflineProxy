@@ -260,8 +260,8 @@
     <!-- Cached games adapter -->
     <string name="game_meta_format">%1$d / %2$d unlocked · %3$s</string>
     <string name="cached_game_meta_with_pending">%1$d / %2$d unlocked · %3$s · %4$s</string>
-    <string name="cached_game_expand">Show unlocked achievements</string>
-    <string name="cached_game_collapse">Hide unlocked achievements</string>
+    <string name="cached_game_expand">Show achievements</string>
+    <string name="cached_game_collapse">Hide achievements</string>
     <string name="cached_game_no_description">No description.</string>
 
     <!-- Pending awards adapter -->
@@ -281,6 +281,7 @@
     <string name="setting_smart_caching_label">Enable smart caching</string>
     <string name="setting_app_update_check_label">Enable app update checker</string>
     <string name="setting_hide_support_button_label">Hide "Support me"-button</string>
+    <string name="setting_show_locked_achievements_label">Show locked achievements</string>
     <string name="btn_manage_subscription">Manage subscription</string>
     <string name="manage_subscription_error">Could not open subscription management. Please try again later.</string>
     <string name="setting_proxy_port_label">Proxy port</string>
