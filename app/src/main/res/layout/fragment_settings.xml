@@ -39,6 +39,13 @@
             android:layout_marginTop="8dp"
             android:text="@string/setting_hide_support_button_label" />
 
+        <CheckBox
+            android:id="@+id/cb_show_locked_achievements"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="@string/setting_show_locked_achievements_label" />
+
         <com.google.android.material.textfield.TextInputLayout
             android:id="@+id/input_proxy_port"
             android:layout_width="match_parent"

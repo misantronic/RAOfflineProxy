@@ -57,6 +57,7 @@ object PrefsConstants {
     const val KEY_APP_UPDATE_LAST_CHECKED_AT = "app_update_last_checked_at"
     const val KEY_APP_UPDATE_LAST_PROMPTED_AT = "app_update_last_prompted_at"
     const val KEY_HIDE_SUPPORT_BUTTON = "hide_support_button"
+    const val KEY_SHOW_LOCKED_ACHIEVEMENTS = "show_locked_achievements"
     private const val KEY_LAST_SEEN_VERSION_CODE = "last_seen_version_code"
     private const val KEY_AVAILABLE_APP_UPDATE = "available_app_update"
 
@@ -323,6 +324,15 @@ object PrefsConstants {
     fun saveHideSupportButtonEnabled(context: Context, enabled: Boolean) {
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .edit { putBoolean(KEY_HIDE_SUPPORT_BUTTON, enabled) }
+    }
+
+    fun loadShowLockedAchievementsEnabled(context: Context): Boolean =
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getBoolean(KEY_SHOW_LOCKED_ACHIEVEMENTS, false)
+
+    fun saveShowLockedAchievementsEnabled(context: Context, enabled: Boolean) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit { putBoolean(KEY_SHOW_LOCKED_ACHIEVEMENTS, enabled) }
     }
 
     fun resetHideSupportButtonOnAppUpdate(context: Context, currentVersionCode: Long) {

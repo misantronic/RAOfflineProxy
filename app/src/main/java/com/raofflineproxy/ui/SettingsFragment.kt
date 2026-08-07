@@ -41,6 +41,7 @@ class SettingsFragment : Fragment() {
         val cbSmartCaching = view.findViewById<CheckBox>(R.id.cb_smart_caching)
         val cbAppUpdateCheck = view.findViewById<CheckBox>(R.id.cb_app_update_check)
         val cbHideSupportButton = view.findViewById<CheckBox>(R.id.cb_hide_support_button)
+        val cbShowLockedAchievements = view.findViewById<CheckBox>(R.id.cb_show_locked_achievements)
         val btnManageSubscription = view.findViewById<Button>(R.id.btn_manage_subscription)
         val inputProxyPort = view.findViewById<TextInputLayout>(R.id.input_proxy_port)
         val etProxyPort = view.findViewById<TextInputEditText>(R.id.et_proxy_port)
@@ -67,6 +68,10 @@ class SettingsFragment : Fragment() {
         cbHideSupportButton.setOnCheckedChangeListener { _, isChecked ->
             if (syncingState) return@setOnCheckedChangeListener
             viewModel.setHideSupportButtonEnabled(isChecked)
+        }
+        cbShowLockedAchievements.setOnCheckedChangeListener { _, isChecked ->
+            if (syncingState) return@setOnCheckedChangeListener
+            viewModel.setShowLockedAchievementsEnabled(isChecked)
         }
 
         btnManageSubscription.setOnClickListener {
@@ -179,6 +184,9 @@ class SettingsFragment : Fragment() {
                 }
                 if (cbHideSupportButton.isChecked != state.hideSupportButton) {
                     cbHideSupportButton.isChecked = state.hideSupportButton
+                }
+                if (cbShowLockedAchievements.isChecked != state.showLockedAchievements) {
+                    cbShowLockedAchievements.isChecked = state.showLockedAchievements
                 }
                 val proxyPortText = state.proxyPort.toString()
                 if (etProxyPort.text?.toString() != proxyPortText && !etProxyPort.hasFocus()) {

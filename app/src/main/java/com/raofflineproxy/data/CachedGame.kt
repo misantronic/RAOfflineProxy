@@ -1,11 +1,12 @@
 package com.raofflineproxy.data
 
-data class UnlockedAchievement(
+data class CachedAchievement(
     val id: Int,
     val title: String,
     val description: String?,
     val points: Int,
-    val badgeUrl: String?
+    val badgeUrl: String?,
+    val unlocked: Boolean
 )
 
 data class CachedGame(
@@ -19,5 +20,5 @@ data class CachedGame(
     val unlockedCount: Int = 0,
     val pendingAwardCount: Int = 0,
     val totalAchievements: Int = 0,
-    val unlockedAchievements: List<UnlockedAchievement> = emptyList()
+    val achievements: List<CachedAchievement> = emptyList()
 )

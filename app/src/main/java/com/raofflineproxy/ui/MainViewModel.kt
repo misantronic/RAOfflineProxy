@@ -36,7 +36,7 @@ import com.raofflineproxy.data.PendingAwardUi
 import com.raofflineproxy.data.PENDING_AWARD_STATUS_DELETED
 import com.raofflineproxy.data.PENDING_AWARD_STATUS_FLUSHED
 import com.raofflineproxy.data.PENDING_AWARD_STATUS_PENDING
-import com.raofflineproxy.data.UnlockedAchievement
+import com.raofflineproxy.data.CachedAchievement
 import com.raofflineproxy.proxy.AwardFlusher
 import com.raofflineproxy.proxy.FlushEvent
 import com.raofflineproxy.proxy.LoginCredentials
@@ -119,6 +119,7 @@ data class MainUiState(
     val smartCachingEnabled: Boolean = true,
     val appUpdateCheckEnabled: Boolean = true,
     val hideSupportButton: Boolean = false,
+    val showLockedAchievements: Boolean = false,
     val proxyPort: Int = PrefsConstants.DEFAULT_PROXY_PORT,
     val retroArchInstalled: Boolean = false,
     val dolphinInstalled: Boolean = false,
@@ -247,6 +248,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             smartCachingEnabled = loadSmartCachingEnabled(),
             appUpdateCheckEnabled = loadAppUpdateCheckEnabled(),
             hideSupportButton = loadHideSupportButtonEnabled(),
+            showLockedAchievements = loadShowLockedAchievementsEnabled(),
             proxyPort = PrefsConstants.loadProxyPort(app),
             retroArchInstalled = emulatorSupport.retroArchInstalled,
             dolphinInstalled = emulatorSupport.dolphinInstalled,
@@ -341,7 +343,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                             }
                             count
                         } ?: 0
-                        val unlockedAchievements = buildUnlockedAchievements(patchData, unlockedIds)
+                        val achievements = buildAchievements(patchData, unlockedIds)
                         val consoleId = patchData?.optInt("ConsoleID", 0) ?: 0
                         CachedGame(
                             gameId = gameId,
@@ -354,7 +356,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                             unlockedCount = unlockedCount,
                             pendingAwardCount = pendingAwardsByGameId[gameId] ?: 0,
                             totalAchievements = totalAchievements,
-                            unlockedAchievements = unlockedAchievements
+                            achievements = achievements
                         )
                     }.sortedWith(
                         compareBy(
@@ -2368,23 +2370,28 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         return params["a"]?.toIntOrNull()
     }
 
-    private fun buildUnlockedAchievements(
+    // Builds the full achievement list for a cached game (both locked and unlocked),
+    // mirroring the core-achievement filter used to compute totalAchievements. Unlocked
+    // entries are sorted first so a game's progress reads top-down; within each group the
+    // game's own display order is preserved.
+    private fun buildAchievements(
         patchData: JSONObject?,
         unlockedIds: Set<Int>
-    ): List<UnlockedAchievement> {
-        if (patchData == null || unlockedIds.isEmpty()) return emptyList()
+    ): List<CachedAchievement> {
+        if (patchData == null) return emptyList()
 
         val achievements = patchData.optJSONArray("Achievements") ?: return emptyList()
 
         return buildList {
             for (i in 0 until achievements.length()) {
                 val achievement = achievements.optJSONObject(i) ?: continue
-                val achievementId = achievement.optInt("ID")
-                if (!unlockedIds.contains(achievementId)) continue
+                val achievementId = achievement.optInt("ID", 0)
+                if (achievementId <= 0 || achievementId == WARNING_ACHIEVEMENT_ID) continue
+                if (achievement.optInt("Flags", RC_ACHIEVEMENT_FLAG_CORE) != RC_ACHIEVEMENT_FLAG_CORE) continue
 
                 val badgeName = achievement.optString("BadgeName").takeIf { it.isNotEmpty() }
                 add(
-                    UnlockedAchievement(
+                    CachedAchievement(
                         id = achievementId,
                         title = achievement.optString(
                             "Title",
@@ -2395,11 +2402,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         badgeUrl = badgeName?.let { name ->
                             resolveCachedStaticAsset(application, "/Badge/$name.png")?.absolutePath
                                 ?: "https://i.retroachievements.org/Badge/$name.png"
-                        }
+                        },
+                        unlocked = unlockedIds.contains(achievementId)
                     )
                 )
             }
-        }
+        }.sortedByDescending { it.unlocked }
     }
 
     fun setAutostartProxy(enabled: Boolean) {
@@ -2417,6 +2425,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun setHideSupportButtonEnabled(enabled: Boolean) {
         PrefsConstants.saveHideSupportButtonEnabled(getApplication(), enabled)
         _state.value = _state.value.copy(hideSupportButton = enabled)
+    }
+
+    fun setShowLockedAchievementsEnabled(enabled: Boolean) {
+        PrefsConstants.saveShowLockedAchievementsEnabled(getApplication(), enabled)
+        _state.value = _state.value.copy(showLockedAchievements = enabled)
     }
 
     fun setAppUpdateCheckEnabled(enabled: Boolean) {
@@ -2841,6 +2854,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun loadHideSupportButtonEnabled(): Boolean =
         PrefsConstants.loadHideSupportButtonEnabled(getApplication())
+
+    private fun loadShowLockedAchievementsEnabled(): Boolean =
+        PrefsConstants.loadShowLockedAchievementsEnabled(getApplication())
 
     private fun loadManualEmulatorPatchingEnabled(): Boolean =
         PrefsConstants.loadManualEmulatorPatchingEnabled(getApplication())

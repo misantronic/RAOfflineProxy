@@ -12,8 +12,8 @@ import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import coil.load
 import com.raofflineproxy.R
+import com.raofflineproxy.data.CachedAchievement
 import com.raofflineproxy.data.CachedGame
-import com.raofflineproxy.data.UnlockedAchievement
 import com.raofflineproxy.databinding.ItemCachedGameBinding
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -43,6 +43,19 @@ class CachedGamesAdapter(
     private val dateFormat = SimpleDateFormat("MMM d, HH:mm", Locale.getDefault())
     private val expandedGameIds = mutableSetOf<String>()
 
+    // When false (the default), locked achievements are hidden and only unlocked ones are
+    // listed. Toggled from Settings via the "Show locked achievements" preference.
+    var showLocked: Boolean = false
+        @SuppressLint("NotifyDataSetChanged")
+        set(value) {
+            if (field == value) return
+            field = value
+            notifyDataSetChanged()
+        }
+
+    private fun visibleAchievements(game: CachedGame): List<CachedAchievement> =
+        if (showLocked) game.achievements else game.achievements.filter { it.unlocked }
+
     inner class HeaderViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
         private val tvConsoleName: TextView = itemView.findViewById(R.id.tv_console_name)
         private val ivChevron: ImageView = itemView.findViewById(R.id.iv_collapse_chevron)
@@ -67,17 +80,18 @@ class CachedGamesAdapter(
             bindExpandedState(game, expanded)
 
             binding.layoutGameRow.setOnClickListener {
-                if (game.unlockedAchievements.isEmpty()) return@setOnClickListener
+                if (visibleAchievements(game).isEmpty()) return@setOnClickListener
                 toggleExpanded(game.gameId)
             }
             binding.ivExpand.setOnClickListener {
-                if (game.unlockedAchievements.isEmpty()) return@setOnClickListener
+                if (visibleAchievements(game).isEmpty()) return@setOnClickListener
                 toggleExpanded(game.gameId)
             }
         }
 
         private fun bindExpandedState(game: CachedGame, expanded: Boolean) {
-            val hasAchievements = game.unlockedAchievements.isNotEmpty()
+            val achievements = visibleAchievements(game)
+            val hasAchievements = achievements.isNotEmpty()
             binding.ivExpand.visibility = if (hasAchievements) View.VISIBLE else View.INVISIBLE
             binding.ivExpand.rotation = if (expanded) 180f else 0f
             binding.layoutGameRow.contentDescription = binding.root.context.getString(
@@ -89,7 +103,7 @@ class CachedGamesAdapter(
             if (!expanded || !hasAchievements) return
 
             val inflater = LayoutInflater.from(binding.root.context)
-            game.unlockedAchievements.forEach { achievement ->
+            achievements.forEach { achievement ->
                 binding.layoutUnlockedAchievements.addView(
                     inflateAchievement(inflater, binding.layoutUnlockedAchievements, achievement)
                 )
@@ -99,9 +113,11 @@ class CachedGamesAdapter(
         private fun inflateAchievement(
             inflater: LayoutInflater,
             parent: LinearLayout,
-            achievement: UnlockedAchievement
+            achievement: CachedAchievement
         ): View {
             val view = inflater.inflate(R.layout.item_unlocked_achievement, parent, false)
+            // Dim locked achievements so unlocked progress stands out at a glance.
+            view.alpha = if (achievement.unlocked) 1f else LOCKED_ACHIEVEMENT_ALPHA
             view.findViewById<ImageView>(R.id.iv_badge).loadOrClear(achievement.badgeUrl)
             view.findViewById<TextView>(R.id.tv_achievement_title).text = achievement.title
             view.findViewById<TextView>(R.id.tv_achievement_description).apply {
@@ -174,6 +190,7 @@ class CachedGamesAdapter(
     companion object {
         private const val VIEW_TYPE_HEADER = 0
         private const val VIEW_TYPE_GAME = 1
+        private const val LOCKED_ACHIEVEMENT_ALPHA = 0.4f
 
         private val DIFF = object : DiffUtil.ItemCallback<CachedGameListItem>() {
             override fun areItemsTheSame(a: CachedGameListItem, b: CachedGameListItem): Boolean =
