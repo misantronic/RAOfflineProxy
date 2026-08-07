@@ -17,7 +17,6 @@ object DonationLinks {
     )
 
     val ONE_TIME: List<DonationAmountOption> = listOf(
-        DonationAmountOption("$1", "https://buy.stripe.com/fZueVf4yTgdc8DZ2l9bwk0f", 100),
         DonationAmountOption("$3", "https://buy.stripe.com/3cIfZj9Tdgdc07t6Bpbwk0g", 300),
         DonationAmountOption("$5", "https://buy.stripe.com/8x2eVf7L53qq4nJe3Rbwk0h", 500),
         DonationAmountOption("$8", "https://buy.stripe.com/dRmaEZ0iD8KK07te3Rbwk0i", 800),
@@ -27,5 +26,5 @@ object DonationLinks {
 
     // Indexes into MONTHLY/ONE_TIME that the amount dropdowns preselect.
     const val MONTHLY_DEFAULT_INDEX = 1 // "$3 / month"
-    const val ONE_TIME_DEFAULT_INDEX = 2 // "$5"
+    const val ONE_TIME_DEFAULT_INDEX = 1 // "$5"
 }
