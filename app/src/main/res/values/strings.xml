@@ -3,7 +3,7 @@
     <string name="app_name">RAOfflineProxy</string>
     <string name="nav_open">Open navigation drawer</string>
     <string name="nav_close">Close navigation drawer</string>
-    <string name="setting_autostart_label">Autostart %s at startup</string>
+    <string name="setting_autostart_label">Enable autostart</string>
 
     <!-- Navigation titles -->
     <string name="title_home">Home</string>
@@ -16,6 +16,7 @@
 
     <!-- Send logs -->
     <string name="btn_send_logs">Send logs</string>
+    <string name="send_logs_action">Send</string>
     <string name="send_logs_success_title">Logs sent</string>
     <string name="send_logs_success_message">Share this ID when reporting an issue:\n\n%s</string>
     <string name="send_logs_copy_id">Copy ID</string>
@@ -278,19 +279,33 @@
     <string name="awards_history_clear_blocked_message">You can only clear award history when there are no pending awards.</string>
 
     <!-- Settings fragment -->
+    <string name="settings_section_proxy">Proxy</string>
+    <string name="settings_section_achievements">Achievements</string>
+    <string name="settings_section_general">General</string>
+    <string name="settings_section_maintenance">Maintenance</string>
+    <string name="setting_clear_cache_row_label">Cache</string>
+    <string name="setting_clear_cache_row_caption">Removes all cached games and cached RetroAchievements data</string>
+    <string name="setting_clear_permissions_row_label">Permissions</string>
+    <string name="setting_clear_permissions_row_caption">Resets granted folder access permissions and saved access choices</string>
+    <string name="setting_clear_database_row_label">Database</string>
+    <string name="setting_clear_database_row_caption">Removes all cached data and pending awards</string>
+    <string name="send_logs_row_caption">Uploads recent logs to help diagnose an issue</string>
+    <string name="setting_proxy_port_row_caption">Local port used by the emulator proxy</string>
     <string name="setting_smart_caching_label">Enable smart caching</string>
-    <string name="setting_app_update_check_label">Enable app update checker</string>
+    <string name="setting_smart_caching_caption">Automatically prefetches achievement data for offline play when the proxy starts</string>
+    <string name="setting_app_update_check_label">Enable update checker</string>
+    <string name="setting_app_update_check_caption">Checks for new app versions on startup</string>
     <string name="setting_hide_support_button_label">Hide "Support me"-button</string>
+    <string name="setting_hide_support_button_caption">Hides the donation button on the home screen</string>
     <string name="setting_show_locked_achievements_label">Show locked achievements</string>
+    <string name="setting_show_locked_achievements_caption">Includes achievements you haven\'t unlocked yet in the achievements list</string>
+    <string name="setting_autostart_caption">Starts the proxy automatically when the system boots</string>
     <string name="btn_manage_subscription">Manage subscription</string>
     <string name="manage_subscription_error">Could not open subscription management. Please try again later.</string>
     <string name="setting_proxy_port_label">Proxy port</string>
     <string name="setting_proxy_port_hint">Used for the local emulator proxy. Range: 1024 to 65535. Stop the proxy to change it.</string>
     <string name="setting_proxy_port_invalid">Enter a port between 1024 and 65535.</string>
     <string name="proxy_port_unavailable">Port %1$d is already in use. Free it or choose a different port before starting the proxy.</string>
-    <string name="btn_clear_cache">Clear Cache</string>
-    <string name="btn_clear_permissions">Clear Permissions</string>
-    <string name="btn_clear_database">Clear Database</string>
     <string name="btn_contact_feedback">Contact</string>
     <string name="contact_feedback_url">https://forms.gle/XPRfWe2hAqzYy3JX9</string>
 
