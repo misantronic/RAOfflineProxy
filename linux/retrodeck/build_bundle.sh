@@ -10,11 +10,14 @@ RUNTIME_CACHE_DIR="${SCRIPT_DIR}/runtime-cache"
 RUNTIME_ARCHIVE_NAME="cpython-3.11.10+20241016-x86_64-unknown-linux-gnu-install_only_stripped.tar.gz"
 RUNTIME_ARCHIVE_PATH="${RUNTIME_CACHE_DIR}/${RUNTIME_ARCHIVE_NAME}"
 PAYLOAD_ZIP="${SCRIPT_DIR}/component/tmp_assets/raofflineproxy-retrodeck-payload.zip"
+COMPONENT_TARBALL="${DIST_DIR}/raofflineproxy.tar.gz"
 
 if [ ! -f "${RUNTIME_ARCHIVE_PATH}" ]; then
   echo "Missing cached runtime at ${RUNTIME_ARCHIVE_PATH} — run ./linux/retrodeck/fetch_runtime.sh first" >&2
   exit 1
 fi
+
+export COPYFILE_DISABLE=1
 
 TARGET="x86_64-linux-gnu.2.28" OUT_DIR="${SCRIPT_DIR}/native" \
   "${LINUX_DIR}/build_rchash.sh"
@@ -33,6 +36,8 @@ cp "${SCRIPT_DIR}/native/libraproxy_rchash.so" "${SITE_PACKAGES}/raofflineproxy/
 
 find "${BUILD_DIR}" -name "__pycache__" -type d -prune -exec rm -rf {} +
 find "${BUILD_DIR}" -name "*.pyc" -delete
+find "${BUILD_DIR}" -name "._*" -delete
+find "${BUILD_DIR}" -name ".DS_Store" -delete
 
 mkdir -p "$(dirname "${PAYLOAD_ZIP}")"
 rm -f "${PAYLOAD_ZIP}"
@@ -49,5 +54,12 @@ cp "${SCRIPT_DIR}/component/component_update.sh" "${BUILD_DIR}/"
 cp "${SCRIPT_DIR}/component/component_functions.sh" "${BUILD_DIR}/"
 chmod +x "${BUILD_DIR}/component_launcher.sh"
 
+find "${BUILD_DIR}" -name "._*" -delete
+find "${BUILD_DIR}" -name ".DS_Store" -delete
+
+rm -f "${COMPONENT_TARBALL}"
+(cd "${BUILD_DIR}" && tar -czf "${COMPONENT_TARBALL}" .)
+
 echo "Created ${BUILD_DIR}"
 echo "Created ${PAYLOAD_ZIP}"
+echo "Created ${COMPONENT_TARBALL}"
