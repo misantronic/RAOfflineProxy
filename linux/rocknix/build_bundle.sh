@@ -48,6 +48,7 @@ chmod +x "${BUILD_DIR}/uninstall.sh"
 chmod +x "${BUILD_DIR}/scripts/launcher-raofflineproxy"
 chmod +x "${BUILD_DIR}/scripts/launcher-raofflineproxy-uninstall"
 chmod +x "${BUILD_DIR}/scripts/tool-launcher.sh"
+chmod +x "${BUILD_DIR}/scripts/sdl-doctor.sh"
 
 mkdir -p "${DIST_DIR}"
 rm -f "${TEMP_TARBALL}"
@@ -56,6 +57,11 @@ tar -czf "${TEMP_TARBALL}" -C "${DIST_DIR}" "raofflineproxy-rocknix-bundle"
 cat > "${INSTALLER_PATH}" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
+
+# Set to true to also install the SDL Doctor diagnostic as a second Tools
+# entry. Only needed when troubleshooting a menu that crashes on launch; it
+# writes a report to /storage/.config/raofflineproxy/sdl-doctor.log.
+INSTALL_SDL_DOCTOR="${INSTALL_SDL_DOCTOR:-false}"
 
 SCRIPT_PATH="$0"
 PAYLOAD_MARKER="__RAOFFLINEPROXY_PAYLOAD_BELOW__"
@@ -86,7 +92,7 @@ fi
 
 mv "${SHARE_DIR}/raofflineproxy-rocknix-bundle" "${TARGET_DIR}"
 cd "${TARGET_DIR}"
-./install.sh
+INSTALL_SDL_DOCTOR="${INSTALL_SDL_DOCTOR}" ./install.sh
 rm -f "${SCRIPT_PATH}"
 echo "RAOfflineProxy installed."
 exit 0
