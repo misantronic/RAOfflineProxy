@@ -16,6 +16,8 @@ import com.raofflineproxy.proxy.hash.hashZipRomCandidates
 import com.raofflineproxy.ui.DOLPHIN_PACKAGE_CANDIDATES
 import com.raofflineproxy.ui.EmulatorSupport
 import com.raofflineproxy.ui.RETROARCH_PACKAGE_CANDIDATES
+import com.raofflineproxy.ui.UI_ARMSX1_PACKAGE_CANDIDATES
+import com.raofflineproxy.ui.UI_ARMSX2_PACKAGE_CANDIDATES
 import com.raofflineproxy.ui.UI_PPSSPP_PACKAGE_CANDIDATES
 import com.raofflineproxy.ui.UI_WATERMELONDS_PACKAGE_CANDIDATES
 import com.raofflineproxy.applyScanBatchCooldown
@@ -31,8 +33,15 @@ private const val TAG = "RAProxy/SmartCache"
 private const val DOLPHIN_RECENT_WINDOW_MS = 60L * 24 * 60 * 60 * 1000
 private const val RETROARCH_RECENT_WINDOW_MS = 60L * 24 * 60 * 60 * 1000
 private const val WATERMELONDS_RECENT_WINDOW_MS = 60L * 24 * 60 * 60 * 1000
+private const val ARMSX_RECENT_WINDOW_MS = 60L * 24 * 60 * 60 * 1000
 
 private val WATERMELONDS_ROM_LIBRARY_AUTHORITIES = UI_WATERMELONDS_PACKAGE_CANDIDATES.map { packageName ->
+    "$packageName.romlibrary"
+}
+private val ARMSX1_ROM_LIBRARY_AUTHORITIES = UI_ARMSX1_PACKAGE_CANDIDATES.map { packageName ->
+    "$packageName.romlibrary"
+}
+private val ARMSX2_ROM_LIBRARY_AUTHORITIES = UI_ARMSX2_PACKAGE_CANDIDATES.map { packageName ->
     "$packageName.romlibrary"
 }
 private val SMART_CACHE_EXT_STORAGE by lazy { Environment.getExternalStorageDirectory().path }
@@ -155,7 +164,9 @@ internal enum class SmartCacheEmulator {
     RetroArch,
     Dolphin,
     Ppsspp,
-    WatermelonDs
+    WatermelonDs,
+    Armsx1,
+    Armsx2
 }
 
 internal data class SmartCacheCandidate(
@@ -551,6 +562,91 @@ private fun queryWatermelonDsRomLibrary(context: Context, authority: String, cut
     }.getOrNull()
 }
 
+private object Armsx1SmartCacheStrategy : SmartCacheStrategy {
+    override val emulator: SmartCacheEmulator = SmartCacheEmulator.Armsx1
+
+    override fun isEnabled(context: Context, emulatorSupport: EmulatorSupport): Boolean =
+        emulatorSupport.armsx1Installed &&
+            emulatorSupport.armsx1Enabled
+
+    override fun discoverCandidates(context: Context, treeUri: Uri?): SmartCacheStrategyResult =
+        discoverArmsxCandidates(context, SmartCacheEmulator.Armsx1, ARMSX1_ROM_LIBRARY_AUTHORITIES)
+}
+
+private object Armsx2SmartCacheStrategy : SmartCacheStrategy {
+    override val emulator: SmartCacheEmulator = SmartCacheEmulator.Armsx2
+
+    override fun isEnabled(context: Context, emulatorSupport: EmulatorSupport): Boolean =
+        emulatorSupport.armsx2Installed &&
+            emulatorSupport.armsx2Enabled
+
+    override fun discoverCandidates(context: Context, treeUri: Uri?): SmartCacheStrategyResult =
+        discoverArmsxCandidates(context, SmartCacheEmulator.Armsx2, ARMSX2_ROM_LIBRARY_AUTHORITIES)
+}
+
+private fun discoverArmsxCandidates(context: Context, emulator: SmartCacheEmulator, authorities: List<String>): SmartCacheStrategyResult {
+    val cutoff = System.currentTimeMillis() - ARMSX_RECENT_WINDOW_MS
+    val candidates = authorities.firstNotNullOfOrNull { authority ->
+        queryArmsxRomLibrary(context, authority, emulator, cutoff)
+    }
+
+    if (candidates == null) {
+        Log.i(TAG, "$emulator strategy did not find a readable rom library provider")
+        return SmartCacheStrategyResult(message = "no_recent_games")
+    }
+    if (candidates.isEmpty()) {
+        Log.i(TAG, "$emulator strategy found no recently played games within the last ${ARMSX_RECENT_WINDOW_MS / (24L * 60 * 60 * 1000)} days")
+        return SmartCacheStrategyResult(message = "no_recent_games")
+    }
+
+    Log.i(TAG, "$emulator strategy discovered ${candidates.size} recently played candidates")
+    return SmartCacheStrategyResult(candidates = candidates)
+}
+
+private fun queryArmsxRomLibrary(context: Context, authority: String, emulator: SmartCacheEmulator, cutoff: Long): List<SmartCacheCandidate>? {
+    val uri = Uri.Builder()
+        .scheme("content")
+        .authority(authority)
+        .appendPath("games")
+        .build()
+
+    return runCatching {
+        context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+            val titleIndex = cursor.getColumnIndex("title")
+            val uriIndex = cursor.getColumnIndex("uri")
+            val lastPlayedIndex = cursor.getColumnIndex("lastPlayed")
+
+            buildList {
+                while (cursor.moveToNext()) {
+                    val lastPlayed = if (lastPlayedIndex >= 0 && !cursor.isNull(lastPlayedIndex)) {
+                        cursor.getLong(lastPlayedIndex)
+                    } else {
+                        null
+                    }
+                    if (lastPlayed == null || lastPlayed < cutoff) {
+                        continue
+                    }
+
+                    val romUri = uriIndex.takeIf { it >= 0 }?.let { cursor.getString(it) } ?: continue
+                    val title = titleIndex.takeIf { it >= 0 }?.let { cursor.getString(it) }
+
+                    add(
+                        SmartCacheCandidate(
+                            emulator = emulator,
+                            sourceLabel = authority,
+                            path = romUri,
+                            title = title,
+                            lastModifiedAt = lastPlayed
+                        )
+                    )
+                }
+            }
+        }
+    }.onFailure { error ->
+        Log.i(TAG, "$emulator strategy could not query authority=$authority", error)
+    }.getOrNull()
+}
+
 internal suspend fun runSmartCache(
     context: Context,
     credentials: LoginCredentials,
@@ -580,7 +676,7 @@ internal suspend fun runSmartCache(
         )
     }
 
-    val activeStrategies = listOf(RetroArchSmartCacheStrategy, DolphinSmartCacheStrategy, PpssppSmartCacheStrategy, WatermelonDsSmartCacheStrategy)
+    val activeStrategies = listOf(RetroArchSmartCacheStrategy, DolphinSmartCacheStrategy, PpssppSmartCacheStrategy, WatermelonDsSmartCacheStrategy, Armsx1SmartCacheStrategy, Armsx2SmartCacheStrategy)
         .filter { strategy -> strategy.isEnabled(context, emulatorSupport) }
     if (activeStrategies.isEmpty()) {
         Log.i(TAG, "runSmartCache found no active strategies")
@@ -604,6 +700,8 @@ internal suspend fun runSmartCache(
             SmartCacheEmulator.Dolphin -> dolphinTreeUri
             SmartCacheEmulator.Ppsspp -> ppssppTreeUri
             SmartCacheEmulator.WatermelonDs -> null
+            SmartCacheEmulator.Armsx1 -> null
+            SmartCacheEmulator.Armsx2 -> null
         }
         val result = strategy.discoverCandidates(context, treeUri)
         Log.i(
@@ -715,7 +813,7 @@ internal suspend fun runSmartCache(
     }
     Log.i(
         TAG,
-        "runSmartCache readable cap=$candidateCap resolved=${preflight.resolved.size} capped=${resolvedCandidates.size} remainingSlots=$remainingSlots retroArchSelected=${resolvedCandidates.count { it.candidate.emulator == SmartCacheEmulator.RetroArch }} dolphinSelected=${resolvedCandidates.count { it.candidate.emulator == SmartCacheEmulator.Dolphin }} ppssppSelected=${resolvedCandidates.count { it.candidate.emulator == SmartCacheEmulator.Ppsspp }} watermelonDsSelected=${resolvedCandidates.count { it.candidate.emulator == SmartCacheEmulator.WatermelonDs }}"
+        "runSmartCache readable cap=$candidateCap resolved=${preflight.resolved.size} capped=${resolvedCandidates.size} remainingSlots=$remainingSlots retroArchSelected=${resolvedCandidates.count { it.candidate.emulator == SmartCacheEmulator.RetroArch }} dolphinSelected=${resolvedCandidates.count { it.candidate.emulator == SmartCacheEmulator.Dolphin }} ppssppSelected=${resolvedCandidates.count { it.candidate.emulator == SmartCacheEmulator.Ppsspp }} watermelonDsSelected=${resolvedCandidates.count { it.candidate.emulator == SmartCacheEmulator.WatermelonDs }} armsx1Selected=${resolvedCandidates.count { it.candidate.emulator == SmartCacheEmulator.Armsx1 }} armsx2Selected=${resolvedCandidates.count { it.candidate.emulator == SmartCacheEmulator.Armsx2 }}"
     )
 
     val relevantTotal = resolvedCandidates.size
@@ -1498,6 +1596,10 @@ private fun resolveDocumentByStoredUri(context: Context, path: String): Document
 }
 
 private fun String.toAbsoluteStoragePath(): String? {
+    if (startsWith("file://", ignoreCase = true)) {
+        return runCatching { this.toUri() }.getOrNull()?.path
+    }
+
     if (!startsWith("content://", ignoreCase = true)) {
         return null
     }
