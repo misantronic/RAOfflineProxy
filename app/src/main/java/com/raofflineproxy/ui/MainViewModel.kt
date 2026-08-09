@@ -1656,6 +1656,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                                 SmartCacheEmulator.Dolphin -> add(SafGrantTarget.Dolphin)
                                 SmartCacheEmulator.Ppsspp -> add(SafGrantTarget.Ppsspp)
                                 SmartCacheEmulator.WatermelonDs -> Unit
+                                SmartCacheEmulator.Armsx1 -> Unit
+                                SmartCacheEmulator.Armsx2 -> Unit
                             }
                         }
                         if (result.message == "needs_retroarch_shared_access") {
