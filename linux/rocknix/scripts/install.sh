@@ -12,6 +12,7 @@ TOOL_LAUNCHER="${MODULES_DIR}/RAOfflineProxy.sh"
 DOCTOR_LAUNCHER="${MODULES_DIR}/RAOfflineProxy-SDL-Doctor.sh"
 OLD_BIN="${BASE_DIR}/bin/raofflineproxy"
 UPDATE_STATUS_FILE="/storage/.config/raofflineproxy/update_status.json"
+INSTALL_SDL_DOCTOR="${INSTALL_SDL_DOCTOR:-false}"
 WAS_RUNNING=0
 RESTARTED=0
 
@@ -39,8 +40,13 @@ cp "${SCRIPT_DIR}/scripts/launcher-raofflineproxy-uninstall" "${BIN_DIR}/raoffli
 cp "${SCRIPT_DIR}/scripts/tool-launcher.sh" "${TOOL_SOURCE}"
 cp "${SCRIPT_DIR}/scripts/tool-launcher.sh" "${TOOL_LAUNCHER}"
 
-cp "${SCRIPT_DIR}/scripts/sdl_probe.py" "${APP_DIR}/sdl_probe.py"
-cp "${SCRIPT_DIR}/scripts/sdl-doctor.sh" "${DOCTOR_LAUNCHER}"
+if [ "${INSTALL_SDL_DOCTOR}" = "true" ]; then
+  cp "${SCRIPT_DIR}/scripts/sdl_probe.py" "${APP_DIR}/sdl_probe.py"
+  cp "${SCRIPT_DIR}/scripts/sdl-doctor.sh" "${DOCTOR_LAUNCHER}"
+  chmod +x "${DOCTOR_LAUNCHER}"
+else
+  rm -f "${DOCTOR_LAUNCHER}"
+fi
 
 rm -f "${UPDATE_STATUS_FILE}"
 
@@ -48,7 +54,6 @@ chmod +x "${BIN_DIR}/raofflineproxy"
 chmod +x "${BIN_DIR}/raofflineproxy-uninstall"
 chmod +x "${TOOL_SOURCE}"
 chmod +x "${TOOL_LAUNCHER}"
-chmod +x "${DOCTOR_LAUNCHER}"
 
 # Install the boot hook so the Tools entry is re-added on every reboot. The
 # proxy itself only autostarts when the user enables it (boot-reconcile gates

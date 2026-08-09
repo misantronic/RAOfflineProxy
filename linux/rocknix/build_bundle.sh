@@ -58,6 +58,11 @@ cat > "${INSTALLER_PATH}" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Set to true to also install the SDL Doctor diagnostic as a second Tools
+# entry. Only needed when troubleshooting a menu that crashes on launch; it
+# writes a report to /storage/.config/raofflineproxy/sdl-doctor.log.
+INSTALL_SDL_DOCTOR="${INSTALL_SDL_DOCTOR:-false}"
+
 SCRIPT_PATH="$0"
 PAYLOAD_MARKER="__RAOFFLINEPROXY_PAYLOAD_BELOW__"
 SHARE_DIR="/storage/.local/share"
@@ -87,7 +92,7 @@ fi
 
 mv "${SHARE_DIR}/raofflineproxy-rocknix-bundle" "${TARGET_DIR}"
 cd "${TARGET_DIR}"
-./install.sh
+INSTALL_SDL_DOCTOR="${INSTALL_SDL_DOCTOR}" ./install.sh
 rm -f "${SCRIPT_PATH}"
 echo "RAOfflineProxy installed."
 exit 0
