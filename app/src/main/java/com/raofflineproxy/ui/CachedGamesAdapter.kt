@@ -7,6 +7,7 @@ import android.view.ViewGroup
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
+import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
@@ -51,6 +52,17 @@ class CachedGamesAdapter(
             field = value
             notifyDataSetChanged()
         }
+
+    private var pendingAchievementIds: Set<Int> = emptySet()
+    private var offlineEarnedAchievementIds: Set<Int> = emptySet()
+
+    @SuppressLint("NotifyDataSetChanged")
+    fun setAwardOrigins(pendingIds: Set<Int>, offlineEarnedIds: Set<Int>) {
+        if (pendingIds == pendingAchievementIds && offlineEarnedIds == offlineEarnedAchievementIds) return
+        pendingAchievementIds = pendingIds
+        offlineEarnedAchievementIds = offlineEarnedIds
+        notifyDataSetChanged()
+    }
 
     private fun visibleAchievements(game: CachedGame): List<CachedAchievement> =
         if (showLocked) game.achievements else game.achievements.filter { it.unlocked }
@@ -128,6 +140,24 @@ class CachedGamesAdapter(
                 R.string.points_format,
                 achievement.points
             )
+
+            val originView = view.findViewById<TextView>(R.id.tv_achievement_origin)
+            val origin = when {
+                !achievement.unlocked -> null
+                pendingAchievementIds.contains(achievement.id) ->
+                    R.string.cached_game_origin_syncing to R.color.warning_text
+                offlineEarnedAchievementIds.contains(achievement.id) ->
+                    R.string.cached_game_origin_offline to R.color.primary
+                else -> R.string.cached_game_origin_online to R.color.info_text
+            }
+            if (origin == null) {
+                originView.visibility = View.GONE
+            } else {
+                originView.visibility = View.VISIBLE
+                originView.setText(origin.first)
+                originView.setTextColor(ContextCompat.getColor(view.context, origin.second))
+                originView.alpha = if (origin.first == R.string.cached_game_origin_online) 0.6f else 1f
+            }
             return view
         }
 
