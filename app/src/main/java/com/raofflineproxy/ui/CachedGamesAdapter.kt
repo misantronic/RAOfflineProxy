@@ -37,7 +37,8 @@ sealed interface CachedGameListItem {
 
 class CachedGamesAdapter(
     private val onHeaderClick: (consoleId: Int) -> Unit,
-    private val onDelete: (CachedGame) -> Unit
+    private val onDelete: (CachedGame) -> Unit,
+    private val onDeleteConsole: (CachedGameListItem.ConsoleHeader) -> Unit
 ) : ListAdapter<CachedGameListItem, RecyclerView.ViewHolder>(DIFF) {
 
     private val dateFormat = SimpleDateFormat("MMM d, HH:mm", Locale.getDefault())
@@ -57,12 +58,15 @@ class CachedGamesAdapter(
     inner class HeaderViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
         private val tvConsoleName: TextView = itemView.findViewById(R.id.tv_console_name)
         private val ivChevron: ImageView = itemView.findViewById(R.id.iv_collapse_chevron)
+        private val btnDeleteConsoleGames: View = itemView.findViewById(R.id.btn_delete_console_games)
 
         @SuppressLint("SetTextI18n")
         fun bind(header: CachedGameListItem.ConsoleHeader) {
             tvConsoleName.text = "${header.consoleName} (${header.gameCount})"
             ivChevron.rotation = if (header.isCollapsed) 0f else 180f
             itemView.setOnClickListener { onHeaderClick(header.consoleId) }
+            btnDeleteConsoleGames.visibility = if (header.gameCount > 1) View.VISIBLE else View.GONE
+            btnDeleteConsoleGames.setOnClickListener { onDeleteConsole(header) }
         }
     }
 

@@ -15,7 +15,7 @@
         android:orientation="horizontal"
         android:paddingStart="16dp"
         android:paddingTop="10dp"
-        android:paddingEnd="8dp"
+        android:paddingEnd="16dp"
         android:paddingBottom="10dp">
 
         <ImageView
@@ -49,14 +49,6 @@
 
         </LinearLayout>
 
-        <ImageView
-            android:id="@+id/iv_expand"
-            android:layout_width="24dp"
-            android:layout_height="24dp"
-            android:layout_marginStart="16dp"
-            android:contentDescription="@string/cd_expand_achievements"
-            android:src="@drawable/ic_expand_more" />
-
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btn_delete_game"
             style="@style/Widget.RAOfflineProxy.Button.Icon"
@@ -67,6 +59,14 @@
             android:tooltipText="@string/cd_delete_cached_game"
             app:icon="@drawable/ic_delete"
             app:iconTint="?attr/colorOnSurface" />
+
+        <ImageView
+            android:id="@+id/iv_expand"
+            android:layout_width="24dp"
+            android:layout_height="24dp"
+            android:layout_marginStart="16dp"
+            android:contentDescription="@string/cd_expand_achievements"
+            android:src="@drawable/ic_expand_more" />
 
     </LinearLayout>
 

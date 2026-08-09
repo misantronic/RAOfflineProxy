@@ -252,6 +252,8 @@
     <string name="clear_permissions_confirm_message">This will remove all granted folder access permissions and reset saved access choices.</string>
     <string name="clear_database_confirm_title">Clear database?</string>
     <string name="clear_database_confirm_message">This will remove all cached data and all pending awards.</string>
+    <string name="delete_console_games_confirm_title">Remove %1$s games?</string>
+    <string name="delete_console_games_confirm_message">This will remove all %1$d cached games for %2$s.</string>
     <string name="clear_action">Clear</string>
 
     <!-- Pending award fallbacks -->
@@ -332,6 +334,7 @@
     <string name="cd_expand_achievements">Expand achievements</string>
     <string name="cd_delete_cache">Delete cache</string>
     <string name="cd_delete_cached_game">Delete cached game</string>
+    <string name="cd_delete_console_games">Delete all cached games for this console</string>
     <string name="cd_delete_pending_award">Delete pending award</string>
 
     <!-- Notification -->

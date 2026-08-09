@@ -2108,6 +2108,17 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    fun deleteConsoleGames(consoleId: Int) {
+        val games = _state.value.cachedGames.filter { it.consoleId == consoleId }
+        if (games.isEmpty()) return
+        viewModelScope.launch(Dispatchers.IO) {
+            games.forEach { game ->
+                db.cacheDao().deleteByKeyPrefix(CacheKeys.patchPrefix(game.gameId))
+                deleteCachedImagesForGame(application, game.gameId)
+            }
+        }
+    }
+
     fun refreshGames() {
         val app = getApplication<Application>()
         viewModelScope.launch {

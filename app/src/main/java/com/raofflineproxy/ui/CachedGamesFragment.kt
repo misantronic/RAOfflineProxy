@@ -88,7 +88,25 @@ class CachedGamesFragment : Fragment() {
                 saveCollapsedState()
                 gamesAdapter?.submitList(buildGroupedList(currentGames, collapsedConsoleIds))
             },
-            onDelete = viewModel::deleteCachedGame
+            onDelete = viewModel::deleteCachedGame,
+            onDeleteConsole = { header ->
+                AlertDialog.Builder(requireContext())
+                    .setTitle(getString(R.string.delete_console_games_confirm_title, header.consoleName))
+                    .setMessage(
+                        getString(
+                            R.string.delete_console_games_confirm_message,
+                            header.gameCount,
+                            header.consoleName
+                        )
+                    )
+                    .setPositiveButton(R.string.clear_action) { _, _ ->
+                        viewModel.deleteConsoleGames(header.consoleId)
+                    }
+                    .setNegativeButton(android.R.string.cancel, null)
+                    .create()
+                    .also { it.setCanceledOnTouchOutside(false) }
+                    .show()
+            }
         )
         gamesAdapter = adapter
 
