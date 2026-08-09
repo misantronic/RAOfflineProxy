@@ -1049,13 +1049,29 @@ def run_proxy_service(
     config_data: dict, stop_event: threading.Event | None = None
 ) -> None:
     storage = Storage()
-    migrate_user_case_in_cache_keys(storage)
-    ensure_ra_proxy_chained(config_data)
+    # Bind the listening port before any other startup work: on boot-to-game
+    # devices the emulator can reach its RetroAchievements login before the
+    # service is fully up, and a refused connection disables achievements for
+    # the whole session. Once the socket listens, those connections queue.
     server = ProxyRuntimeServer(config_data, storage)
+    LOGGER.info(
+        "Proxy listening host=%s port=%s",
+        proxy_host(config_data),
+        proxy_port(config_data),
+    )
+    ensure_ra_proxy_chained(config_data)
     connectivity_monitor = ConnectivityMonitor(server)
     periodic_refresh = PeriodicRefresh(server)
 
     try:
+        serving_thread = threading.Thread(
+            target=server.serve_forever,
+            kwargs={"poll_interval": 0.5},
+            daemon=True,
+        )
+        serving_thread.start()
+
+        migrate_user_case_in_cache_keys(storage)
         initial_online = server.refresh_reachability(force_probe=True)
         save_online_state(initial_online)
         if initial_online:
@@ -1065,17 +1081,11 @@ def run_proxy_service(
         periodic_refresh.start()
 
         if stop_event is None:
-            server.serve_forever(poll_interval=0.5)
-            return
+            serving_thread.join()
+        else:
+            while not stop_event.wait(0.5):
+                continue
 
-        serving_thread = threading.Thread(
-            target=server.serve_forever,
-            kwargs={"poll_interval": 0.5},
-            daemon=True,
-        )
-        serving_thread.start()
-        while not stop_event.wait(0.5):
-            continue
         server.shutdown()
         serving_thread.join(timeout=5)
     finally:

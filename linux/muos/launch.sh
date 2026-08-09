@@ -12,7 +12,10 @@ PYTHON_STDERR_FILE="${DATA_DIR}/python-stderr.log"
 
 mkdir -p "$DATA_DIR"
 
-# Install icon into every theme on each run (needed for Applications menu)
+# Install icon into every theme (needed for Applications menu). Only run this on
+# the menu path: it walks the whole theme tree on the SD card, and doing that in
+# the boot hook delays the proxy socket past RetroArch's achievement login when
+# muOS is configured to resume content at boot.
 _install_icon() {
     ICON_SRC="${BASE_DIR}/raofflineproxy.png"
     [ -f "$ICON_SRC" ] || return 0
@@ -21,7 +24,6 @@ _install_icon() {
         cp "$ICON_SRC" "${THEME_DIR}/raofflineproxy.png"
     done
 }
-_install_icon
 
 export HOME="/root"
 export XDG_CONFIG_HOME="/root/.config"
@@ -45,6 +47,7 @@ if [ "$#" -eq 0 ]; then
 fi
 
 if [ "$1" = "menu-sdl" ]; then
+    _install_icon
     /usr/bin/python -m raofflineproxy.main ensure-boot-hook >/dev/null 2>&1 || true
 fi
 

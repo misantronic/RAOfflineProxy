@@ -97,6 +97,11 @@ def _apply_proxy(config_data: dict, cfg_path: str) -> list[str]:
     output: list[str] = []
 
     remove_stale_hook()
+    # Spawn the service first so its interpreter starts up (and binds the proxy
+    # port) while the config patching below runs. At boot on devices that resume
+    # content automatically, the emulator's achievement login can arrive within
+    # seconds of this hook being scheduled.
+    service = start_service_process(config_data)
     result = patch_retroarch_cfg(cfg_path, config_data)
     enforce_patched_cfg(cfg_path, config_data)
     batocera = patch_batocera_conf(config_data)
@@ -107,7 +112,6 @@ def _apply_proxy(config_data: dict, cfg_path: str) -> list[str]:
     store_ppsspp_previous(patch_state, ppsspp)
     store_dolphin_previous(patch_state, dolphin)
     save_patch_state(patch_state)
-    service = start_service_process(config_data)
 
     if result["already_patched"]:
         output.append("retroarch.cfg already patched")
