@@ -23,6 +23,7 @@ export LD_LIBRARY_PATH="${BASE_DIR}/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
 export PYTHONPATH="${BASE_DIR}/app:${BASE_DIR}"
 
 DRIVER_CACHE_FILE="/storage/.config/raofflineproxy/rocknix_video_driver"
+STDOUT_LOG="/storage/.config/raofflineproxy/menu-stdout.log"
 DRIVER_CANDIDATES=(wayland kmsdrm x11)
 
 drivers_to_try=()
@@ -40,10 +41,18 @@ for d in "${DRIVER_CANDIDATES[@]}"; do
   [ "${already_queued}" -eq 0 ] && drivers_to_try+=("${d}")
 done
 
+mkdir -p "$(dirname "${STDOUT_LOG}")"
+
 exit_code=0
 for driver in "${drivers_to_try[@]}"; do
-  SDL_VIDEODRIVER="${driver}" /usr/bin/python3 -m raofflineproxy.main menu
-  exit_code=$?
+  echo "=== $(date) attempt driver=${driver} ===" >> "${STDOUT_LOG}"
+  # A native SDL crash never reaches Python, so the only record of it is what
+  # SDL and the loader wrote to stdout/stderr. Keep it instead of letting it
+  # vanish with the foot terminal.
+  SDL_VIDEODRIVER="${driver}" /usr/bin/python3 -m raofflineproxy.main menu \
+    2>&1 | tee -a "${STDOUT_LOG}"
+  exit_code="${PIPESTATUS[0]}"
+  echo "=== exit_code=${exit_code} ===" >> "${STDOUT_LOG}"
 
   if [ "${exit_code}" -lt 128 ]; then
     mkdir -p "$(dirname "${DRIVER_CACHE_FILE}")"

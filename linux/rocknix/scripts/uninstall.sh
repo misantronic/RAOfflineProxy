@@ -5,6 +5,7 @@ BASE_DIR="/storage/.local/share/raofflineproxy"
 BUNDLE_DIR="/storage/.local/share/.raofflineproxy-rocknix-bundle"
 CONFIG_DIR="/storage/.config/raofflineproxy"
 TOOL_LAUNCHER="/storage/.config/modules/RAOfflineProxy.sh"
+DOCTOR_LAUNCHER="/storage/.config/modules/RAOfflineProxy-SDL-Doctor.sh"
 AUTOSTART_SCRIPT="/storage/.config/autostart/raofflineproxy.sh"
 
 if [ -x "${BASE_DIR}/bin/raofflineproxy" ]; then
@@ -17,6 +18,7 @@ if command -v pkill >/dev/null 2>&1; then
 fi
 
 rm -f "${TOOL_LAUNCHER}"
+rm -f "${DOCTOR_LAUNCHER}"
 rm -f "${AUTOSTART_SCRIPT}"
 
 # Remove app, config/cache, and this bundle synchronously. The uninstall is

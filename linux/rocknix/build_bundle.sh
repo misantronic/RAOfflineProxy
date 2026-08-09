@@ -48,6 +48,7 @@ chmod +x "${BUILD_DIR}/uninstall.sh"
 chmod +x "${BUILD_DIR}/scripts/launcher-raofflineproxy"
 chmod +x "${BUILD_DIR}/scripts/launcher-raofflineproxy-uninstall"
 chmod +x "${BUILD_DIR}/scripts/tool-launcher.sh"
+chmod +x "${BUILD_DIR}/scripts/sdl-doctor.sh"
 
 mkdir -p "${DIST_DIR}"
 rm -f "${TEMP_TARBALL}"
