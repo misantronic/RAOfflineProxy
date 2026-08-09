@@ -1415,11 +1415,30 @@ private fun String.toAbsoluteStoragePath(): String? {
 
     // A tree+document URI (.../tree/<treeDocId>/document/<docId>) encodes the
     // real file under <docId>, not <treeDocId>; DocumentsContract.getDocumentId
-    // extracts that correctly. Fall back to the tree doc id for bare tree URIs.
+    // extracts that correctly. Dolphin's gamelist.cache instead stores a bare
+    // tree URI with the filename appended directly as an extra path segment
+    // (.../tree/<treeDocId>/<filename>), which getDocumentId rejects; recover
+    // the filename from the trailing segments before falling back to the tree
+    // doc id alone.
     val documentId = runCatching { DocumentsContract.getDocumentId(uri) }.getOrNull()
+        ?: documentIdFromTrailingSegments(uri)
         ?: runCatching { DocumentsContract.getTreeDocumentId(uri) }.getOrNull()
         ?: return null
     return documentIdToAbsoluteStoragePath(documentId)
+}
+
+private fun documentIdFromTrailingSegments(uri: Uri): String? {
+    val segments = uri.pathSegments
+    val treeIndex = segments.indexOf("tree")
+    if (treeIndex == -1 || treeIndex + 1 >= segments.size) {
+        return null
+    }
+    val treeDocId = segments[treeIndex + 1]
+    val trailingSegments = segments.drop(treeIndex + 2)
+    if (trailingSegments.isEmpty()) {
+        return null
+    }
+    return (listOf(treeDocId) + trailingSegments).joinToString("/")
 }
 
 private fun documentIdToAbsoluteStoragePath(documentId: String): String {
