@@ -50,7 +50,7 @@
     <string name="home_emulators_label">Enabled Emulators</string>
     <string name="home_manual_setup_warning">With your Android version (%1$s), automatic emulator setup will most likely not work on this device. Please consider using Manual Emulator Setup instead. Android builds can differ, so you can still try Start proxy with automatic setup if you want.</string>
     <string name="home_shizuku_info">You are running the proxy through Shizuku.</string>
-    <string name="home_no_emulator_warning">No supported emulator was found. Install RetroArch, Dolphin, PPSSPP, ARMSX2, Flycast, melonDualDS, Mupen64Plus, EmuCoreX, or ARMSX1 to use RAOfflineProxy.</string>
+    <string name="home_no_emulator_warning">No supported emulator was found. Install RetroArch, Dolphin, PPSSPP, ARMSX2, Flycast, WatermelonDS, Mupen64Plus, EmuCoreX, or ARMSX1 to use RAOfflineProxy.</string>
     <string name="home_go_to_cached_games">Cached Games</string>
     <string name="btn_support_development">💛 Support me</string>
     <string name="support_dialog_title">💛 Support RAOfflineProxy</string>
@@ -76,7 +76,7 @@
     <string name="emulator_ppsspp">PPSSPP</string>
     <string name="emulator_armsx2">ARMSX2</string>
     <string name="emulator_flycast">Flycast</string>
-    <string name="emulator_melondualds">melonDualDS</string>
+    <string name="emulator_watermelonds">WatermelonDS</string>
     <string name="emulator_mupen64">Mupen64Plus</string>
     <string name="emulator_emucorex">EmuCoreX</string>
     <string name="emulator_armsx1">ARMSX1</string>
@@ -137,8 +137,8 @@
     <string name="armsx2_patch_error_unavailable">Could not patch ARMSX2 automatically. Make sure a supported ARMSX2 build is installed and try again.</string>
     <string name="flycast_patch_success">Flycast patched successfully.</string>
     <string name="flycast_patch_error_unavailable">Could not patch Flycast automatically. Make sure a supported Flycast build is installed and try again.</string>
-    <string name="melondualds_patch_success">melonDualDS patched successfully.</string>
-    <string name="melondualds_patch_error_unavailable">Could not patch melonDualDS automatically. Make sure a supported melonDualDS build is installed and try again.</string>
+    <string name="watermelonds_patch_success">WatermelonDS patched successfully.</string>
+    <string name="watermelonds_patch_error_unavailable">Could not patch WatermelonDS automatically. Make sure a supported WatermelonDS build is installed and try again.</string>
     <string name="mupen64_patch_success">Mupen64Plus patched successfully.</string>
     <string name="mupen64_patch_error_unavailable">Could not patch Mupen64Plus automatically. Make sure a supported Mupen64Plus build is installed and try again.</string>
     <string name="emucorex_patch_success">EmuCoreX patched successfully.</string>
@@ -168,8 +168,8 @@
     <string name="armsx2_revert_error_unavailable">Could not revert ARMSX2 automatically. Reopen the app and try again.</string>
     <string name="flycast_revert_success">Flycast reverted successfully.</string>
     <string name="flycast_revert_error_unavailable">Could not revert Flycast automatically. Reopen the app and try again.</string>
-    <string name="melondualds_revert_success">melonDualDS reverted successfully.</string>
-    <string name="melondualds_revert_error_unavailable">Could not revert melonDualDS automatically. Reopen the app and try again.</string>
+    <string name="watermelonds_revert_success">WatermelonDS reverted successfully.</string>
+    <string name="watermelonds_revert_error_unavailable">Could not revert WatermelonDS automatically. Reopen the app and try again.</string>
     <string name="mupen64_revert_success">Mupen64Plus reverted successfully.</string>
     <string name="mupen64_revert_error_unavailable">Could not revert Mupen64Plus automatically. Reopen the app and try again.</string>
     <string name="emucorex_revert_success">EmuCoreX reverted successfully.</string>

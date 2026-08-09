@@ -109,7 +109,7 @@ object LogUploader {
             if (emulators.ppssppEnabled) add("PPSSPP")
             if (emulators.armsx2Enabled) add("ARMSX2")
             if (emulators.flycastEnabled) add("Flycast")
-            if (emulators.melonDualDsEnabled) add("melonDualDS")
+            if (emulators.watermelonDsEnabled) add("WatermelonDS")
             if (emulators.mupen64Enabled) add("Mupen64Plus")
             if (emulators.emuCoreXEnabled) add("EmuCoreX")
             if (emulators.armsx1Enabled) add("ARMSX1")

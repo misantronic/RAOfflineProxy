@@ -61,8 +61,8 @@ features:
           <span>ARMSX2</span>
         </div>
         <div class="supported-platforms__item">
-          <img src="/melonds.png" alt="MelonDualDS logo">
-          <span>MelonDualDS</span>
+          <img src="/melonds.png" alt="WatermelonDS logo">
+          <span>WatermelonDS</span>
         </div>
         <div class="supported-platforms__item">
           <img src="/mupen64plus-ae.png" alt="Mupen64Plus logo">

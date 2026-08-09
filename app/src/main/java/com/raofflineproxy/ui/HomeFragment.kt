@@ -71,7 +71,7 @@ class HomeFragment : Fragment() {
         val armsx1Toggle = bindToggle(emulatorSelectorDialogView.findViewById(R.id.layout_armsx1_toggle), R.string.emulator_armsx1)
         val armsx2Toggle = bindToggle(emulatorSelectorDialogView.findViewById(R.id.layout_armsx2_toggle), R.string.emulator_armsx2)
         val flycastToggle = bindToggle(emulatorSelectorDialogView.findViewById(R.id.layout_flycast_toggle), R.string.emulator_flycast)
-        val melonDualDsToggle = bindToggle(emulatorSelectorDialogView.findViewById(R.id.layout_melondualds_toggle), R.string.emulator_melondualds)
+        val watermelonDsToggle = bindToggle(emulatorSelectorDialogView.findViewById(R.id.layout_watermelonds_toggle), R.string.emulator_watermelonds)
         val mupen64Toggle = bindToggle(emulatorSelectorDialogView.findViewById(R.id.layout_mupen64_toggle), R.string.emulator_mupen64)
         val emuCoreXToggle = bindToggle(emulatorSelectorDialogView.findViewById(R.id.layout_emucorex_toggle), R.string.emulator_emucorex)
         val retroArchAppIcon = loadInstalledAppIcon(RETROARCH_PACKAGE_CANDIDATES)
@@ -80,7 +80,7 @@ class HomeFragment : Fragment() {
         val armsx1AppIcon = loadInstalledAppIcon(UI_ARMSX1_PACKAGE_CANDIDATES)
         val armsx2AppIcon = loadInstalledAppIcon(UI_ARMSX2_PACKAGE_CANDIDATES)
         val flycastAppIcon = loadInstalledAppIcon(UI_FLYCAST_PACKAGE_CANDIDATES)
-        val melonDualDsAppIcon = loadInstalledAppIcon(UI_MELONDUALDS_PACKAGE_CANDIDATES)
+        val watermelonDsAppIcon = loadInstalledAppIcon(UI_WATERMELONDS_PACKAGE_CANDIDATES)
         val mupen64AppIcon = loadInstalledAppIcon(UI_MUPEN64_PACKAGE_CANDIDATES)
         val emuCoreXAppIcon = loadInstalledAppIcon(UI_EMUCOREX_PACKAGE_CANDIDATES)
 
@@ -161,9 +161,9 @@ class HomeFragment : Fragment() {
                 viewModel.setFlycastEnabled(!viewModel.state.value.flycastEnabled)
             }
         }
-        melonDualDsToggle.row.setOnClickListener {
-            if (melonDualDsToggle.row.isEnabled) {
-                viewModel.setMelonDualDsEnabled(!viewModel.state.value.melonDualDsEnabled)
+        watermelonDsToggle.row.setOnClickListener {
+            if (watermelonDsToggle.row.isEnabled) {
+                viewModel.setWatermelonDsEnabled(!viewModel.state.value.watermelonDsEnabled)
             }
         }
         mupen64Toggle.row.setOnClickListener {
@@ -179,7 +179,7 @@ class HomeFragment : Fragment() {
 
         viewLifecycleOwner.lifecycleScope.launch {
             viewModel.state.collect { state ->
-                val installedCount = listOf(state.retroArchInstalled, state.dolphinInstalled, state.ppssppInstalled, state.armsx2Installed, state.flycastInstalled, state.melonDualDsInstalled, state.mupen64Installed, state.emuCoreXInstalled, state.armsx1Installed).count { it }
+                val installedCount = listOf(state.retroArchInstalled, state.dolphinInstalled, state.ppssppInstalled, state.armsx2Installed, state.flycastInstalled, state.watermelonDsInstalled, state.mupen64Installed, state.emuCoreXInstalled, state.armsx1Installed).count { it }
                 val noEmulatorInstalled = installedCount == 0
                 val onlyOneInstalled = installedCount == 1
                 val hasManualSetupManagedEmulator = state.retroArchInstalled || state.dolphinInstalled || state.ppssppInstalled
@@ -204,7 +204,7 @@ class HomeFragment : Fragment() {
 
                 btnStartProxy.visibility = if (shouldShowManualSetupButton) View.GONE else View.VISIBLE
                 btnStartProxy.text = getString(if (state.proxyRunning) R.string.proxy_stop else R.string.proxy_start)
-                btnStartProxy.isEnabled = if (state.proxyRunning) !proxyStartPending else !proxyStartPending && (state.retroArchEnabled || state.dolphinEnabled || state.ppssppEnabled || state.armsx2Enabled || state.flycastEnabled || state.melonDualDsEnabled || state.mupen64Enabled || state.emuCoreXEnabled || state.armsx1Enabled)
+                btnStartProxy.isEnabled = if (state.proxyRunning) !proxyStartPending else !proxyStartPending && (state.retroArchEnabled || state.dolphinEnabled || state.ppssppEnabled || state.armsx2Enabled || state.flycastEnabled || state.watermelonDsEnabled || state.mupen64Enabled || state.emuCoreXEnabled || state.armsx1Enabled)
                 btnStartProxy.alpha = if (proxyStartPending) 0.45f else 1f
                 btnManualEmulatorSetup.visibility = if (shouldShowManualSetupButton) View.VISIBLE else View.GONE
                 btnGoToCachedGames.visibility = if (state.proxyRunning) View.VISIBLE else View.GONE
@@ -223,7 +223,7 @@ class HomeFragment : Fragment() {
                 armsx1Toggle.row.visibility = if (state.armsx1Installed) View.VISIBLE else View.GONE
                 armsx2Toggle.row.visibility = if (state.armsx2Installed) View.VISIBLE else View.GONE
                 flycastToggle.row.visibility = if (state.flycastInstalled) View.VISIBLE else View.GONE
-                melonDualDsToggle.row.visibility = if (state.melonDualDsInstalled) View.VISIBLE else View.GONE
+                watermelonDsToggle.row.visibility = if (state.watermelonDsInstalled) View.VISIBLE else View.GONE
                 mupen64Toggle.row.visibility = if (state.mupen64Installed) View.VISIBLE else View.GONE
                 emuCoreXToggle.row.visibility = if (state.emuCoreXInstalled) View.VISIBLE else View.GONE
 
@@ -233,11 +233,11 @@ class HomeFragment : Fragment() {
                 armsx1Toggle.row.isEnabled = state.armsx1Installed && !state.proxyRunning && !onlyOneInstalled
                 armsx2Toggle.row.isEnabled = state.armsx2Installed && !state.proxyRunning && !onlyOneInstalled
                 flycastToggle.row.isEnabled = state.flycastInstalled && !state.proxyRunning && !onlyOneInstalled
-                melonDualDsToggle.row.isEnabled = state.melonDualDsInstalled && !state.proxyRunning && !onlyOneInstalled
+                watermelonDsToggle.row.isEnabled = state.watermelonDsInstalled && !state.proxyRunning && !onlyOneInstalled
                 mupen64Toggle.row.isEnabled = state.mupen64Installed && !state.proxyRunning && !onlyOneInstalled
                 emuCoreXToggle.row.isEnabled = state.emuCoreXInstalled && !state.proxyRunning && !onlyOneInstalled
 
-                listOf(retroArchToggle, dolphinToggle, ppssppToggle, armsx1Toggle, armsx2Toggle, flycastToggle, melonDualDsToggle, mupen64Toggle, emuCoreXToggle).forEach { toggle ->
+                listOf(retroArchToggle, dolphinToggle, ppssppToggle, armsx1Toggle, armsx2Toggle, flycastToggle, watermelonDsToggle, mupen64Toggle, emuCoreXToggle).forEach { toggle ->
                     toggle.row.alpha = if (toggle.row.isEnabled) 1f else 0.5f
                     toggle.checkBox.isEnabled = toggle.row.isEnabled
                 }
@@ -248,7 +248,7 @@ class HomeFragment : Fragment() {
                 armsx1Toggle.icon.setImageDrawable(armsx1AppIcon)
                 armsx2Toggle.icon.setImageDrawable(armsx2AppIcon)
                 flycastToggle.icon.setImageDrawable(flycastAppIcon)
-                melonDualDsToggle.icon.setImageDrawable(melonDualDsAppIcon)
+                watermelonDsToggle.icon.setImageDrawable(watermelonDsAppIcon)
                 mupen64Toggle.icon.setImageDrawable(mupen64AppIcon)
                 emuCoreXToggle.icon.setImageDrawable(emuCoreXAppIcon)
 
@@ -258,7 +258,7 @@ class HomeFragment : Fragment() {
                 applyToggleRowStyle(toggle = armsx1Toggle, isSelected = state.armsx1Enabled)
                 applyToggleRowStyle(toggle = armsx2Toggle, isSelected = state.armsx2Enabled)
                 applyToggleRowStyle(toggle = flycastToggle, isSelected = state.flycastEnabled)
-                applyToggleRowStyle(toggle = melonDualDsToggle, isSelected = state.melonDualDsEnabled)
+                applyToggleRowStyle(toggle = watermelonDsToggle, isSelected = state.watermelonDsEnabled)
                 applyToggleRowStyle(toggle = mupen64Toggle, isSelected = state.mupen64Enabled)
                 applyToggleRowStyle(toggle = emuCoreXToggle, isSelected = state.emuCoreXEnabled)
 
@@ -272,7 +272,7 @@ class HomeFragment : Fragment() {
                     (state.armsx1Installed && state.armsx1Enabled) to armsx1AppIcon,
                     (state.armsx2Installed && state.armsx2Enabled) to armsx2AppIcon,
                     (state.flycastInstalled && state.flycastEnabled) to flycastAppIcon,
-                    (state.melonDualDsInstalled && state.melonDualDsEnabled) to melonDualDsAppIcon,
+                    (state.watermelonDsInstalled && state.watermelonDsEnabled) to watermelonDsAppIcon,
                     (state.mupen64Installed && state.mupen64Enabled) to mupen64AppIcon,
                     (state.emuCoreXInstalled && state.emuCoreXEnabled) to emuCoreXAppIcon
                 ).forEach { (enabled, icon) ->
@@ -499,7 +499,7 @@ class HomeFragment : Fragment() {
             if (state.armsx1Installed) add(viewModel::setArmsx1Enabled to state.armsx1Enabled)
             if (state.armsx2Installed) add(viewModel::setArmsx2Enabled to state.armsx2Enabled)
             if (state.flycastInstalled) add(viewModel::setFlycastEnabled to state.flycastEnabled)
-            if (state.melonDualDsInstalled) add(viewModel::setMelonDualDsEnabled to state.melonDualDsEnabled)
+            if (state.watermelonDsInstalled) add(viewModel::setWatermelonDsEnabled to state.watermelonDsEnabled)
             if (state.mupen64Installed) add(viewModel::setMupen64Enabled to state.mupen64Enabled)
             if (state.emuCoreXInstalled) add(viewModel::setEmuCoreXEnabled to state.emuCoreXEnabled)
         }
