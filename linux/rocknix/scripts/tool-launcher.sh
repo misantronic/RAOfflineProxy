@@ -29,6 +29,15 @@ export WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-wayland-1}"
 export LD_LIBRARY_PATH="${BASE_DIR}/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
 export PYTHONPATH="${BASE_DIR}/app:${BASE_DIR}"
 
+# SDL fakes fullscreen mode changes on wayland by scaling the surface through
+# wp_viewporter rather than setting a real mode. On the RG DS the menu renders
+# into a correct 640x480 surface but reaches the panel as a mis-scaled quadrant
+# (issue #55), which is what a bad viewport path looks like, so opt out of it.
+export SDL_VIDEO_WAYLAND_MODE_EMULATION=0
+# Without this the wayland app_id is not the binary name, so sway cannot match
+# the window by app_id at all - give it a stable one to match on.
+export SDL_VIDEO_WAYLAND_WMCLASS=raofflineproxy
+
 CONFIG_DIR="/storage/.config/raofflineproxy"
 ATTEMPT_CACHE_FILE="${CONFIG_DIR}/rocknix_sdl_attempt"
 STDOUT_LOG="${CONFIG_DIR}/menu-stdout.log"
