@@ -32,6 +32,7 @@ from .utils import (
     proxy_user_agent,
     redact_query_tokens,
     replace_or_append_form_param,
+    self_user_agent,
     sha256_hex,
 )
 
@@ -342,7 +343,7 @@ def flush_pending_awards(storage: Storage, config_data: dict) -> FlushOutcome:
             pending_remaining=0,
         )
 
-    user_agent = storage.load_user_agent(FALLBACK_USER_AGENT)
+    user_agent = self_user_agent()
     credentials = resolve_credentials(storage, config_data, user_agent)
     if credentials is None:
         LOGGER.warning("Flush aborted: no RetroAchievements credentials")

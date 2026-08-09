@@ -733,13 +733,6 @@ class Storage:
     def clear_invalid_token(self) -> None:
         self.delete_cache(cache_keys.AUTH_INVALID_TOKEN)
 
-    def load_user_agent(self, fallback: str) -> str:
-        entry = self.get_cache(cache_keys.USER_AGENT)
-        if entry is None:
-            return fallback
-        user_agent = entry.get("responseBody", "")
-        return user_agent if user_agent else fallback
-
 
 def _salvage_pending_award_count(quarantined_path: Path) -> int | None:
     # "Extra data" corruption (a valid document with garbage appended after it,

@@ -65,6 +65,7 @@ from .utils import (
     proxy_user_agent,
     redact_form_tokens,
     redact_query_tokens,
+    self_user_agent,
     sha256_hex,
 )
 
@@ -283,7 +284,7 @@ class ProxyRuntimeServer(ThreadingTCPServer):
     def refresh_reachability(self, force_probe: bool) -> bool:
         self.has_internet = probe_retroachievements(
             self.config_data,
-            user_agent=self.storage.load_user_agent(FALLBACK_USER_AGENT),
+            user_agent=self_user_agent(),
             force=force_probe,
         )
         if not self.has_internet:
@@ -991,7 +992,7 @@ class PeriodicRefresh(threading.Thread):
         while not self.stop_event.wait(self.interval_seconds):
             if not self.server.is_online():
                 continue
-            user_agent = self.server.storage.load_user_agent(FALLBACK_USER_AGENT)
+            user_agent = self_user_agent()
             credentials = resolve_credentials(
                 self.server.storage,
                 self.server.config_data,

@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 from urllib.parse import parse_qsl, quote_plus, unquote_plus, urlencode, urlsplit
 
-from .config import PROXY_UA_TAG
+from .config import FALLBACK_USER_AGENT, PROXY_UA_TAG
 
 
 def sha256_hex(value: str) -> str:
@@ -68,6 +68,18 @@ def proxy_user_agent(original: str) -> str:
     if PROXY_UA_TAG in original:
         return original
     return f"{original} {PROXY_UA_TAG}"
+
+
+def self_user_agent() -> str:
+    """User-Agent for requests the proxy makes on its own behalf.
+
+    Never reuse a cached client User-Agent here. RetroAchievements reads the
+    first token as the client identity and rejects blocked clients with 403 on
+    every endpoint, so borrowing an emulator's identity makes our own lookups
+    fail whenever that emulator is blocked. Only forwarded requests should
+    carry a client's User-Agent.
+    """
+    return proxy_user_agent(FALLBACK_USER_AGENT)
 
 
 def canonical_reason_phrase(code: int) -> str:

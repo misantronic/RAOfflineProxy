@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 import os
 import ssl
@@ -282,10 +283,17 @@ def http_get(url: str, user_agent: str) -> str:
                 time.sleep(retry_after)
                 continue
 
+            api_error = describe_api_error(error)
+            if api_error:
+                # HTTPError.reason is a read-only view of .msg, and .msg is what
+                # str(error) renders, so this is the only way to make the
+                # message callers surface carry RA's actual reason.
+                error.msg = api_error
             LOGGER.warning(
-                "GET failed status=%s reason=%s url=%s",
+                "GET failed status=%s reason=%s ua=%s url=%s",
                 error.code,
                 error.reason,
+                user_agent,
                 redacted_url(url),
             )
             raise
@@ -317,6 +325,28 @@ def http_get_bytes(url: str, user_agent: str) -> tuple[bytes, str] | None:
             return response.read(), response_content_type(response) or "application/octet-stream"
     except Exception:
         return None
+
+
+def describe_api_error(error: urllib.error.HTTPError) -> str | None:
+    """Extracts RetroAchievements' own error text from a failed response.
+
+    RA answers dorequest.php failures with a JSON body carrying a machine
+    readable Code and a human readable Error. Without this the caller only ever
+    sees "HTTP Error 403: Forbidden", which hides the actual cause.
+    """
+    try:
+        payload = json.loads(error.read().decode("utf-8", errors="replace"))
+    except Exception:
+        return None
+
+    if not isinstance(payload, dict):
+        return None
+
+    code = payload.get("Code")
+    message = payload.get("Error")
+    if code and message:
+        return f"{code}: {message}"
+    return code or message or None
 
 
 def api_action_from_url(url: str) -> str | None:

@@ -1,6 +1,6 @@
 import unittest
 
-from linux.raofflineproxy import utils
+from linux.raofflineproxy import config, utils
 
 
 class LinuxUtilsRedactTests(unittest.TestCase):
@@ -43,6 +43,14 @@ class LinuxUtilsRedactTests(unittest.TestCase):
             utils.redact_form_tokens("r=login2&u=user&p=hunter2&t=secret"),
             "r=login2&u=user&p=%3Ctoken%3E&t=%3Ctoken%3E",
         )
+
+
+class LinuxSelfUserAgentTests(unittest.TestCase):
+    def test_self_user_agent_leads_with_an_accepted_client(self) -> None:
+        self.assertTrue(utils.self_user_agent().startswith(config.FALLBACK_USER_AGENT))
+
+    def test_self_user_agent_carries_the_proxy_tag(self) -> None:
+        self.assertIn(config.PROXY_UA_TAG, utils.self_user_agent())
 
 
 if __name__ == "__main__":

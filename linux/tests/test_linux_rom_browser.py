@@ -16,6 +16,7 @@ from linux.raofflineproxy import rom_hashing
 from linux.raofflineproxy import storage
 from linux.raofflineproxy import smart_cache
 from linux.raofflineproxy import cache_keys
+from linux.raofflineproxy import utils
 
 # The real ROM hasher goes through the native libraproxy_rchash.so, which is
 # only built for the Linux device targets. On other hosts (e.g. a macOS dev
@@ -349,6 +350,68 @@ class LinuxRomBrowserTests(unittest.TestCase):
                     cached_patch["sourceRomPath"],
                     f"/{root.name}/tetris.gb",
                 )
+            finally:
+                rom_browser.hash_rom_candidates = original_hash_rom_candidates
+                rom_browser.resolve_credentials = original_resolve_credentials
+                rom_browser.fetch_game_id = original_fetch_game_id
+                rom_browser.cache_game = original_cache_game
+                store.close()
+
+    def test_add_rom_to_cache_ignores_cached_client_user_agent(self) -> None:
+        """A blocked emulator must not lend its identity to our own lookups.
+
+        RetroAchievements rejects blocked clients with 403 on every endpoint, so
+        reusing a cached client User-Agent broke caching for unrelated consoles.
+        """
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            db_path = root / "test.sqlite3"
+            rom_path = root / "tetris.gb"
+            rom_path.write_bytes(b"rom")
+            store = storage.Storage(database_path=db_path)
+            store.upsert_cache("ua::last", "Dolphin/2407")
+            observed: dict[str, str] = {}
+            original_hash_rom_candidates = rom_browser.hash_rom_candidates
+            original_resolve_credentials = rom_browser.resolve_credentials
+            original_fetch_game_id = rom_browser.fetch_game_id
+            original_cache_game = rom_browser.cache_game
+            try:
+                rom_browser.hash_rom_candidates = lambda _path: ["abcd"]
+                rom_browser.resolve_credentials = lambda _store, _config, _ua: {
+                    "user": "misantronic",
+                    "token": "token",
+                }
+
+                def fake_fetch_game_id(
+                    _hash, _credentials, user_agent, _config_data, cache_store
+                ):
+                    observed["user_agent"] = user_agent
+                    cache_store.upsert_cache(
+                        cache_keys.game_id("abcd"), '{"GameID":10701}'
+                    )
+                    return 10701
+
+                def fake_cache_game(
+                    game_id,
+                    _hash_value,
+                    credentials,
+                    _user_agent,
+                    cache_store,
+                    _config_data,
+                    cache_images=True,
+                ):
+                    cache_store.upsert_cache(
+                        cache_keys.patch(game_id, credentials["user"]),
+                        '{"Success":true,"PatchData":{"Title":"Tetris"}}',
+                    )
+
+                rom_browser.fetch_game_id = fake_fetch_game_id
+                rom_browser.cache_game = fake_cache_game
+
+                rom_browser.add_rom_to_cache(rom_path, store, {})
+
+                self.assertNotIn("Dolphin", observed["user_agent"])
+                self.assertEqual(observed["user_agent"], utils.self_user_agent())
             finally:
                 rom_browser.hash_rom_candidates = original_hash_rom_candidates
                 rom_browser.resolve_credentials = original_resolve_credentials

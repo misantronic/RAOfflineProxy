@@ -35,7 +35,7 @@ from .rom_hashing import (
     supported_rom_extensions,
 )
 from .storage import Storage
-from .utils import proxy_user_agent
+from .utils import proxy_user_agent, self_user_agent
 
 LOGGER = logging.getLogger("raofflineproxy")
 SUPPORTED_ROM_EXTENSIONS = supported_rom_extensions()
@@ -398,7 +398,7 @@ def fetch_game_id(
 
 
 def add_rom_to_cache(path: Path, storage: Storage, config_data: dict) -> AddRomResult:
-    user_agent = storage.load_user_agent(FALLBACK_USER_AGENT)
+    user_agent = self_user_agent()
     credentials = resolve_credentials(storage, config_data, user_agent)
     if credentials is None:
         return AddRomResult(False, "RetroAchievements login required")
@@ -832,7 +832,7 @@ def ensure_game_preview(
         if cached is not None:
             return cached
 
-    user_agent = proxy_user_agent(storage.load_user_agent(FALLBACK_USER_AGENT))
+    user_agent = self_user_agent()
 
     if image_path:
         media_url = f"{RA_MEDIA_HOST}{image_path}"

@@ -1,3 +1,4 @@
+import io
 import unittest
 import urllib.error
 import logging
@@ -41,6 +42,41 @@ class LinuxNetworkTests(unittest.TestCase):
             self.assertIn("GET connection failed", output)
             self.assertIn("t=%3Credacted%3E", output)
             self.assertNotIn("secret", output)
+        finally:
+            network.urllib.request.urlopen = original_urlopen
+
+    def test_http_get_surfaces_retroachievements_error_code(self) -> None:
+        headers = Message()
+        headers["Content-Type"] = "application/json"
+        body = io.BytesIO(
+            b'{"Success":false,"Status":403,"Code":"unsupported_client",'
+            b'"Error":"This client is not supported.","GameID":0}'
+        )
+        original_urlopen = network.urllib.request.urlopen
+        try:
+            network.urllib.request.urlopen = lambda _request, timeout=0, context=None: (
+                _ for _ in ()
+            ).throw(
+                urllib.error.HTTPError(
+                    "https://retroachievements.org/dorequest.php",
+                    403,
+                    "Forbidden",
+                    headers,
+                    body,
+                )
+            )
+
+            with self.assertLogs("raofflineproxy", level="WARNING") as logs:
+                with self.assertRaises(urllib.error.HTTPError) as caught:
+                    network.http_get(
+                        "https://retroachievements.org/dorequest.php?r=gameid&m=abc",
+                        "Dolphin/2407 RAOfflineProxy/Linux/1.10.0-alpha2",
+                    )
+
+            self.assertIn("unsupported_client", str(caught.exception))
+            output = "\n".join(logs.output)
+            self.assertIn("unsupported_client", output)
+            self.assertIn("Dolphin/2407", output)
         finally:
             network.urllib.request.urlopen = original_urlopen
 
