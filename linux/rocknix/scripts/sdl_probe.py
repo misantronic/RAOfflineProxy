@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import os
 import sys
+from pathlib import Path
 
 
 def main() -> int:
@@ -39,6 +40,18 @@ def main() -> int:
     print(f"probe set_mode ok size={surface.get_size()}", flush=True)
 
     surface.fill((0, 128, 0))
+
+    # The menu draws through SDL_ttf and SDL_image, which are separate bundled
+    # libraries that also get interposed when the system SDL is preloaded.
+    font = pygame.font.Font(None, 24)
+    surface.blit(font.render("probe", True, (255, 255, 255)), (10, 10))
+    print("probe font ok", flush=True)
+
+    logo = Path(__file__).with_name("raofflineproxy") / "logo-320.png"
+    if logo.exists():
+        surface.blit(pygame.image.load(str(logo)), (10, 40))
+        print("probe image ok", flush=True)
+
     pygame.display.flip()
     print("probe flip ok", flush=True)
 
