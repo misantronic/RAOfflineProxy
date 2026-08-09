@@ -17,6 +17,7 @@ import com.raofflineproxy.ui.DOLPHIN_PACKAGE_CANDIDATES
 import com.raofflineproxy.ui.EmulatorSupport
 import com.raofflineproxy.ui.RETROARCH_PACKAGE_CANDIDATES
 import com.raofflineproxy.ui.UI_PPSSPP_PACKAGE_CANDIDATES
+import com.raofflineproxy.ui.UI_WATERMELONDS_PACKAGE_CANDIDATES
 import com.raofflineproxy.applyScanBatchCooldown
 import org.json.JSONArray
 import org.json.JSONObject
@@ -29,6 +30,11 @@ import androidx.core.net.toUri
 private const val TAG = "RAProxy/SmartCache"
 private const val DOLPHIN_RECENT_WINDOW_MS = 60L * 24 * 60 * 60 * 1000
 private const val RETROARCH_RECENT_WINDOW_MS = 60L * 24 * 60 * 60 * 1000
+private const val WATERMELONDS_RECENT_WINDOW_MS = 60L * 24 * 60 * 60 * 1000
+
+private val WATERMELONDS_ROM_LIBRARY_AUTHORITIES = UI_WATERMELONDS_PACKAGE_CANDIDATES.map { packageName ->
+    "$packageName.romlibrary"
+}
 private val SMART_CACHE_EXT_STORAGE by lazy { Environment.getExternalStorageDirectory().path }
 
 private val RETROARCH_PACKAGE_HISTORY_PATHS = listOf(
@@ -148,7 +154,8 @@ private val DOLPHIN_ROM_SUFFIXES = listOf(
 internal enum class SmartCacheEmulator {
     RetroArch,
     Dolphin,
-    Ppsspp
+    Ppsspp,
+    WatermelonDs
 }
 
 internal data class SmartCacheCandidate(
@@ -157,7 +164,8 @@ internal data class SmartCacheCandidate(
     val path: String,
     val title: String? = null,
     val priority: Int = 0,
-    val lastModifiedAt: Long? = null
+    val lastModifiedAt: Long? = null,
+    val precomputedHash: String? = null
 )
 
 internal data class SmartCacheStrategyResult(
@@ -465,6 +473,84 @@ private object DolphinSmartCacheStrategy : SmartCacheStrategy {
     }
 }
 
+private object WatermelonDsSmartCacheStrategy : SmartCacheStrategy {
+    override val emulator: SmartCacheEmulator = SmartCacheEmulator.WatermelonDs
+
+    override fun isEnabled(context: Context, emulatorSupport: EmulatorSupport): Boolean =
+        emulatorSupport.watermelonDsInstalled &&
+            emulatorSupport.watermelonDsEnabled
+
+    override fun discoverCandidates(context: Context, treeUri: Uri?): SmartCacheStrategyResult {
+        val cutoff = System.currentTimeMillis() - WATERMELONDS_RECENT_WINDOW_MS
+        val candidates = WATERMELONDS_ROM_LIBRARY_AUTHORITIES.firstNotNullOfOrNull { authority ->
+            queryWatermelonDsRomLibrary(context, authority, cutoff)
+        }
+
+        if (candidates == null) {
+            Log.i(TAG, "WatermelonDS strategy did not find a readable rom library provider")
+            return SmartCacheStrategyResult(message = "no_recent_games")
+        }
+        if (candidates.isEmpty()) {
+            Log.i(TAG, "WatermelonDS strategy found no recently played games within the last ${WATERMELONDS_RECENT_WINDOW_MS / (24L * 60 * 60 * 1000)} days")
+            return SmartCacheStrategyResult(message = "no_recent_games")
+        }
+
+        Log.i(TAG, "WatermelonDS strategy discovered ${candidates.size} recently played candidates")
+        return SmartCacheStrategyResult(candidates = candidates)
+    }
+}
+
+private fun queryWatermelonDsRomLibrary(context: Context, authority: String, cutoff: Long): List<SmartCacheCandidate>? {
+    val uri = Uri.Builder()
+        .scheme("content")
+        .authority(authority)
+        .appendPath("roms")
+        .build()
+
+    return runCatching {
+        context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+            val nameIndex = cursor.getColumnIndex("name")
+            val uriIndex = cursor.getColumnIndex("uri")
+            val lastPlayedIndex = cursor.getColumnIndex("lastPlayed")
+            val hashIndex = cursor.getColumnIndex("retroAchievementsHash")
+
+            buildList {
+                while (cursor.moveToNext()) {
+                    val lastPlayed = if (lastPlayedIndex >= 0 && !cursor.isNull(lastPlayedIndex)) {
+                        cursor.getLong(lastPlayedIndex)
+                    } else {
+                        null
+                    }
+                    if (lastPlayed == null || lastPlayed < cutoff) {
+                        continue
+                    }
+
+                    val hash = hashIndex.takeIf { it >= 0 }?.let { cursor.getString(it) }
+                    if (hash.isNullOrBlank()) {
+                        continue
+                    }
+
+                    val romUri = uriIndex.takeIf { it >= 0 }?.let { cursor.getString(it) } ?: continue
+                    val name = nameIndex.takeIf { it >= 0 }?.let { cursor.getString(it) }
+
+                    add(
+                        SmartCacheCandidate(
+                            emulator = SmartCacheEmulator.WatermelonDs,
+                            sourceLabel = authority,
+                            path = romUri,
+                            title = name,
+                            lastModifiedAt = lastPlayed,
+                            precomputedHash = hash
+                        )
+                    )
+                }
+            }
+        }
+    }.onFailure { error ->
+        Log.i(TAG, "WatermelonDS strategy could not query authority=$authority", error)
+    }.getOrNull()
+}
+
 internal suspend fun runSmartCache(
     context: Context,
     credentials: LoginCredentials,
@@ -494,7 +580,7 @@ internal suspend fun runSmartCache(
         )
     }
 
-    val activeStrategies = listOf(RetroArchSmartCacheStrategy, DolphinSmartCacheStrategy, PpssppSmartCacheStrategy)
+    val activeStrategies = listOf(RetroArchSmartCacheStrategy, DolphinSmartCacheStrategy, PpssppSmartCacheStrategy, WatermelonDsSmartCacheStrategy)
         .filter { strategy -> strategy.isEnabled(context, emulatorSupport) }
     if (activeStrategies.isEmpty()) {
         Log.i(TAG, "runSmartCache found no active strategies")
@@ -517,6 +603,7 @@ internal suspend fun runSmartCache(
             SmartCacheEmulator.RetroArch -> retroArchTreeUri
             SmartCacheEmulator.Dolphin -> dolphinTreeUri
             SmartCacheEmulator.Ppsspp -> ppssppTreeUri
+            SmartCacheEmulator.WatermelonDs -> null
         }
         val result = strategy.discoverCandidates(context, treeUri)
         Log.i(
@@ -628,7 +715,7 @@ internal suspend fun runSmartCache(
     }
     Log.i(
         TAG,
-        "runSmartCache readable cap=$candidateCap resolved=${preflight.resolved.size} capped=${resolvedCandidates.size} remainingSlots=$remainingSlots retroArchSelected=${resolvedCandidates.count { it.candidate.emulator == SmartCacheEmulator.RetroArch }} dolphinSelected=${resolvedCandidates.count { it.candidate.emulator == SmartCacheEmulator.Dolphin }} ppssppSelected=${resolvedCandidates.count { it.candidate.emulator == SmartCacheEmulator.Ppsspp }}"
+        "runSmartCache readable cap=$candidateCap resolved=${preflight.resolved.size} capped=${resolvedCandidates.size} remainingSlots=$remainingSlots retroArchSelected=${resolvedCandidates.count { it.candidate.emulator == SmartCacheEmulator.RetroArch }} dolphinSelected=${resolvedCandidates.count { it.candidate.emulator == SmartCacheEmulator.Dolphin }} ppssppSelected=${resolvedCandidates.count { it.candidate.emulator == SmartCacheEmulator.Ppsspp }} watermelonDsSelected=${resolvedCandidates.count { it.candidate.emulator == SmartCacheEmulator.WatermelonDs }}"
     )
 
     val relevantTotal = resolvedCandidates.size
@@ -1053,6 +1140,12 @@ private fun resolveSmartCacheCandidates(
     val grantedRomRoots = romTreeUris.map(::treeUriToAbsolutePath)
 
     candidates.forEach { candidate ->
+        if (!candidate.precomputedHash.isNullOrBlank()) {
+            resolved += ResolvedSmartCacheCandidate(candidate = candidate)
+            Log.i(TAG, "${candidate.emulator} candidate resolved title=${candidate.title} via=precomputedHash path=${candidate.path}")
+            return@forEach
+        }
+
         val directDocument = resolveDocumentByStoredUri(context, candidate.path)
         if (directDocument != null) {
             resolved += ResolvedSmartCacheCandidate(candidate = candidate, documentFile = directDocument)
@@ -1335,6 +1428,7 @@ private suspend fun executeResolvedSmartCacheCandidates(
 }
 
 private fun hashResolvedCandidate(context: Context, candidate: ResolvedSmartCacheCandidate): List<String> = when {
+    !candidate.candidate.precomputedHash.isNullOrBlank() -> listOf(candidate.candidate.precomputedHash)
     candidate.directFile != null -> hashFile(candidate.directFile)
     candidate.documentFile != null -> hashRomCandidates(context, candidate.documentFile)
     else -> emptyList()
