@@ -27,6 +27,7 @@ from .config import (
     upstream_host,
 )
 from .flusher import flush_pending_awards
+from .lowerdeck import ensure_ra_proxy_chained, stop_ra_proxy_chain
 from .image_cache import (
     IMAGE_PATH_PREFIXES,
     resolve_cached_static_asset,
@@ -1049,6 +1050,7 @@ def run_proxy_service(
 ) -> None:
     storage = Storage()
     migrate_user_case_in_cache_keys(storage)
+    ensure_ra_proxy_chained(config_data)
     server = ProxyRuntimeServer(config_data, storage)
     connectivity_monitor = ConnectivityMonitor(server)
     periodic_refresh = PeriodicRefresh(server)
@@ -1079,5 +1081,6 @@ def run_proxy_service(
     finally:
         connectivity_monitor.stop()
         periodic_refresh.stop()
+        stop_ra_proxy_chain()
         server.server_close()
         storage.close()
