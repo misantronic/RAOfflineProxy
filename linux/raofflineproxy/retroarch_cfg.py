@@ -4,7 +4,7 @@ import re
 from pathlib import Path
 from typing import Optional
 
-from .config import proxy_value
+from .config import detect_rocknix_append_cfg, proxy_value
 from .state import clear_patch_state, load_patch_state, save_patch_state
 
 HOST_KEY = "cheevos_custom_host"
@@ -81,8 +81,11 @@ def detect_hardcore_enabled(content: str) -> bool:
 
 
 def load_retroarch_credentials(cfg_path: str | None) -> dict | None:
-    # Try main cfg first, then the cheevos appendconfig (muOS stores credentials there)
+    # Try main cfg first, then the cheevos appendconfig (muOS stores credentials
+    # there), then ROCKNIX's appendconfig (it strips the cheevos keys out of
+    # retroarch.cfg on every game launch and writes them only into that file).
     cheevos_cfg = str(cheevos_append_cfg_path(cfg_path)) if cfg_path else None
+    rocknix_cfg = detect_rocknix_append_cfg()
 
     token_credentials = load_retroarch_token_credentials(cfg_path)
     if token_credentials is not None:
@@ -92,14 +95,24 @@ def load_retroarch_credentials(cfg_path: str | None) -> dict | None:
     if token_credentials is not None:
         return token_credentials
 
+    token_credentials = load_retroarch_token_credentials(rocknix_cfg, last_wins=True)
+    if token_credentials is not None:
+        return token_credentials
+
     password_credentials = load_retroarch_password_credentials(cfg_path)
     if password_credentials is not None:
         return password_credentials
 
-    return load_retroarch_password_credentials(cheevos_cfg)
+    password_credentials = load_retroarch_password_credentials(cheevos_cfg)
+    if password_credentials is not None:
+        return password_credentials
+
+    return load_retroarch_password_credentials(rocknix_cfg, last_wins=True)
 
 
-def load_retroarch_token_credentials(cfg_path: str | None) -> dict | None:
+def load_retroarch_token_credentials(
+    cfg_path: str | None, last_wins: bool = False
+) -> dict | None:
     if not cfg_path:
         return None
 
@@ -108,14 +121,16 @@ def load_retroarch_token_credentials(cfg_path: str | None) -> dict | None:
         return None
 
     content = target.read_text(encoding="utf-8", errors="replace")
-    user = _extract_config_value(content, USERNAME_KEY)
-    token = _extract_config_value(content, TOKEN_KEY)
+    user = _extract_config_value(content, USERNAME_KEY, last_wins)
+    token = _extract_config_value(content, TOKEN_KEY, last_wins)
     if not user or not token:
         return None
     return {"user": user, "token": token}
 
 
-def load_retroarch_password_credentials(cfg_path: str | None) -> dict | None:
+def load_retroarch_password_credentials(
+    cfg_path: str | None, last_wins: bool = False
+) -> dict | None:
     if not cfg_path:
         return None
 
@@ -124,8 +139,8 @@ def load_retroarch_password_credentials(cfg_path: str | None) -> dict | None:
         return None
 
     content = target.read_text(encoding="utf-8", errors="replace")
-    user = _extract_config_value(content, USERNAME_KEY)
-    password = _extract_config_value(content, PASSWORD_KEY)
+    user = _extract_config_value(content, USERNAME_KEY, last_wins)
+    password = _extract_config_value(content, PASSWORD_KEY, last_wins)
     if not user or not password:
         return None
     return {"user": user, "password": password}
@@ -359,8 +374,14 @@ def enforce_patched_cfg(cfg_path: str, config_data: dict) -> bool:
     return True
 
 
-def _extract_config_value(content: str, key: str) -> str | None:
+def _extract_config_value(content: str, key: str, last: bool = False) -> str | None:
+    """Reads a key. With last=True the final occurrence wins, matching RetroArch.
+
+    ROCKNIX appends to its --appendconfig file without truncating it between game
+    launches, so the same key can appear several times with stale values first.
+    """
     key_pattern = re.compile(rf"^\s*{re.escape(key)}\s*=\s*(.*?)\s*$")
+    found: str | None = None
     for raw_line in content.splitlines():
         match = key_pattern.match(raw_line)
         if match is None:
@@ -368,11 +389,14 @@ def _extract_config_value(content: str, key: str) -> str | None:
 
         value = match.group(1).strip()
         if len(value) >= 2 and value[0] == '"' and value[-1] == '"':
-            return value[1:-1]
-        if value.startswith('"'):
-            return value[1:].strip()
-        return value
-    return None
+            value = value[1:-1]
+        elif value.startswith('"'):
+            value = value[1:].strip()
+
+        if not last:
+            return value
+        found = value
+    return found
 
 
 def _upsert_config_value(content: str, key: str, value: str) -> str:

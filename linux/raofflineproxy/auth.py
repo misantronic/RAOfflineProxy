@@ -4,7 +4,12 @@ import json
 import logging
 
 from . import cache_keys
-from .config import FALLBACK_USER_AGENT, detect_retroarch_cfg, upstream_host
+from .config import (
+    FALLBACK_USER_AGENT,
+    detect_retroarch_cfg,
+    detect_rocknix_append_cfg,
+    upstream_host,
+)
 from .network import build_api_url, http_get
 from .retroarch_cfg import (
     cheevos_append_cfg_path,
@@ -26,10 +31,15 @@ def resolve_credentials(
     cfg_path = str(config_data.get("retroarch_cfg") or detect_retroarch_cfg())
     # Also check the cheevos appendconfig — muOS stores credentials there
     cheevos_cfg = str(cheevos_append_cfg_path(cfg_path)) if cfg_path else None
+    # ROCKNIX goes further: setsettings.sh deletes cheevos_username/cheevos_password
+    # from retroarch.cfg on every game launch and writes them only into its own
+    # --appendconfig file, so that file is the sole source of credentials there.
+    rocknix_cfg = detect_rocknix_append_cfg(config_data)
 
     token_credentials = (
         load_retroarch_token_credentials(cfg_path)
         or load_retroarch_token_credentials(cheevos_cfg)
+        or load_retroarch_token_credentials(rocknix_cfg, last_wins=True)
     )
     if token_credentials is not None:
         return cache_token_credentials(storage, token_credentials)
@@ -41,6 +51,7 @@ def resolve_credentials(
     password_credentials = (
         load_retroarch_password_credentials(cfg_path)
         or load_retroarch_password_credentials(cheevos_cfg)
+        or load_retroarch_password_credentials(rocknix_cfg, last_wins=True)
     )
     if password_credentials is not None:
         refreshed = login_and_cache_token(
