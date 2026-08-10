@@ -4,7 +4,7 @@ import re
 from pathlib import Path
 from typing import Optional
 
-from .config import proxy_value
+from .config import detect_rocknix_append_cfg, proxy_value
 from .state import clear_patch_state, load_patch_state, save_patch_state
 
 HOST_KEY = "cheevos_custom_host"
@@ -81,8 +81,11 @@ def detect_hardcore_enabled(content: str) -> bool:
 
 
 def load_retroarch_credentials(cfg_path: str | None) -> dict | None:
-    # Try main cfg first, then the cheevos appendconfig (muOS stores credentials there)
+    # Try main cfg first, then the cheevos appendconfig (muOS stores credentials
+    # there), then ROCKNIX's appendconfig (it strips the cheevos keys out of
+    # retroarch.cfg on every game launch and writes them only into that file).
     cheevos_cfg = str(cheevos_append_cfg_path(cfg_path)) if cfg_path else None
+    rocknix_cfg = detect_rocknix_append_cfg()
 
     token_credentials = load_retroarch_token_credentials(cfg_path)
     if token_credentials is not None:
@@ -92,11 +95,19 @@ def load_retroarch_credentials(cfg_path: str | None) -> dict | None:
     if token_credentials is not None:
         return token_credentials
 
+    token_credentials = load_retroarch_token_credentials(rocknix_cfg, last_wins=True)
+    if token_credentials is not None:
+        return token_credentials
+
     password_credentials = load_retroarch_password_credentials(cfg_path)
     if password_credentials is not None:
         return password_credentials
 
-    return load_retroarch_password_credentials(cheevos_cfg)
+    password_credentials = load_retroarch_password_credentials(cheevos_cfg)
+    if password_credentials is not None:
+        return password_credentials
+
+    return load_retroarch_password_credentials(rocknix_cfg, last_wins=True)
 
 
 def load_retroarch_token_credentials(

@@ -1,5 +1,6 @@
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 from linux.raofflineproxy import retroarch_cfg
@@ -129,3 +130,41 @@ class UpsertEmptyValueRegressionTests(unittest.TestCase):
         result = retroarch_cfg._remove_orphan_boolean_lines(content)
         self.assertNotIn('""', result)
         self.assertIn("input_libretro_device_p4 = 1", result)
+
+
+class LinuxRocknixMenuCredentialTests(unittest.TestCase):
+    """The menu's status line reads credentials through load_retroarch_credentials,
+    a separate path from auth.resolve_credentials. Both have to know about
+    ROCKNIX's appendconfig or the menu reports LOGIN REQUIRED while the service
+    is perfectly able to log in."""
+
+    def test_falls_back_to_rocknix_append_config(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            cfg = root / "retroarch.cfg"
+            append_cfg = root / ".retroarch.cfg"
+            # What a real ROCKNIX device looks like: a token with no username in
+            # retroarch.cfg (unusable on its own), credentials in the appendconfig.
+            cfg.write_text('cheevos_token = "orphan"\n', encoding="utf-8")
+            append_cfg.write_text(
+                'cheevos_username = "misantronic"\ncheevos_password = "hunter2"\n',
+                encoding="utf-8",
+            )
+
+            with mock.patch.object(
+                retroarch_cfg, "detect_rocknix_append_cfg", return_value=str(append_cfg)
+            ):
+                credentials = retroarch_cfg.load_retroarch_credentials(str(cfg))
+
+            self.assertIsNotNone(credentials)
+            self.assertEqual(credentials["user"], "misantronic")
+
+    def test_orphan_token_without_username_is_not_credentials(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            cfg = Path(temp_dir) / "retroarch.cfg"
+            cfg.write_text('cheevos_token = "orphan"\n', encoding="utf-8")
+
+            with mock.patch.object(
+                retroarch_cfg, "detect_rocknix_append_cfg", return_value=None
+            ):
+                self.assertIsNone(retroarch_cfg.load_retroarch_credentials(str(cfg)))
