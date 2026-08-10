@@ -340,7 +340,7 @@ class LinuxAwardParityTests(unittest.TestCase):
             finally:
                 store.close()
 
-    def test_flush_pending_awards_loads_user_agent_before_resolving_credentials(
+    def test_flush_pending_awards_resolves_credentials_with_our_own_user_agent(
         self,
     ) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -369,7 +369,7 @@ class LinuxAwardParityTests(unittest.TestCase):
 
                 outcome = flusher.flush_pending_awards(store, {})
 
-                self.assertEqual(observed["user_agent"], config.FALLBACK_USER_AGENT)
+                self.assertEqual(observed["user_agent"], utils.self_user_agent())
                 self.assertEqual(
                     outcome.last_error,
                     "No RetroAchievements credentials available",
