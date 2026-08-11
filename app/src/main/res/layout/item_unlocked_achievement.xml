@@ -61,7 +61,7 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="1dp"
             android:text="@string/cached_game_origin_offline"
-            android:textColor="@color/primary"
+            android:textColor="@color/achievement_offline_tag"
             android:textSize="11sp"
             android:textStyle="bold"
             android:visibility="gone" />

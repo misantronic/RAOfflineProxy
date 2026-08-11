@@ -21,4 +21,5 @@
     <color name="emulator_toggle_text_active">#FF1A1400</color>
     <color name="console_header_background">#FFFFFFFF</color>
     <color name="toggle_button_background_inactive">#FF4A4A4A</color>
+    <color name="achievement_offline_tag">#FF1C5182</color>
 </resources>
