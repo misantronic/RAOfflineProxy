@@ -37,16 +37,6 @@ private val SAF_CFG_PATHS = RETROARCH_PACKAGE_CANDIDATES.map { listOf(it, "files
     listOf("retroarch.cfg")
 )
 
-data class PatchResult(
-    val success: Boolean,
-    val message: String,
-    val needsSafGrant: Boolean = false,
-    val invalidSafGrant: Boolean = false,
-    val copyBackPath: String? = null,
-    val hardcoreWasEnabled: Boolean = false,
-    val credentials: ImportedCredentials? = null
-)
-
 private class CfgStrings(
     val noOpMessage: Int,
     val successSaf: Int,
@@ -74,7 +64,7 @@ private val REVERT_STRINGS = CfgStrings(
     unavailableError = R.string.revert_error_unavailable
 )
 
-fun patchRetroArchCfg(context: Context, treeUri: Uri?): PatchResult {
+fun patchRetroArchCfg(context: Context, treeUri: Uri?): ConfigPatchResult {
     Log.i(TAG, "patch: starting treeUri=$treeUri proxy=${proxyValue(context)}")
     val transform: (String) -> String = { buildPatchedContent(it, proxyValue(context)) }
     return applyCfgTransform(
@@ -88,7 +78,7 @@ fun patchRetroArchCfg(context: Context, treeUri: Uri?): PatchResult {
     )
 }
 
-fun revertRetroArchCfg(context: Context, treeUri: Uri?, restoreHardcore: Boolean = false): PatchResult {
+fun revertRetroArchCfg(context: Context, treeUri: Uri?, restoreHardcore: Boolean = false): ConfigPatchResult {
     Log.i(TAG, "revert: starting treeUri=$treeUri restoreHardcore=$restoreHardcore")
     val transform: (String) -> String = { buildRevertedContent(it, restoreHardcore) }
     return applyCfgTransform(
@@ -110,7 +100,7 @@ private fun applyCfgTransform(
     detectHardcore: Boolean,
     ensureBackup: Boolean,
     extractCredentials: Boolean
-): PatchResult {
+): ConfigPatchResult {
     Log.d(TAG, "apply: treeUri=$treeUri detectHardcore=$detectHardcore ensureBackup=$ensureBackup candidates=${RETROARCH_SOURCE_CANDIDATES.size}")
     if (treeUri != null) {
         val safResult = transformViaSaf(context, treeUri, transform, strings, detectHardcore, ensureBackup, extractCredentials)
@@ -130,7 +120,7 @@ private fun applyCfgTransform(
 
     if (directCandidate != null || treeUri == null) {
         Log.w(TAG, "apply: requesting SAF grant directCandidate=${directCandidate?.path} treeUri=$treeUri sdk=${Build.VERSION.SDK_INT}")
-        return PatchResult(
+        return ConfigPatchResult(
             success = false,
             message = context.getString(R.string.saf_dialog_message),
             needsSafGrant = true
@@ -138,7 +128,7 @@ private fun applyCfgTransform(
     }
 
     Log.w(TAG, "apply: automatic patching unavailable")
-    return PatchResult(
+    return ConfigPatchResult(
         success = false,
         message = context.getString(strings.unavailableError)
     )
@@ -152,7 +142,7 @@ private fun transformViaSaf(
     detectHardcore: Boolean,
     ensureBackup: Boolean,
     extractCredentials: Boolean
-): PatchResult? {
+): ConfigPatchResult? {
     val tree = DocumentFile.fromTreeUri(context, treeUri) ?: return null
     Log.d(TAG, "saf: opened tree uri=$treeUri name=${tree.name}")
 
@@ -168,12 +158,12 @@ private fun transformViaSaf(
         return try {
             val original = context.contentResolver.openInputStream(cfgFile.uri)
                 ?.bufferedReader()?.use { it.readText() }
-                ?: return PatchResult(success = false, message = context.getString(R.string.patch_could_not_read, cfgFile.name))
+                ?: return ConfigPatchResult(success = false, message = context.getString(R.string.patch_could_not_read, cfgFile.name))
             Log.i(TAG, "saf: found cfg uri=${cfgFile.uri} size=${original.length}")
 
             if (ensureBackup) {
                 ensureSafBackupExists(context, cfgParent, original)
-                    ?: return PatchResult(success = false, message = context.getString(strings.errorSaf, "Could not create $CFG_BACKUP_NAME"))
+                    ?: return ConfigPatchResult(success = false, message = context.getString(strings.errorSaf, "Could not create $CFG_BACKUP_NAME"))
                 Log.d(TAG, "saf: ensured backup $CFG_BACKUP_NAME")
             }
 
@@ -182,7 +172,7 @@ private fun transformViaSaf(
             val transformed = transform(original)
             Log.d(TAG, "saf: transform changed=${transformed != original} hardcoreWas=$hardcoreWas hasCredentials=${credentials != null}")
             if (transformed == original) {
-                PatchResult(
+                ConfigPatchResult(
                     success = true,
                     message = context.getString(strings.noOpMessage),
                     hardcoreWasEnabled = hardcoreWas,
@@ -191,7 +181,7 @@ private fun transformViaSaf(
             } else {
                 writeSafTextFile(context, cfgParent, cfgFile, transformed)
                 Log.i(TAG, "saf: wrote updated config uri=${cfgFile.uri}")
-                PatchResult(
+                ConfigPatchResult(
                     success = true,
                     message = context.getString(strings.successSaf),
                     hardcoreWasEnabled = hardcoreWas,
@@ -200,12 +190,12 @@ private fun transformViaSaf(
             }
         } catch (e: Exception) {
             Log.w(TAG, "saf: error ${e.message}", e)
-            PatchResult(success = false, message = context.getString(strings.errorSaf, e.message))
+            ConfigPatchResult(success = false, message = context.getString(strings.errorSaf, e.message))
         }
     }
 
     Log.w(TAG, "saf: config not found in granted tree")
-    return PatchResult(
+    return ConfigPatchResult(
         success = false,
         message = context.getString(R.string.patch_cfg_not_in_folder),
         invalidSafGrant = true
@@ -220,7 +210,7 @@ private fun transformViaFile(
     detectHardcore: Boolean,
     ensureBackup: Boolean,
     extractCredentials: Boolean
-): PatchResult =
+): ConfigPatchResult =
     try {
         val original = target.readText()
         Log.i(TAG, "file: using ${target.path} size=${original.length}")
@@ -233,7 +223,7 @@ private fun transformViaFile(
         val transformed = transform(original)
         Log.d(TAG, "file: transform changed=${transformed != original} hardcoreWas=$hardcoreWas hasCredentials=${credentials != null}")
         if (transformed == original) {
-            PatchResult(
+            ConfigPatchResult(
                 success = true,
                 message = context.getString(strings.noOpMessage),
                 hardcoreWasEnabled = hardcoreWas,
@@ -242,7 +232,7 @@ private fun transformViaFile(
         } else {
             writeFileAtomically(target, transformed)
             Log.i(TAG, "file: wrote updated config ${target.path}")
-            PatchResult(
+            ConfigPatchResult(
                 success = true,
                 message = context.getString(strings.successFile),
                 hardcoreWasEnabled = hardcoreWas,
@@ -251,7 +241,7 @@ private fun transformViaFile(
         }
     } catch (e: Exception) {
         Log.w(TAG, "file: error target=${target.path} message=${e.message}", e)
-        PatchResult(success = false, message = context.getString(strings.errorFile, target.path, e.message))
+        ConfigPatchResult(success = false, message = context.getString(strings.errorFile, target.path, e.message))
     }
 
 private fun ensureSafBackupExists(context: Context, directory: DocumentFile, originalContent: String): DocumentFile? {

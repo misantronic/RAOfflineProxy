@@ -1,5 +1,6 @@
 package com.raofflineproxy
 
+import com.raofflineproxy.ui.Emulator
 import com.raofflineproxy.ui.buildPatchedContent
 import com.raofflineproxy.ui.buildPatchedDolphinContent
 import com.raofflineproxy.ui.buildPatchedPpssppContent
@@ -7,7 +8,9 @@ import com.raofflineproxy.ui.buildRevertedContent
 import com.raofflineproxy.ui.buildRevertedDolphinContent
 import com.raofflineproxy.ui.buildRevertedPpssppContent
 import com.raofflineproxy.ui.ppssppIniPathCandidates
+import com.raofflineproxy.ui.requireConfigOverride
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -48,6 +51,50 @@ class ShizukuManualPatcherTest {
         assertTrue(patched.contains("AchievementsHost = $proxyAddress"))
         assertTrue(patched.contains("AchievementsChallengeMode = False"))
         assertTrue(reverted.contains("AchievementsHost = "))
+    }
+
+    @Test
+    fun shizukuRevertRestoresHardcoreWhenItWasEnabledBeforePatching() {
+        val retroArch = buildPatchedContent("cheevos_custom_host = \"\"\ncheevos_hardcore_mode_enable = \"true\"", proxyAddress)
+        val dolphin = buildPatchedDolphinContent("[Achievements]\nHostUrl = \nHardcoreEnabled = True", proxyAddress)
+        val ppsspp = buildPatchedPpssppContent("[Achievements]\nAchievementsHost = \nAchievementsChallengeMode = True", proxyAddress)
+
+        assertTrue(buildRevertedContent(retroArch, restoreHardcore = true).contains("cheevos_hardcore_mode_enable = \"true\""))
+        assertTrue(buildRevertedDolphinContent(dolphin, restoreHardcore = true).contains("HardcoreEnabled = True"))
+        assertTrue(buildRevertedPpssppContent(ppsspp, restoreHardcore = true).contains("AchievementsChallengeMode = True"))
+    }
+
+    @Test
+    fun shizukuRevertLeavesHardcoreOffWhenItWasOffBeforePatching() {
+        val retroArch = buildPatchedContent("cheevos_custom_host = \"\"\ncheevos_hardcore_mode_enable = \"false\"", proxyAddress)
+        val dolphin = buildPatchedDolphinContent("[Achievements]\nHostUrl = \nHardcoreEnabled = False", proxyAddress)
+        val ppsspp = buildPatchedPpssppContent("[Achievements]\nAchievementsHost = \nAchievementsChallengeMode = False", proxyAddress)
+
+        assertTrue(buildRevertedContent(retroArch, restoreHardcore = false).contains("cheevos_hardcore_mode_enable = \"false\""))
+        assertTrue(buildRevertedDolphinContent(dolphin, restoreHardcore = false).contains("HardcoreEnabled = False"))
+        assertTrue(buildRevertedPpssppContent(ppsspp, restoreHardcore = false).contains("AchievementsChallengeMode = False"))
+    }
+
+    @Test
+    fun shizukuHardcoreDetectorsReadPrePatchState() {
+        val retroArch = requireConfigOverride(Emulator.RetroArch).detectHardcoreEnabled
+        val dolphin = requireConfigOverride(Emulator.Dolphin).detectHardcoreEnabled
+        val ppsspp = requireConfigOverride(Emulator.Ppsspp).detectHardcoreEnabled
+
+        assertTrue(retroArch("cheevos_hardcore_mode_enable = \"true\""))
+        assertFalse(retroArch("cheevos_hardcore_mode_enable = \"false\""))
+        assertTrue(dolphin("[Achievements]\nHardcoreEnabled = True"))
+        assertFalse(dolphin("[Achievements]\nHardcoreEnabled = False"))
+        assertTrue(ppsspp("[Achievements]\nAchievementsChallengeMode = True"))
+        assertFalse(ppsspp("[Achievements]\nAchievementsChallengeMode = False"))
+    }
+
+    @Test
+    fun shizukuManagedEmulatorsHaveDistinctWireKeys() {
+        val keys = Emulator.SHIZUKU_MANAGED.map { requireConfigOverride(it).shizukuKey }
+
+        assertEquals(listOf("retroarch", "dolphin", "ppsspp"), keys)
+        assertEquals(keys.size, keys.toSet().size)
     }
 
     @Test

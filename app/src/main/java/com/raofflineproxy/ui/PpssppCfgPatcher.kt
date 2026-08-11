@@ -58,23 +58,12 @@ private val PPSSPP_REVERT_STRINGS = PpssppStrings(
     unavailableError = R.string.ppsspp_revert_error_unavailable
 )
 
-data class PpssppPatchResult(
-    val success: Boolean,
-    val message: String,
-    val needsSafGrant: Boolean = false,
-    val invalidSafGrant: Boolean = false,
-    val copyBackPath: String? = null,
-    val hardcoreWasEnabled: Boolean = false,
-    val credentials: ImportedCredentials? = null,
-    val skippedNotInstalled: Boolean = false
-)
-
 internal fun isPpssppInstalled(context: Context): Boolean =
     resolveInstalledPackage(context, UI_PPSSPP_PACKAGE_CANDIDATES) != null
 
-fun patchPpssppCfg(context: Context, treeUri: Uri?): PpssppPatchResult {
+fun patchPpssppCfg(context: Context, treeUri: Uri?): ConfigPatchResult {
     if (!isPpssppInstalled(context)) {
-        return PpssppPatchResult(success = true, message = "PPSSPP not installed.", skippedNotInstalled = true)
+        return ConfigPatchResult(success = true, message = "PPSSPP not installed.", skippedNotInstalled = true)
     }
 
     broadcastPpssppHostOverride(context)?.let { return it }
@@ -89,9 +78,9 @@ fun patchPpssppCfg(context: Context, treeUri: Uri?): PpssppPatchResult {
     )
 }
 
-fun revertPpssppCfg(context: Context, treeUri: Uri?, restoreHardcore: Boolean = false): PpssppPatchResult {
+fun revertPpssppCfg(context: Context, treeUri: Uri?, restoreHardcore: Boolean = false): ConfigPatchResult {
     if (!isPpssppInstalled(context)) {
-        return PpssppPatchResult(success = true, message = "PPSSPP not installed.", skippedNotInstalled = true)
+        return ConfigPatchResult(success = true, message = "PPSSPP not installed.", skippedNotInstalled = true)
     }
 
     clearPpssppHostOverride(context)?.let { return it }
@@ -158,7 +147,7 @@ internal fun detectPpssppHardcoreEnabled(content: String): Boolean =
         ?.equals("true", ignoreCase = true)
         ?: false
 
-private fun broadcastPpssppHostOverride(context: Context): PpssppPatchResult? {
+private fun broadcastPpssppHostOverride(context: Context): ConfigPatchResult? {
     val packageName = resolveInstalledPackage(context, UI_PPSSPP_PACKAGE_CANDIDATES) ?: return null
     if (!supportsPpssppBroadcastOverride(context)) {
         return null
@@ -169,14 +158,14 @@ private fun broadcastPpssppHostOverride(context: Context): PpssppPatchResult? {
             .setPackage(packageName)
             .putExtra(PPSSPP_HOST_OVERRIDE_EXTRA, proxyBase(proxyPort(context)))
     )
-    return PpssppPatchResult(
+    return ConfigPatchResult(
         success = true,
         message = context.getString(R.string.ppsspp_patch_success),
         skippedNotInstalled = false
     )
 }
 
-private fun clearPpssppHostOverride(context: Context): PpssppPatchResult? {
+private fun clearPpssppHostOverride(context: Context): ConfigPatchResult? {
     val packageName = resolveInstalledPackage(context, UI_PPSSPP_PACKAGE_CANDIDATES) ?: return null
     if (!supportsPpssppBroadcastOverride(context)) {
         return null
@@ -186,7 +175,7 @@ private fun clearPpssppHostOverride(context: Context): PpssppPatchResult? {
         Intent(PPSSPP_CLEAR_HOST_OVERRIDE_ACTION)
             .setPackage(packageName)
     )
-    return PpssppPatchResult(
+    return ConfigPatchResult(
         success = true,
         message = context.getString(R.string.ppsspp_revert_success),
         skippedNotInstalled = false
@@ -210,9 +199,9 @@ private fun applyPpssppTransform(
     strings: PpssppStrings,
     extractCredentials: Boolean,
     detectHardcore: Boolean
-): PpssppPatchResult {
+): ConfigPatchResult {
     if (treeUri == null) {
-        return PpssppPatchResult(
+        return ConfigPatchResult(
             success = false,
             message = context.getString(R.string.ppsspp_saf_dialog_message),
             needsSafGrant = true
@@ -220,13 +209,13 @@ private fun applyPpssppTransform(
     }
 
     val tree = DocumentFile.fromTreeUri(context, treeUri)
-        ?: return PpssppPatchResult(
+        ?: return ConfigPatchResult(
             success = false,
             message = context.getString(strings.unavailableError)
         )
 
     val iniFile = resolvePpssppIni(tree)
-        ?: return PpssppPatchResult(
+        ?: return ConfigPatchResult(
             success = false,
             message = context.getString(strings.configMissingInFolder),
             invalidSafGrant = true
@@ -236,7 +225,7 @@ private fun applyPpssppTransform(
         val original = context.contentResolver.openInputStream(iniFile.uri)
             ?.bufferedReader()
             ?.use { it.readText() }
-            ?: return PpssppPatchResult(success = false, message = context.getString(R.string.patch_could_not_read, PPSSPP_INI_FILE))
+            ?: return ConfigPatchResult(success = false, message = context.getString(R.string.patch_could_not_read, PPSSPP_INI_FILE))
         val credentials = if (extractCredentials) {
             extractPpssppCredentials(context, iniFile, original)
         } else {
@@ -245,7 +234,7 @@ private fun applyPpssppTransform(
         val hardcoreWasEnabled = if (detectHardcore) detectPpssppHardcoreEnabled(original) else false
         val transformed = transform(original)
         if (transformed == original) {
-            PpssppPatchResult(
+            ConfigPatchResult(
                 success = true,
                 message = context.getString(strings.noOpMessage),
                 hardcoreWasEnabled = hardcoreWasEnabled,
@@ -254,8 +243,8 @@ private fun applyPpssppTransform(
         } else {
             context.contentResolver.openOutputStream(iniFile.uri, "wt")
                 ?.use { it.write(transformed.toByteArray()) }
-                ?: return PpssppPatchResult(success = false, message = context.getString(R.string.patch_could_not_write, PPSSPP_INI_FILE))
-            PpssppPatchResult(
+                ?: return ConfigPatchResult(success = false, message = context.getString(R.string.patch_could_not_write, PPSSPP_INI_FILE))
+            ConfigPatchResult(
                 success = true,
                 message = context.getString(strings.successSaf),
                 hardcoreWasEnabled = hardcoreWasEnabled,
@@ -263,7 +252,7 @@ private fun applyPpssppTransform(
             )
         }
     } catch (e: Exception) {
-        PpssppPatchResult(success = false, message = context.getString(strings.errorSaf, e.message))
+        ConfigPatchResult(success = false, message = context.getString(strings.errorSaf, e.message))
     }
 }
 

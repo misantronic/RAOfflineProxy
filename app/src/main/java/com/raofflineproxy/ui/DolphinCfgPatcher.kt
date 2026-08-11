@@ -71,17 +71,6 @@ private val DOLPHIN_SAF_GAME_SETTINGS_PATHS = DOLPHIN_PACKAGE_CANDIDATES.map { p
     listOf(DOLPHIN_GAME_SETTINGS_RELATIVE_PATH)
 )
 
-data class DolphinPatchResult(
-    val success: Boolean,
-    val message: String,
-    val needsSafGrant: Boolean = false,
-    val invalidSafGrant: Boolean = false,
-    val copyBackPath: String? = null,
-    val hardcoreWasEnabled: Boolean = false,
-    val credentials: ImportedCredentials? = null,
-    val skippedNotInstalled: Boolean = false
-)
-
 internal data class DolphinGameSettingsOverride(
     val relativePath: String,
     val originalValue: String
@@ -153,7 +142,7 @@ private fun dolphinBroadcastOverridePackages(context: Context): List<String> =
 internal fun supportsDolphinBroadcastOverride(context: Context): Boolean =
     dolphinBroadcastOverridePackages(context).isNotEmpty()
 
-private fun broadcastDolphinHostOverride(context: Context, packages: List<String>): DolphinPatchResult? {
+private fun broadcastDolphinHostOverride(context: Context, packages: List<String>): ConfigPatchResult? {
     if (packages.isEmpty()) return null
 
     packages.forEach { packageName ->
@@ -163,13 +152,13 @@ private fun broadcastDolphinHostOverride(context: Context, packages: List<String
                 .putExtra(DOLPHIN_HOST_OVERRIDE_EXTRA, proxyBase(proxyPort(context)))
         )
     }
-    return DolphinPatchResult(
+    return ConfigPatchResult(
         success = true,
         message = context.getString(R.string.dolphin_patch_success)
     )
 }
 
-private fun clearDolphinHostOverride(context: Context, packages: List<String>): DolphinPatchResult? {
+private fun clearDolphinHostOverride(context: Context, packages: List<String>): ConfigPatchResult? {
     if (packages.isEmpty()) return null
 
     packages.forEach { packageName ->
@@ -178,7 +167,7 @@ private fun clearDolphinHostOverride(context: Context, packages: List<String>): 
                 .setPackage(packageName)
         )
     }
-    return DolphinPatchResult(
+    return ConfigPatchResult(
         success = true,
         message = context.getString(R.string.dolphin_revert_success)
     )
@@ -194,11 +183,11 @@ private fun resolvesDolphinBroadcast(context: Context, packageName: String, acti
     }
 }
 
-private fun combineDolphinResults(results: List<DolphinPatchResult>): DolphinPatchResult {
+private fun combineDolphinResults(results: List<ConfigPatchResult>): ConfigPatchResult {
     if (results.isEmpty()) {
-        return DolphinPatchResult(success = true, message = "", skippedNotInstalled = true)
+        return ConfigPatchResult(success = true, message = "", skippedNotInstalled = true)
     }
-    return DolphinPatchResult(
+    return ConfigPatchResult(
         success = results.all { it.success },
         message = results.mapNotNull { it.message.takeIf(String::isNotBlank) }.distinct().joinToString("\n"),
         needsSafGrant = results.any { it.needsSafGrant },
@@ -213,10 +202,10 @@ fun patchDolphinCfg(
     context: Context,
     treeUri: Uri?,
     storedCredentials: LoginCredentials? = null
-): DolphinPatchResult {
+): ConfigPatchResult {
     if (!isDolphinInstalled(context)) {
         Log.i(TAG, "patch: Dolphin not installed")
-        return DolphinPatchResult(success = true, message = "Dolphin not installed.", skippedNotInstalled = true)
+        return ConfigPatchResult(success = true, message = "Dolphin not installed.", skippedNotInstalled = true)
     }
 
     val installedPackages = resolveInstalledDolphinPackages(context)
@@ -271,10 +260,10 @@ fun patchDolphinCfg(
     return globalResult
 }
 
-fun revertDolphinCfg(context: Context, treeUri: Uri?, restoreHardcore: Boolean = false): DolphinPatchResult {
+fun revertDolphinCfg(context: Context, treeUri: Uri?, restoreHardcore: Boolean = false): ConfigPatchResult {
     if (!isDolphinInstalled(context)) {
         Log.i(TAG, "revert: Dolphin not installed")
-        return DolphinPatchResult(success = true, message = "Dolphin not installed.", skippedNotInstalled = true)
+        return ConfigPatchResult(success = true, message = "Dolphin not installed.", skippedNotInstalled = true)
     }
 
     val installedPackages = resolveInstalledDolphinPackages(context)
@@ -596,7 +585,7 @@ private fun applyDolphinTransform(
     strings: DolphinStrings,
     detectHardcore: Boolean,
     ensureBackup: Boolean
-): DolphinPatchResult {
+): ConfigPatchResult {
     Log.d(TAG, "apply: treeUri=$treeUri detectHardcore=$detectHardcore ensureBackup=$ensureBackup candidates=${DOLPHIN_SOURCE_CANDIDATES.size}")
     if (treeUri != null) {
         val safResult = transformDolphinViaSaf(context, treeUri, transform, strings, detectHardcore, ensureBackup)
@@ -616,7 +605,7 @@ private fun applyDolphinTransform(
 
     if (existingCandidates.isNotEmpty() || treeUri == null) {
         Log.w(TAG, "apply: requesting SAF grant existingCandidates=${existingCandidates.map { it.path }} treeUri=$treeUri sdk=${Build.VERSION.SDK_INT}")
-        return DolphinPatchResult(
+        return ConfigPatchResult(
             success = false,
             message = context.getString(R.string.dolphin_saf_dialog_message),
             needsSafGrant = true
@@ -624,7 +613,7 @@ private fun applyDolphinTransform(
     }
 
     Log.w(TAG, "apply: automatic patching unavailable")
-    return DolphinPatchResult(
+    return ConfigPatchResult(
         success = false,
         message = context.getString(strings.unavailableError)
     )
@@ -637,11 +626,11 @@ private fun transformDolphinViaSaf(
     strings: DolphinStrings,
     detectHardcore: Boolean,
     ensureBackup: Boolean
-): DolphinPatchResult? {
+): ConfigPatchResult? {
     val tree = DocumentFile.fromTreeUri(context, treeUri) ?: return null
     Log.d(TAG, "saf: opened tree uri=$treeUri name=${tree.name}")
 
-    val results = mutableListOf<DolphinPatchResult>()
+    val results = mutableListOf<ConfigPatchResult>()
 
     for (segments in DOLPHIN_SAF_CFG_PATHS) {
         Log.d(TAG, "saf: trying segments=${segments.joinToString("/")}")
@@ -657,12 +646,12 @@ private fun transformDolphinViaSaf(
                 val original = context.contentResolver.openInputStream(cfgFile.uri)
                     ?.bufferedReader()
                     ?.use { it.readText() }
-                    ?: return@run DolphinPatchResult(success = false, message = context.getString(R.string.patch_could_not_read, cfgFile.name))
+                    ?: return@run ConfigPatchResult(success = false, message = context.getString(R.string.patch_could_not_read, cfgFile.name))
                 Log.i(TAG, "saf: found cfg uri=${cfgFile.uri} size=${original.length}")
 
                 if (ensureBackup) {
                     ensureDolphinSafBackupExists(context, cfgParent, original)
-                        ?: return@run DolphinPatchResult(success = false, message = context.getString(strings.errorSaf, "Could not create $DOLPHIN_CFG_BACKUP_NAME"))
+                        ?: return@run ConfigPatchResult(success = false, message = context.getString(strings.errorSaf, "Could not create $DOLPHIN_CFG_BACKUP_NAME"))
                     Log.d(TAG, "saf: ensured backup $DOLPHIN_CFG_BACKUP_NAME")
                 }
 
@@ -671,22 +660,22 @@ private fun transformDolphinViaSaf(
                 val transformed = transform(original)
                 Log.d(TAG, "saf: transform changed=${transformed != original} hardcoreWas=$hardcoreWas")
                 if (transformed == original) {
-                    DolphinPatchResult(success = true, message = context.getString(strings.noOpMessage), hardcoreWasEnabled = hardcoreWas, credentials = credentials)
+                    ConfigPatchResult(success = true, message = context.getString(strings.noOpMessage), hardcoreWasEnabled = hardcoreWas, credentials = credentials)
                 } else {
                     writeSafTextFile(context, cfgParent, cfgFile, transformed)
                     Log.i(TAG, "saf: wrote updated config uri=${cfgFile.uri}")
-                    DolphinPatchResult(success = true, message = context.getString(strings.successSaf), hardcoreWasEnabled = hardcoreWas, credentials = credentials)
+                    ConfigPatchResult(success = true, message = context.getString(strings.successSaf), hardcoreWasEnabled = hardcoreWas, credentials = credentials)
                 }
             } catch (e: Exception) {
                 Log.w(TAG, "saf: error ${e.message}", e)
-                DolphinPatchResult(success = false, message = context.getString(strings.errorSaf, e.message))
+                ConfigPatchResult(success = false, message = context.getString(strings.errorSaf, e.message))
             }
         }
     }
 
     if (results.isEmpty()) {
         Log.w(TAG, "saf: config not found in granted tree")
-        return DolphinPatchResult(
+        return ConfigPatchResult(
             success = false,
             message = context.getString(strings.configMissingInFolder),
             invalidSafGrant = true
@@ -703,7 +692,7 @@ private fun transformDolphinViaFile(
     strings: DolphinStrings,
     detectHardcore: Boolean,
     ensureBackup: Boolean
-): DolphinPatchResult =
+): ConfigPatchResult =
     try {
         val original = target.readText()
         Log.i(TAG, "file: using ${target.path} size=${original.length}")
@@ -716,15 +705,15 @@ private fun transformDolphinViaFile(
         val transformed = transform(original)
         Log.d(TAG, "file: transform changed=${transformed != original} hardcoreWas=$hardcoreWas")
         if (transformed == original) {
-            DolphinPatchResult(success = true, message = context.getString(strings.noOpMessage), hardcoreWasEnabled = hardcoreWas, credentials = credentials)
+            ConfigPatchResult(success = true, message = context.getString(strings.noOpMessage), hardcoreWasEnabled = hardcoreWas, credentials = credentials)
         } else {
             writeDolphinFileAtomically(target, transformed)
             Log.i(TAG, "file: wrote updated config ${target.path}")
-            DolphinPatchResult(success = true, message = context.getString(strings.successFile), hardcoreWasEnabled = hardcoreWas, credentials = credentials)
+            ConfigPatchResult(success = true, message = context.getString(strings.successFile), hardcoreWasEnabled = hardcoreWas, credentials = credentials)
         }
     } catch (e: Exception) {
         Log.w(TAG, "file: error target=${target.path} message=${e.message}", e)
-        DolphinPatchResult(success = false, message = context.getString(strings.errorFile, target.path, e.message))
+        ConfigPatchResult(success = false, message = context.getString(strings.errorFile, target.path, e.message))
     }
 
 private fun ensureDolphinSafBackupExists(context: Context, directory: DocumentFile, originalContent: String): DocumentFile? {

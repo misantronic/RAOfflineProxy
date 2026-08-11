@@ -4,74 +4,10 @@
     android:layout_height="wrap_content">
 
 <LinearLayout
+    android:id="@+id/layout_emulator_toggles"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:orientation="vertical"
     android:divider="@drawable/divider_emulator_list"
-    android:showDividers="middle">
-
-    <include
-        android:id="@+id/layout_retroarch_toggle"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:visibility="gone"
-        layout="@layout/view_emulator_toggle" />
-
-    <include
-        android:id="@+id/layout_dolphin_toggle"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:visibility="gone"
-        layout="@layout/view_emulator_toggle" />
-
-    <include
-        android:id="@+id/layout_ppsspp_toggle"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:visibility="gone"
-        layout="@layout/view_emulator_toggle" />
-
-    <include
-        android:id="@+id/layout_armsx1_toggle"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:visibility="gone"
-        layout="@layout/view_emulator_toggle" />
-
-    <include
-        android:id="@+id/layout_armsx2_toggle"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:visibility="gone"
-        layout="@layout/view_emulator_toggle" />
-
-    <include
-        android:id="@+id/layout_flycast_toggle"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:visibility="gone"
-        layout="@layout/view_emulator_toggle" />
-
-    <include
-        android:id="@+id/layout_watermelonds_toggle"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:visibility="gone"
-        layout="@layout/view_emulator_toggle" />
-
-    <include
-        android:id="@+id/layout_mupen64_toggle"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:visibility="gone"
-        layout="@layout/view_emulator_toggle" />
-
-    <include
-        android:id="@+id/layout_emucorex_toggle"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:visibility="gone"
-        layout="@layout/view_emulator_toggle" />
-
-</LinearLayout>
+    android:showDividers="middle" />
 </ScrollView>

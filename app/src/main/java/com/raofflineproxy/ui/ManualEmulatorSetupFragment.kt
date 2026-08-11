@@ -69,18 +69,18 @@ class ManualEmulatorSetupFragment : Fragment() {
                 } else {
                     View.GONE
                 }
-                ppssppResetLocationLabel.visibility = if (state.shizukuManualPatchingEnabled && state.ppssppEnabled) {
+                ppssppResetLocationLabel.visibility = if (state.shizukuManualPatchingEnabled && state.emulators.isEnabled(Emulator.Ppsspp)) {
                     View.VISIBLE
                 } else {
                     View.GONE
                 }
-                ppssppResetLocationButton.visibility = if (state.shizukuManualPatchingEnabled && state.ppssppEnabled) {
+                ppssppResetLocationButton.visibility = if (state.shizukuManualPatchingEnabled && state.emulators.isEnabled(Emulator.Ppsspp)) {
                     View.VISIBLE
                 } else {
                     View.GONE
                 }
                 ppssppResetLocationButton.isEnabled = state.shizukuManualPatchingEnabled &&
-                    state.ppssppEnabled &&
+                    state.emulators.isEnabled(Emulator.Ppsspp) &&
                     !state.proxyRunning &&
                     !state.shizukuOperationInProgress &&
                     !state.ppssppShizukuRootModeUnknown

@@ -4,13 +4,6 @@ import android.content.Context
 import android.util.Log
 import com.raofflineproxy.PrefsConstants
 
-private val UI_RETROARCH_PACKAGE_CANDIDATES = listOf(
-    "com.retroarch.aarch64",
-    "com.retroarch"
-)
-
-private val UI_DOLPHIN_PACKAGE_CANDIDATES = DOLPHIN_PACKAGE_CANDIDATES
-
 internal const val UI_PPSSPP_PACKAGE = "org.ppsspp.ppsspp"
 internal const val UI_PPSSPP_GOLD_PACKAGE = "org.ppsspp.ppssppgold"
 
@@ -24,128 +17,62 @@ internal fun resolveInstalledPackage(context: Context, packageCandidates: List<S
         runCatching { context.packageManager.getPackageInfo(packageName, 0) }.isSuccess
     }
 
-internal data class EmulatorSupport(
-    val retroArchInstalled: Boolean,
-    val dolphinInstalled: Boolean,
-    val ppssppInstalled: Boolean,
-    val armsx2Installed: Boolean,
-    val flycastInstalled: Boolean,
-    val watermelonDsInstalled: Boolean,
-    val mupen64Installed: Boolean,
-    val emuCoreXInstalled: Boolean,
-    val armsx1Installed: Boolean,
-    val retroArchEnabled: Boolean,
-    val dolphinEnabled: Boolean,
-    val ppssppEnabled: Boolean,
-    val armsx2Enabled: Boolean,
-    val flycastEnabled: Boolean,
-    val watermelonDsEnabled: Boolean,
-    val mupen64Enabled: Boolean,
-    val emuCoreXEnabled: Boolean,
-    val armsx1Enabled: Boolean
-) {
-    val installedCount: Int = listOf(retroArchInstalled, dolphinInstalled, ppssppInstalled, armsx2Installed, flycastInstalled, watermelonDsInstalled, mupen64Installed, emuCoreXInstalled, armsx1Installed).count { it }
-    val hasAnyEnabled: Boolean = retroArchEnabled || dolphinEnabled || ppssppEnabled || armsx2Enabled || flycastEnabled || watermelonDsEnabled || mupen64Enabled || emuCoreXEnabled || armsx1Enabled
-    val hasAnyShizukuManagedEnabled: Boolean = retroArchEnabled || dolphinEnabled || ppssppEnabled
+data class EmulatorState(
+    val emulator: Emulator,
+    val installed: Boolean,
+    val enabled: Boolean
+)
+
+data class EmulatorSupport(val states: List<EmulatorState>) {
+    val installed: List<Emulator> = states.filter { it.installed }.map { it.emulator }
+    val enabled: List<Emulator> = states.filter { it.enabled }.map { it.emulator }
+    val installedCount: Int = installed.size
+    val hasAnyEnabled: Boolean = enabled.isNotEmpty()
+    val hasAnyShizukuManagedEnabled: Boolean = enabled.any { it in Emulator.SHIZUKU_MANAGED }
+
+    fun isInstalled(emulator: Emulator): Boolean = emulator in installed
+
+    fun isEnabled(emulator: Emulator): Boolean = emulator in enabled
+
+    companion object {
+        val NONE = EmulatorSupport(
+            Emulator.entries.map { EmulatorState(it, installed = false, enabled = false) }
+        )
+    }
 }
 
 internal fun loadEmulatorSupport(context: Context): EmulatorSupport {
     val prefs = context.getSharedPreferences(PrefsConstants.PREFS_NAME, Context.MODE_PRIVATE)
-    val retroArchPackage = resolveInstalledPackage(context, UI_RETROARCH_PACKAGE_CANDIDATES)
-    val dolphinPackage = resolveInstalledPackage(context, UI_DOLPHIN_PACKAGE_CANDIDATES)
-    val ppssppPackage = resolveInstalledPackage(context, UI_PPSSPP_PACKAGE_CANDIDATES)
-    val armsx2Package = resolveInstalledPackage(context, UI_ARMSX2_PACKAGE_CANDIDATES)
-    val flycastPackage = resolveInstalledPackage(context, UI_FLYCAST_PACKAGE_CANDIDATES)
-    val watermelonDsPackage = resolveInstalledPackage(context, UI_WATERMELONDS_PACKAGE_CANDIDATES)
-    val mupen64Package = resolveInstalledPackage(context, UI_MUPEN64_PACKAGE_CANDIDATES)
-    val emuCoreXPackage = resolveInstalledPackage(context, UI_EMUCOREX_PACKAGE_CANDIDATES)
-    val armsx1Package = resolveInstalledPackage(context, UI_ARMSX1_PACKAGE_CANDIDATES)
-    val retroArchInstalled = retroArchPackage != null
-    val dolphinInstalled = dolphinPackage != null
-    val ppssppInstalled = ppssppPackage != null
-    val armsx2Installed = armsx2Package != null && supportsArmsx2BroadcastOverride(context, armsx2Package)
-    val flycastInstalled = flycastPackage != null && supportsFlycastBroadcastOverride(context, flycastPackage)
-    val watermelonDsInstalled = watermelonDsPackage != null && supportsWatermelonDsBroadcastOverride(context, watermelonDsPackage)
-    val mupen64Installed = mupen64Package != null && supportsMupen64BroadcastOverride(context, mupen64Package)
-    val emuCoreXInstalled = emuCoreXPackage != null && supportsEmuCoreXBroadcastOverride(context, emuCoreXPackage)
-    val armsx1Installed = armsx1Package != null && supportsArmsx1BroadcastOverride(context, armsx1Package)
-
-    Log.i("RAProxy/Emulators", "resolved packages retroArch=$retroArchPackage dolphin=$dolphinPackage ppsspp=$ppssppPackage armsx2=$armsx2Package flycast=$flycastPackage watermelonDs=$watermelonDsPackage mupen64=$mupen64Package emuCoreX=$emuCoreXPackage armsx1=$armsx1Package")
-
-    val installedCount = listOf(retroArchInstalled, dolphinInstalled, ppssppInstalled, armsx2Installed, flycastInstalled, watermelonDsInstalled, mupen64Installed, emuCoreXInstalled, armsx1Installed).count { it }
-
-    val retroArchEnabled = when {
-        !retroArchInstalled -> false
-        installedCount == 1 -> true
-        else -> prefs.getBoolean(PrefsConstants.KEY_ENABLE_RETROARCH, true)
+    val resolvedPackages = Emulator.entries.associateWith { emulator ->
+        resolveInstalledPackage(context, emulator.packageCandidates)
     }
 
-    val dolphinEnabled = when {
-        !dolphinInstalled -> false
-        installedCount == 1 -> true
-        else -> prefs.getBoolean(PrefsConstants.KEY_ENABLE_DOLPHIN, true)
-    }
+    Log.i(
+        "RAProxy/Emulators",
+        "resolved packages " + resolvedPackages.entries.joinToString(" ") { (emulator, packageName) ->
+            "${emulator.name}=$packageName"
+        }
+    )
 
-    val ppssppEnabled = when {
-        !ppssppInstalled -> false
-        installedCount == 1 -> true
-        else -> prefs.getBoolean(PrefsConstants.KEY_ENABLE_PPSSPP, true)
-    }
-
-    val armsx2Enabled = when {
-        !armsx2Installed -> false
-        installedCount == 1 -> true
-        else -> prefs.getBoolean(PrefsConstants.KEY_ENABLE_ARMSX2, true)
-    }
-
-    val flycastEnabled = when {
-        !flycastInstalled -> false
-        installedCount == 1 -> true
-        else -> prefs.getBoolean(PrefsConstants.KEY_ENABLE_FLYCAST, true)
-    }
-
-    val watermelonDsEnabled = when {
-        !watermelonDsInstalled -> false
-        installedCount == 1 -> true
-        else -> prefs.getBoolean(PrefsConstants.KEY_ENABLE_WATERMELONDS, true)
-    }
-
-    val mupen64Enabled = when {
-        !mupen64Installed -> false
-        installedCount == 1 -> true
-        else -> prefs.getBoolean(PrefsConstants.KEY_ENABLE_MUPEN64, true)
-    }
-
-    val emuCoreXEnabled = when {
-        !emuCoreXInstalled -> false
-        installedCount == 1 -> true
-        else -> prefs.getBoolean(PrefsConstants.KEY_ENABLE_EMUCOREX, true)
-    }
-
-    val armsx1Enabled = when {
-        !armsx1Installed -> false
-        installedCount == 1 -> true
-        else -> prefs.getBoolean(PrefsConstants.KEY_ENABLE_ARMSX1, true)
-    }
+    val installedPackages = resolvedPackages.filterValues { packageName -> packageName != null }
+        .filterKeys { emulator ->
+            val packageName = resolvedPackages.getValue(emulator) ?: return@filterKeys false
+            emulator.broadcastOverride == null || supportsBroadcastOverride(context, emulator, packageName)
+        }
+    val installedCount = installedPackages.size
 
     return EmulatorSupport(
-        retroArchInstalled = retroArchInstalled,
-        dolphinInstalled = dolphinInstalled,
-        ppssppInstalled = ppssppInstalled,
-        armsx2Installed = armsx2Installed,
-        flycastInstalled = flycastInstalled,
-        watermelonDsInstalled = watermelonDsInstalled,
-        mupen64Installed = mupen64Installed,
-        emuCoreXInstalled = emuCoreXInstalled,
-        armsx1Installed = armsx1Installed,
-        retroArchEnabled = retroArchEnabled,
-        dolphinEnabled = dolphinEnabled,
-        ppssppEnabled = ppssppEnabled,
-        armsx2Enabled = armsx2Enabled,
-        flycastEnabled = flycastEnabled,
-        watermelonDsEnabled = watermelonDsEnabled,
-        mupen64Enabled = mupen64Enabled,
-        emuCoreXEnabled = emuCoreXEnabled,
-        armsx1Enabled = armsx1Enabled
+        Emulator.entries.map { emulator ->
+            val installed = installedPackages.containsKey(emulator)
+            EmulatorState(
+                emulator = emulator,
+                installed = installed,
+                enabled = when {
+                    !installed -> false
+                    installedCount == 1 -> true
+                    else -> prefs.getBoolean(emulator.enabledPrefsKey, true)
+                }
+            )
+        }
     )
 }
