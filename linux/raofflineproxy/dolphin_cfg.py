@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from pathlib import Path
 
 from .config import detect_dolphin_ini, proxy_value
