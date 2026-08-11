@@ -60,6 +60,8 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="1dp"
+            android:text="@string/cached_game_origin_offline"
+            android:textColor="@color/primary"
             android:textSize="11sp"
             android:textStyle="bold"
             android:visibility="gone" />

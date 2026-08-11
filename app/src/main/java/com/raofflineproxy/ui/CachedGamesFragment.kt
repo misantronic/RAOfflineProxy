@@ -149,8 +149,7 @@ class CachedGamesFragment : Fragment() {
         viewLifecycleOwner.lifecycleScope.launch {
             viewModel.state.collect { state ->
                 gamesAdapter?.showLocked = state.showLockedAchievements
-                gamesAdapter?.setAwardOrigins(
-                    state.pendingAwards.mapTo(HashSet()) { it.achievementId },
+                gamesAdapter?.setOfflineEarnedAchievements(
                     state.awardHistory.mapTo(HashSet()) { it.achievementId }
                 )
                 val actionsEnabled = state.isOnline
