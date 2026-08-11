@@ -14,6 +14,7 @@ import com.raofflineproxy.proxy.hash.RomHashInput
 import com.raofflineproxy.proxy.hash.hashRomCandidates
 import com.raofflineproxy.proxy.hash.hashZipRomCandidates
 import com.raofflineproxy.ui.DOLPHIN_PACKAGE_CANDIDATES
+import com.raofflineproxy.ui.Emulator
 import com.raofflineproxy.ui.EmulatorSupport
 import com.raofflineproxy.ui.RETROARCH_PACKAGE_CANDIDATES
 import com.raofflineproxy.ui.UI_PPSSPP_PACKAGE_CANDIDATES
@@ -207,8 +208,7 @@ private object PpssppSmartCacheStrategy : SmartCacheStrategy {
     override val emulator: SmartCacheEmulator = SmartCacheEmulator.Ppsspp
 
     override fun isEnabled(context: Context, emulatorSupport: EmulatorSupport): Boolean =
-        emulatorSupport.ppssppInstalled &&
-            emulatorSupport.ppssppEnabled
+        emulatorSupport.isEnabled(Emulator.Ppsspp)
 
     override fun discoverCandidates(context: Context, treeUri: Uri?): SmartCacheStrategyResult {
         if (treeUri == null) {
@@ -247,8 +247,7 @@ private object RetroArchSmartCacheStrategy : SmartCacheStrategy {
     override val emulator: SmartCacheEmulator = SmartCacheEmulator.RetroArch
 
     override fun isEnabled(context: Context, emulatorSupport: EmulatorSupport): Boolean =
-        emulatorSupport.retroArchInstalled &&
-            emulatorSupport.retroArchEnabled
+        emulatorSupport.isEnabled(Emulator.RetroArch)
 
     override fun discoverCandidates(context: Context, treeUri: Uri?): SmartCacheStrategyResult {
         val directSharedHistory = firstReadableFile(RETROARCH_SHARED_HISTORY_SOURCE_CANDIDATES)
@@ -405,8 +404,7 @@ private object DolphinSmartCacheStrategy : SmartCacheStrategy {
     override val emulator: SmartCacheEmulator = SmartCacheEmulator.Dolphin
 
     override fun isEnabled(context: Context, emulatorSupport: EmulatorSupport): Boolean =
-        emulatorSupport.dolphinInstalled &&
-            emulatorSupport.dolphinEnabled
+        emulatorSupport.isEnabled(Emulator.Dolphin)
 
     override fun discoverCandidates(context: Context, treeUri: Uri?): SmartCacheStrategyResult {
         val directGamelistFile = firstReadableFile(DOLPHIN_GAMELIST_SOURCE_CANDIDATES)
@@ -479,7 +477,7 @@ internal suspend fun runSmartCache(
 ): SmartCacheRunResult {
     Log.i(
         TAG,
-        "runSmartCache start retroArchTreeUri=$retroArchTreeUri dolphinTreeUri=$dolphinTreeUri romTreeUris=${romTreeUris.size} retroArchEnabled=${emulatorSupport.retroArchEnabled} dolphinEnabled=${emulatorSupport.dolphinEnabled} ppssppEnabled=${emulatorSupport.ppssppEnabled}"
+        "runSmartCache start retroArchTreeUri=$retroArchTreeUri dolphinTreeUri=$dolphinTreeUri romTreeUris=${romTreeUris.size} enabledEmulators=${emulatorSupport.enabled}"
     )
     val cachedGameIds = loadCachedGameIds(db)
     val cachedRomPaths = loadCachedRomPaths(db)

@@ -40,10 +40,13 @@ import com.raofflineproxy.proxy.loadUserAgent
 import com.raofflineproxy.proxy.refreshCachedGameOfflineBundle
 import com.raofflineproxy.proxy.RefreshNotificationMode
 import com.raofflineproxy.ui.MainActivity
-import com.raofflineproxy.ui.revertDolphinCfg
-import com.raofflineproxy.ui.revertPpssppCfg
-import com.raofflineproxy.ui.revertRetroArchCfg
-import com.raofflineproxy.ui.revertArmsx2Cfg
+import com.raofflineproxy.ui.Emulator
+import com.raofflineproxy.ui.broadcastNotPatchedResult
+import com.raofflineproxy.ui.configNotPatchedResult
+import com.raofflineproxy.ui.loadConfigSafUri
+import com.raofflineproxy.ui.requireConfigOverride
+import com.raofflineproxy.ui.revertBroadcastCfg
+import com.raofflineproxy.ui.revertConfigCfg
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -444,82 +447,49 @@ class ProxyService : Service() {
             return
         }
 
-        val retroArchPatchedThisRun = prefs.getBoolean(PrefsConstants.KEY_RETROARCH_PATCHED_THIS_RUN, false)
-        val result = if (retroArchPatchedThisRun) {
-            val restoreHardcore = prefs.getBoolean(PrefsConstants.KEY_RETROARCH_HARDCORE_WAS_ENABLED, false)
-            revertRetroArchCfg(this, PrefsConstants.loadSafUri(this), restoreHardcore)
-        } else {
-            com.raofflineproxy.ui.PatchResult(success = true, message = "RetroArch not patched this run.")
-        }
-        val revertedTarget = result.success && result.copyBackPath == null
-
-        val dolphinPatchedThisRun = prefs.getBoolean(PrefsConstants.KEY_DOLPHIN_PATCHED_THIS_RUN, false)
-        val dolphinResult = if (dolphinPatchedThisRun) {
-            val restoreDolphinHardcore = prefs.getBoolean(PrefsConstants.KEY_DOLPHIN_HARDCORE_WAS_ENABLED, false)
-            revertDolphinCfg(this, PrefsConstants.loadDolphinSafUri(this), restoreDolphinHardcore)
-        } else {
-            com.raofflineproxy.ui.DolphinPatchResult(success = true, message = "Dolphin not patched this run.", skippedNotInstalled = true)
-        }
-        val revertedDolphinTarget = dolphinResult.success && dolphinResult.copyBackPath == null
-
-        val ppssppPatchedThisRun = prefs.getBoolean(PrefsConstants.KEY_PPSSPP_PATCHED_THIS_RUN, false)
-        val ppssppResult = if (ppssppPatchedThisRun) {
-            val restorePpssppHardcore = prefs.getBoolean(PrefsConstants.KEY_PPSSPP_HARDCORE_WAS_ENABLED, false)
-            revertPpssppCfg(this, PrefsConstants.loadPpssppSafUri(this), restorePpssppHardcore)
-        } else {
-            com.raofflineproxy.ui.PpssppPatchResult(success = true, message = "PPSSPP not patched this run.", skippedNotInstalled = true)
-        }
-        val revertedPpssppTarget = ppssppResult.success && ppssppResult.copyBackPath == null
-
-        val armsx2PatchedThisRun = prefs.getBoolean(PrefsConstants.KEY_ARMSX2_PATCHED_THIS_RUN, false)
-        val armsx2Result = if (armsx2PatchedThisRun) {
-            revertArmsx2Cfg(this)
-        } else {
-            com.raofflineproxy.ui.Armsx2PatchResult(success = true, message = "ARMSX2 not patched this run.", skippedNotInstalled = true)
-        }
-        val revertedArmsx2Target = armsx2Result.success
-
-        if (revertedTarget) {
-            prefs.edit {
-                remove(PrefsConstants.KEY_RETROARCH_HARDCORE_WAS_ENABLED)
-                remove(PrefsConstants.KEY_RETROARCH_PATCHED_THIS_RUN)
-            }
-            Log.i(TAG, "RetroArch cfg reverted during service shutdown")
-        }
-        if (revertedDolphinTarget) {
-            prefs.edit {
-                remove(PrefsConstants.KEY_DOLPHIN_HARDCORE_WAS_ENABLED)
-                remove(PrefsConstants.KEY_DOLPHIN_PATCHED_THIS_RUN)
-            }
-            Log.i(TAG, "Dolphin RetroAchievements.ini reverted during service shutdown")
-        }
-        if (revertedPpssppTarget) {
-            prefs.edit {
-                remove(PrefsConstants.KEY_PPSSPP_HARDCORE_WAS_ENABLED)
-                remove(PrefsConstants.KEY_PPSSPP_PATCHED_THIS_RUN)
-            }
-            Log.i(TAG, "PPSSPP ppsspp.ini reverted during service shutdown")
-        }
-        if (revertedArmsx2Target) {
-            prefs.edit { remove(PrefsConstants.KEY_ARMSX2_PATCHED_THIS_RUN) }
-            Log.i(TAG, "ARMSX2 host override reverted during service shutdown")
-        }
-        if (revertedTarget && revertedDolphinTarget && revertedPpssppTarget && revertedArmsx2Target) {
-            return
-        }
-
-        val reason = if (!revertedTarget) {
-            if (result.copyBackPath != null) {
-                "${result.message} copyBackPath=${result.copyBackPath}"
+        val configResults = Emulator.SHIZUKU_MANAGED.associateWith { emulator ->
+            val config = requireConfigOverride(emulator)
+            if (prefs.getBoolean(emulator.patchedThisRunPrefsKey, false)) {
+                revertConfigCfg(
+                    context = this,
+                    emulator = emulator,
+                    treeUri = loadConfigSafUri(this, emulator),
+                    restoreHardcore = prefs.getBoolean(config.hardcoreWasEnabledPrefsKey, false)
+                )
             } else {
-                result.message
+                configNotPatchedResult(emulator)
             }
-        } else if (!revertedDolphinTarget) {
-            dolphinResult.message
-        } else if (!revertedPpssppTarget) {
-            ppssppResult.message
-        } else {
-            armsx2Result.message
+        }
+        val broadcastResults = Emulator.BROADCAST_MANAGED.associateWith { emulator ->
+            if (prefs.getBoolean(emulator.patchedThisRunPrefsKey, false)) {
+                revertBroadcastCfg(this, emulator)
+            } else {
+                broadcastNotPatchedResult(emulator)
+            }
+        }
+
+        configResults.forEach { (emulator, result) ->
+            if (!result.success || result.copyBackPath != null) return@forEach
+            prefs.edit {
+                remove(requireConfigOverride(emulator).hardcoreWasEnabledPrefsKey)
+                remove(emulator.patchedThisRunPrefsKey)
+            }
+            Log.i(TAG, "${emulator.displayName} config reverted during service shutdown")
+        }
+        broadcastResults.forEach { (emulator, result) ->
+            if (!result.success) return@forEach
+            prefs.edit { remove(emulator.patchedThisRunPrefsKey) }
+            Log.i(TAG, "${emulator.displayName} host override reverted during service shutdown")
+        }
+
+        val failedConfig = configResults.values.firstOrNull { !it.success || it.copyBackPath != null }
+        val failedBroadcast = broadcastResults.values.firstOrNull { !it.success }
+        val reason = when {
+            failedConfig != null -> failedConfig.copyBackPath
+                ?.let { "${failedConfig.message} copyBackPath=$it" }
+                ?: failedConfig.message
+            failedBroadcast != null -> failedBroadcast.message
+            else -> return
         }
         Log.w(TAG, "Failed to revert emulator config during service shutdown: $reason")
     }

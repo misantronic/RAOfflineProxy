@@ -102,18 +102,7 @@ object LogUploader {
     )
 
     private fun deviceInfo(context: Context): DeviceInfo {
-        val emulators = loadEmulatorSupport(context)
-        val enabledEmulators = buildList {
-            if (emulators.retroArchEnabled) add("RetroArch")
-            if (emulators.dolphinEnabled) add("Dolphin")
-            if (emulators.ppssppEnabled) add("PPSSPP")
-            if (emulators.armsx2Enabled) add("ARMSX2")
-            if (emulators.flycastEnabled) add("Flycast")
-            if (emulators.watermelonDsEnabled) add("WatermelonDS")
-            if (emulators.mupen64Enabled) add("Mupen64Plus")
-            if (emulators.emuCoreXEnabled) add("EmuCoreX")
-            if (emulators.armsx1Enabled) add("ARMSX1")
-        }
+        val enabledEmulators = loadEmulatorSupport(context).enabled.map { it.displayName }
 
         return DeviceInfo(
             device = "${Build.MANUFACTURER} ${Build.MODEL}".trim(),
