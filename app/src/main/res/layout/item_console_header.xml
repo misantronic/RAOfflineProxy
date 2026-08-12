@@ -30,7 +30,7 @@
         android:layout_marginStart="16dp"
         android:contentDescription="@string/cd_delete_console_games"
         android:tooltipText="@string/cd_delete_console_games"
-        app:icon="@drawable/ic_delete"
+        app:icon="@drawable/ic_delete_sweep"
         app:iconTint="?attr/colorPrimary" />
 
     <ImageView
