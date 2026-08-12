@@ -89,7 +89,13 @@ from .update import (
     install_onion_update_archive,
     update_status,
 )
-from .log_uploader import report_storage_corruption, upload_logs
+from .log_uploader import (
+    SUPPORTED_ONION_VERSION_PREFIX,
+    onion_os_version,
+    onion_version_supported,
+    report_storage_corruption,
+    upload_logs,
+)
 from .menu_input import (
     BTN_DPAD_DOWN,
     BTN_DPAD_LEFT,
@@ -125,6 +131,7 @@ TEXT_COLOR = (255, 255, 255)
 SELECTED_COLOR = SECONDARY_COLOR
 STATUS_COLOR = (180, 180, 180)
 SECONDARY_TEXT_COLOR = (110, 110, 110)
+ERROR_COLOR = (200, 70, 60)
 ERROR_SECONDS = 3
 FPS = 60
 LEFT_MARGIN = 32
@@ -448,7 +455,11 @@ class MenuSdlSession:
         self.pygame = pygame
         self.config_data = load_config()
         self.running = True
-        self.view = "controller_calibration" if self.needs_controller_calibration() else "main"
+        self.onion_unsupported = running_on_onion() and not onion_version_supported()
+        if self.onion_unsupported:
+            self.view = "unsupported_onion"
+        else:
+            self.view = "controller_calibration" if self.needs_controller_calibration() else "main"
         self.selected_index = 0
         self.scroll_offset = 0
         self.message: tuple[str, float] | None = None
@@ -583,6 +594,12 @@ class MenuSdlSession:
 
     def render(self) -> None:
         self.surface.fill(BACKGROUND_COLOR)
+
+        if self.view == "unsupported_onion":
+            self.render_unsupported_onion_view()
+            maybe_dump_debug_frame(self.surface, self.pygame)
+            self.pygame.display.flip()
+            return
 
         if self.view == "key_logger":
             self.render_key_logger_view()
@@ -1005,12 +1022,19 @@ class MenuSdlSession:
                 return
 
             if event.type == self.pygame.KEYDOWN:
+                if self.view == "unsupported_onion":
+                    self.running = False
+                    return
                 if not skip_keydown:
                     self.handle_key(event.key)
                 continue
 
     def handle_raw_input(self) -> None:
         for key in read_keys(self.input_handles, self.last_key_press):
+            if self.view == "unsupported_onion":
+                self.running = False
+                return
+
             if self.handle_calibration_key(key):
                 continue
 
@@ -1507,6 +1531,24 @@ class MenuSdlSession:
         if self.is_cancel_key(key):
             self.view = "main"
             self.restore_view_position("main")
+
+    def render_unsupported_onion_view(self) -> None:
+        title = self.title_font.render("Unsupported Onion version", False, ERROR_COLOR)
+        title_rect = title.get_rect(topleft=(LEFT_MARGIN, max(36, self.height // 12)))
+        self.surface.blit(title, title_rect)
+
+        detected = onion_os_version() or "unknown"
+        message = (
+            f"This OnionOS build ({detected}) is not supported.\n"
+            f"RAOfflineProxy requires Onion {SUPPORTED_ONION_VERSION_PREFIX} or newer — "
+            "older builds ship a RetroArch achievements client that is not reliably "
+            "compatible with a custom host.\n"
+            "All functionality is disabled until Onion is updated."
+        )
+        body_bottom = self.render_wrapped_status(message, title_rect.bottom + 20)
+
+        hint = self.status_font.render("Press any key to exit", False, SELECTED_COLOR)
+        self.surface.blit(hint, hint.get_rect(topleft=(LEFT_MARGIN, body_bottom + 20)))
 
     def render_key_logger_view(self) -> None:
         title_text = self.title_for_view()

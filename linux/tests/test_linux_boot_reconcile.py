@@ -33,6 +33,18 @@ class ApplyProxyTests(unittest.TestCase):
         self.assertIn("Patched retroarch.cfg", output)
         self.assertIn("Service started (pid 7)", output)
 
+    def test_apply_proxy_rejects_unsupported_onion_build(self) -> None:
+        with (
+            mock.patch.object(main, "running_on_onion", return_value=True),
+            mock.patch.object(main, "onion_version_supported", return_value=False),
+            mock.patch.object(main, "onion_os_version", return_value="v4.3.1-1"),
+            mock.patch.object(main, "start_service_process") as start_service,
+        ):
+            with self.assertRaises(RuntimeError):
+                main._apply_proxy({}, "/runtime/retroarch.cfg")
+
+        start_service.assert_not_called()
+
 
 class RevertProxyConfigTests(unittest.TestCase):
     def test_revert_without_state_uses_presence_strip(self) -> None:

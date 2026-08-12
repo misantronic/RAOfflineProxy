@@ -14,7 +14,9 @@ from .config import (
     detect_retroarch_cfg,
     load_config,
     proxy_value,
+    running_on_onion,
 )
+from .log_uploader import onion_os_version, onion_version_supported
 from .platform import (
     disable_autostart,
     enable_autostart,
@@ -94,6 +96,13 @@ def remove_stale_hook() -> None:
 
 
 def _apply_proxy(config_data: dict, cfg_path: str) -> list[str]:
+    if running_on_onion() and not onion_version_supported():
+        detected = onion_os_version() or "unknown"
+        raise RuntimeError(
+            f"Unsupported OnionOS build ({detected}). RAOfflineProxy requires Onion "
+            "v4.4.0-beta-20260120 or newer."
+        )
+
     output: list[str] = []
 
     remove_stale_hook()

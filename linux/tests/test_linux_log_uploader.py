@@ -308,6 +308,26 @@ class LinuxLogUploaderTests(unittest.TestCase):
         with mock.patch.object(log_uploader, "ONION_VERSION_FILE", Path("/nonexistent")):
             self.assertIsNone(log_uploader._onion_os_version())
 
+    def test_onion_version_supported_accepts_matching_build(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            path = Path(tmp_dir) / "version.txt"
+            path.write_text("v4.4.0-beta-20260120-07505ea5\n", encoding="utf-8")
+
+            with mock.patch.object(log_uploader, "ONION_VERSION_FILE", path):
+                self.assertTrue(log_uploader.onion_version_supported())
+
+    def test_onion_version_supported_rejects_older_build(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            path = Path(tmp_dir) / "version.txt"
+            path.write_text("v4.3.1-1\n", encoding="utf-8")
+
+            with mock.patch.object(log_uploader, "ONION_VERSION_FILE", path):
+                self.assertFalse(log_uploader.onion_version_supported())
+
+    def test_onion_version_supported_rejects_missing_file(self) -> None:
+        with mock.patch.object(log_uploader, "ONION_VERSION_FILE", Path("/nonexistent")):
+            self.assertFalse(log_uploader.onion_version_supported())
+
     def test_knulli_os_version_reads_full_version_file(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             path = Path(tmp_dir) / "knulli.version"

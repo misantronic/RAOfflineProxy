@@ -202,6 +202,22 @@ def _onion_os_version() -> str | None:
     return _read_stripped(ONION_VERSION_FILE)
 
 
+# OnionOS v4.3.1-1 ships a bundled RetroArch build whose achievements client is not
+# reliably compatible with a custom host, so we only support the build after it.
+SUPPORTED_ONION_VERSION_PREFIX = "v4.4.0"
+
+
+def onion_os_version() -> str | None:
+    return _onion_os_version()
+
+
+def onion_version_supported() -> bool:
+    version = _onion_os_version()
+    if not version:
+        return False
+    return version.lower().startswith(SUPPORTED_ONION_VERSION_PREFIX)
+
+
 def _knulli_os_version() -> str | None:
     return _read_stripped(KNULLI_VERSION_FILE)
 

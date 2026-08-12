@@ -32,7 +32,7 @@ It is currently intended for [KNULLI Scarab](https://github.com/knulli-cfw/knull
 
 It is currently compatible with [Onion V4.4.0-beta-20260120](https://github.com/OnionUI/Onion/releases/tag/latest).
 
-[OnionOS v4.3.1-1](https://github.com/OnionUI/Onion/releases/tag/v4.3.1-1) ships an older bundled RetroArch build whose achievements client is not reliably compatible with a custom host, so achievements may fail to appear there even though the proxy and caching work correctly.
+[OnionOS v4.3.1-1](https://github.com/OnionUI/Onion/releases/tag/v4.3.1-1) ships an older bundled RetroArch build whose achievements client is not reliably compatible with a custom host. RAOfflineProxy detects this on launch and refuses to run, showing an unsupported-version error instead.
 
 == muOS
 
