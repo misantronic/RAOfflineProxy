@@ -8,6 +8,7 @@ import subprocess
 import sys
 import time
 
+from .boot import LISTEN_FD_ENV
 from .config import CONFIG_DIR, DATABASE_FILE, LOG_FILE, configure_logging
 from .proxy_service import run_proxy_service
 from .state import (
@@ -215,6 +216,15 @@ def start_service_process(config_data: dict) -> dict:
         clear_service_status()
 
     LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
+    listen_fd = os.environ.get(LISTEN_FD_ENV)
+    pass_fds: tuple[int, ...] = ()
+    env = None
+    if listen_fd:
+        # Hand the already-listening socket from the boot entrypoint to the
+        # service so the port never closes between the two processes.
+        pass_fds = (int(listen_fd),)
+        env = {**os.environ, LISTEN_FD_ENV: listen_fd}
+
     with LOG_FILE.open("a", encoding="utf-8") as log_handle:
         process = subprocess.Popen(
             [sys.executable, "-m", "raofflineproxy.main", "run-service"],
@@ -223,6 +233,8 @@ def start_service_process(config_data: dict) -> dict:
             stdin=subprocess.DEVNULL,
             close_fds=True,
             start_new_session=True,
+            pass_fds=pass_fds,
+            env=env,
         )
 
     save_running_service_state(process.pid, config_data)

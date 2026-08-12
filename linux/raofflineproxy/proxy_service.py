@@ -15,6 +15,7 @@ from urllib.parse import urlsplit
 
 from . import cache_keys, log_uploader, storage_corruption
 from .auth import resolve_credentials
+from .boot import adopt_listen_socket
 from .award_signing import sign_award
 from .config import (
     DATABASE_FILE,
@@ -272,7 +273,16 @@ class ProxyRuntimeServer(ThreadingTCPServer):
         self.pending_award_lock = threading.Lock()
         host = proxy_host(self.config_data)
         port = proxy_port(self.config_data)
-        super().__init__((host, port), ProxyRequestHandler)
+        inherited = adopt_listen_socket()
+        super().__init__(
+            (host, port),
+            ProxyRequestHandler,
+            bind_and_activate=inherited is None,
+        )
+        if inherited is not None:
+            self.socket.close()
+            self.socket = inherited
+            self.server_address = self.socket.getsockname()
 
     def _proxy_base_url(self) -> str:
         cfg = getattr(self, "config_data", {})

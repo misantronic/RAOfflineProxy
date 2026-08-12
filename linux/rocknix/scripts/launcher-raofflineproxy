@@ -9,4 +9,12 @@ export PATH="/usr/local/bin:/usr/bin:/bin:${BASE_DIR}/bin:${PATH:-}"
 export LD_LIBRARY_PATH="${BASE_DIR}/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
 export PYTHONPATH="${BASE_DIR}/app:${BASE_DIR}${PYTHONPATH:+:${PYTHONPATH}}"
 
+case "${1:-}" in
+  boot-reconcile | start-proxy)
+    # raofflineproxy.boot opens the proxy port before loading the rest of the
+    # package, so an emulator started alongside this hook is not refused.
+    exec /usr/bin/python3 -m raofflineproxy.boot "$@"
+    ;;
+esac
+
 exec /usr/bin/python3 -m raofflineproxy.main "$@"
