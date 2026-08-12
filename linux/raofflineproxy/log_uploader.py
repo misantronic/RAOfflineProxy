@@ -60,7 +60,17 @@ def _log_file_paths() -> list[Path]:
     # menu-sdl.log is a separate log written by the pygame menu process itself
     # (key logger output, controller calibration, crashes) — not covered by service.log.
     menu_sdl_log = config.CONFIG_DIR / "menu-sdl.log"
-    return [backup, config.LOG_FILE, menu_sdl_log, config.UPDATE_STATUS_FILE, config.STATUS_FILE]
+    # launch.log (muOS only) timestamps every launcher invocation, including the
+    # boot hook — the only way to see how late the service starts at boot.
+    launch_log = config.CONFIG_DIR / "launch.log"
+    return [
+        backup,
+        config.LOG_FILE,
+        menu_sdl_log,
+        launch_log,
+        config.UPDATE_STATUS_FILE,
+        config.STATUS_FILE,
+    ]
 
 
 def _redact_storage_json(text: str) -> str:

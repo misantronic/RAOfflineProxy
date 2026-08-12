@@ -153,7 +153,17 @@ run_backend() {
 run_backend_raw() {
     python_bin="$1"
     shift
-    "$python_bin" -m raofflineproxy.main "$@"
+    case "${1:-}" in
+        boot-reconcile | start-proxy)
+            # raofflineproxy.boot opens the proxy port before loading the rest
+            # of the package, so an emulator started alongside this hook is not
+            # refused.
+            "$python_bin" -m raofflineproxy.boot "$@"
+            ;;
+        *)
+            "$python_bin" -m raofflineproxy.main "$@"
+            ;;
+    esac
 }
 
 log_path() {
