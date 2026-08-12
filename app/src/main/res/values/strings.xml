@@ -266,6 +266,7 @@
     <string name="cached_game_expand">Show achievements</string>
     <string name="cached_game_collapse">Hide achievements</string>
     <string name="cached_game_no_description">No description.</string>
+    <string name="cached_game_origin_offline">Offline</string>
 
     <!-- Pending awards adapter -->
     <string name="achievement_title_hardcore">%s (Hardcore)</string>

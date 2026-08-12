@@ -52,6 +52,15 @@ class CachedGamesAdapter(
             notifyDataSetChanged()
         }
 
+    private var offlineEarnedAchievementIds: Set<Int> = emptySet()
+
+    @SuppressLint("NotifyDataSetChanged")
+    fun setOfflineEarnedAchievements(ids: Set<Int>) {
+        if (ids == offlineEarnedAchievementIds) return
+        offlineEarnedAchievementIds = ids
+        notifyDataSetChanged()
+    }
+
     private fun visibleAchievements(game: CachedGame): List<CachedAchievement> =
         if (showLocked) game.achievements else game.achievements.filter { it.unlocked }
 
@@ -128,6 +137,9 @@ class CachedGamesAdapter(
                 R.string.points_format,
                 achievement.points
             )
+
+            view.findViewById<TextView>(R.id.tv_achievement_origin).visibility =
+                if (offlineEarnedAchievementIds.contains(achievement.id)) View.VISIBLE else View.GONE
             return view
         }
 
