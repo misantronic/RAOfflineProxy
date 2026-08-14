@@ -170,6 +170,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     val events = _events.asSharedFlow()
     private val _cachedGames = MutableStateFlow<List<CachedGame>>(emptyList())
     val cachedGames: StateFlow<List<CachedGame>> = _cachedGames.asStateFlow()
+    private val pendingDeletedGameIds = mutableSetOf<String>()
     private val connectivityManager =
         app.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
     private var pendingProxyStart = false
@@ -276,63 +277,68 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 val resolvedHistoryAwards = historyAwards.map { award -> resolvePendingAward(award) }
                 val hasLoginCredentials = loginEntries.isNotEmpty()
                 val pendingAwardsByGameId = buildPendingAwardsByGameId(entries, awards)
+                pendingDeletedGameIds.retainAll(
+                    entries.mapNotNull { CacheKeys.parseGameIdStringFromPatchKey(it.cacheKey) }.toSet()
+                )
                 val games = run {
-                    entries.mapNotNull { entry ->
-                        val parts = entry.cacheKey.split(":")
-                        if (parts.size < 3) return@mapNotNull null
-                        val gameId = parts[1]
-                        val user = parts[2]
-                        val patchData = runCatching {
-                            JSONObject(entry.responseBody).getJSONObject("PatchData")
-                        }.getOrNull()
-                        val title = patchData?.optString("Title") ?: gameId
-                        val imageIconUrl = gameId.toIntOrNull()?.let {
-                            resolveCachedGameIconPath(application, it)
-                        } ?: patchData?.let { pd ->
-                            patchImagePath(pd)?.let { resolveCachedStaticAsset(application, it)?.absolutePath }
-                                ?: patchImageUrl(pd)
-                        }
-                        val unlocksBody = db.cacheDao().get(CacheKeys.unlocks(gameId, user))?.responseBody
-                        val unlockedIds = runCatching {
-                            val json = JSONObject(unlocksBody ?: return@runCatching emptySet())
-                            val unlocks = json.optJSONArray("UserUnlocks") ?: return@runCatching emptySet()
-                            buildSet(unlocks.length()) {
-                                for (i in 0 until unlocks.length()) {
-                                    add(unlocks.optInt(i))
+                    entries
+                        .filter { CacheKeys.parseGameIdStringFromPatchKey(it.cacheKey) !in pendingDeletedGameIds }
+                        .mapNotNull { entry ->
+                            val parts = entry.cacheKey.split(":")
+                            if (parts.size < 3) return@mapNotNull null
+                            val gameId = parts[1]
+                            val user = parts[2]
+                            val patchData = runCatching {
+                                JSONObject(entry.responseBody).getJSONObject("PatchData")
+                            }.getOrNull()
+                            val title = patchData?.optString("Title") ?: gameId
+                            val imageIconUrl = gameId.toIntOrNull()?.let {
+                                resolveCachedGameIconPath(application, it)
+                            } ?: patchData?.let { pd ->
+                                patchImagePath(pd)?.let { resolveCachedStaticAsset(application, it)?.absolutePath }
+                                    ?: patchImageUrl(pd)
+                            }
+                            val unlocksBody = db.cacheDao().get(CacheKeys.unlocks(gameId, user))?.responseBody
+                            val unlockedIds = runCatching {
+                                val json = JSONObject(unlocksBody ?: return@runCatching emptySet())
+                                val unlocks = json.optJSONArray("UserUnlocks") ?: return@runCatching emptySet()
+                                buildSet(unlocks.length()) {
+                                    for (i in 0 until unlocks.length()) {
+                                        add(unlocks.optInt(i))
+                                    }
                                 }
-                            }
-                        }.getOrDefault(emptySet())
-                        val unlockedCount = unlockedIds.size
-                        val totalAchievements = patchData?.optJSONArray("Achievements")?.let { arr ->
-                            var count = 0
-                            for (i in 0 until arr.length()) {
-                                val a = arr.optJSONObject(i) ?: continue
-                                val id = a.optInt("ID", 0)
-                                if (id > 0 && id != WARNING_ACHIEVEMENT_ID && a.optInt("Flags", RC_ACHIEVEMENT_FLAG_CORE) == RC_ACHIEVEMENT_FLAG_CORE) count++
-                            }
-                            count
-                        } ?: 0
-                        val achievements = buildAchievements(patchData, unlockedIds)
-                        val consoleId = patchData?.optInt("ConsoleID", 0) ?: 0
-                        CachedGame(
-                            gameId = gameId,
-                            title = title,
-                            user = user,
-                            consoleId = consoleId,
-                            sourceRomPath = entry.sourceRomPath,
-                            cachedAt = entry.cachedAt,
-                            imageIconUrl = imageIconUrl,
-                            unlockedCount = unlockedCount,
-                            pendingAwardCount = pendingAwardsByGameId[gameId] ?: 0,
-                            totalAchievements = totalAchievements,
-                            achievements = achievements
+                            }.getOrDefault(emptySet())
+                            val unlockedCount = unlockedIds.size
+                            val totalAchievements = patchData?.optJSONArray("Achievements")?.let { arr ->
+                                var count = 0
+                                for (i in 0 until arr.length()) {
+                                    val a = arr.optJSONObject(i) ?: continue
+                                    val id = a.optInt("ID", 0)
+                                    if (id > 0 && id != WARNING_ACHIEVEMENT_ID && a.optInt("Flags", RC_ACHIEVEMENT_FLAG_CORE) == RC_ACHIEVEMENT_FLAG_CORE) count++
+                                }
+                                count
+                            } ?: 0
+                            val achievements = buildAchievements(patchData, unlockedIds)
+                            val consoleId = patchData?.optInt("ConsoleID", 0) ?: 0
+                            CachedGame(
+                                gameId = gameId,
+                                title = title,
+                                user = user,
+                                consoleId = consoleId,
+                                sourceRomPath = entry.sourceRomPath,
+                                cachedAt = entry.cachedAt,
+                                imageIconUrl = imageIconUrl,
+                                unlockedCount = unlockedCount,
+                                pendingAwardCount = pendingAwardsByGameId[gameId] ?: 0,
+                                totalAchievements = totalAchievements,
+                                achievements = achievements
+                            )
+                        }.sortedWith(
+                            compareBy(
+                                { com.raofflineproxy.data.ConsoleNames.nameForId(it.consoleId) },
+                                { it.title.lowercase() }
+                            )
                         )
-                    }.sortedWith(
-                        compareBy(
-                            { com.raofflineproxy.data.ConsoleNames.nameForId(it.consoleId) },
-                            { it.title.lowercase() }
-                        )
-                    )
                 }
                 Quadruple(resolvedAwards, resolvedHistoryAwards, games, hasLoginCredentials)
             }.collect { (resolvedAwards, resolvedHistoryAwards, games, hasLoginCredentials) ->
@@ -1542,6 +1548,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun deleteCachedGame(game: CachedGame) {
+        removeCachedGamesFromState(setOf(game.gameId))
         viewModelScope.launch(Dispatchers.IO) {
             db.cacheDao().deleteByKeyPrefix(CacheKeys.patchPrefix(game.gameId))
             deleteCachedImagesForGame(application, game.gameId)
@@ -1551,12 +1558,21 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun deleteConsoleGames(consoleId: Int) {
         val games = _state.value.cachedGames.filter { it.consoleId == consoleId }
         if (games.isEmpty()) return
+        val gameIds = games.map { it.gameId }.toSet()
+        removeCachedGamesFromState(gameIds)
         viewModelScope.launch(Dispatchers.IO) {
             games.forEach { game ->
                 db.cacheDao().deleteByKeyPrefix(CacheKeys.patchPrefix(game.gameId))
                 deleteCachedImagesForGame(application, game.gameId)
             }
         }
+    }
+
+    private fun removeCachedGamesFromState(gameIds: Set<String>) {
+        pendingDeletedGameIds.addAll(gameIds)
+        val remaining = _state.value.cachedGames.filter { it.gameId !in gameIds }
+        _cachedGames.value = remaining
+        _state.value = _state.value.copy(cachedGames = remaining)
     }
 
     fun refreshGames() {
