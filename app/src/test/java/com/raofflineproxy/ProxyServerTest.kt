@@ -35,6 +35,7 @@ import com.raofflineproxy.proxy.shouldCompactAchievementSets
 import com.raofflineproxy.proxy.shouldQueueAward
 import com.raofflineproxy.proxy.UpstreamResult
 import com.raofflineproxy.proxy.buildAchievementGameIds
+import com.raofflineproxy.proxy.extractAchievementIds
 import com.raofflineproxy.proxy.validateBodyRead
 import com.raofflineproxy.proxy.validateTransferEncoding
 import com.raofflineproxy.data.CacheEntry
@@ -997,6 +998,43 @@ class ProxyServerTest {
         val result = buildAchievementGameIds(listOf(bad, good), emptyList())
         assertNull(result[0])
         assertEquals(379, result[3024])
+    }
+
+    // ── extractAchievementIds() ──
+
+    @Test
+    fun extractAchievementIds_patchShape() {
+        val result = extractAchievementIds(patchEntry(379, 3024, 1282).responseBody)
+        assertEquals(setOf(3024, 1282), result)
+    }
+
+    @Test
+    fun extractAchievementIds_achievementsetsShapeWithSets() {
+        val result = extractAchievementIds(achievementsetsEntry("abc123").responseBody)
+        assertEquals(setOf(120496), result)
+    }
+
+    @Test
+    fun extractAchievementIds_achievementsetsShapeWithoutSets() {
+        val result = extractAchievementIds(achievementsetsEntryNoSets(11342, 120496, 120497).responseBody)
+        assertEquals(setOf(120496, 120497), result)
+    }
+
+    @Test
+    fun extractAchievementIds_mergesEverySetInTheResponse() {
+        val body = """{"GameId":500,"Sets":[{"Achievements":[{"ID":1001}]},{"Achievements":[{"ID":1002}]}]}"""
+        assertEquals(setOf(1001, 1002), extractAchievementIds(body))
+    }
+
+    @Test
+    fun extractAchievementIds_malformedBody_returnsEmptySet() {
+        assertTrue(extractAchievementIds("{not json}").isEmpty())
+    }
+
+    @Test
+    fun extractAchievementIds_ignoresNonPositiveIds() {
+        val body = """{"PatchData":{"Achievements":[{"ID":0},{"ID":7},{"Title":"no id"}]}}"""
+        assertEquals(setOf(7), extractAchievementIds(body))
     }
 
     @Test

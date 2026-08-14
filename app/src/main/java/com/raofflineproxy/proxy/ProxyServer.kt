@@ -40,14 +40,19 @@ import java.net.SocketTimeoutException
 import java.util.Base64
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.LinkedBlockingQueue
+import java.util.concurrent.RejectedExecutionException
+import java.util.concurrent.ThreadFactory
 import java.util.concurrent.ThreadPoolExecutor
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
 import kotlin.time.Duration.Companion.milliseconds
 
 private const val TAG = "RAProxy"
 private const val MAX_WORKER_THREADS = 8
+private const val MAX_QUEUED_CONNECTIONS = 128
+private const val SOCKET_BACKLOG = 50
 private const val SOCKET_TIMEOUT_MS = 30_000
 private const val MAX_REQUEST_BODY_BYTES = 1_048_576 // 1 MiB — rcheevos requests are small
 private const val POST_AWARD_REFRESH_DELAY_MS = 3_000L
@@ -125,7 +130,9 @@ class ProxyServer(
     private val pendingAwardLock = ReentrantLock()
 
     @Volatile private var serverSocket: ServerSocket? = null
+    @Volatile private var acceptThread: Thread? = null
     @Volatile private var lastCachedUserAgent: String? = null
+    @Volatile private var activeGameId: Int? = null
     @Volatile var running = false
         private set
 
@@ -136,8 +143,13 @@ class ProxyServer(
             executor = newExecutor()
         }
         val bindHost = proxyHost()
-        serverSocket = ServerSocket(port, 50, InetAddress.getByName(bindHost))
-        executor.execute { acceptLoop() }
+        val socket = ServerSocket(port, SOCKET_BACKLOG, InetAddress.getByName(bindHost))
+        serverSocket = socket
+        // Accepting on its own thread keeps every worker in the pool available for requests.
+        acceptThread = Thread({ acceptLoop(socket) }, "raproxy-accept").apply {
+            isDaemon = true
+            start()
+        }
         Log.i(TAG, "Proxy started on $bindHost:$port")
     }
 
@@ -145,19 +157,32 @@ class ProxyServer(
         running = false
         serverSocket?.close()
         serverSocket = null
+        acceptThread = null
         executor.shutdownNow()
         Log.i(TAG, "Proxy stopped")
     }
 
-    private fun acceptLoop() {
-        val ss = serverSocket ?: return
-        while (running) {
+    // Bound to the socket it was started with, so an accept loop left over from a previous start()
+    // exits instead of spinning on a closed socket.
+    private fun acceptLoop(serverSocket: ServerSocket) {
+        while (running && !serverSocket.isClosed) {
             try {
-                val socket = ss.accept()
-                executor.execute { handleConnection(socket) }
+                val socket = serverSocket.accept()
+                try {
+                    executor.execute { handleConnection(socket) }
+                } catch (e: RejectedExecutionException) {
+                    rejectConnection(socket)
+                }
             } catch (e: Exception) {
-                if (running) Log.e(TAG, "Accept error: ${e.message}")
+                if (running && !serverSocket.isClosed) Log.e(TAG, "Accept error: ${e.message}")
             }
+        }
+    }
+
+    private fun rejectConnection(socket: Socket) {
+        Log.e(TAG, "Refusing connection: all $MAX_WORKER_THREADS workers busy and $MAX_QUEUED_CONNECTIONS queued")
+        runCatching {
+            socket.use { writeTextResponse(it.getOutputStream(), httpError(503, "proxy busy")) }
         }
     }
 
@@ -297,7 +322,10 @@ class ProxyServer(
         } else {
             Log.i(TAG, "Request: $method ${redactTokens(path)} body=${redactFormBody(rawBody)} action=$action online=${isOnline()}")
         }
-        extractGameActivity(path, rawBody, action)?.let(onGameActivity)
+        extractGameActivity(path, rawBody, action)?.let { activity ->
+            activity.gameId.toIntOrNull()?.let { activeGameId = it }
+            onGameActivity(activity)
+        }
 
         val userAgent = headers["user-agent"]
         if (!userAgent.isNullOrEmpty() && userAgent != lastCachedUserAgent) {
@@ -369,7 +397,7 @@ class ProxyServer(
             }
             latch.countDown()
         }
-        latch.await(3, TimeUnit.SECONDS)
+        awaitDbOperation(latch, "startsession synthesis gameId=$gameId user=$user")
 
         return if (cached != null) {
             Log.i(TAG, "Served synthetic startsession for gameId=$gameId user=$user")
@@ -448,7 +476,7 @@ class ProxyServer(
                 ?: db.cacheDao().getByPrefix("$key:")
             latch.countDown()
         }
-        latch.await(3, TimeUnit.SECONDS)
+        val lookupCompleted = awaitDbOperation(latch, "cache lookup $key")
         return if (cached != null) {
             if (action == "unlocks") {
                 ensureOfflineStartSessionCache(path, rawBody)
@@ -460,7 +488,7 @@ class ProxyServer(
             val rewritten = rewriteImageUrls(action, cached!!.responseBody, proxyBaseUrl)
             okJson(filterWarningAchievementForOnline(action, rewritten))
         } else {
-            Log.e(TAG, "Cache MISS: $key")
+            Log.e(TAG, if (lookupCompleted) "Cache MISS: $key" else "Cache MISS (lookup timed out): $key")
             if (action == "gameid") {
                 okJson("""{"Success":false,"Error":"Game not cached. Launch this game while online first.","GameID":0}""")
             } else {
@@ -481,7 +509,7 @@ class ProxyServer(
             latch.countDown()
         }
 
-        latch.await(3, TimeUnit.SECONDS)
+        awaitDbOperation(latch, "startsession cache refresh gameId=$gameId user=$user")
     }
 
     private fun forwardToRA(method: String, path: String, rawBody: String, headers: Map<String, String>): String? =
@@ -573,7 +601,7 @@ class ProxyServer(
                     alreadyUnlocked = isAchievementAlreadyUnlocked(achievementId, user)
                     latch.countDown()
                 }
-                latch.await(DB_OPERATION_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+                awaitDbOperation(latch, "award dedupe check achievementId=$achievementId")
                 if (alreadyQueued) {
                     Log.i(TAG, "Award already queued: achievementId=$achievementId, skipping duplicate")
                     return@withLock QueueAwardResult.Queued
@@ -595,7 +623,7 @@ class ProxyServer(
                         prevHash = db.pendingAwardDao().getLatestByStatus()?.payloadHash ?: "genesis"
                         latch.countDown()
                     }
-                    latch.await(3, TimeUnit.SECONDS)
+                    awaitDbOperation(latch, "award chain head lookup (a timeout restarts the chain at genesis)")
                     prevHash
                 },
                 signBytes = AwardKeyManager::sign
@@ -611,7 +639,7 @@ class ProxyServer(
                 snapshot = resolveAwardSnapshot(db, context, signedAward.achievementId)
                 snapshotLatch.countDown()
             }
-            snapshotLatch.await(DB_OPERATION_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+            awaitDbOperation(snapshotLatch, "award snapshot achievementId=${signedAward.achievementId}")
             val awardToWrite = snapshot?.let { s ->
                 signedAward.copy(
                     snapshotGameTitle = s.gameTitle,
@@ -641,10 +669,7 @@ class ProxyServer(
         val token = extractParam("t", path, rawBody) ?: return
         val userAgent = headers["user-agent"] ?: ""
         scope.launch(Dispatchers.IO) {
-            val gameId = buildAchievementGameIds(
-                db.cacheDao().getAllByPrefix(CacheKeys.PREFIX_PATCH),
-                db.cacheDao().getAllByPrefix(CacheKeys.PREFIX_ACHIEVEMENTSETS),
-            )[achievementId] ?: return@launch
+            val gameId = resolveAchievementGameId(achievementId) ?: return@launch
             Log.i(TAG, "Post-award cache refresh in ${POST_AWARD_REFRESH_DELAY_MS}ms for gameId=$gameId achievementId=$achievementId")
             delay(POST_AWARD_REFRESH_DELAY_MS.milliseconds)
             cacheUnlocks(context, gameId, LoginCredentials(user, token), userAgent, db)
@@ -652,13 +677,26 @@ class ProxyServer(
         }
     }
 
+    // The achievement being awarded almost always belongs to the game currently being played, so
+    // resolve it from that one cache entry first. The full scan below loads and parses every cached
+    // game, which is far too slow to sit on a request thread once a user has a large cache.
+    private suspend fun resolveAchievementGameId(achievementId: Int): Int? {
+        val currentGameId = activeGameId
+        if (currentGameId != null && achievementId in cachedGameAchievementIds(db, currentGameId)) {
+            return currentGameId
+        }
+
+        Log.i(TAG, "Resolving achievementId=$achievementId against every cached game")
+        return buildAchievementGameIds(
+            db.cacheDao().getAllByPrefix(CacheKeys.PREFIX_PATCH),
+            db.cacheDao().getAllByPrefix(CacheKeys.PREFIX_ACHIEVEMENTSETS),
+        )[achievementId]
+    }
+
     private suspend fun isAchievementAlreadyUnlocked(achievementId: Int, user: String?): Boolean {
         if (achievementId <= 0 || user.isNullOrEmpty()) return false
 
-        val gameId = buildAchievementGameIds(
-            db.cacheDao().getAllByPrefix(CacheKeys.PREFIX_PATCH),
-            db.cacheDao().getAllByPrefix(CacheKeys.PREFIX_ACHIEVEMENTSETS),
-        )[achievementId] ?: return false
+        val gameId = resolveAchievementGameId(achievementId) ?: return false
         val unlocksBody = db.cacheDao().get(CacheKeys.unlocks(gameId, user))?.responseBody ?: return false
         val unlocks = runCatching {
             JSONObject(unlocksBody).optJSONArray("UserUnlocks")
@@ -684,7 +722,7 @@ class ProxyServer(
             }
             latch.countDown()
         }
-        latch.await(3, TimeUnit.SECONDS)
+        awaitDbOperation(latch, "cached score lookup user=$user")
         return score
     }
 
@@ -736,11 +774,21 @@ class ProxyServer(
         output.flush()
     }
 
+    // A ThreadPoolExecutor only grows past its core size once the queue rejects work, so an
+    // unbounded queue here would pin the pool to a single worker no matter what the maximum says.
     private fun newExecutor(): ThreadPoolExecutor = ThreadPoolExecutor(
-        2, MAX_WORKER_THREADS,
+        MAX_WORKER_THREADS, MAX_WORKER_THREADS,
         60L, TimeUnit.SECONDS,
-        LinkedBlockingQueue()
-    )
+        LinkedBlockingQueue(MAX_QUEUED_CONNECTIONS),
+        workerThreadFactory()
+    ).apply { allowCoreThreadTimeOut(true) }
+
+    private fun workerThreadFactory(): ThreadFactory {
+        val counter = AtomicInteger(1)
+        return ThreadFactory { runnable ->
+            Thread(runnable, "raproxy-worker-${counter.getAndIncrement()}").apply { isDaemon = true }
+        }
+    }
 }
 
 internal fun proxyIsHardcoreRequest(path: String, rawBody: String): Boolean =
@@ -917,7 +965,7 @@ internal fun awaitPendingAwardWrite(
         latch.countDown()
     }
 
-    if (!latch.await(timeoutSeconds, TimeUnit.SECONDS)) {
+    if (!awaitDbOperation(latch, "award queue write achievementId=${award.achievementId}", timeoutSeconds)) {
         return QueueAwardResult.Error("db_write_timeout")
     }
     if (writeError != null) {
@@ -1185,6 +1233,51 @@ internal fun filterWarningAchievementForOnline(action: String?, responseBody: St
     "unlocks"         -> filterWarningAchievementFromUnlocksResponse(responseBody)
     "startsession"    -> filterWarningAchievementFromStartSessionResponse(responseBody)
     else              -> responseBody
+}
+
+internal suspend fun cachedGameAchievementIds(db: AppDatabase, gameId: Int): Set<Int> {
+    val entry = runCatching {
+        db.cacheDao().getByPrefix(CacheKeys.patchPrefix(gameId.toString()))
+    }.getOrNull() ?: return emptySet()
+
+    return extractAchievementIds(entry.responseBody)
+}
+
+// Cached game payloads come in both the patch shape and the achievementsets shape, and an
+// achievementsets response that could not be normalized is stored under the patch key as-is.
+internal fun extractAchievementIds(responseBody: String): Set<Int> {
+    val payload = runCatching { JSONObject(responseBody) }.getOrNull() ?: return emptySet()
+    val ids = linkedSetOf<Int>()
+
+    collectAchievementIds(payload.optJSONObject("PatchData")?.optJSONArray("Achievements"), ids)
+    collectAchievementIds(payload.optJSONArray("Achievements"), ids)
+
+    val sets = payload.optJSONArray("Sets")
+    if (sets != null) {
+        for (index in 0 until sets.length()) {
+            collectAchievementIds(sets.optJSONObject(index)?.optJSONArray("Achievements"), ids)
+        }
+    }
+
+    return ids
+}
+
+private fun collectAchievementIds(achievements: JSONArray?, into: MutableSet<Int>) {
+    if (achievements == null) return
+    for (index in 0 until achievements.length()) {
+        val achievementId = achievements.optJSONObject(index)?.optInt("ID") ?: continue
+        if (achievementId > 0) into.add(achievementId)
+    }
+}
+
+internal fun awaitDbOperation(
+    latch: CountDownLatch,
+    operation: String,
+    timeoutSeconds: Long = DB_OPERATION_TIMEOUT_SECONDS
+): Boolean {
+    if (latch.await(timeoutSeconds, TimeUnit.SECONDS)) return true
+    Log.w(TAG, "DB operation timed out after ${timeoutSeconds}s: $operation")
+    return false
 }
 
 internal fun buildAchievementGameIds(
