@@ -19,7 +19,7 @@ Use the `KNULLI`, `Onion`, `muOS`, and `ROCKNIX` tabs throughout the Linux secti
 - Onion (alpha)
 - muOS (alpha)
 - ROCKNIX (alpha)
-- spruce (experimental, Miyoo Mini only)
+- spruce (experimental)
 
 ## Specifics
 
