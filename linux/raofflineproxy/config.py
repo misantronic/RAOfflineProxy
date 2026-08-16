@@ -9,6 +9,12 @@ from pathlib import Path
 
 DEFAULT_ONION_APP_DIR = Path("/mnt/SDCARD/App/RAOfflineProxy")
 DEFAULT_ONION_STARTUP_SCRIPT = Path("/mnt/SDCARD/.tmp_update/startup/raofflineproxy.sh")
+# spruceOS keeps its bare version string ("4.3.3") in this file — the same one its own
+# updater and spruceRestore upgrade scripts read.
+SPRUCE_VERSION_FILE = Path("/mnt/SDCARD/spruce/spruce")
+SPRUCE_RETROARCH_PLATFORM_DIR = Path("/mnt/SDCARD/RetroArch/platform")
+CPUINFO_PATH = Path("/proc/cpuinfo")
+MAGICX_MARKER = Path("/usr/magicx")
 DEFAULT_MUOS_APPLICATION_DIR = Path("/run/muos/storage/application/RAOfflineProxy")
 DEFAULT_MUOS_INIT_DIR = Path("/run/muos/storage/init")
 DEFAULT_MUOS_RETROARCH_CFG = Path("/opt/muos/share/info/config/retroarch.cfg")
@@ -34,8 +40,59 @@ def running_on_rocknix() -> bool:
     return 'OS_NAME="ROCKNIX"' in content
 
 
+def running_on_spruce() -> bool:
+    return SPRUCE_VERSION_FILE.exists()
+
+
 def running_on_onion() -> bool:
-    return DEFAULT_ONION_APP_DIR.exists()
+    # spruceOS reuses Onion's /mnt/SDCARD/App layout, so the app directory alone does not
+    # identify Onion — without the spruce exclusion every Onion-only branch (most visibly
+    # the OnionOS version gate) would also fire on spruce.
+    return DEFAULT_ONION_APP_DIR.exists() and not running_on_spruce()
+
+
+def running_on_onion_or_spruce() -> bool:
+    """These two share the /mnt/SDCARD layout and the hardware, so this app ships one
+    bundled stack for both: the "Mini" SDL2 video driver, no fontconfig, and
+    gpio-keys-polled raw evdev input."""
+    return running_on_onion() or running_on_spruce()
+
+
+# Mirrors spruce's own device detection (spruce/scripts/helperFunctions.sh). The Anbernic
+# 0xd03 branch is collapsed to one label because all its variants share a single RetroArch
+# config file.
+_SPRUCE_CPUINFO_PLATFORMS = (
+    ("sun8i", "A30"),
+    ("TG5040", "SmartPro"),
+    ("TG3040", "Brick"),
+    ("TG5050", "SmartProS"),
+    ("TG4040", "BrickPro"),
+    ("0xd05", "Flip"),
+    ("0xd04", "Pixel2"),
+    ("0xd03", "AnbernicRG_XX-universal"),
+)
+
+
+def spruce_platform() -> str:
+    try:
+        info = CPUINFO_PATH.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        info = ""
+
+    for token, name in _SPRUCE_CPUINFO_PLATFORMS:
+        if token in info:
+            return name
+
+    if MAGICX_MARKER.exists():
+        return "Zero28"
+
+    return "MiyooMini"
+
+
+def spruce_retroarch_cfg() -> Path:
+    """spruce launches RetroArch with --config pointing at this per-device file, so its
+    .retroarch/retroarch.cfg is never read (see spruce/scripts/emu/lib/ra_functions.sh)."""
+    return SPRUCE_RETROARCH_PLATFORM_DIR / f"retroarch-{spruce_platform()}.cfg"
 
 
 def resolve_config_dir() -> Path:
@@ -189,6 +246,9 @@ def detect_retroarch_cfg() -> str:
     env_override = os.environ.get("RAOFFLINEPROXY_RETROARCH_CFG")
     if env_override:
         return env_override
+
+    if running_on_spruce():
+        return str(spruce_retroarch_cfg())
 
     if DEFAULT_MUOS_RETROARCH_CFG.exists():
         return str(DEFAULT_MUOS_RETROARCH_CFG)

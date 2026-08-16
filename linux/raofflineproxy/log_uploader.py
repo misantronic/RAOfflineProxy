@@ -150,6 +150,8 @@ def _request_upload_target() -> tuple[str, str]:
 
 
 def _platform_label() -> str:
+    if config.running_on_spruce():
+        return "spruce"
     if config.running_on_onion():
         return "Onion"
     if MUOS_MARKER_PATH.exists():
@@ -202,6 +204,14 @@ def _onion_os_version() -> str | None:
     return _read_stripped(ONION_VERSION_FILE)
 
 
+def _spruce_os_version() -> str | None:
+    return _read_stripped(config.SPRUCE_VERSION_FILE)
+
+
+def spruce_os_version() -> str | None:
+    return _spruce_os_version()
+
+
 # OnionOS v4.3.1-1 ships a bundled RetroArch build whose achievements client is not
 # reliably compatible with a custom host, so we only support the build after it.
 SUPPORTED_ONION_VERSION_PREFIX = "v4.4.0"
@@ -243,6 +253,8 @@ def _hardware_device_label(fallback: str) -> str:
 
 
 def _device_label(platform: str) -> str:
+    if platform == "spruce":
+        return config.spruce_platform()
     if platform == "Onion":
         return _onion_device_label()
     if platform == "muOS":
@@ -251,6 +263,9 @@ def _device_label(platform: str) -> str:
 
 
 def _os_version_value(platform: str) -> str | None:
+    if platform == "spruce":
+        # spruce has no /etc/os-release either; this is the file its own updater reads.
+        return _spruce_os_version()
     if platform == "Onion":
         # Onion has no /etc/os-release; its own diagnostics tool reads this file instead.
         return _onion_os_version()

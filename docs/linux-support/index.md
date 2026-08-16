@@ -19,6 +19,7 @@ Use the `KNULLI`, `Onion`, `muOS`, and `ROCKNIX` tabs throughout the Linux secti
 - Onion (alpha)
 - muOS (alpha)
 - ROCKNIX (alpha)
+- spruce (experimental, Miyoo Mini only)
 
 ## Specifics
 
@@ -49,6 +50,16 @@ The ROCKNIX target ships as a self-extracting installer and runs the same SDL me
 Both RetroArch and standalone PPSSPP are supported on ROCKNIX. Starting the proxy patches both `retroarch.cfg` and, when present, `ppsspp.ini`.
 
 :::
+
+## spruce
+
+A separate `RAOfflineProxy-Spruce-*.zip` build exists for [spruceOS](https://github.com/spruceUI/spruceOS). It is **experimental and not yet confirmed on hardware**. Extract it over the SD card root so the app lands in `App/RAOfflineProxy`, then follow the Onion instructions throughout this section — the two builds behave the same except:
+
+- **Autostart is not available.** spruce has no boot hook to install into, so the proxy has to be started from the app after each boot.
+- **RetroAchievements must be set to Softcore** in spruce's own settings. spruce rewrites the achievements keys of the RetroArch config on every game launch, and forces achievements off when its mode is set to Disabled.
+- Only the Miyoo Mini family is covered. The bundled Python and SDL2 libraries are 32-bit ARM builds for that hardware; spruce's other devices are 64-bit and are not supported by this build.
+
+Unlike Onion, there is no minimum OS version — spruce 4.3.x already ships a RetroArch build that works with a custom host.
 
 ## Important Notes
 

@@ -29,7 +29,9 @@ from .config import (
     DEFAULT_ONION_APP_DIR,
     load_config,
     running_on_onion,
+    running_on_onion_or_spruce,
     running_on_rocknix,
+    running_on_spruce,
     save_config,
 )
 from .platform import (
@@ -311,8 +313,18 @@ def run_menu_sdl(command_runner: str) -> None:
         pygame.init()
         pygame.font.init()
 
-        if running_on_onion():
-            surface = _init_onion_display(pygame)
+        if running_on_onion_or_spruce():
+            try:
+                surface = _init_onion_display(pygame)
+            except pygame.error as exc:
+                # The vendored "Mini" SDL2 driver this path needs only exists on the
+                # hardware it was built for. spruce also runs on boards outside that set,
+                # so fall back to a plain fullscreen surface rather than failing to start.
+                log_menu_sdl(f"mini display init failed, falling back: {exc}")
+                os.environ.pop("SDL_VIDEODRIVER", None)
+                pygame.display.quit()
+                pygame.display.init()
+                surface = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
         else:
             try:
                 surface = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
@@ -544,7 +556,7 @@ class MenuSdlSession:
         self.refresh_cached_games()
 
     def load_font(self, size: int, bold: bool = False):
-        if running_on_onion():
+        if running_on_onion_or_spruce():
             font_path = ONION_FONT_BOLD if bold else ONION_FONT_REGULAR
             if font_path.exists():
                 return self.pygame.font.Font(str(font_path), size)
@@ -1015,7 +1027,7 @@ class MenuSdlSession:
         # existing KEYDOWN path on unverified assumptions. Keep draining the
         # event queue regardless (QUIT still matters, and an undrained SDL
         # event queue can back up).
-        skip_keydown = running_on_onion() and bool(getattr(self, "input_handles", None))
+        skip_keydown = running_on_onion_or_spruce() and bool(getattr(self, "input_handles", None))
         for event in self.pygame.event.get():
             if event.type == self.pygame.QUIT:
                 self.running = False
@@ -1356,6 +1368,8 @@ class MenuSdlSession:
     def update_platform(self) -> str:
         if running_on_muos():
             return "muos"
+        if running_on_spruce():
+            return "spruce"
         if running_on_onion():
             return "onion"
         if running_on_rocknix():
@@ -2721,7 +2735,7 @@ class MenuSdlSession:
         if running_on_muos():
             self.install_update_muos()
             return
-        if running_on_onion():
+        if running_on_onion_or_spruce():
             self.install_update_onion()
             return
 

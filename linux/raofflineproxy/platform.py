@@ -8,6 +8,7 @@ from .config import (
     MUOS_USER_INIT_CONFIG,
     detect_retroarch_cfg,
     running_on_rocknix,
+    running_on_spruce,
     save_config,
 )
 
@@ -187,6 +188,12 @@ def resolve_startup_script_path(config_data: dict) -> Path | None:
     configured = config_data.get("startup_script")
     if configured:
         return Path(str(configured))
+
+    # spruce ships a /mnt/SDCARD/.tmp_update of its own, but its boot entry point runs
+    # spruce/scripts/runtime.sh directly and never sources the startup/ directory Onion
+    # uses — an Onion hook installed there would silently never fire.
+    if running_on_spruce():
+        return None
 
     if Path("/mnt/SDCARD/.tmp_update").exists():
         return DEFAULT_ONION_STARTUP_SCRIPT
