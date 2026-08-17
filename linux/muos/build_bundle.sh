@@ -3,7 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LINUX_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
-VERSION="${RAOFFLINEPROXY_APP_VERSION:-1.11.1-alpha2}"
+VERSION="${RAOFFLINEPROXY_APP_VERSION:-1.11.1-alpha3}"
 DIST_DIR="${SCRIPT_DIR}/dist/RAOfflineProxy"
 APP_DIR="${DIST_DIR}/app"
 LIB_DIR="${DIST_DIR}/lib"

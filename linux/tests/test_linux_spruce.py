@@ -236,11 +236,11 @@ class SpruceAutostartTests(unittest.TestCase):
 class SpruceUpdateTests(unittest.TestCase):
     ASSETS = [
         {
-            "name": "RAOfflineProxy-Onion-v1.11.1-alpha2.zip",
+            "name": "RAOfflineProxy-Onion-v1.11.1-alpha3.zip",
             "browser_download_url": "https://example.test/onion.zip",
         },
         {
-            "name": "RAOfflineProxy-Spruce-v1.11.1-alpha2.zip",
+            "name": "RAOfflineProxy-Spruce-v1.11.1-alpha3.zip",
             "browser_download_url": "https://example.test/spruce.zip",
         },
     ]
