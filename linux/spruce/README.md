@@ -10,6 +10,8 @@ reuses Onion's CPython runtime, its pygame + `Mini` SDL2 vendor libraries and it
 | | Onion | spruce |
 | --- | --- | --- |
 | RetroArch config | `/mnt/SDCARD/RetroArch/.retroarch/retroarch.cfg` | `/mnt/SDCARD/RetroArch/platform/retroarch-<device>.cfg` |
+| RA credentials | the RetroArch config | `/mnt/SDCARD/Saves/spruce/spruce-config.json` |
+| Default proxy port | 8080 | 8099 |
 | Autostart | `/mnt/SDCARD/.tmp_update/startup/raofflineproxy.sh` | not supported |
 | Version gate | requires Onion v4.4.0+ | none |
 
@@ -44,6 +46,21 @@ The bundled runtime and SDL2 are armv7 builds, so only spruce's `MiyooMini` devi
 is expected to work. On other spruce devices the launcher leaves `SDL_VIDEODRIVER` unset
 and `menu_sdl` falls back to a plain fullscreen surface; those are aarch64 boards and
 would additionally need an aarch64 runtime, which this bundle does not ship.
+
+## Credentials
+
+spruce stores the RetroAchievements username and password entered in its own settings in
+`spruce-config.json`, and only copies them into the RetroArch config when a game launches.
+Before the first launch the config's `cheevos_username` is still empty, so
+`load_spruce_credentials()` reads that file directly — the same shape as the ROCKNIX
+appendconfig case. spruce stores no token, only a password.
+
+## Default port
+
+spruce ships SFTPGo bound to `0.0.0.0:8080` (`spruce/bin/SFTPGo/sftpgo/sftpgo.json`) and
+starts it whenever SFTPGo is enabled in Network Settings, so the usual 8080 default can
+never bind there. The spruce default is 8099; `proxy_port` in `data/config.json` still
+overrides it.
 
 ## In-app requirement
 

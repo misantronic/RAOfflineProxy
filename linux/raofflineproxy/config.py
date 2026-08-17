@@ -13,6 +13,12 @@ DEFAULT_ONION_STARTUP_SCRIPT = Path("/mnt/SDCARD/.tmp_update/startup/raofflinepr
 # updater and spruceRestore upgrade scripts read.
 SPRUCE_VERSION_FILE = Path("/mnt/SDCARD/spruce/spruce")
 SPRUCE_RETROARCH_PLATFORM_DIR = Path("/mnt/SDCARD/RetroArch/platform")
+# spruce keeps the RetroAchievements credentials entered in its own settings here, and
+# only writes them into the RetroArch config when a game launches (its prepare_ra_config
+# seds them in). Before the first launch the config's cheevos_username is still empty, so
+# this file is the only place the credentials exist.
+SPRUCE_CONFIG_JSON = Path("/mnt/SDCARD/Saves/spruce/spruce-config.json")
+SPRUCE_SETTINGS_MENU = "RetroAchievements Settings"
 CPUINFO_PATH = Path("/proc/cpuinfo")
 MAGICX_MARKER = Path("/usr/magicx")
 DEFAULT_MUOS_APPLICATION_DIR = Path("/run/muos/storage/application/RAOfflineProxy")
@@ -95,6 +101,37 @@ def spruce_retroarch_cfg() -> Path:
     return SPRUCE_RETROARCH_PLATFORM_DIR / f"retroarch-{spruce_platform()}.cfg"
 
 
+def spruce_setting(name: str) -> str | None:
+    """Reads .menuOptions."<menu>".<name>.selected out of spruce's settings file, the same
+    path its own get_config_value helper uses."""
+    try:
+        with SPRUCE_CONFIG_JSON.open(encoding="utf-8") as handle:
+            data = json.load(handle)
+    except (OSError, json.JSONDecodeError):
+        return None
+
+    if not isinstance(data, dict):
+        return None
+
+    menu = data.get("menuOptions")
+    if not isinstance(menu, dict):
+        return None
+
+    section = menu.get(SPRUCE_SETTINGS_MENU)
+    if not isinstance(section, dict):
+        return None
+
+    entry = section.get(name)
+    if not isinstance(entry, dict):
+        return None
+
+    value = entry.get("selected")
+    if not isinstance(value, str):
+        return None
+
+    return value.strip() or None
+
+
 def resolve_config_dir() -> Path:
     configured = os.environ.get("RAOFFLINEPROXY_CONFIG_DIR")
     if configured:
@@ -126,6 +163,9 @@ PROXY_UA_TAG = f"RAOfflineProxy/Linux/{APP_VERSION}"
 FALLBACK_USER_AGENT = "RetroArch/1.21.0 (Linux)"
 
 DEFAULT_PROXY_PORT = 8080
+# spruce ships SFTPGo bound to 0.0.0.0:8080 (its sftpgo.json httpd binding) and starts it
+# whenever SFTPGo is enabled in Network Settings, so the usual default can never bind.
+SPRUCE_DEFAULT_PROXY_PORT = 8099
 MIN_PROXY_PORT = 1024
 MAX_PROXY_PORT = 65535
 
@@ -197,8 +237,12 @@ def save_config(data: dict) -> None:
         handle.write("\n")
 
 
+def default_proxy_port() -> int:
+    return SPRUCE_DEFAULT_PROXY_PORT if running_on_spruce() else DEFAULT_PROXY_PORT
+
+
 def proxy_port(config_data: dict) -> int:
-    raw_port = config_data.get("proxy_port", DEFAULT_PROXY_PORT)
+    raw_port = config_data.get("proxy_port", default_proxy_port())
     port = int(raw_port)
     if not (MIN_PROXY_PORT <= port <= MAX_PROXY_PORT):
         raise ValueError(f"Invalid proxy port: {port}")
