@@ -189,6 +189,16 @@ class SprucePortTests(unittest.TestCase):
 
         self.assertTrue(service.port_is_available({"proxy_port": free_port}))
 
+    def test_service_status_reports_the_resolved_port(self) -> None:
+        written: dict = {}
+        with patch.object(service, "save_pid", lambda *_a: None):
+            with patch.object(service, "save_service_status", written.update):
+                with patch.object(config, "running_on_spruce", return_value=True):
+                    service.save_running_service_state(123, {})
+
+        self.assertEqual(written["proxyPort"], config.SPRUCE_DEFAULT_PROXY_PORT)
+        self.assertEqual(written["proxyHost"], "127.0.0.1")
+
     def test_start_reports_a_taken_port_instead_of_dying_silently(self) -> None:
         listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.addCleanup(listener.close)

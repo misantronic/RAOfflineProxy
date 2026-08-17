@@ -185,8 +185,8 @@ def save_running_service_state(
             "running": True,
             "pid": pid,
             "startedAt": started_at or int(time.time()),
-            "proxyHost": config_data.get("proxy_host", "127.0.0.1"),
-            "proxyPort": int(config_data.get("proxy_port", 8080)),
+            "proxyHost": proxy_host(config_data),
+            "proxyPort": proxy_port(config_data),
         }
     )
 
@@ -379,8 +379,8 @@ def run_service_foreground(config_data: dict) -> None:
             "running": True,
             "pid": os.getpid(),
             "startedAt": int(time.time()),
-            "proxyHost": config_data.get("proxy_host", "127.0.0.1"),
-            "proxyPort": int(config_data.get("proxy_port", 8080)),
+            "proxyHost": proxy_host(config_data),
+            "proxyPort": proxy_port(config_data),
         }
     )
     save_pid(os.getpid())
