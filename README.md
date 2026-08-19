@@ -14,7 +14,7 @@ RAOfflineProxy runs a tiny local proxy on your device. It sits between supported
 ## Supported Platforms
 
 - **Android**: RetroArch, Dolphin, PPSSPP, ARMSX2, WatermelonDS
-- **Linux**: KNULLI, Onion, muOS, ROCKNIX, spruce
+- **Linux**: KNULLI, Onion, muOS, ROCKNIX, spruce (experimental)
 
 ## Current Releases
 

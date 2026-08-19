@@ -129,7 +129,7 @@ RAOfflineProxy patches the emulator configs it needs in order to redirect RetroA
 
 == spruce
 
-> spruce support is currently in alpha.
+> spruce support is currently experimental.
 >
 > Tested on a Miyoo Mini Plus running [spruce 4.3.4](https://github.com/spruceUI/spruceOS/releases). The bundled runtime is a 32-bit ARM build, so it covers the Miyoo Mini family and the A30; spruce's 64-bit devices are not supported by this bundle.
 

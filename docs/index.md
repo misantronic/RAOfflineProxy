@@ -100,6 +100,7 @@ features:
         <div class="supported-platforms__item">
           <img class="supported-platforms__logo--rounded" src="/spruce.png" alt="spruce logo">
           <span>spruce</span>
+          <em class="supported-platforms__tag">experimental</em>
         </div>
       </div>
     </div>

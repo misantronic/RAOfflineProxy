@@ -110,6 +110,17 @@
   font-weight: 600;
 }
 
+.supported-platforms__tag {
+  margin-top: -0.45rem;
+  padding: 0.1rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-style: normal;
+  font-weight: 600;
+  color: var(--vp-c-warning-1);
+  background: var(--vp-c-warning-soft);
+}
+
 @media (min-width: 768px) {
   .supported-platforms__groups {
     grid-template-columns: repeat(2, minmax(0, 1fr));

@@ -1,9 +1,10 @@
 # RAOfflineProxy — spruceOS
 
-spruceOS bundle, derived from the Onion one. Both firmwares use the same
-`/mnt/SDCARD/App/<name>/` layout and run on the same 32-bit ARM hardware, so this package
-reuses Onion's CPython runtime, its pygame + `Mini` SDL2 vendor libraries and its armv7
-`libraproxy_rchash.so`.
+spruceOS bundle, derived from the Onion one. Support is **experimental**.
+
+Both firmwares use the same `/mnt/SDCARD/App/<name>/` layout and run on the same 32-bit
+ARM hardware, so this package reuses Onion's CPython runtime, its pygame + `Mini` SDL2
+vendor libraries and its armv7 `libraproxy_rchash.so`.
 
 ## What differs from Onion
 
