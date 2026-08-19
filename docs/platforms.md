@@ -23,6 +23,7 @@ This page tracks which emulators and Linux handheld platforms `RAOfflineProxy` c
 | :------------------------------------------------------------------------------------------------------: | ----------- | ------------------------------------------------------------------------------------ |
 |                 <img class="platforms-table__logo" src="/knulli.png" alt="KNULLI logo">                  | **KNULLI**  | ✅ RetroArch Supported                                                               |
 |                  <img class="platforms-table__logo" src="/onion.svg" alt="Onion logo">                   | **Onion**   | ✅ RetroArch Supported                                                               |
+|  <img class="platforms-table__logo platforms-table__logo--rounded" src="/spruce.png" alt="spruce logo">  | **spruce**  | ✅ RetroArch Supported                                                               |
 |                   <img class="platforms-table__logo" src="/muos.png" alt="muOS logo">                    | **muOS**    | ✅ RetroArch Supported                                                               |
 | <img class="platforms-table__logo platforms-table__logo--rounded" src="/rocknix.png" alt="ROCKNIX logo"> | **ROCKNIX** | ✅ RetroArch, PPSSPP Supported                                                       |
 |  <img class="platforms-table__logo platforms-table__logo--rounded" src="/darkos.png" alt="dArkOS logo">  | **dArkOS**  | 🔜 Planned, [pending release](https://github.com/misantronic/RAOfflineProxy/pull/47) |

@@ -34,6 +34,26 @@ That startup script calls the app's headless launcher:
 /App/RAOfflineProxy/autostart-launch.sh
 ```
 
+== spruce
+
+spruce autostart is available from the app menu.
+
+spruce has no drop-in startup folder, so RAOfflineProxy adds a small guarded block to spruce's own boot script:
+
+```text
+/.tmp_update/updater
+```
+
+That block calls the app's headless launcher:
+
+```text
+/App/RAOfflineProxy/autostart-launch.sh
+```
+
+::: tip Reinstalled automatically
+A spruce update replaces `/.tmp_update` and removes the block. The app reinstalls it every time you open RAOfflineProxy, so autostart repairs itself after a spruce update.
+:::
+
 == muOS
 
 muOS autostart is available from the app menu.

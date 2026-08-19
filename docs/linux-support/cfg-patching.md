@@ -18,6 +18,16 @@ You normally do not need to edit RetroArch config yourself. Starting the proxy p
 /mnt/SDCARD/RetroArch/.retroarch/retroarch.cfg
 ```
 
+== spruce
+
+spruce launches RetroArch with its own per-device config rather than the usual one, so that is the file RAOfflineProxy patches:
+
+```text
+/mnt/SDCARD/RetroArch/platform/retroarch-<device>.cfg
+```
+
+spruce rewrites the account and achievement keys in this file on every game launch, but leaves the proxy's custom-host setting alone, so the patch survives.
+
 == muOS
 
 ```text
