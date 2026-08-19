@@ -103,7 +103,11 @@ def canonical_reason_phrase(code: int) -> str:
 # substring match also fires on the "t=" inside host=, port= and checked_at=, and with no
 # "&" left on the line to stop at it swallows everything after it. That silently shredded
 # whole support logs, which are redacted line by line before upload.
-_QUERY_SECRET_PATTERN = re.compile(r"(^|[?&\s])([tp])=([^&\s]*)")
+#
+# The delimiter class is deliberately wider than "?&": these run over free-text log lines,
+# where a secret can also follow a quote or a comma. Letters are what must not qualify, so
+# host=/port=/checked_at= stay readable.
+_QUERY_SECRET_PATTERN = re.compile(r"""(^|[?&,;\s"'\[({])([tp])=([^&\s"'\])}]*)""")
 
 
 def redact_query_tokens(value: str) -> str:

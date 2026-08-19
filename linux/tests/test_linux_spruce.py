@@ -30,6 +30,30 @@ class SpruceDetectionTests(unittest.TestCase):
                 self.assertTrue(config.running_on_onion())
                 self.assertTrue(config.running_on_onion_or_spruce())
 
+    def test_onion_wins_when_a_stale_spruce_directory_is_left_on_the_card(self) -> None:
+        # Reinstalling Onion over a card that once ran spruce leaves /mnt/SDCARD/spruce
+        # behind. Without the tie-break the Onion device would take spruce's config path,
+        # port and boot hook.
+        with tempfile.TemporaryDirectory() as temp_dir:
+            spruce_marker = Path(temp_dir) / "spruce"
+            spruce_marker.write_text("4.3.4\n", encoding="utf-8")
+            onion_marker = Path(temp_dir) / "version.txt"
+            onion_marker.write_text("v4.4.0\n", encoding="utf-8")
+
+            with patch.object(config, "SPRUCE_VERSION_FILE", spruce_marker):
+                with patch.object(config, "ONION_VERSION_FILE", onion_marker):
+                    self.assertFalse(config.running_on_spruce())
+                    with patch.object(Path, "exists", return_value=True):
+                        self.assertTrue(config.running_on_onion())
+
+    def test_spruce_detected_when_only_its_marker_is_present(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            spruce_marker = Path(temp_dir) / "spruce"
+            spruce_marker.write_text("4.3.4\n", encoding="utf-8")
+            with patch.object(config, "SPRUCE_VERSION_FILE", spruce_marker):
+                with patch.object(config, "ONION_VERSION_FILE", Path(temp_dir) / "absent"):
+                    self.assertTrue(config.running_on_spruce())
+
     def test_spruce_platform_reads_cpuinfo_tokens(self) -> None:
         cases = {
             "Hardware\t: sun8i\n": "A30",

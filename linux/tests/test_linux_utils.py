@@ -49,6 +49,19 @@ class LinuxUtilsRedactTests(unittest.TestCase):
     def test_redact_query_tokens_redacts_at_the_start_of_a_value(self) -> None:
         self.assertEqual(utils.redact_query_tokens("t=secret"), "t=<token>")
 
+    def test_redact_query_tokens_covers_delimiters_other_than_query_separators(self) -> None:
+        # These run over free-text log lines, where a secret can follow a quote or comma
+        # rather than an "&". Narrowing to "?&" would silently stop redacting those.
+        for line, expected in (
+            ('quoted "t=secret"', 'quoted "t=<token>"'),
+            ("csv u=bob,t=secret", "csv u=bob,t=<token>"),
+            ("single 't=secret'", "single 't=<token>'"),
+            ("list [t=secret]", "list [t=<token>]"),
+            ("paren (p=secret)", "paren (p=<token>)"),
+            ("semi a=1;t=secret", "semi a=1;t=<token>"),
+        ):
+            self.assertEqual(utils.redact_query_tokens(line), expected)
+
     def test_redact_query_tokens_leaves_value_without_secrets_unchanged(self) -> None:
         value = "r=login2&u=user"
         self.assertEqual(utils.redact_query_tokens(value), value)

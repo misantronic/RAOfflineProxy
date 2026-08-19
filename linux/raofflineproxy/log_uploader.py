@@ -23,7 +23,7 @@ MUOS_MARKER_PATH = Path("/opt/muos/script/archive")
 # Both confirmed from OnionUI/Onion's own diagnostics script
 # (static/build/.tmp_update/script/diagnostics/util_snapshot.sh), which reads the exact same
 # two files for its "System log snapshot" support tool.
-ONION_VERSION_FILE = Path("/mnt/SDCARD/.tmp_update/onionVersion/version.txt")
+ONION_VERSION_FILE = config.ONION_VERSION_FILE
 ONION_DEVICE_MODEL_FILE = Path("/tmp/deviceModel")
 # /etc/os-release's OS_VERSION is deliberately truncated to just the leading number by Knulli's
 # own build script (board/scripts/post-build-script.sh in knulli-cfw/knulli-linux); this

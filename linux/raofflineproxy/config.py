@@ -12,6 +12,9 @@ DEFAULT_ONION_STARTUP_SCRIPT = Path("/mnt/SDCARD/.tmp_update/startup/raofflinepr
 # spruceOS keeps its bare version string ("4.3.3") in this file — the same one its own
 # updater and spruceRestore upgrade scripts read.
 SPRUCE_VERSION_FILE = Path("/mnt/SDCARD/spruce/spruce")
+# Onion's own version marker, used to break a tie when both firmwares have left traces on
+# the card. See running_on_spruce().
+ONION_VERSION_FILE = Path("/mnt/SDCARD/.tmp_update/onionVersion/version.txt")
 SPRUCE_RETROARCH_PLATFORM_DIR = Path("/mnt/SDCARD/RetroArch/platform")
 # spruce keeps the RetroAchievements credentials entered in its own settings here, and
 # only writes them into the RetroArch config when a game launches (its prepare_ra_config
@@ -47,7 +50,14 @@ def running_on_rocknix() -> bool:
 
 
 def running_on_spruce() -> bool:
-    return SPRUCE_VERSION_FILE.exists()
+    if not SPRUCE_VERSION_FILE.exists():
+        return False
+
+    # Reinstalling Onion over a card that once ran spruce leaves /mnt/SDCARD/spruce in
+    # place, which would otherwise make an Onion device answer yes here and then get
+    # spruce's config path, port and boot hook. Onion's own version file settles it: the
+    # reverse case cannot happen, because spruce's updater deletes .tmp_update wholesale.
+    return not ONION_VERSION_FILE.exists()
 
 
 def running_on_onion() -> bool:
