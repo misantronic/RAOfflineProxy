@@ -7,6 +7,6 @@
     "dependencies": {
         "@aws-sdk/client-ses": "^3.1110.0",
         "@aws-sdk/client-ssm": "^3.1110.0",
-        "stripe": "^22.4.0"
+        "stripe": "^22.5.0"
     }
 }
