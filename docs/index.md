@@ -90,6 +90,10 @@ features:
           <span>Onion</span>
         </div>
         <div class="supported-platforms__item">
+          <img class="supported-platforms__logo--rounded" src="/spruce.png" alt="spruce logo">
+          <span>spruce</span>
+        </div>
+        <div class="supported-platforms__item">
           <img src="/muos.png" alt="muOS logo">
           <span>muOS</span>
         </div>
