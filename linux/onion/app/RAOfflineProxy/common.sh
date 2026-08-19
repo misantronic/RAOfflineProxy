@@ -50,6 +50,11 @@ prepare_env() {
     export RAOFFLINEPROXY_RETROARCH_CFG="$APP_RETROARCH_CFG"
     export RAOFFLINEPROXY_APP_VERSION="${APP_VERSION#v}"
     export RAOFFLINEPROXY_CACHE_IMAGES=0
+    # glibc gives every allocating thread its own heap and grows each in 1MB chunks it never
+    # returns; the proxy runs a thread per connection plus background workers. Measured on a
+    # 103MB Miyoo Mini: 9 threads held 9 arenas totalling 14.6MB, and capping this cut the
+    # service from 32MB to 19MB RSS.
+    export MALLOC_ARENA_MAX=2
     export PYTHONPATH="$APP_PACKAGE_DIR${PYTHONPATH:+:$PYTHONPATH}"
     export LD_LIBRARY_PATH="$APP_LIB_DIR:/config/lib:/customer/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
     export SDL_VIDEODRIVER=Mini

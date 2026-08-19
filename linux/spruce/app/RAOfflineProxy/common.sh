@@ -59,6 +59,10 @@ prepare_env() {
     export RAOFFLINEPROXY_APP_VERSION="${APP_VERSION#v}"
     export RAOFFLINEPROXY_CACHE_IMAGES=0
     export PYTHONPATH="$APP_PACKAGE_DIR${PYTHONPATH:+:$PYTHONPATH}"
+    # glibc hands every allocating thread its own heap and grows each in 1MB chunks it
+    # never returns. The proxy runs a thread per connection plus background workers, which
+    # on a 103MB device cost ~15MB of arenas — about as much as the interpreter itself.
+    export MALLOC_ARENA_MAX=2
     export LD_LIBRARY_PATH="$APP_LIB_DIR:/config/lib:/customer/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 
     # The bundled SDL2 is the same build the Onion package ships; its "Mini" video driver
