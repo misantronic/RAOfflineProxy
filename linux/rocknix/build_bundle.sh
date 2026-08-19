@@ -7,7 +7,7 @@ DIST_DIR="${SCRIPT_DIR}/dist"
 BUILD_DIR="${DIST_DIR}/raofflineproxy-rocknix-bundle"
 APP_DIR="${BUILD_DIR}/app"
 LIB_DIR="${BUILD_DIR}/lib"
-VERSION="${RAOFFLINEPROXY_APP_VERSION:-1.11.1-alpha3}"
+VERSION="${RAOFFLINEPROXY_APP_VERSION:-1.11.1-alpha4}"
 INSTALLER_PATH="${DIST_DIR}/RAOfflineProxy-Rocknix-v${VERSION}-Install.sh"
 TEMP_TARBALL="${DIST_DIR}/.raofflineproxy-rocknix-bundle.tar.gz"
 
