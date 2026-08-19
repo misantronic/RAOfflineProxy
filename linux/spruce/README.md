@@ -12,7 +12,7 @@ reuses Onion's CPython runtime, its pygame + `Mini` SDL2 vendor libraries and it
 | RetroArch config | `/mnt/SDCARD/RetroArch/.retroarch/retroarch.cfg` | `/mnt/SDCARD/RetroArch/platform/retroarch-<device>.cfg` |
 | RA credentials | the RetroArch config | `/mnt/SDCARD/Saves/spruce/spruce-config.json` |
 | Default proxy port | 8080 | 8099 |
-| Autostart | `/mnt/SDCARD/.tmp_update/startup/raofflineproxy.sh` | not supported |
+| Autostart | `/mnt/SDCARD/.tmp_update/startup/raofflineproxy.sh` | block prepended to `/mnt/SDCARD/.tmp_update/updater` |
 | Version gate | requires Onion v4.4.0+ | none |
 
 spruce launches RetroArch with `--config` pointing at the per-device file
@@ -20,10 +20,20 @@ spruce launches RetroArch with `--config` pointing at the per-device file
 read. `common.sh` resolves the device the same way spruce's own `helperFunctions.sh` does
 and exports the matching path as `RAOFFLINEPROXY_RETROARCH_CFG`.
 
-spruce's boot entry point (`.tmp_update/updater`) runs `spruce/scripts/runtime.sh`
-directly and never sources a startup directory, so there is no drop-in boot hook. The
-menu therefore hides the autostart entry and the proxy has to be started from the app
-after each boot.
+## Autostart
+
+spruce has no drop-in boot directory: `.tmp_update/updater` is the entire boot entry
+point, and it ends by dispatching into a per-device startup script that never returns.
+`install_spruce_boot_hook()` therefore prepends a sentinel-guarded block straight after
+the shebang — not appended, and deliberately not anchored on any device-specific line, so
+it holds on every spruce device. The block backgrounds `autostart-launch.sh` and is
+wrapped in `[ -x ]`, because this file is the only path to a bootable device.
+
+The updater is destroyed by every spruce update (it is on the updater's own delete list,
+while `App/RAOfflineProxy` is not), so `launch.sh` reinstalls the hook on each app launch
+— the same self-repair pattern ROCKNIX needs. Verified on a Miyoo Mini running spruce
+4.3.4: after a reboot the service came up on its own, bound its port, and the hook
+survived.
 
 No OS version gate: spruce 4.3.x ships RetroArch 1.22.2, whose achievements client
 handles `cheevos_custom_host` correctly. That gate exists for Onion because OnionOS

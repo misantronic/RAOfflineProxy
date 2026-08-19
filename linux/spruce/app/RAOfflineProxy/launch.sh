@@ -12,6 +12,9 @@ prepare_env
 if resolve_python_bin; then
     PYTHON_BIN="$RESOLVED_PYTHON_BIN"
     run_backend_raw "$PYTHON_BIN" probe-online >/dev/null 2>&1 &
+    # Reinstall the boot hook on every launch: a spruce update wipes .tmp_update, and the
+    # app directory survives it, so this is the only thing that repairs autostart.
+    run_backend "$PYTHON_BIN" ensure-boot-hook >/dev/null 2>&1 || true
     exec "$PYTHON_BIN" -m raofflineproxy.main menu-sdl
 fi
 

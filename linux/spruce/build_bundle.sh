@@ -64,6 +64,7 @@ find "${APP_DIR}" -name "__pycache__" -type d -prune -exec rm -rf {} +
 find "${APP_DIR}" -name "*.pyc" -delete
 
 chmod +x "${APP_DIR}/launch.sh"
+chmod +x "${APP_DIR}/autostart-launch.sh"
 
 mkdir -p "${DIST_DIR}"
 

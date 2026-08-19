@@ -215,22 +215,125 @@ class SprucePortTests(unittest.TestCase):
         self.assertIn("already in use", str(caught.exception))
 
 
-class SpruceAutostartTests(unittest.TestCase):
-    def test_autostart_unsupported_on_spruce(self) -> None:
-        with patch.object(platform, "running_on_spruce", return_value=True):
-            self.assertIsNone(platform.resolve_startup_script_path({}))
-            self.assertFalse(platform.autostart_supported({}))
+# Verbatim copy of spruce 4.3.4's /mnt/SDCARD/.tmp_update/updater, pulled off a real
+# Miyoo Mini. The hook is inserted into this exact file at boot, so the tests run against
+# the real thing rather than a hand-written approximation.
+SPRUCE_UPDATER = """#!/bin/sh
 
-    def test_explicit_startup_script_still_wins_on_spruce(self) -> None:
-        with tempfile.TemporaryDirectory() as temp_dir:
-            startup_script = Path(temp_dir) / "custom.sh"
-            with patch.object(platform, "running_on_spruce", return_value=True):
-                self.assertEqual(
-                    platform.resolve_startup_script_path(
-                        {"startup_script": str(startup_script)}
-                    ),
-                    startup_script,
-                )
+INFO=$(cat /proc/cpuinfo 2> /dev/null)
+case $INFO in
+    *"sun8i"*) export PLATFORM="A30" ;;
+    *"TG5040"*)	export PLATFORM="SmartPro" ;;
+    *"TG3040"*)	export PLATFORM="Brick"	;;
+    *"TG4040"*)	export PLATFORM="BrickPro"	;;
+    *"TG5050"*)	export PLATFORM="SmartProS"	;;
+    *"0xd05"*) export PLATFORM="Flip" ;;
+    *"0xd04"*) export PLATFORM="Pixel2" ;;
+    *) 
+        if [ -e /usr/magicx ]; then
+            export PLATFORM="Zero28"
+        else
+            export PLATFORM="MiyooMini" 
+        fi
+        ;;
+esac
+
+
+if [ "$PLATFORM" = "MiyooMini" ]; then
+    /mnt/SDCARD/spruce/scripts/platform/miyoo_mini_startup.sh
+else
+    cd /mnt/SDCARD/spruce/scripts
+    ./runtime.sh
+fi
+"""
+
+
+class SpruceBootHookTests(unittest.TestCase):
+    def _updater(self):
+        temp_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(temp_dir.cleanup)
+        path = Path(temp_dir.name) / "updater"
+        path.write_text(SPRUCE_UPDATER, encoding="utf-8")
+        return path
+
+    def test_hook_is_inserted_above_the_dispatch_not_appended(self) -> None:
+        path = self._updater()
+        platform.install_spruce_boot_hook(path)
+        content = path.read_text(encoding="utf-8")
+
+        hook_at = content.index(platform.AUTOSTART_SENTINEL_START)
+        # Appending would put it after a dispatch that never returns, so it would never
+        # run. Anchored on the shebang rather than any device-specific line.
+        self.assertTrue(content.startswith("#!"))
+        self.assertLess(hook_at, content.index("./runtime.sh"))
+        self.assertIn(str(platform.SPRUCE_AUTOSTART_LAUNCHER), content)
+        self.assertIn("&", content[hook_at : content.index("./runtime.sh")])
+
+    def test_original_boot_logic_is_preserved(self) -> None:
+        path = self._updater()
+        platform.install_spruce_boot_hook(path)
+        content = path.read_text(encoding="utf-8")
+
+        for line in SPRUCE_UPDATER.splitlines():
+            if line.strip():
+                self.assertIn(line, content)
+
+    def test_install_is_idempotent(self) -> None:
+        path = self._updater()
+        platform.install_spruce_boot_hook(path)
+        once = path.read_text(encoding="utf-8")
+        platform.install_spruce_boot_hook(path)
+        platform.install_spruce_boot_hook(path)
+        self.assertEqual(path.read_text(encoding="utf-8"), once)
+        self.assertEqual(once.count(platform.AUTOSTART_SENTINEL_START), 1)
+
+    def test_remove_strips_the_block_without_deleting_spruce_boot_file(self) -> None:
+        path = self._updater()
+        platform.install_spruce_boot_hook(path)
+        with patch.object(platform, "running_on_spruce", return_value=True):
+            with patch.object(
+                platform, "DEFAULT_SPRUCE_STARTUP_SCRIPT", path
+            ):
+                platform.remove_boot_hook({"startup_script": str(path)})
+
+        content = path.read_text(encoding="utf-8")
+        self.assertTrue(path.exists())
+        self.assertNotIn(platform.AUTOSTART_SENTINEL_START, content)
+        self.assertIn("./runtime.sh", content)
+
+    def test_unrecognised_boot_file_is_refused(self) -> None:
+        temp_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(temp_dir.cleanup)
+        path = Path(temp_dir.name) / "updater"
+        path.write_text("not a shell script at all\n", encoding="utf-8")
+
+        with self.assertRaises(ValueError):
+            platform.install_spruce_boot_hook(path)
+        # Left untouched rather than guessed at.
+        self.assertNotIn(platform.AUTOSTART_SENTINEL_START, path.read_text(encoding="utf-8"))
+
+    def test_hook_does_not_depend_on_the_device_name(self) -> None:
+        # The insertion point must not be anchored on a per-device line such as spruce's
+        # "$PLATFORM" = "MiyooMini" dispatch; the hook is device-independent.
+        path = self._updater()
+        platform.install_spruce_boot_hook(path)
+        block_start = path.read_text(encoding="utf-8").index(platform.AUTOSTART_SENTINEL_START)
+        block_end = path.read_text(encoding="utf-8").index(platform.AUTOSTART_SENTINEL_END)
+        block = path.read_text(encoding="utf-8")[block_start:block_end]
+        for device in ("MiyooMini", "A30", "Brick", "Flip", "PLATFORM"):
+            self.assertNotIn(device, block)
+
+    def test_autostart_is_now_supported_on_spruce(self) -> None:
+        with patch.object(platform, "running_on_spruce", return_value=True):
+            self.assertEqual(
+                platform.resolve_startup_script_path({}),
+                platform.DEFAULT_SPRUCE_STARTUP_SCRIPT,
+            )
+            self.assertTrue(platform.autostart_supported({}))
+            self.assertEqual(
+                platform.autostart_command({}),
+                (str(platform.SPRUCE_AUTOSTART_LAUNCHER),),
+            )
 
 
 class SpruceUpdateTests(unittest.TestCase):
