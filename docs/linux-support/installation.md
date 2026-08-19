@@ -22,14 +22,6 @@ Before using `RAOfflineProxy` on Linux:
   - Stop proxy in the app
   - Delete the old `/App/RAOfflineProxy` folder before copying a new version
 
-== spruce
-
-- Enter your RetroAchievements account details<br>
-  > Settings -> RetroAchievements Settings
-- Set **Mode** to `Softcore`<br>
-  > spruce rewrites the achievement settings of the RetroArch config on every game launch, and forces achievements off when Mode is `Disabled`.
-- Make sure the system clock is correct so award timestamps are accurate
-
 == muOS
 
 - Enter your RetroAchievements account details in RetroArch<br>
@@ -40,6 +32,14 @@ Before using `RAOfflineProxy` on Linux:
 
 - Enter your RetroAchievements account details<br>
   > Game Settings -> Retroachievement settings
+
+== spruce
+
+- Enter your RetroAchievements account details<br>
+  > Settings -> RetroAchievements Settings
+- Set **Mode** to `Softcore`<br>
+  > spruce rewrites the achievement settings of the RetroArch config on every game launch, and forces achievements off when Mode is `Disabled`.
+- Make sure the system clock is correct so award timestamps are accurate
 
 :::
 
@@ -85,25 +85,6 @@ RAOfflineProxy patches the emulator configs it needs in order to redirect RetroA
 4. Start the proxy while online
 5. Launch a game once so its data is cached
 
-== spruce
-
-> spruce support is currently in alpha.
->
-> Tested on a Miyoo Mini running [spruce 4.3.4](https://github.com/spruceUI/spruceOS/releases). Only the Miyoo Mini family is supported: the bundled runtime is a 32-bit ARM build, and spruce's other devices are 64-bit.
-
-1. Download the latest `RAOfflineProxy-Spruce-*.zip` from [GitHub Releases](https://github.com/misantronic/RAOfflineProxy/releases)
-2. Extract it over the root of your SD card so the app lands in:
-
-```text
-/App/RAOfflineProxy/
-```
-
-3. Launch **RAOfflineProxy** from spruce's Apps section
-4. Start the proxy while online
-5. Launch a game once so its data is cached
-
-> The proxy listens on port `8099` on spruce, because spruce's own SFTPGo service already uses the usual `8080`.
-
 == muOS
 
 > muOS support is currently in alpha.
@@ -147,6 +128,25 @@ RAOfflineProxy patches the emulator configs it needs in order to redirect RetroA
 5. Launch **RAOfflineProxy** from the **Tools** menu
 6. Start the proxy while online
 7. Cache games either from **Cached Games** then **Add ROM** or by launching them once in RetroArch
+
+== spruce
+
+> spruce support is currently in alpha.
+>
+> Tested on a Miyoo Mini Plus running [spruce 4.3.4](https://github.com/spruceUI/spruceOS/releases). The bundled runtime is a 32-bit ARM build, so it covers the Miyoo Mini family and the A30; spruce's 64-bit devices are not supported by this bundle.
+
+1. Download the latest `RAOfflineProxy-Spruce-*.zip` from [GitHub Releases](https://github.com/misantronic/RAOfflineProxy/releases)
+2. Extract it over the root of your SD card so the app lands in:
+
+```text
+/App/RAOfflineProxy/
+```
+
+3. Launch **RAOfflineProxy** from spruce's Apps section
+4. Start the proxy while online
+5. Launch a game once so its data is cached
+
+> The proxy listens on port `8099` on spruce, because spruce's own SFTPGo service already uses the usual `8080`.
 
 :::
 

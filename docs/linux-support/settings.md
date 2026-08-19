@@ -34,26 +34,6 @@ That startup script calls the app's headless launcher:
 /App/RAOfflineProxy/autostart-launch.sh
 ```
 
-== spruce
-
-spruce autostart is available from the app menu.
-
-spruce has no drop-in startup folder, so RAOfflineProxy adds a small guarded block to spruce's own boot script:
-
-```text
-/.tmp_update/updater
-```
-
-That block calls the app's headless launcher:
-
-```text
-/App/RAOfflineProxy/autostart-launch.sh
-```
-
-::: tip Reinstalled automatically
-A spruce update replaces `/.tmp_update` and removes the block. The app reinstalls it every time you open RAOfflineProxy, so autostart repairs itself after a spruce update.
-:::
-
 == muOS
 
 muOS autostart is available from the app menu.
@@ -81,6 +61,26 @@ If you enable it, RAOfflineProxy installs a boot hook under ROCKNIX's autostart 
 ```
 
 ROCKNIX runs every script in that directory on boot. The hook re-adds the **Tools** menu entry (ROCKNIX rebuilds that menu from a read-only source on each boot) and, when autostart is enabled, starts the proxy.
+
+== spruce
+
+spruce autostart is available from the app menu.
+
+spruce has no drop-in startup folder, so RAOfflineProxy adds a small guarded block to spruce's own boot script:
+
+```text
+/.tmp_update/updater
+```
+
+That block calls the app's headless launcher:
+
+```text
+/App/RAOfflineProxy/autostart-launch.sh
+```
+
+::: tip Reinstalled automatically
+A spruce update replaces `/.tmp_update` and removes the block. The app reinstalls it every time you open RAOfflineProxy, so autostart repairs itself after a spruce update.
+:::
 
 :::
 

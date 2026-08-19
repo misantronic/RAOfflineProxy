@@ -31,8 +31,8 @@ wrapped in `[ -x ]`, because this file is the only path to a bootable device.
 
 The updater is destroyed by every spruce update (it is on the updater's own delete list,
 while `App/RAOfflineProxy` is not), so `launch.sh` reinstalls the hook on each app launch
-— the same self-repair pattern ROCKNIX needs. Verified on a Miyoo Mini running spruce
-4.3.4: after a reboot the service came up on its own, bound its port, and the hook
+— the same self-repair pattern ROCKNIX needs. Verified on a Miyoo Mini Plus running
+spruce 4.3.4: after a reboot the service came up on its own, bound its port, and the hook
 survived.
 
 No OS version gate: spruce 4.3.x ships RetroArch 1.22.2, whose achievements client
@@ -52,10 +52,16 @@ root so the app lands in `/mnt/SDCARD/App/RAOfflineProxy`.
 
 ## Hardware coverage
 
-The bundled runtime and SDL2 are armv7 builds, so only spruce's `MiyooMini` device target
-is expected to work. On other spruce devices the launcher leaves `SDL_VIDEODRIVER` unset
-and `menu_sdl` falls back to a plain fullscreen surface; those are aarch64 boards and
-would additionally need an aarch64 runtime, which this bundle does not ship.
+The bundled runtime, native lib and SDL2 are armv7 builds, so this bundle covers spruce's
+two 32-bit targets: `MiyooMini` (Mini, Mini Plus, Mini Flip) and `A30`. Everything else
+spruce supports — `Brick`, `BrickPro`, `SmartPro`, `SmartProS`, `Flip`, `Pixel2`,
+`Zero28` and the Anbernic targets — is aarch64 and would need an aarch64 runtime.
+
+Only `MiyooMini` is verified (tested on a Mini Plus). The A30 shares the architecture so
+the runtime should load, but the vendored SDL2 is steward-fu's Miyoo Mini build: its
+`Mini` video driver does not exist there, so `common.sh` leaves `SDL_VIDEODRIVER` unset
+and `menu_sdl` falls back to a plain fullscreen surface. Whether that build works on A30
+hardware is untested.
 
 ## Credentials
 
