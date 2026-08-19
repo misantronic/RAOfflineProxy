@@ -78,10 +78,15 @@ starts it whenever SFTPGo is enabled in Network Settings, so the usual 8080 defa
 never bind there. The spruce default is 8099; `proxy_port` in `data/config.json` still
 overrides it.
 
-## In-app requirement
+## Achievements mode
 
 spruce rewrites `cheevos_enable`, `cheevos_hardcore_mode_enable`, `cheevos_username` and
 `cheevos_password` into the device config on every game launch, from its own
-RetroAchievements settings. It leaves `cheevos_custom_host` alone, so the proxy patch
-survives — but the user must have RetroAchievements set to **Softcore** in spruce's
-settings, otherwise spruce forces `cheevos_enable = "false"` at launch.
+RetroAchievements settings — after our patch has already run, so its mode decides whether
+achievements are on at all. `cheevos_custom_host` is not in that list, which is why the
+proxy redirect survives on its own.
+
+`spruce_conf.py` therefore patches spruce's `modeToggle` to `Softcore` alongside the
+config patching, and restores the previous value on stop. `Disabled` would switch
+achievements off, `Hardcore` would enable a mode this app does not support, and `Manual`
+leaves the config alone but never writes the account credentials into it.

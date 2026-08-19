@@ -18,6 +18,11 @@ from .ppsspp_cfg import (
     revert_ppsspp_ini,
     store_ppsspp_previous,
 )
+from .spruce_conf import (
+    patch_spruce_mode,
+    revert_spruce_mode,
+    store_spruce_previous,
+)
 from .dolphin_cfg import (
     patch_dolphin_ini,
     revert_dolphin_ini,
@@ -420,10 +425,12 @@ def start_proxy_inline() -> None:
     batocera = patch_batocera_conf(config_data)
     ppsspp = patch_ppsspp_ini(config_data)
     dolphin = patch_dolphin_ini(config_data)
+    spruce = patch_spruce_mode(config_data)
     patch_state = load_patch_state() or {}
     store_batocera_previous(patch_state, batocera)
     store_ppsspp_previous(patch_state, ppsspp)
     store_dolphin_previous(patch_state, dolphin)
+    store_spruce_previous(patch_state, spruce)
     save_patch_state(patch_state)
     start_service_process(config_data)
 
@@ -437,6 +444,7 @@ def stop_proxy_inline() -> None:
     previous_batocera = patch_state.get("batocera_previous", {})
     revert_batocera_conf(config_data, previous_batocera)
     revert_ppsspp_ini(config_data, patch_state.get("ppsspp_previous", {}))
+    revert_spruce_mode(config_data, patch_state.get("spruce_previous_mode"))
     revert_dolphin_ini(config_data, patch_state.get("dolphin_previous", {}))
 
     if patch_state:

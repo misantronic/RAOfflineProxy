@@ -52,7 +52,7 @@ spruce launches RetroArch with its own per-device config rather than the usual o
 /mnt/SDCARD/RetroArch/platform/retroarch-<device>.cfg
 ```
 
-spruce rewrites the account and achievement keys in this file on every game launch, but leaves the proxy's custom-host setting alone, so the patch survives.
+spruce rewrites the account and achievement keys in this file on every game launch from its own RetroAchievements settings, so starting the proxy also switches spruce's achievements mode to `Softcore`. Stopping the proxy restores whatever it was before.
 
 :::
 

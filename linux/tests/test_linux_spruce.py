@@ -12,6 +12,7 @@ from linux.raofflineproxy import (
     platform,
     retroarch_cfg,
     service,
+    spruce_conf,
     update,
 )
 
@@ -154,6 +155,112 @@ class SpruceCredentialTests(unittest.TestCase):
                         retroarch_cfg.load_retroarch_credentials(str(cfg)),
                         {"user": "markadia", "password": "hunter2"},
                     )
+
+
+class SpruceModeTests(unittest.TestCase):
+    def _settings(self, mode):
+        temp_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(temp_dir.cleanup)
+        path = Path(temp_dir.name) / "spruce-config.json"
+        payload = {
+            "menuOptions": {
+                "RetroAchievements Settings": {
+                    "modeToggle": {
+                        "display": "Retroachivements mode",
+                        "options": ["Manual", "Disabled", "Softcore", "Hardcore"],
+                        "selected": mode,
+                    },
+                    "username": {"selected": "someone"},
+                }
+            }
+        }
+        path.write_text(json.dumps(payload, indent=4), encoding="utf-8")
+        return path
+
+    def _read_mode(self, path):
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return data["menuOptions"]["RetroAchievements Settings"]["modeToggle"]["selected"]
+
+    def test_disabled_is_switched_to_softcore(self) -> None:
+        # spruce rewrites cheevos_enable from this setting on every game launch, after our
+        # own patch, so leaving it on Disabled silently turns achievements off.
+        path = self._settings("Disabled")
+        with patch.object(spruce_conf, "running_on_spruce", return_value=True):
+            with patch.object(config, "SPRUCE_CONFIG_JSON", path):
+                result = spruce_conf.patch_spruce_mode({})
+        self.assertTrue(result["changed"])
+        self.assertEqual(result["previous"], "Disabled")
+        self.assertEqual(self._read_mode(path), "Softcore")
+
+    def test_hardcore_is_switched_to_softcore(self) -> None:
+        path = self._settings("Hardcore")
+        with patch.object(spruce_conf, "running_on_spruce", return_value=True):
+            with patch.object(config, "SPRUCE_CONFIG_JSON", path):
+                spruce_conf.patch_spruce_mode({})
+        self.assertEqual(self._read_mode(path), "Softcore")
+
+    def test_softcore_is_left_alone(self) -> None:
+        path = self._settings("Softcore")
+        before = path.read_text(encoding="utf-8")
+        with patch.object(spruce_conf, "running_on_spruce", return_value=True):
+            with patch.object(config, "SPRUCE_CONFIG_JSON", path):
+                result = spruce_conf.patch_spruce_mode({})
+        self.assertFalse(result["changed"])
+        self.assertTrue(result["already_patched"])
+        self.assertEqual(path.read_text(encoding="utf-8"), before)
+
+    def test_other_settings_are_preserved(self) -> None:
+        path = self._settings("Disabled")
+        with patch.object(spruce_conf, "running_on_spruce", return_value=True):
+            with patch.object(config, "SPRUCE_CONFIG_JSON", path):
+                spruce_conf.patch_spruce_mode({})
+        data = json.loads(path.read_text(encoding="utf-8"))
+        section = data["menuOptions"]["RetroAchievements Settings"]
+        self.assertEqual(section["username"]["selected"], "someone")
+        self.assertEqual(
+            section["modeToggle"]["options"], ["Manual", "Disabled", "Softcore", "Hardcore"]
+        )
+
+    def test_revert_restores_the_users_mode(self) -> None:
+        path = self._settings("Disabled")
+        with patch.object(spruce_conf, "running_on_spruce", return_value=True):
+            with patch.object(config, "SPRUCE_CONFIG_JSON", path):
+                result = spruce_conf.patch_spruce_mode({})
+                state = {}
+                spruce_conf.store_spruce_previous(state, result)
+                spruce_conf.revert_spruce_mode({}, state["spruce_previous_mode"])
+        self.assertEqual(self._read_mode(path), "Disabled")
+
+    def test_repatching_does_not_poison_the_saved_mode(self) -> None:
+        path = self._settings("Disabled")
+        state = {}
+        with patch.object(spruce_conf, "running_on_spruce", return_value=True):
+            with patch.object(config, "SPRUCE_CONFIG_JSON", path):
+                spruce_conf.store_spruce_previous(state, spruce_conf.patch_spruce_mode({}))
+                # second start while already patched must not record "Softcore"
+                spruce_conf.store_spruce_previous(state, spruce_conf.patch_spruce_mode({}))
+                spruce_conf.revert_spruce_mode({}, state["spruce_previous_mode"])
+        self.assertEqual(state["spruce_previous_mode"], "Disabled")
+        self.assertEqual(self._read_mode(path), "Disabled")
+
+    def test_noop_when_not_on_spruce(self) -> None:
+        path = self._settings("Disabled")
+        with patch.object(spruce_conf, "running_on_spruce", return_value=False):
+            with patch.object(config, "SPRUCE_CONFIG_JSON", path):
+                result = spruce_conf.patch_spruce_mode({})
+        self.assertFalse(result["exists"])
+        self.assertEqual(self._read_mode(path), "Disabled")
+
+    def test_missing_or_corrupt_settings_are_tolerated(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            with patch.object(spruce_conf, "running_on_spruce", return_value=True):
+                missing = Path(temp_dir) / "absent.json"
+                with patch.object(config, "SPRUCE_CONFIG_JSON", missing):
+                    self.assertFalse(spruce_conf.patch_spruce_mode({})["exists"])
+                corrupt = Path(temp_dir) / "corrupt.json"
+                corrupt.write_text("{nope", encoding="utf-8")
+                with patch.object(config, "SPRUCE_CONFIG_JSON", corrupt):
+                    self.assertFalse(spruce_conf.patch_spruce_mode({})["exists"])
 
 
 class SprucePortTests(unittest.TestCase):

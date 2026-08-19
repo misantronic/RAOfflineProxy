@@ -15,11 +15,11 @@ Use the `KNULLI`, `Onion`, `muOS`, `ROCKNIX`, and `spruce` tabs throughout the L
 
 ## Supported Targets
 
-- KNULLI (alpha)
-- Onion (alpha)
-- muOS (alpha)
-- ROCKNIX (alpha)
-- spruce (alpha)
+- KNULLI
+- Onion
+- muOS
+- ROCKNIX
+- spruce
 
 ## Specifics
 
@@ -54,8 +54,6 @@ Both RetroArch and standalone PPSSPP are supported on ROCKNIX. Starting the prox
 It is currently compatible with [spruce 4.3.x](https://github.com/spruceUI/spruceOS/releases), tested on a Miyoo Mini Plus running spruce 4.3.4.
 
 The bundled Python runtime and SDL libraries are 32-bit ARM builds, which covers spruce's 32-bit devices: the Miyoo Mini family and the A30. spruce's other devices (TrimUI, Anbernic, Miyoo Flip, GKD Pixel 2, MagicX Zero 28) are 64-bit and would need an aarch64 build, which this bundle does not ship.
-
-spruce needs no minimum version the way Onion does — spruce 4.3.x already ships a RetroArch build that works with a custom host. Two things differ from Onion: the proxy uses port `8099`, because spruce's SFTPGo already occupies `8080`, and RetroAchievements must be set to `Softcore` in spruce's own settings, since spruce forces achievements off when its mode is `Disabled`.
 
 :::
 

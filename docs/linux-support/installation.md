@@ -36,9 +36,7 @@ Before using `RAOfflineProxy` on Linux:
 == spruce
 
 - Enter your RetroAchievements account details<br>
-  > Settings -> RetroAchievements Settings
-- Set **Mode** to `Softcore`<br>
-  > spruce rewrites the achievement settings of the RetroArch config on every game launch, and forces achievements off when Mode is `Disabled`.
+  > Settings -> Additional Settings -> RetroAchievements Settings
 - Make sure the system clock is correct so award timestamps are accurate
 
 :::
@@ -145,8 +143,6 @@ RAOfflineProxy patches the emulator configs it needs in order to redirect RetroA
 3. Launch **RAOfflineProxy** from spruce's Apps section
 4. Start the proxy while online
 5. Launch a game once so its data is cached
-
-> The proxy listens on port `8099` on spruce, because spruce's own SFTPGo service already uses the usual `8080`.
 
 :::
 
