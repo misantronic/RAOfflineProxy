@@ -22,6 +22,10 @@ private const val TAG = "RAProxy/Hash"
  * content stream (no real filesystem path) copy the bytes to a temp file
  * first. Zipped console ROMs are extracted here before hashing, because
  * rc_hash's own `.zip` path is for arcade/MAME images, not zipped cartridges.
+ * `.7z` is the same situation minus a reader — rc_hash has none — so the
+ * archive is opened by the bundled LZMA SDK through
+ * [RcHashNativeBridge.list7zEntries] / [RcHashNativeBridge.hash7zEntry], with
+ * entry selection kept here alongside the zip rule.
  *
  * GameCube/Wii *container* formats (`.rvz`/`.ciso`/`.gcz`/`.wbfs`, and raw
  * `.gcm`) are the one case rc_hash can't handle alone: it reads the raw disc
@@ -173,7 +177,17 @@ internal fun hashRomCandidates(input: RomHashInput): List<String> {
     }
     val realPath = input.sourcePath
     if (realPath != null && File(realPath).isFile) {
+        if (hasExtension(fileName, "7z")) return hash7zRomCandidates(realPath)
         return hashCandidatesForPath(realPath)
+    }
+    if (hasExtension(fileName, "7z")) {
+        // The 7z reader opens by path, and the arcade fallback hashes the file
+        // name, so the copy has to keep it.
+        return hashArchiveViaNamedTemp(
+            fileName,
+            File(System.getProperty("java.io.tmpdir") ?: "."),
+            input.openStream,
+        ) { path -> hash7zRomCandidates(path) }
     }
     return hashCandidatesViaTempCopy(fileName, tempDir = null, openStream = input.openStream)
 }
@@ -189,6 +203,14 @@ internal fun hashRomCandidates(context: Context, file: DocumentFile): List<Strin
         return hashZipRomCandidates(fileName, zipSourcePath, context.cacheDir) {
             context.contentResolver.openInputStream(file.uri)
         }
+    }
+
+    if (hasExtension(fileName, "7z")) {
+        val sevenZipPath = resolveDocumentAbsolutePath(file)?.takeIf { File(it).isFile }
+        if (sevenZipPath != null) return hash7zRomCandidates(sevenZipPath)
+        return hashArchiveViaNamedTemp(fileName, context.cacheDir, {
+            context.contentResolver.openInputStream(file.uri)
+        }) { path -> hash7zRomCandidates(path) }
     }
 
     if (isNintendoDiscContainer(fileName)) {
@@ -253,15 +275,18 @@ internal fun hashZipRomCandidates(
     if (sourcePath != null && File(sourcePath).isFile) {
         return hashCandidatesForPath(sourcePath)
     }
-    return hashArcadeZipViaNamedTemp(fileName, tempDir, openArchiveStream)
+    return hashArchiveViaNamedTemp(fileName, tempDir, openArchiveStream) { path ->
+        hashCandidatesForPath(path)
+    }
 }
 
-/** Copies an archive to a temp file that keeps [fileName] so the arcade
- * (filename-based) hash is computed correctly, then hashes and cleans up. */
-private fun hashArcadeZipViaNamedTemp(
+/** Copies an archive to a temp file that keeps [fileName] — the arcade hash is
+ * MD5 of the base filename — runs [hashPath] on the copy, then cleans up. */
+private fun hashArchiveViaNamedTemp(
     fileName: String,
     tempDir: File,
     openArchiveStream: () -> InputStream?,
+    hashPath: (String) -> List<String>,
 ): List<String> {
     val safeName = fileName.substringAfterLast('/').substringAfterLast('\\')
         .ifBlank { "archive.zip" }
@@ -272,10 +297,38 @@ private fun hashArcadeZipViaNamedTemp(
         val copied = runCatching {
             openArchiveStream()?.use { input -> named.outputStream().use(input::copyTo) }
         }.getOrNull()
-        if (copied == null) emptyList() else hashCandidatesForPath(named.absolutePath)
+        if (copied == null) emptyList() else hashPath(named.absolutePath)
     } finally {
         named.delete()
         workDir.delete()
+    }
+}
+
+/** Hash candidates for a `.7z`, which the native reader opens by path.
+ *
+ * A single inner console ROM is hashed by its decompressed content; anything
+ * else — an arcade/MAME set, or an entry the reader cannot decompress — falls
+ * back to rc_hash's arcade rule on the archive's own filename. */
+internal fun hash7zRomCandidates(sourcePath: String): List<String> {
+    val entryName = findSingle7zRomEntryName(sourcePath)
+    if (entryName != null) {
+        val candidates = RcHashNativeBridge.hash7zEntry(sourcePath, entryName)
+        if (candidates.isNotEmpty()) return candidates
+    }
+    return hashCandidatesForPath(sourcePath)
+}
+
+private fun findSingle7zRomEntryName(sourcePath: String): String? {
+    val names = RcHashNativeBridge.list7zEntries(sourcePath).filter { entryName ->
+        val baseName = entryName.substringAfterLast('/').substringAfterLast('\\')
+        baseName.isNotBlank() && !baseName.startsWith('.')
+    }
+    val supported = names.filter { isSupportedArchiveRomEntry(it) }
+
+    return when {
+        supported.size == 1 -> supported.single()
+        supported.isEmpty() && names.size == 1 -> names.single()
+        else -> null
     }
 }
 

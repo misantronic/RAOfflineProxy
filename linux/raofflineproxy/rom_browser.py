@@ -29,9 +29,11 @@ from .rom_cache import (
     merged_unlock_ids as merged_unlock_ids_for_user,
 )
 from .rom_hashing import (
+    hash_7z_entry_candidates,
     hash_rom,
     hash_rom_candidates,
     hash_rom_candidates_result,
+    list_7z_entries,
     supported_rom_extensions,
 )
 from .storage import Storage
@@ -40,9 +42,8 @@ from .utils import proxy_user_agent, self_user_agent
 LOGGER = logging.getLogger("raofflineproxy")
 SUPPORTED_ROM_EXTENSIONS = supported_rom_extensions()
 SUPPORTED_ARCHIVE_EXTENSIONS = {".zip", ".7z"}
-# Only .zip can be opened with the stdlib. A .7z is never read: rc_hash maps it
-# to the arcade console, whose hash is MD5 of the base filename, so its contents
-# are irrelevant (matching Android, which also only unpacks .zip).
+# Archives the stdlib can open. A .7z goes through the native hasher instead,
+# which bundles a 7z reader (third_party/lzma-sdk), so it never reaches zipfile.
 ZIP_READABLE_ARCHIVE_EXTENSIONS = {".zip"}
 EXCLUDED_BROWSER_DIR_NAMES = {"Imgs"}
 MAX_CACHED_GAMES = 100
@@ -306,6 +307,24 @@ def archive_has_supported_roms(path: Path) -> bool:
     return bool(list_archive_rom_entries(path))
 
 
+def select_archive_rom_names(names: list[str]) -> list[str]:
+    """Which entries of an archive count as the ROM to hash.
+
+    Shared by the zip and 7z paths so both formats select the same way.
+    """
+    rom_names = [
+        name for name in names if Path(name).suffix.lower() in SUPPORTED_ROM_EXTENSIONS
+    ]
+    if rom_names:
+        return rom_names
+    # No recognized ROM extension, but a single-file archive is almost certainly
+    # a ROM (a system we don't enumerate, e.g. .gen). Multi-file archives with no
+    # ROM extension are arcade/MAME sets.
+    if len(names) == 1:
+        return names
+    return []
+
+
 def list_archive_rom_entries(path: Path) -> list[zipfile.ZipInfo]:
     if path.suffix.lower() not in ZIP_READABLE_ARCHIVE_EXTENSIONS:
         return []
@@ -318,24 +337,43 @@ def list_archive_rom_entries(path: Path) -> list[zipfile.ZipInfo]:
                 if not info.is_dir()
                 and not Path(info.filename).name.startswith(".")
             ]
-            rom_entries = [
-                info
-                for info in files
-                if Path(info.filename).suffix.lower() in SUPPORTED_ROM_EXTENSIONS
-            ]
-            if rom_entries:
-                return rom_entries
-            # No recognized ROM extension, but a single-file archive is almost
-            # certainly a zipped ROM (a system we don't enumerate, e.g. .gen).
-            # Multi-file archives with no ROM extension are arcade/MAME sets.
-            if len(files) == 1:
-                return files
-            return []
+            selected = set(select_archive_rom_names([info.filename for info in files]))
+            return [info for info in files if info.filename in selected]
     except Exception:
         return []
 
 
+def list_7z_rom_entries(path: Path) -> list[str]:
+    if path.suffix.lower() != ".7z":
+        return []
+
+    names = [
+        name for name in list_7z_entries(path) if not Path(name).name.startswith(".")
+    ]
+    return select_archive_rom_names(names)
+
+
+def hash_candidates_for_7z(path: Path) -> list[str]:
+    rom_entries = list_7z_rom_entries(path)
+
+    if len(rom_entries) > 1:
+        raise ValueError("archive contains multiple supported ROMs")
+
+    if len(rom_entries) == 1:
+        candidates = hash_7z_entry_candidates(path, rom_entries[0])
+        if candidates:
+            return candidates
+
+    # Either an arcade/MAME set (no inner console ROM) or an entry the native
+    # reader could not decompress. Both fall back to rc_hash's arcade rule,
+    # which hashes the archive's own filename.
+    return hash_rom_candidates(path)
+
+
 def hash_candidates_for_manual_cache(path: Path) -> list[str]:
+    if path.suffix.lower() == ".7z":
+        return hash_candidates_for_7z(path)
+
     if path.suffix.lower() not in SUPPORTED_ARCHIVE_EXTENSIONS:
         if path.suffix.lower() in (".chd", ".cue", ".m3u"):
             result = hash_rom_candidates_result(path)
