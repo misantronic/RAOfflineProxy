@@ -89,6 +89,110 @@ class LinuxConfigPathTests(unittest.TestCase):
             else:
                 os.environ["RAOFFLINEPROXY_RETROARCH_CFG"] = original_override
 
+    def test_detect_retroarch_cfg_falls_back_to_the_next_knulli_candidate(self) -> None:
+        original_override = os.environ.get("RAOFFLINEPROXY_RETROARCH_CFG")
+        original_muos = config.DEFAULT_MUOS_RETROARCH_CFG
+        original_candidates = config.KNULLI_RETROARCH_CFG_CANDIDATES
+        original_exists = Path.exists
+        try:
+            with tempfile.TemporaryDirectory() as temp_dir:
+                os.environ.pop("RAOFFLINEPROXY_RETROARCH_CFG", None)
+                config.DEFAULT_MUOS_RETROARCH_CFG = Path(temp_dir) / "missing-muos.cfg"
+                custom_cfg = Path(temp_dir) / "retroarchcustom.cfg"
+                plain_cfg = Path(temp_dir) / "retroarch.cfg"
+                plain_cfg.write_text("", encoding="utf-8")
+                config.KNULLI_RETROARCH_CFG_CANDIDATES = (custom_cfg, plain_cfg)
+
+                def fake_exists(path: Path) -> bool:
+                    if str(path) == "/userdata":
+                        return True
+                    return original_exists(path)
+
+                with mock.patch.object(Path, "exists", fake_exists):
+                    self.assertEqual(config.detect_retroarch_cfg(), str(plain_cfg))
+        finally:
+            config.DEFAULT_MUOS_RETROARCH_CFG = original_muos
+            config.KNULLI_RETROARCH_CFG_CANDIDATES = original_candidates
+            if original_override is None:
+                os.environ.pop("RAOFFLINEPROXY_RETROARCH_CFG", None)
+            else:
+                os.environ["RAOFFLINEPROXY_RETROARCH_CFG"] = original_override
+
+    def test_detect_retroarch_cfg_keeps_the_knulli_path_when_no_candidate_exists(
+        self,
+    ) -> None:
+        original_override = os.environ.get("RAOFFLINEPROXY_RETROARCH_CFG")
+        original_muos = config.DEFAULT_MUOS_RETROARCH_CFG
+        original_candidates = config.KNULLI_RETROARCH_CFG_CANDIDATES
+        original_exists = Path.exists
+        try:
+            with tempfile.TemporaryDirectory() as temp_dir:
+                os.environ.pop("RAOFFLINEPROXY_RETROARCH_CFG", None)
+                config.DEFAULT_MUOS_RETROARCH_CFG = Path(temp_dir) / "missing-muos.cfg"
+                custom_cfg = Path(temp_dir) / "retroarchcustom.cfg"
+                plain_cfg = Path(temp_dir) / "retroarch.cfg"
+                config.KNULLI_RETROARCH_CFG_CANDIDATES = (custom_cfg, plain_cfg)
+
+                def fake_exists(path: Path) -> bool:
+                    if str(path) == "/userdata":
+                        return True
+                    return original_exists(path)
+
+                with mock.patch.object(Path, "exists", fake_exists):
+                    self.assertEqual(config.detect_retroarch_cfg(), str(custom_cfg))
+        finally:
+            config.DEFAULT_MUOS_RETROARCH_CFG = original_muos
+            config.KNULLI_RETROARCH_CFG_CANDIDATES = original_candidates
+            if original_override is None:
+                os.environ.pop("RAOFFLINEPROXY_RETROARCH_CFG", None)
+            else:
+                os.environ["RAOFFLINEPROXY_RETROARCH_CFG"] = original_override
+
+    def test_detect_retroarch_cfg_keeps_sdcard_scoped_to_its_own_platform(self) -> None:
+        """A stray home cfg must not outrank the card's own RetroArch config."""
+        original_override = os.environ.get("RAOFFLINEPROXY_RETROARCH_CFG")
+        original_muos = config.DEFAULT_MUOS_RETROARCH_CFG
+        original_exists = Path.exists
+        try:
+            with tempfile.TemporaryDirectory() as temp_dir:
+                os.environ.pop("RAOFFLINEPROXY_RETROARCH_CFG", None)
+                config.DEFAULT_MUOS_RETROARCH_CFG = Path(temp_dir) / "missing-muos.cfg"
+                home_cfg = Path.home() / ".config" / "retroarch" / "retroarch.cfg"
+                present = {Path("/mnt/SDCARD"), home_cfg}
+
+                def fake_exists(path: Path) -> bool:
+                    if path in present:
+                        return True
+                    if str(path) in ("/userdata", "/storage"):
+                        return False
+                    return original_exists(path)
+
+                with mock.patch.object(Path, "exists", fake_exists):
+                    with mock.patch.object(
+                        config, "running_on_rocknix", return_value=False
+                    ):
+                        self.assertEqual(
+                            config.detect_retroarch_cfg(),
+                            str(config.SDCARD_RETROARCH_CFG_CANDIDATES[0]),
+                        )
+        finally:
+            config.DEFAULT_MUOS_RETROARCH_CFG = original_muos
+            if original_override is None:
+                os.environ.pop("RAOFFLINEPROXY_RETROARCH_CFG", None)
+            else:
+                os.environ["RAOFFLINEPROXY_RETROARCH_CFG"] = original_override
+
+    def test_detect_retroarch_cfg_env_override_outranks_every_platform(self) -> None:
+        original_override = os.environ.get("RAOFFLINEPROXY_RETROARCH_CFG")
+        try:
+            os.environ["RAOFFLINEPROXY_RETROARCH_CFG"] = "/custom/retroarch.cfg"
+            self.assertEqual(config.detect_retroarch_cfg(), "/custom/retroarch.cfg")
+        finally:
+            if original_override is None:
+                os.environ.pop("RAOFFLINEPROXY_RETROARCH_CFG", None)
+            else:
+                os.environ["RAOFFLINEPROXY_RETROARCH_CFG"] = original_override
+
     def test_detect_batocera_conf_returns_none_on_muos(self) -> None:
         original_override = os.environ.get("RAOFFLINEPROXY_BATOCERA_CONF")
         original_knulli = config.DEFAULT_KNULLI_CONF

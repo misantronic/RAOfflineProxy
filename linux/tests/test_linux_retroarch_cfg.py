@@ -7,6 +7,66 @@ from linux.raofflineproxy import retroarch_cfg
 from linux.raofflineproxy import state
 
 
+class LinuxRetroarchMissingCfgTests(unittest.TestCase):
+    """A Knulli device that has never launched a libretro game has no cfg yet."""
+
+    def test_patch_skips_missing_cfg_when_conf_carries_the_override(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            cfg_path = Path(temp_dir) / "retroarchcustom.cfg"
+            conf_path = Path(temp_dir) / "knulli.conf"
+            conf_path.write_text("", encoding="utf-8")
+
+            with mock.patch.object(
+                retroarch_cfg, "detect_batocera_conf", return_value=str(conf_path)
+            ):
+                result = retroarch_cfg.patch_retroarch_cfg(str(cfg_path), {})
+
+            self.assertFalse(result["exists"])
+            self.assertFalse(result["changed"])
+            self.assertFalse(result["already_patched"])
+            self.assertFalse(cfg_path.exists())
+
+    def test_patch_still_raises_without_a_conf_fallback(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            cfg_path = Path(temp_dir) / "retroarch.cfg"
+
+            with mock.patch.object(
+                retroarch_cfg, "detect_batocera_conf", return_value=None
+            ):
+                with self.assertRaises(FileNotFoundError):
+                    retroarch_cfg.patch_retroarch_cfg(str(cfg_path), {})
+
+    def test_patch_still_raises_when_the_conf_itself_is_missing(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            cfg_path = Path(temp_dir) / "retroarch.cfg"
+            conf_path = Path(temp_dir) / "knulli.conf"
+
+            with mock.patch.object(
+                retroarch_cfg, "detect_batocera_conf", return_value=str(conf_path)
+            ):
+                with self.assertRaises(FileNotFoundError):
+                    retroarch_cfg.patch_retroarch_cfg(str(cfg_path), {})
+
+    def test_revert_clears_state_for_a_missing_cfg_instead_of_failing(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            cfg_path = Path(temp_dir) / "retroarchcustom.cfg"
+            state_path = Path(temp_dir) / "retroarch_patch_state.json"
+            state_path.write_text(
+                '{"cfg_path": "' + str(cfg_path) + '"}\n', encoding="utf-8"
+            )
+
+            original_state_file = state.STATE_FILE
+            try:
+                state.STATE_FILE = state_path
+                result = retroarch_cfg.revert_retroarch_cfg()
+
+                self.assertFalse(result["exists"])
+                self.assertFalse(result["changed"])
+                self.assertIsNone(state.load_patch_state())
+            finally:
+                state.STATE_FILE = original_state_file
+
+
 class LinuxRetroarchCfgTests(unittest.TestCase):
     def test_patch_already_patched_cfg_repairs_saved_previous_host(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

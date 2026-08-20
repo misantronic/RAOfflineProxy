@@ -373,6 +373,11 @@ def log_menu_sdl(message: str) -> None:
         handle.write(f"{timestamp} {message}\n")
 
 
+def log_action_failure(action: str, exc: Exception) -> None:
+    log_menu_sdl(f"{action} failed error={exc}")
+    log_menu_sdl(traceback.format_exc().rstrip())
+
+
 def remove_stale_hook() -> None:
     if STALE_HOOK_PATH.exists():
         STALE_HOOK_PATH.unlink()
@@ -2664,6 +2669,7 @@ class MenuSdlSession:
             if self.view != "smart_cache_prompt":
                 self.message = ("Proxy started", time.monotonic() + 1.2)
         except Exception as exc:
+            log_action_failure("start_proxy", exc)
             self.message = (f"Start failed: {exc}", time.monotonic() + ERROR_SECONDS)
 
     def stop_proxy(self) -> None:
@@ -2676,6 +2682,7 @@ class MenuSdlSession:
             self.refresh_main_menu_state(force=True)
             self.message = ("Proxy stopped", time.monotonic() + 1.2)
         except Exception as exc:
+            log_action_failure("stop_proxy", exc)
             self.message = (f"Stop failed: {exc}", time.monotonic() + ERROR_SECONDS)
 
     def toggle_autostart(self, config_data: dict) -> None:
@@ -2695,6 +2702,7 @@ class MenuSdlSession:
                 self.message = ("Autostart enabled", time.monotonic() + 1.2)
             self.refresh_main_menu_state(force=True)
         except Exception as exc:
+            log_action_failure("toggle_autostart", exc)
             self.message = (
                 f"Autostart failed: {exc}",
                 time.monotonic() + ERROR_SECONDS,
