@@ -59,7 +59,7 @@ class RevertProxyConfigTests(unittest.TestCase):
         ):
             output = main._revert_proxy_config({}, "/runtime/retroarch.cfg")
 
-        revert_cfg.assert_called_once_with("/runtime/retroarch.cfg")
+        revert_cfg.assert_called_once_with("/runtime/retroarch.cfg", config_data={})
         start_service.assert_not_called()
         self.assertEqual(output[-1], "Reverted retroarch.cfg")
 
@@ -75,7 +75,9 @@ class RevertProxyConfigTests(unittest.TestCase):
         ):
             main._revert_proxy_config({}, "/runtime/retroarch.cfg")
 
-        revert_cfg.assert_called_once_with("/saved/retroarch.cfg", state)
+        revert_cfg.assert_called_once_with(
+            "/saved/retroarch.cfg", state, config_data={}
+        )
 
 
 class BootReconcileDispatchTests(unittest.TestCase):

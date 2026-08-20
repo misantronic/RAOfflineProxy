@@ -122,7 +122,9 @@ def _apply_proxy(config_data: dict, cfg_path: str) -> list[str]:
     store_dolphin_previous(patch_state, dolphin)
     save_patch_state(patch_state)
 
-    if result["already_patched"]:
+    if not result.get("exists", True):
+        output.append(f"Skipped missing retroarch.cfg at {result['cfg_path']}")
+    elif result["already_patched"]:
         output.append("retroarch.cfg already patched")
     elif result["changed"]:
         output.append("Patched retroarch.cfg")
@@ -167,14 +169,18 @@ def _revert_proxy_config(config_data: dict, cfg_path: str | None) -> list[str]:
 
     revert_result = None
     if patch_state:
-        revert_result = revert_retroarch_cfg(revert_cfg_path, patch_state)
+        revert_result = revert_retroarch_cfg(
+            revert_cfg_path, patch_state, config_data=config_data
+        )
     elif revert_cfg_path:
         try:
-            revert_result = revert_retroarch_cfg(revert_cfg_path)
+            revert_result = revert_retroarch_cfg(
+                revert_cfg_path, config_data=config_data
+            )
         except Exception:
             revert_result = None
 
-    if revert_result is None:
+    if revert_result is None or not revert_result.get("exists", True):
         output.append("retroarch.cfg already reverted")
     elif revert_result["changed"]:
         output.append("Reverted retroarch.cfg")

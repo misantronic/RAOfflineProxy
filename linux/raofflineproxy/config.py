@@ -4,17 +4,31 @@ import json
 import logging
 import logging.handlers
 import os
+from collections.abc import Callable
 from pathlib import Path
 
 
 DEFAULT_ONION_APP_DIR = Path("/mnt/SDCARD/App/RAOfflineProxy")
 DEFAULT_ONION_STARTUP_SCRIPT = Path("/mnt/SDCARD/.tmp_update/startup/raofflineproxy.sh")
+SDCARD_RETROARCH_CFG_CANDIDATES = (
+    Path("/mnt/SDCARD/RetroArch/.retroarch/retroarch.cfg"),
+)
 DEFAULT_MUOS_APPLICATION_DIR = Path("/run/muos/storage/application/RAOfflineProxy")
 DEFAULT_MUOS_INIT_DIR = Path("/run/muos/storage/init")
 DEFAULT_MUOS_RETROARCH_CFG = Path("/opt/muos/share/info/config/retroarch.cfg")
 MUOS_USER_INIT_CONFIG = Path("/opt/muos/config/settings/advanced/user_init")
 DEFAULT_BATOCERA_CONF = Path("/userdata/system/batocera.conf")
 DEFAULT_KNULLI_CONF = Path("/userdata/system/knulli.conf")
+# Knulli/Batocera generate retroarchcustom.cfg at the first libretro launch, so a
+# freshly flashed device has none of these yet. Keep the canonical path as the
+# fallback: /userdata already established the platform, and falling
+# through to the other platforms' branches would hand back a path Knulli never uses.
+KNULLI_RETROARCH_CFG_CANDIDATES = (
+    Path("/userdata/system/configs/retroarch/retroarchcustom.cfg"),
+    Path("/userdata/system/configs/retroarch/retroarch.cfg"),
+    Path("/userdata/system/.config/retroarch/retroarchcustom.cfg"),
+    Path("/userdata/system/.config/retroarch/retroarch.cfg"),
+)
 DEFAULT_ROCKNIX_RETROARCH_CFG = Path("/storage/.config/retroarch/retroarch.cfg")
 DEFAULT_ROCKNIX_CONFIG_DIR = Path("/storage/.config/raofflineproxy")
 DEFAULT_ROCKNIX_PPSSPP_INI = Path("/storage/.config/ppsspp/PSP/SYSTEM/ppsspp.ini")
@@ -185,34 +199,38 @@ def detect_batocera_conf(config_data: dict) -> str | None:
     return None
 
 
+def _retroarch_cfg_lookup() -> tuple[tuple[Callable[[], bool], tuple[Path, ...]], ...]:
+    """Platform gate paired with that platform's cfg candidates, most specific first.
+
+    Built per call so the module globals stay late-bound. Candidates are scoped to
+    their own platform on purpose: several firmwares share a card and leave stale
+    folders behind, so a single flat "first path that exists wins" list would hand
+    back another firmware's config. Each platform's first candidate doubles as its
+    fallback, which is what a device that has not generated its cfg yet gets.
+    """
+    return (
+        (lambda: DEFAULT_MUOS_RETROARCH_CFG.exists(), (DEFAULT_MUOS_RETROARCH_CFG,)),
+        (lambda: Path("/userdata").exists(), tuple(KNULLI_RETROARCH_CFG_CANDIDATES)),
+        (
+            lambda: running_on_rocknix() or Path("/storage").exists(),
+            (DEFAULT_ROCKNIX_RETROARCH_CFG,),
+        ),
+        (lambda: Path("/mnt/SDCARD").exists(), tuple(SDCARD_RETROARCH_CFG_CANDIDATES)),
+    )
+
+
 def detect_retroarch_cfg() -> str:
     env_override = os.environ.get("RAOFFLINEPROXY_RETROARCH_CFG")
     if env_override:
         return env_override
 
-    if DEFAULT_MUOS_RETROARCH_CFG.exists():
-        return str(DEFAULT_MUOS_RETROARCH_CFG)
-
-    if Path("/userdata").exists():
-        return str(Path("/userdata/system/configs/retroarch/retroarchcustom.cfg"))
-
-    if running_on_rocknix():
-        return str(DEFAULT_ROCKNIX_RETROARCH_CFG)
-
-    candidates = [
-        Path("/mnt/SDCARD/RetroArch/.retroarch/retroarch.cfg"),
-        Path.home() / ".config" / "retroarch" / "retroarch.cfg",
-    ]
-
-    for candidate in candidates:
-        if candidate.exists():
-            return str(candidate)
-
-    if Path("/storage").exists():
-        return str(Path("/storage/.config/retroarch/retroarch.cfg"))
-
-    if Path("/mnt/SDCARD").exists():
-        return str(Path("/mnt/SDCARD/RetroArch/.retroarch/retroarch.cfg"))
+    for platform_matches, candidates in _retroarch_cfg_lookup():
+        if not platform_matches() or not candidates:
+            continue
+        for candidate in candidates:
+            if candidate.exists():
+                return str(candidate)
+        return str(candidates[0])
 
     return str(Path.home() / ".config" / "retroarch" / "retroarch.cfg")
 
