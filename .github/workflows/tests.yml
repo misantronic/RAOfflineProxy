@@ -9,7 +9,10 @@ jobs:
     if: github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     steps:
+      # rcheevos and libchdr are submodules; the native hasher is built from them.
       - uses: actions/checkout@v7
+        with:
+          submodules: recursive
 
       - uses: dorny/paths-filter@v4
         id: changes
@@ -45,6 +48,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          submodules: recursive
 
       - uses: dorny/paths-filter@v4
         id: changes
