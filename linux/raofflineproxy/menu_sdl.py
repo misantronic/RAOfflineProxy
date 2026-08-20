@@ -405,10 +405,11 @@ def runtime_config() -> tuple[dict, str]:
     return config_data, cfg_path
 
 
-def start_proxy_inline() -> None:
+def start_proxy_inline() -> bool:
+    """Starts the proxy. Returns True when RetroArch's cfg was missing and skipped."""
     config_data, cfg_path = runtime_config()
     remove_stale_hook()
-    patch_retroarch_cfg(cfg_path, config_data)
+    patch_result = patch_retroarch_cfg(cfg_path, config_data)
     enforce_patched_cfg(cfg_path, config_data)
     batocera = patch_batocera_conf(config_data)
     ppsspp = patch_ppsspp_ini(config_data)
@@ -419,6 +420,7 @@ def start_proxy_inline() -> None:
     store_dolphin_previous(patch_state, dolphin)
     save_patch_state(patch_state)
     start_service_process(config_data)
+    return not patch_result.get("exists", True)
 
 
 def stop_proxy_inline() -> None:
@@ -433,18 +435,18 @@ def stop_proxy_inline() -> None:
     revert_dolphin_ini(config_data, patch_state.get("dolphin_previous", {}))
 
     if patch_state:
-        revert_retroarch_cfg(revert_cfg_path, patch_state)
+        revert_retroarch_cfg(revert_cfg_path, patch_state, config_data=config_data)
         return
 
     if not service.get("already_stopped"):
         try:
-            revert_retroarch_cfg(revert_cfg_path)
+            revert_retroarch_cfg(revert_cfg_path, config_data=config_data)
         except Exception:
             pass
         return
 
     try:
-        revert_retroarch_cfg(revert_cfg_path)
+        revert_retroarch_cfg(revert_cfg_path, config_data=config_data)
     except Exception:
         pass
 
@@ -2660,14 +2662,23 @@ class MenuSdlSession:
 
     def start_proxy(self) -> None:
         try:
+            cfg_skipped = False
             if service_mode_active():
                 start_service()
             else:
-                start_proxy_inline()
+                cfg_skipped = start_proxy_inline()
             self.refresh_main_menu_state(force=True)
             self.maybe_offer_smart_cache()
+            if cfg_skipped:
+                log_menu_sdl("start_proxy retroarch cfg missing, patched conf only")
             if self.view != "smart_cache_prompt":
-                self.message = ("Proxy started", time.monotonic() + 1.2)
+                if cfg_skipped:
+                    self.message = (
+                        "Proxy started, no RetroArch cfg",
+                        time.monotonic() + ERROR_SECONDS,
+                    )
+                else:
+                    self.message = ("Proxy started", time.monotonic() + 1.2)
         except Exception as exc:
             log_action_failure("start_proxy", exc)
             self.message = (f"Start failed: {exc}", time.monotonic() + ERROR_SECONDS)

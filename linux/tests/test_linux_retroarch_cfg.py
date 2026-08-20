@@ -50,6 +50,8 @@ class LinuxRetroarchMissingCfgTests(unittest.TestCase):
     def test_revert_clears_state_for_a_missing_cfg_instead_of_failing(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             cfg_path = Path(temp_dir) / "retroarchcustom.cfg"
+            conf_path = Path(temp_dir) / "knulli.conf"
+            conf_path.write_text("", encoding="utf-8")
             state_path = Path(temp_dir) / "retroarch_patch_state.json"
             state_path.write_text(
                 '{"cfg_path": "' + str(cfg_path) + '"}\n', encoding="utf-8"
@@ -58,11 +60,39 @@ class LinuxRetroarchMissingCfgTests(unittest.TestCase):
             original_state_file = state.STATE_FILE
             try:
                 state.STATE_FILE = state_path
-                result = retroarch_cfg.revert_retroarch_cfg()
+                with mock.patch.object(
+                    retroarch_cfg, "detect_batocera_conf", return_value=str(conf_path)
+                ):
+                    result = retroarch_cfg.revert_retroarch_cfg()
 
                 self.assertFalse(result["exists"])
                 self.assertFalse(result["changed"])
                 self.assertIsNone(state.load_patch_state())
+            finally:
+                state.STATE_FILE = original_state_file
+
+    def test_revert_keeps_state_when_a_patched_cfg_went_missing(self) -> None:
+        """No conf fallback means the cfg vanished after being patched: keep the state."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            cfg_path = Path(temp_dir) / "retroarch.cfg"
+            state_path = Path(temp_dir) / "retroarch_patch_state.json"
+            state_path.write_text(
+                '{"cfg_path": "' + str(cfg_path) + '", "previous_host": "example.org"}\n',
+                encoding="utf-8",
+            )
+
+            original_state_file = state.STATE_FILE
+            try:
+                state.STATE_FILE = state_path
+                with mock.patch.object(
+                    retroarch_cfg, "detect_batocera_conf", return_value=None
+                ):
+                    with self.assertRaises(FileNotFoundError):
+                        retroarch_cfg.revert_retroarch_cfg()
+
+                saved = state.load_patch_state()
+                assert saved is not None
+                self.assertEqual(saved["previous_host"], "example.org")
             finally:
                 state.STATE_FILE = original_state_file
 

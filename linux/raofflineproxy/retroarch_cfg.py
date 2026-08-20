@@ -310,7 +310,9 @@ def patch_retroarch_cfg(cfg_path: str, config_data: dict) -> dict:
 
 
 def revert_retroarch_cfg(
-    cfg_path: Optional[str] = None, patch_state_override: Optional[dict] = None
+    cfg_path: Optional[str] = None,
+    patch_state_override: Optional[dict] = None,
+    config_data: Optional[dict] = None,
 ) -> dict:
     patch_state = patch_state_override if patch_state_override is not None else load_patch_state()
     target_path = cfg_path or (patch_state or {}).get("cfg_path")
@@ -319,6 +321,12 @@ def revert_retroarch_cfg(
 
     target = Path(target_path)
     if not target.exists():
+        # Only a cfg the conf can regenerate is legitimately absent. Anything else is
+        # a cfg that went missing after being patched, and dropping the saved state
+        # there would strand the proxy host in it with nothing left to restore from.
+        if not conf_fallback_available(config_data or {}):
+            raise FileNotFoundError(f"RetroArch config not found: {target}")
+
         revert_cheevos_append_cfg((patch_state or {}).get("cheevos_append_cfg"))
         if patch_state_override is None and patch_state is not None:
             clear_patch_state()

@@ -169,10 +169,14 @@ def _revert_proxy_config(config_data: dict, cfg_path: str | None) -> list[str]:
 
     revert_result = None
     if patch_state:
-        revert_result = revert_retroarch_cfg(revert_cfg_path, patch_state)
+        revert_result = revert_retroarch_cfg(
+            revert_cfg_path, patch_state, config_data=config_data
+        )
     elif revert_cfg_path:
         try:
-            revert_result = revert_retroarch_cfg(revert_cfg_path)
+            revert_result = revert_retroarch_cfg(
+                revert_cfg_path, config_data=config_data
+            )
         except Exception:
             revert_result = None
 
