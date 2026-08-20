@@ -39,7 +39,11 @@ from .utils import proxy_user_agent, self_user_agent
 
 LOGGER = logging.getLogger("raofflineproxy")
 SUPPORTED_ROM_EXTENSIONS = supported_rom_extensions()
-SUPPORTED_ARCHIVE_EXTENSIONS = {".zip"}
+SUPPORTED_ARCHIVE_EXTENSIONS = {".zip", ".7z"}
+# Only .zip can be opened with the stdlib. A .7z is never read: rc_hash maps it
+# to the arcade console, whose hash is MD5 of the base filename, so its contents
+# are irrelevant (matching Android, which also only unpacks .zip).
+ZIP_READABLE_ARCHIVE_EXTENSIONS = {".zip"}
 EXCLUDED_BROWSER_DIR_NAMES = {"Imgs"}
 MAX_CACHED_GAMES = 100
 MAX_SCAN_ENTRIES = 5000
@@ -303,7 +307,7 @@ def archive_has_supported_roms(path: Path) -> bool:
 
 
 def list_archive_rom_entries(path: Path) -> list[zipfile.ZipInfo]:
-    if path.suffix.lower() not in SUPPORTED_ARCHIVE_EXTENSIONS:
+    if path.suffix.lower() not in ZIP_READABLE_ARCHIVE_EXTENSIONS:
         return []
 
     try:
@@ -366,8 +370,9 @@ def hash_candidates_for_manual_cache(path: Path) -> list[str]:
             return hash_rom_candidates(temp_path)
 
     # Zero or multiple inner console ROMs: treat as an arcade/MAME set (Neo Geo,
-    # CPS, etc.). rc_hash's arcade hash is MD5 of the zip's base filename, so we
-    # pass the archive path straight through.
+    # CPS, etc.). rc_hash's arcade hash is MD5 of the archive's base filename, so
+    # we pass the path straight through. Every .7z lands here, since its entries
+    # are never enumerated.
     return hash_rom_candidates(path)
 
 

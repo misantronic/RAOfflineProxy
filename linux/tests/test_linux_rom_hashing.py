@@ -87,6 +87,18 @@ class ArcadeZipTests(unittest.TestCase):
 
         self.assertEqual(candidates, [hashlib.md5(b"mslug").hexdigest()])
 
+    def test_7z_set_hashes_by_filename(self) -> None:
+        # rc_hash maps .7z to the arcade console, so the archive is never read;
+        # the hash comes from the base filename alone. Same as Android, which
+        # only unpacks .zip (see RomHashing.kt).
+        with tempfile.TemporaryDirectory() as temp_dir:
+            archive_path = Path(temp_dir) / "mslug.7z"
+            archive_path.write_bytes(b"7z\xbc\xaf\x27\x1c" + b"\x00" * 64)
+
+            candidates = rom_browser.hash_candidates_for_manual_cache(archive_path)
+
+        self.assertEqual(candidates, [hashlib.md5(b"mslug").hexdigest()])
+
     def test_zipped_single_console_rom_hashes_by_content(self) -> None:
         body = b"NESDATA" * 64
         with tempfile.TemporaryDirectory() as temp_dir:
