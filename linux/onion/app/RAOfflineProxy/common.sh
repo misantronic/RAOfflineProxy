@@ -14,6 +14,7 @@ APP_ONION_STARTUP_DIR=/mnt/SDCARD/.tmp_update/startup
 APP_ONION_AUTOSTART_SCRIPT="$APP_ONION_STARTUP_DIR/raofflineproxy.sh"
 APP_ONION_CHECKOFF_DIR=/mnt/SDCARD/.tmp_update/checkoff
 APP_ONION_CHECKOFF_SCRIPT="$APP_ONION_CHECKOFF_DIR/raofflineproxy.sh"
+APP_ONION_TZ_FILE=/mnt/SDCARD/.tmp_update/config/.tz
 APP_ACTIVE_RUNTIME_ROOT=
 RESOLVED_PYTHON_BIN=
 RUNTIME_FAILURE_REASON=
@@ -36,9 +37,31 @@ normalize_display_paths() {
     sed 's#/mnt/SDCARD/#/#g'
 }
 
+resolve_onion_timezone() {
+    # Onion exports TZ only for MainUI and its game launcher, so an app started
+    # from the Apps list or a startup hook inherits an empty TZ and renders
+    # every local timestamp as UTC.
+    if [ -n "${TZ:-}" ]; then
+        return 0
+    fi
+
+    if [ ! -r "$APP_ONION_TZ_FILE" ]; then
+        return 0
+    fi
+
+    onion_tz="$(cat "$APP_ONION_TZ_FILE" 2>/dev/null || true)"
+    if [ -n "$onion_tz" ]; then
+        export TZ="$onion_tz"
+    fi
+
+    return 0
+}
+
 prepare_env() {
     mkdir -p "$APP_DATA_DIR"
     : > "$RUNTIME_DETECT_LOG"
+
+    resolve_onion_timezone
 
     if [ -f /mnt/SDCARD/.tmp_update/config/retroarch.cfg ]; then
         APP_RETROARCH_CFG=/mnt/SDCARD/.tmp_update/config/retroarch.cfg
