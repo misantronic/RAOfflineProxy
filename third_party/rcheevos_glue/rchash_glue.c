@@ -7,6 +7,7 @@
 
 #include "cdfs_chd.h"
 #include "cdfs_pbp.h"
+#include "sevenzip.h"
 
 /* ---- CHD cdreader hooks (mirrors RetroArch cheevos.c rc_hash_handle_chd_*) ---- */
 
@@ -217,6 +218,47 @@ static void rao_ds_close(void* handle)
    (void)handle; /* the rao_ds_file is owned by the caller */
 }
 
+/* ---- candidate buffer helpers ---- */
+
+/* Appends `candidate` unless it is empty, already present, or the buffer is
+ * full. Returns the new count. */
+static int rao_append_candidate(char* out_hashes, int count, int max_hashes,
+                                const char* candidate)
+{
+   int i;
+
+   if (count >= max_hashes || candidate[0] == '\0')
+      return count;
+
+   for (i = 0; i < count; ++i)
+   {
+      if (memcmp(out_hashes + i * 33, candidate, 33) == 0)
+         return count;
+   }
+
+   memcpy(out_hashes + count * 33, candidate, 33);
+   return count + 1;
+}
+
+/* Drains an iterator into the candidate buffer, in rc_hash's own order. */
+static int rao_collect_candidates(rc_hash_iterator_t* iterator, char* out_hashes,
+                                  int max_hashes)
+{
+   int count = 0;
+
+   while (count < max_hashes)
+   {
+      char candidate[33];
+
+      if (!rc_hash_iterate(candidate, iterator) || candidate[0] == '\0')
+         break;
+
+      count = rao_append_candidate(out_hashes, count, max_hashes, candidate);
+   }
+
+   return count;
+}
+
 int raproxy_hash_disc_datasource(void* ctx, raproxy_ds_size_fn size_fn,
                                  raproxy_ds_read_fn read_fn,
                                  char* out_hashes, int max_hashes)
@@ -247,28 +289,14 @@ int raproxy_hash_disc_datasource(void* ctx, raproxy_ds_size_fn size_fn,
    for (i = 0; i < 2 && count < max_hashes; ++i)
    {
       char candidate[33];
-      int j;
-      int duplicate = 0;
 
       g_pending_ds = &file;
       file.pos = 0;
 
-      if (!rc_hash_generate(candidate, consoles[i], &iterator) || candidate[0] == '\0')
+      if (!rc_hash_generate(candidate, consoles[i], &iterator))
          continue;
 
-      for (j = 0; j < count; ++j)
-      {
-         if (memcmp(out_hashes + j * 33, candidate, 33) == 0)
-         {
-            duplicate = 1;
-            break;
-         }
-      }
-      if (!duplicate)
-      {
-         memcpy(out_hashes + count * 33, candidate, 33);
-         ++count;
-      }
+      count = rao_append_candidate(out_hashes, count, max_hashes, candidate);
    }
 
    g_pending_ds = NULL;
@@ -289,32 +317,7 @@ int raproxy_hash_file(const char* path, char* out_hashes, int max_hashes)
    rao_ensure_hooks();
 
    rc_hash_initialize_iterator(&iterator, path, NULL, 0);
-
-   while (count < max_hashes)
-   {
-      char candidate[33];
-      int i;
-      int duplicate = 0;
-
-      if (!rc_hash_iterate(candidate, &iterator) || candidate[0] == '\0')
-         break;
-
-      for (i = 0; i < count; ++i)
-      {
-         if (memcmp(out_hashes + i * 33, candidate, 33) == 0)
-         {
-            duplicate = 1;
-            break;
-         }
-      }
-
-      if (!duplicate)
-      {
-         memcpy(out_hashes + count * 33, candidate, 33);
-         ++count;
-      }
-   }
-
+   count = rao_collect_candidates(&iterator, out_hashes, max_hashes);
    rc_hash_destroy_iterator(&iterator);
 
    /* rc_hash's extension table maps .pbp to PSP only (a whole-file hash), so a
@@ -326,26 +329,43 @@ int raproxy_hash_file(const char* path, char* out_hashes, int max_hashes)
       char candidate[33];
 
       rc_hash_initialize_iterator(&psx_iterator, path, NULL, 0);
-      if (rc_hash_generate(candidate, RC_CONSOLE_PLAYSTATION, &psx_iterator) && candidate[0] != '\0')
-      {
-         int duplicate = 0;
-         int i;
-         for (i = 0; i < count; ++i)
-         {
-            if (memcmp(out_hashes + i * 33, candidate, 33) == 0)
-            {
-               duplicate = 1;
-               break;
-            }
-         }
-         if (!duplicate)
-         {
-            memcpy(out_hashes + count * 33, candidate, 33);
-            ++count;
-         }
-      }
+      if (rc_hash_generate(candidate, RC_CONSOLE_PLAYSTATION, &psx_iterator))
+         count = rao_append_candidate(out_hashes, count, max_hashes, candidate);
       rc_hash_destroy_iterator(&psx_iterator);
    }
 
+   return count;
+}
+
+int raproxy_7z_list_entries(const char* path, char* out_names,
+                            int out_names_bytes, int max_entries)
+{
+   return rao_7z_list_entries(path, out_names, out_names_bytes, max_entries);
+}
+
+int raproxy_hash_7z_entry(const char* path, const char* entry_name,
+                          char* out_hashes, int max_hashes)
+{
+   rc_hash_iterator_t iterator;
+   unsigned char* block = NULL;
+   size_t offset = 0;
+   size_t size = 0;
+   int count;
+
+   if (!path || !entry_name || !out_hashes || max_hashes <= 0)
+      return 0;
+
+   rao_ensure_hooks();
+
+   if (!rao_7z_extract_entry(path, entry_name, &block, &offset, &size))
+      return 0;
+
+   /* The entry name carries the extension rc_hash needs to pick a console; the
+    * buffer carries the data it would otherwise read from disk. */
+   rc_hash_initialize_iterator(&iterator, entry_name, block + offset, size);
+   count = rao_collect_candidates(&iterator, out_hashes, max_hashes);
+   rc_hash_destroy_iterator(&iterator);
+
+   rao_7z_free(block);
    return count;
 }

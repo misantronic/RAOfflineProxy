@@ -9,7 +9,10 @@ jobs:
     if: github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     steps:
+      # rcheevos and libchdr are submodules; the native hasher is built from them.
       - uses: actions/checkout@v7
+        with:
+          submodules: recursive
 
       - uses: dorny/paths-filter@v4
         id: changes
@@ -17,6 +20,7 @@ jobs:
           filters: |
             linux:
               - 'linux/**'
+              - 'third_party/**'
 
       - uses: actions/setup-python@v7
         if: steps.changes.outputs.linux == 'true'
@@ -27,8 +31,16 @@ jobs:
         if: steps.changes.outputs.linux == 'true'
         run: pip install pytest
 
+      # Without a loadable libraproxy_rchash the hashing tests skip themselves,
+      # so the suite would stay green while every ROM format goes untested.
+      - name: Build native hasher
+        if: steps.changes.outputs.linux == 'true'
+        run: TARGET=host OUT_DIR="${{ runner.temp }}/rchash" bash linux/build_rchash.sh
+
       - name: Run linux tests
         if: steps.changes.outputs.linux == 'true'
+        env:
+          RAOFFLINEPROXY_RCHASH_LIB: ${{ runner.temp }}/rchash/libraproxy_rchash.so
         run: python3 -m pytest linux/tests/
 
   android-tests:
@@ -36,6 +48,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          submodules: recursive
 
       - uses: dorny/paths-filter@v4
         id: changes
@@ -43,6 +57,7 @@ jobs:
           filters: |
             android:
               - 'app/**'
+              - 'third_party/**'
               - 'build.gradle.kts'
               - 'settings.gradle.kts'
               - 'gradle.properties'
