@@ -207,6 +207,8 @@
     <string name="scan_complete_limit">Scan complete: %1$d game(s) matched out of %2$d file(s), %3$d skipped. Reached the %4$d-game cache limit.</string>
     <string name="scan_aborted">Scan aborted.</string>
     <string name="smart_cache_starting">Starting Smart Cache…</string>
+    <string name="smart_cache_aborting">Aborting Smart Cache…</string>
+    <string name="smart_cache_aborted">Smart Cache aborted.</string>
     <string name="smart_cache_progress">Smart Cache %1$d/%2$d: %3$s</string>
     <string name="smart_cache_complete">Smart Cache complete: %1$d game(s) cached from %2$d candidate(s), %3$d skipped.</string>
     <string name="smart_cache_complete_limit">Smart Cache complete: %1$d game(s) cached from %2$d candidate(s), %3$d skipped. Reached the %4$d-game cache limit.</string>

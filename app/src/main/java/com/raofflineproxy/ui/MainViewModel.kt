@@ -1581,9 +1581,19 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    private var smartCacheJob: Job? = null
+
+    fun cancelSmartCache() {
+        if (smartCacheJob?.isActive != true) return
+        val abortingMessage = str(R.string.smart_cache_aborting)
+        _state.value = _state.value.copy(scanProgress = abortingMessage)
+        SnackbarManager.showProgress(abortingMessage)
+        smartCacheJob?.cancel()
+    }
+
     fun startSmartCache() {
         val app = getApplication<Application>()
-        viewModelScope.launch {
+        smartCacheJob = viewModelScope.launch {
             Log.i("RAProxy/SmartCache", "startSmartCache invoked cachedGames=${_state.value.cachedGames.size}")
             if (_state.value.cachedGames.size >= MAX_CACHED_GAMES) {
                 SnackbarManager.showMessage(str(R.string.cached_games_limit_reached, MAX_CACHED_GAMES), SnackbarDuration.Indefinite)
@@ -1593,8 +1603,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             val romTreeUris = loadSmartCacheRomSafUris()
             val startingMessage = str(R.string.smart_cache_starting)
             _state.value = _state.value.copy(scanInProgress = true, scanProgress = startingMessage)
-            SnackbarManager.showProgress(startingMessage)
+            SnackbarManager.showProgress(startingMessage, onAbort = ::cancelSmartCache)
             var completionMessage: String? = null
+            var completionDuration = SnackbarDuration.Indefinite
             try {
                 val userAgent = withContext(Dispatchers.IO) { proxyUserAgent(loadUserAgent(db)) }
                 val result = withContext(Dispatchers.IO) {
@@ -1611,7 +1622,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     ) { current, total, label ->
                         val progressMessage = str(R.string.smart_cache_progress, current, total, label)
                         _state.value = _state.value.copy(scanProgress = progressMessage)
-                        SnackbarManager.showProgress(progressMessage)
+                        SnackbarManager.showProgress(progressMessage, onAbort = ::cancelSmartCache)
                     }
                 }
                 Log.i(
@@ -1689,6 +1700,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     }
                 }
                 completionMessage = message
+            } catch (c: CancellationException) {
+                Log.i("RAProxy/SmartCache", "startSmartCache aborted")
+                completionMessage = str(R.string.smart_cache_aborted)
+                completionDuration = SnackbarDuration.Short
             } catch (t: Throwable) {
                 Log.e("RAProxy/SmartCache", "startSmartCache failed", t)
                 SnackbarManager.showError(t.message ?: "Smart Cache failed.")
@@ -1698,7 +1713,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 SnackbarManager.showProgress(null)
             }
             completionMessage?.let {
-                SnackbarManager.showMessage(it, SnackbarDuration.Indefinite)
+                SnackbarManager.showMessage(it, completionDuration)
             }
         }
     }
