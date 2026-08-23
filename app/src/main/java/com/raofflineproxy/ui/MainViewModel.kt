@@ -108,6 +108,9 @@ sealed interface MainUiEvent {
     data class ShowAppUpdate(val update: AppUpdateInfo) : MainUiEvent
     data object RequestShizukuPermission : MainUiEvent
     data object PromptPpssppShizukuRootMode : MainUiEvent
+    /** A companion emulator has a library provider but has not been allowed to share it.
+     *  Carries the emulator packages to ask, in order. */
+    data class RequestCompanionLibraryConsent(val packages: List<String>) : MainUiEvent
 }
 
 private sealed interface PendingCredentialAction {
@@ -185,6 +188,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         app.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
     private var pendingProxyStart = false
     private var pendingSmartCacheStart = false
+
+    // Companion packages already put to the user. Cleared when the user starts smart caching
+    // themselves, so a manual retry asks again, but NOT on the automatic re-run that follows a
+    // prompt — that is what would otherwise spin forever on Deny.
+    private val consentRequestedPackages = mutableSetOf<String>()
     private var pendingSmartCacheRomGrantPaths = emptyList<String>()
     private var pendingSmartCacheGrantTargets = emptyList<SafGrantTarget>()
     private var pendingPpssppShizukuRootModePrompt = false
@@ -1591,7 +1599,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         smartCacheJob?.cancel()
     }
 
-    fun startSmartCache() {
+    fun startSmartCache(userInitiated: Boolean = true) {
+        if (userInitiated) {
+            consentRequestedPackages.clear()
+        }
         val app = getApplication<Application>()
         smartCacheJob = viewModelScope.launch {
             Log.i("RAProxy/SmartCache", "startSmartCache invoked cachedGames=${_state.value.cachedGames.size}")
@@ -1618,7 +1629,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         retroArchTreeUri = loadSafUri(),
                         dolphinTreeUri = loadDolphinSafUri(),
                         ppssppTreeUri = loadPpssppSafUri(),
-                        romTreeUris = romTreeUris
+                        romTreeUris = romTreeUris,
+                        consentAlreadyRequested = consentRequestedPackages.toSet()
                     ) { current, total, label ->
                         val progressMessage = str(R.string.smart_cache_progress, current, total, label)
                         _state.value = _state.value.copy(scanProgress = progressMessage)
@@ -1629,6 +1641,17 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     "RAProxy/SmartCache",
                     "startSmartCache result matched=${result.matched} total=${result.total} skipped=${result.skipped} limitReached=${result.limitReached} needsSafGrant=${result.needsSafGrant} message=${result.message}"
                 )
+                if (result.requiredConsentPackages.isNotEmpty()) {
+                    consentRequestedPackages += result.requiredConsentPackages
+                    // Ask before reporting a thin result: the emulator is installed and has
+                    // games, it simply has not been allowed to share them, and the user has no
+                    // other way to find that out.
+                    pendingSmartCacheStart = true
+                    _events.tryEmit(
+                        MainUiEvent.RequestCompanionLibraryConsent(result.requiredConsentPackages)
+                    )
+                    return@launch
+                }
                 if (result.needsSafGrant) {
                     pendingSmartCacheStart = true
                     val safTargets = buildList {
