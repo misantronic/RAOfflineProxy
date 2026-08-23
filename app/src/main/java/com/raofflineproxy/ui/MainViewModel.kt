@@ -280,7 +280,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             combine(
                 db.pendingAwardDao().observeByStatus().distinctUntilChanged(),
                 db.pendingAwardDao().observeByStatus(PENDING_AWARD_STATUS_FLUSHED).distinctUntilChanged(),
-                db.cacheDao().observePatchEntrySummaries().distinctUntilChanged(),
+                db.cacheDao().observePatchEntrySummaries(),
                 db.cacheDao().observeUnlockSummaries().distinctUntilChanged(),
                 db.cacheDao().observeByPrefix(CacheKeys.PREFIX_LOGIN)
                     .map { it.isNotEmpty() }
@@ -1713,6 +1713,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     )
 
     private class ParsedPatch(
+        val cacheKey: String,
         val cachedAt: Long,
         val gameId: String,
         val user: String,
@@ -1753,6 +1754,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         if (parts.size < 3) return null
         val patchData = runCatching { JSONObject(body).getJSONObject("PatchData") }.getOrNull()
         return ParsedPatch(
+            cacheKey = summary.cacheKey,
             cachedAt = summary.cachedAt,
             gameId = parts[1],
             user = parts[2],
@@ -1774,7 +1776,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 add(
                     ParsedAchievement(
                         id = achievementId,
-                        title = if (achievement.has("Title")) achievement.optString("Title") else null,
+                        title = achievement.optString("Title").takeIf { it.isNotEmpty() },
                         description = achievement.optString("Description").takeIf { it.isNotEmpty() },
                         points = achievement.optInt("Points", 0),
                         badgeName = achievement.optString("BadgeName").takeIf { it.isNotEmpty() },
@@ -1791,7 +1793,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     ): List<PatchView> {
         val views = ArrayList<PatchView>(summaries.size)
         for (summary in summaries) {
-            val parsed = patchCache[summary.id]?.takeIf { it.cachedAt == summary.cachedAt }
+            val parsed = patchCache[summary.id]
+                ?.takeIf { it.cachedAt == summary.cachedAt && it.cacheKey == summary.cacheKey }
                 ?: db.cacheDao().bodyForSummary(summary)
                     ?.let { body -> parsePatch(summary, body) }
                     ?.also { patchCache[summary.id] = it }
