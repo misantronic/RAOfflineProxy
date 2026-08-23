@@ -5,6 +5,7 @@ import android.util.Log
 import com.raofflineproxy.sharedHttpClient
 import okhttp3.Request
 import java.io.File
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 
 private const val IMAGE_CACHE_DIR = "image_cache"
@@ -15,6 +16,8 @@ private const val IMAGE_DOWNLOAD_POOL_SIZE = 4
 
 private val imageDownloadExecutor = Executors.newFixedThreadPool(IMAGE_DOWNLOAD_POOL_SIZE)
 
+private val inFlightDownloads = ConcurrentHashMap.newKeySet<String>()
+
 fun scheduleImageDownload(
     context: Context,
     url: String,
@@ -22,9 +25,17 @@ fun scheduleImageDownload(
     userAgent: String,
     gameId: Int? = null,
 ) {
-    imageDownloadExecutor.submit {
-        downloadStaticImage(context, url, imagePath, userAgent, gameId)
-    }
+    val dedupeKey = "$gameId|$imagePath"
+    if (!inFlightDownloads.add(dedupeKey)) return
+    runCatching {
+        imageDownloadExecutor.submit {
+            try {
+                downloadStaticImage(context, url, imagePath, userAgent, gameId)
+            } finally {
+                inFlightDownloads.remove(dedupeKey)
+            }
+        }
+    }.onFailure { inFlightDownloads.remove(dedupeKey) }
 }
 
 private fun imageCacheRoot(context: Context): File = File(context.filesDir, IMAGE_CACHE_DIR)
@@ -43,32 +54,25 @@ fun downloadStaticImage(
         val cleanPath = imagePath.trimStart('/').substringBefore('?')
         val target = File(staticDir(context), cleanPath)
 
-        if (!target.exists()) {
-            target.parentFile?.mkdirs()
+        if (target.length() == 0L) {
             val request = Request.Builder()
                 .url(url)
                 .header("User-Agent", userAgent)
                 .build()
-            val temp = File(target.parent, "${target.name}.tmp")
-            var renamed = false
-            try {
+            writeAtomically(target) { temp ->
                 sharedHttpClient.newCall(request).execute().use { response ->
                     if (!response.isSuccessful) error("HTTP ${response.code}")
                     response.body.byteStream().use { input ->
                         temp.outputStream().use { output -> input.copyTo(output) }
                     }
                 }
-                renamed = temp.renameTo(target)
-            } finally {
-                if (!renamed) temp.delete()
             }
         }
 
-        if (gameId != null && imagePath.startsWith("/Images/", ignoreCase = true) && target.exists()) {
+        if (gameId != null && imagePath.startsWith("/Images/", ignoreCase = true) && target.length() > 0L) {
             val iconFile = File(gameImageDir(context, gameId), "icon.png")
-            if (!iconFile.exists()) {
-                iconFile.parentFile?.mkdirs()
-                target.copyTo(iconFile, overwrite = false)
+            if (iconFile.length() == 0L) {
+                writeAtomically(iconFile) { temp -> target.copyTo(temp, overwrite = true) }
             }
         }
     }.onFailure { e ->
@@ -78,11 +82,26 @@ fun downloadStaticImage(
 
 fun resolveCachedStaticAsset(context: Context, path: String): File? {
     val cleanPath = path.trimStart('/').substringBefore('?')
-    return File(staticDir(context), cleanPath).takeIf { it.isFile }
+    return File(staticDir(context), cleanPath).takeIf { it.isFile && it.length() > 0L }
+}
+
+private fun writeAtomically(target: File, write: (File) -> Unit) {
+    target.parentFile?.mkdirs()
+    val temp = File.createTempFile("tmp_", ".part", target.parentFile)
+    var renamed = false
+    try {
+        write(temp)
+        renamed = temp.renameTo(target)
+    } finally {
+        if (!renamed) temp.delete()
+    }
 }
 
 fun cachedBadgeFileNames(context: Context): Set<String> =
-    File(staticDir(context), "Badge").list()?.toSet().orEmpty()
+    File(staticDir(context), "Badge")
+        .listFiles()
+        ?.mapNotNullTo(mutableSetOf()) { file -> file.name.takeIf { file.isFile && file.length() > 0L } }
+        .orEmpty()
 
 fun cachedBadgePath(context: Context, badgeName: String): String =
     File(staticDir(context), "Badge/$badgeName.png").absolutePath
@@ -90,7 +109,7 @@ fun cachedBadgePath(context: Context, badgeName: String): String =
 fun resolveCachedGameIconPath(context: Context, gameId: Int): String? =
     gameImageDir(context, gameId)
         .listFiles()
-        ?.firstOrNull { it.isFile }
+        ?.firstOrNull { it.isFile && it.length() > 0L }
         ?.absolutePath
 
 fun deleteCachedImagesForGame(context: Context, gameId: String) {
