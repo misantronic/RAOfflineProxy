@@ -130,7 +130,7 @@ Which side turns it off depends on how the emulator is patched:
 
 - **RetroArch**, **Dolphin**, and **PPSSPP** when its config file is patched: RAOfflineProxy disables hardcore while patching, records the original value so it survives a process restart, and restores it when you stop the proxy
 - **PPSSPP** on the broadcast path, **Flycast**, and **WatermelonDS**: the emulator disables hardcore itself while the custom host is active and restores your setting once the override is cleared, so RAOfflineProxy never writes the setting
-- **ARMSX1** and **ARMSX2**: hardcore is deliberately left under your own control, so turn it off in the emulator before starting the proxy
-- **Mupen64Plus AE (fork)**: has no hardcore mode at all, so there is nothing to disable
+- **ARMSX2**: hardcore is deliberately left under your own control, so turn it off in the emulator before starting the proxy
+- **ARMSX1** and **Mupen64Plus AE (fork)**: have no hardcore mode at all, so there is nothing to disable. ARMSX1 is softcore-only by construction: its achievements client is hardwired to softcore and the hardcore toggle was removed from its UI
 
 If you are unsure how your emulator behaves, turn hardcore off in the emulator yourself before starting the proxy.
