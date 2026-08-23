@@ -28,6 +28,9 @@ class LinuxLogUploaderTests(unittest.TestCase):
             (tmp_path / "service.log.1").write_text("older line one\nolder line two\n", encoding="utf-8")
             (tmp_path / "service.log").write_text("newer line\n", encoding="utf-8")
             (tmp_path / "menu-sdl.log").write_text("run_menu_sdl start python=3.12.8\n", encoding="utf-8")
+            (tmp_path / "menu-stdout.log").write_text(
+                "=== attempt driver=wayland preload=none ===\n", encoding="utf-8"
+            )
             (tmp_path / "update_status.json").write_text('{"status": "up_to_date"}\n', encoding="utf-8")
             (tmp_path / "service_status.json").write_text('{"running": true}\n', encoding="utf-8")
 
@@ -40,10 +43,39 @@ class LinuxLogUploaderTests(unittest.TestCase):
                     "service.log.1": "older line one\nolder line two",
                     "service.log": "newer line",
                     "menu-sdl.log": "run_menu_sdl start python=3.12.8",
+                    "menu-stdout.log": "=== attempt driver=wayland preload=none ===",
                     "update_status.json": '{"status": "up_to_date"}',
                     "service_status.json": '{"running": true}',
                 },
             )
+
+    def test_read_redacted_log_files_collects_rocknix_menu_stdout_crash_output(self) -> None:
+        """A native SDL crash never reaches Python, so the launcher's captured
+        stdout is the only record of which driver/preload combination died."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            (tmp_path / "menu-stdout.log").write_text(
+                "=== attempt driver=wayland preload=none ===\n"
+                "Segmentation fault\n"
+                "=== exit_code=139 ===\n",
+                encoding="utf-8",
+            )
+
+            with patched_config_paths(tmp_path):
+                files = log_uploader._read_redacted_log_files()
+
+            self.assertIn("menu-stdout.log", files)
+            self.assertIn("exit_code=139", files["menu-stdout.log"])
+
+    def test_read_redacted_log_files_skips_menu_stdout_on_other_platforms(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            (tmp_path / "service.log").write_text("newer line\n", encoding="utf-8")
+
+            with patched_config_paths(tmp_path):
+                files = log_uploader._read_redacted_log_files()
+
+            self.assertNotIn("menu-stdout.log", files)
 
     def test_read_redacted_log_files_redacts_secrets_from_all_files(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:

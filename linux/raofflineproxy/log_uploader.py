@@ -63,11 +63,16 @@ def _log_file_paths() -> list[Path]:
     # launch.log (muOS only) timestamps every launcher invocation, including the
     # boot hook — the only way to see how late the service starts at boot.
     launch_log = config.CONFIG_DIR / "launch.log"
+    # menu-stdout.log (ROCKNIX only) holds the raw stdout/stderr of each launcher
+    # attempt. A native SDL crash kills the process before any Python handler runs,
+    # so this is the only record of which driver/preload combination died and how.
+    menu_stdout_log = config.CONFIG_DIR / "menu-stdout.log"
     return [
         backup,
         config.LOG_FILE,
         menu_sdl_log,
         launch_log,
+        menu_stdout_log,
         config.UPDATE_STATUS_FILE,
         config.STATUS_FILE,
     ]
