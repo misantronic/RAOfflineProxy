@@ -18,7 +18,6 @@ import com.raofflineproxy.ui.Emulator
 import com.raofflineproxy.ui.EmulatorSupport
 import com.raofflineproxy.ui.RETROARCH_PACKAGE_CANDIDATES
 import com.raofflineproxy.ui.UI_PPSSPP_PACKAGE_CANDIDATES
-import com.raofflineproxy.ui.UI_WATERMELONDS_PACKAGE_CANDIDATES
 import com.raofflineproxy.applyScanBatchCooldown
 import org.json.JSONArray
 import org.json.JSONObject
@@ -33,8 +32,8 @@ private const val DOLPHIN_RECENT_WINDOW_MS = 60L * 24 * 60 * 60 * 1000
 private const val RETROARCH_RECENT_WINDOW_MS = 60L * 24 * 60 * 60 * 1000
 private const val WATERMELONDS_RECENT_WINDOW_MS = 60L * 24 * 60 * 60 * 1000
 
-private val WATERMELONDS_ROM_LIBRARY_AUTHORITIES = UI_WATERMELONDS_PACKAGE_CANDIDATES.map { packageName ->
-    "$packageName.romlibrary"
+private val WATERMELONDS_ROM_LIBRARY_AUTHORITIES by lazy {
+    Emulator.WatermelonDs.packageCandidates.map { packageName -> "$packageName.romlibrary" }
 }
 private val SMART_CACHE_EXT_STORAGE by lazy { Environment.getExternalStorageDirectory().path }
 
@@ -475,8 +474,8 @@ private object WatermelonDsSmartCacheStrategy : SmartCacheStrategy {
     override val emulator: SmartCacheEmulator = SmartCacheEmulator.WatermelonDs
 
     override fun isEnabled(context: Context, emulatorSupport: EmulatorSupport): Boolean =
-        emulatorSupport.watermelonDsInstalled &&
-            emulatorSupport.watermelonDsEnabled
+        emulatorSupport.isInstalled(Emulator.WatermelonDs) &&
+            emulatorSupport.isEnabled(Emulator.WatermelonDs)
 
     override fun discoverCandidates(context: Context, treeUri: Uri?): SmartCacheStrategyResult {
         val cutoff = System.currentTimeMillis() - WATERMELONDS_RECENT_WINDOW_MS
