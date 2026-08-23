@@ -4,7 +4,13 @@ import re
 from pathlib import Path
 from typing import Optional
 
-from .config import detect_batocera_conf, detect_rocknix_append_cfg, proxy_value
+from .config import (
+    detect_batocera_conf,
+    detect_rocknix_append_cfg,
+    proxy_value,
+    running_on_spruce,
+    spruce_setting,
+)
 from .state import clear_patch_state, load_patch_state, save_patch_state
 
 HOST_KEY = "cheevos_custom_host"
@@ -80,6 +86,20 @@ def detect_hardcore_enabled(content: str) -> bool:
     return _extract_config_value(content, HARDCORE_KEY) == "true"
 
 
+def load_spruce_credentials() -> dict | None:
+    """spruce's own settings, which hold the credentials before any game launch has
+    copied them into the RetroArch config. Password-only — spruce stores no token."""
+    if not running_on_spruce():
+        return None
+
+    user = spruce_setting("username")
+    password = spruce_setting("password")
+    if not user or not password:
+        return None
+
+    return {"user": user, "password": password}
+
+
 def load_retroarch_credentials(cfg_path: str | None) -> dict | None:
     # Try main cfg first, then the cheevos appendconfig (muOS stores credentials
     # there), then ROCKNIX's appendconfig (it strips the cheevos keys out of
@@ -107,7 +127,11 @@ def load_retroarch_credentials(cfg_path: str | None) -> dict | None:
     if password_credentials is not None:
         return password_credentials
 
-    return load_retroarch_password_credentials(rocknix_cfg, last_wins=True)
+    password_credentials = load_retroarch_password_credentials(rocknix_cfg, last_wins=True)
+    if password_credentials is not None:
+        return password_credentials
+
+    return load_spruce_credentials()
 
 
 def load_retroarch_token_credentials(

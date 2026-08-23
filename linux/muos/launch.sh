@@ -30,6 +30,11 @@ export XDG_CONFIG_HOME="/root/.config"
 export RAOFFLINEPROXY_CONFIG_DIR="$DATA_DIR"
 export RAOFFLINEPROXY_RETROARCH_CFG="/opt/muos/share/info/config/retroarch.cfg"
 export SDL_VIDEODRIVER="evdev"
+# glibc gives every allocating thread its own heap and grows each in 1MB chunks it never
+# returns; the proxy runs a thread per connection plus background workers. Measured on a
+# 103MB Miyoo Mini: 9 threads held 9 arenas totalling 14.6MB, and capping this cut the
+# service from 32MB to 19MB RSS.
+export MALLOC_ARENA_MAX=2
 export PYTHONPATH="${APP_DIR}:${BASE_DIR}"
 export LD_LIBRARY_PATH="${PYGAME_LIBS_DIR}:/usr/lib/gl4es:/opt/muos/frontend/lib:/usr/lib"
 

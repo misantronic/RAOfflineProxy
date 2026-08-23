@@ -8,6 +8,7 @@ from .config import (
     MUOS_USER_INIT_CONFIG,
     detect_retroarch_cfg,
     running_on_rocknix,
+    running_on_spruce,
     save_config,
 )
 
@@ -18,6 +19,11 @@ DEFAULT_ROCKNIX_ROMS_ROOT = Path("/storage/roms")
 DEFAULT_KNULLI_STARTUP_SCRIPT = Path("/userdata/system/custom.sh")
 DEFAULT_MUOS_STARTUP_SCRIPT = DEFAULT_MUOS_INIT_DIR / "raofflineproxy.sh"
 DEFAULT_ROCKNIX_STARTUP_SCRIPT = Path("/storage/.config/autostart/raofflineproxy.sh")
+# spruce has no drop-in boot directory: .tmp_update/updater is its whole boot entry point,
+# and it dispatches straight into the per-device startup script without returning. So the
+# hook is inserted into that file, above the dispatch, rather than appended.
+DEFAULT_SPRUCE_STARTUP_SCRIPT = Path("/mnt/SDCARD/.tmp_update/updater")
+SPRUCE_AUTOSTART_LAUNCHER = Path("/mnt/SDCARD/App/RAOfflineProxy/autostart-launch.sh")
 ROCKNIX_MODULES_DIR = Path("/storage/.config/modules")
 ROCKNIX_MODULES_LAUNCHER = ROCKNIX_MODULES_DIR / "RAOfflineProxy.sh"
 ROCKNIX_TOOL_SOURCE = Path("/storage/.local/share/raofflineproxy/RAOfflineProxy.sh")
@@ -140,6 +146,10 @@ def ensure_boot_hook(config_data: dict) -> None:
         startup_script.write_text(onion_boot_hook_script(), encoding="utf-8")
         return
 
+    if startup_script == DEFAULT_SPRUCE_STARTUP_SCRIPT:
+        install_spruce_boot_hook(startup_script)
+        return
+
     if startup_script == DEFAULT_MUOS_STARTUP_SCRIPT:
         startup_script.parent.mkdir(parents=True, exist_ok=True)
         startup_script.write_text(muos_boot_hook_script(config_data), encoding="utf-8")
@@ -188,6 +198,11 @@ def resolve_startup_script_path(config_data: dict) -> Path | None:
     if configured:
         return Path(str(configured))
 
+    # Checked before Onion: spruce ships a /mnt/SDCARD/.tmp_update of its own, but never
+    # sources the startup/ directory Onion uses, so an Onion hook there would never fire.
+    if running_on_spruce():
+        return DEFAULT_SPRUCE_STARTUP_SCRIPT
+
     if Path("/mnt/SDCARD/.tmp_update").exists():
         return DEFAULT_ONION_STARTUP_SCRIPT
 
@@ -220,6 +235,9 @@ def autostart_command(config_data: dict) -> tuple[str]:
     startup_script = resolve_startup_script_path(config_data)
     if startup_script == DEFAULT_ONION_STARTUP_SCRIPT:
         return ("/mnt/SDCARD/App/RAOfflineProxy/autostart-launch.sh",)
+
+    if startup_script == DEFAULT_SPRUCE_STARTUP_SCRIPT:
+        return (str(SPRUCE_AUTOSTART_LAUNCHER),)
 
     if startup_script == DEFAULT_MUOS_STARTUP_SCRIPT:
         return (
@@ -255,6 +273,47 @@ def strip_autostart_block(content: str) -> str:
 
     end += len(AUTOSTART_SENTINEL_END)
     return f"{content[:start]}{content[end:]}"
+
+
+def spruce_boot_hook_block() -> str:
+    # Backgrounded and guarded: spruce's boot chain must never be delayed or broken by a
+    # missing, slow or failing app — .tmp_update/updater is the only path to a usable
+    # device, so a fault here would leave it unbootable.
+    return "\n".join(
+        [
+            AUTOSTART_SENTINEL_START,
+            f'if [ -x "{SPRUCE_AUTOSTART_LAUNCHER}" ]; then',
+            f'  sh "{SPRUCE_AUTOSTART_LAUNCHER}" >/dev/null 2>&1 &',
+            "fi",
+            AUTOSTART_SENTINEL_END,
+        ]
+    )
+
+
+def install_spruce_boot_hook(startup_script: Path) -> None:
+    """Prepends the hook to spruce's boot entry point, straight after the shebang.
+
+    It cannot be appended: the file ends by dispatching into a per-device startup script
+    that never returns. Prepending also keeps this independent of what that dispatch looks
+    like — the hook only backgrounds our launcher and needs nothing spruce sets up first.
+    """
+    if not startup_script.exists():
+        raise ValueError(f"spruce boot script not found: {startup_script}")
+
+    existing = startup_script.read_text(encoding="utf-8", errors="replace")
+    if not existing.startswith("#!"):
+        # Refuse rather than write into something that isn't the shell script we expect.
+        raise ValueError(
+            f"unrecognised spruce boot script, autostart not installed: {startup_script}"
+        )
+
+    cleaned = strip_autostart_block(existing)
+    shebang, _, remainder = cleaned.partition("\n")
+    # lstrip so repeated installs (every app launch) don't accumulate blank lines where
+    # strip_autostart_block removed the previous copy.
+    updated = f"{shebang}\n\n{spruce_boot_hook_block()}\n\n{remainder.lstrip(chr(10))}"
+    if updated != existing:
+        startup_script.write_text(updated, encoding="utf-8")
 
 
 def onion_boot_hook_script() -> str:

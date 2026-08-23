@@ -10,6 +10,21 @@ from pathlib import Path
 
 DEFAULT_ONION_APP_DIR = Path("/mnt/SDCARD/App/RAOfflineProxy")
 DEFAULT_ONION_STARTUP_SCRIPT = Path("/mnt/SDCARD/.tmp_update/startup/raofflineproxy.sh")
+# spruceOS keeps its bare version string ("4.3.3") in this file — the same one its own
+# updater and spruceRestore upgrade scripts read.
+SPRUCE_VERSION_FILE = Path("/mnt/SDCARD/spruce/spruce")
+# Onion's own version marker, used to break a tie when both firmwares have left traces on
+# the card. See running_on_spruce().
+ONION_VERSION_FILE = Path("/mnt/SDCARD/.tmp_update/onionVersion/version.txt")
+SPRUCE_RETROARCH_PLATFORM_DIR = Path("/mnt/SDCARD/RetroArch/platform")
+# spruce keeps the RetroAchievements credentials entered in its own settings here, and
+# only writes them into the RetroArch config when a game launches (its prepare_ra_config
+# seds them in). Before the first launch the config's cheevos_username is still empty, so
+# this file is the only place the credentials exist.
+SPRUCE_CONFIG_JSON = Path("/mnt/SDCARD/Saves/spruce/spruce-config.json")
+SPRUCE_SETTINGS_MENU = "RetroAchievements Settings"
+CPUINFO_PATH = Path("/proc/cpuinfo")
+MAGICX_MARKER = Path("/usr/magicx")
 SDCARD_RETROARCH_CFG_CANDIDATES = (
     Path("/mnt/SDCARD/RetroArch/.retroarch/retroarch.cfg"),
 )
@@ -48,8 +63,97 @@ def running_on_rocknix() -> bool:
     return 'OS_NAME="ROCKNIX"' in content
 
 
+def running_on_spruce() -> bool:
+    if not SPRUCE_VERSION_FILE.exists():
+        return False
+
+    # Reinstalling Onion over a card that once ran spruce leaves /mnt/SDCARD/spruce in
+    # place, which would otherwise make an Onion device answer yes here and then get
+    # spruce's config path, port and boot hook. Onion's own version file settles it: the
+    # reverse case cannot happen, because spruce's updater deletes .tmp_update wholesale.
+    return not ONION_VERSION_FILE.exists()
+
+
 def running_on_onion() -> bool:
-    return DEFAULT_ONION_APP_DIR.exists()
+    # spruceOS reuses Onion's /mnt/SDCARD/App layout, so the app directory alone does not
+    # identify Onion — without the spruce exclusion every Onion-only branch (most visibly
+    # the OnionOS version gate) would also fire on spruce.
+    return DEFAULT_ONION_APP_DIR.exists() and not running_on_spruce()
+
+
+def running_on_onion_or_spruce() -> bool:
+    """These two share the /mnt/SDCARD layout and the hardware, so this app ships one
+    bundled stack for both: the "Mini" SDL2 video driver, no fontconfig, and
+    gpio-keys-polled raw evdev input."""
+    return running_on_onion() or running_on_spruce()
+
+
+# Mirrors spruce's own device detection (spruce/scripts/helperFunctions.sh). The Anbernic
+# 0xd03 branch is collapsed to one label because all its variants share a single RetroArch
+# config file.
+_SPRUCE_CPUINFO_PLATFORMS = (
+    ("sun8i", "A30"),
+    ("TG5040", "SmartPro"),
+    ("TG3040", "Brick"),
+    ("TG5050", "SmartProS"),
+    ("TG4040", "BrickPro"),
+    ("0xd05", "Flip"),
+    ("0xd04", "Pixel2"),
+    ("0xd03", "AnbernicRG_XX-universal"),
+)
+
+
+def spruce_platform() -> str:
+    try:
+        info = CPUINFO_PATH.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        info = ""
+
+    for token, name in _SPRUCE_CPUINFO_PLATFORMS:
+        if token in info:
+            return name
+
+    if MAGICX_MARKER.exists():
+        return "Zero28"
+
+    return "MiyooMini"
+
+
+def spruce_retroarch_cfg() -> Path:
+    """spruce launches RetroArch with --config pointing at this per-device file, so its
+    .retroarch/retroarch.cfg is never read (see spruce/scripts/emu/lib/ra_functions.sh)."""
+    return SPRUCE_RETROARCH_PLATFORM_DIR / f"retroarch-{spruce_platform()}.cfg"
+
+
+def spruce_setting(name: str) -> str | None:
+    """Reads .menuOptions."<menu>".<name>.selected out of spruce's settings file, the same
+    path its own get_config_value helper uses."""
+    try:
+        with SPRUCE_CONFIG_JSON.open(encoding="utf-8") as handle:
+            data = json.load(handle)
+    except (OSError, json.JSONDecodeError):
+        return None
+
+    if not isinstance(data, dict):
+        return None
+
+    menu = data.get("menuOptions")
+    if not isinstance(menu, dict):
+        return None
+
+    section = menu.get(SPRUCE_SETTINGS_MENU)
+    if not isinstance(section, dict):
+        return None
+
+    entry = section.get(name)
+    if not isinstance(entry, dict):
+        return None
+
+    value = entry.get("selected")
+    if not isinstance(value, str):
+        return None
+
+    return value.strip() or None
 
 
 def resolve_config_dir() -> Path:
@@ -83,6 +187,9 @@ PROXY_UA_TAG = f"RAOfflineProxy/Linux/{APP_VERSION}"
 FALLBACK_USER_AGENT = "RetroArch/1.21.0 (Linux)"
 
 DEFAULT_PROXY_PORT = 8080
+# spruce ships SFTPGo bound to 0.0.0.0:8080 (its sftpgo.json httpd binding) and starts it
+# whenever SFTPGo is enabled in Network Settings, so the usual default can never bind.
+SPRUCE_DEFAULT_PROXY_PORT = 8099
 MIN_PROXY_PORT = 1024
 MAX_PROXY_PORT = 65535
 
@@ -154,8 +261,12 @@ def save_config(data: dict) -> None:
         handle.write("\n")
 
 
+def default_proxy_port() -> int:
+    return SPRUCE_DEFAULT_PROXY_PORT if running_on_spruce() else DEFAULT_PROXY_PORT
+
+
 def proxy_port(config_data: dict) -> int:
-    raw_port = config_data.get("proxy_port", DEFAULT_PROXY_PORT)
+    raw_port = config_data.get("proxy_port", default_proxy_port())
     port = int(raw_port)
     if not (MIN_PROXY_PORT <= port <= MAX_PROXY_PORT):
         raise ValueError(f"Invalid proxy port: {port}")
@@ -214,6 +325,14 @@ def _retroarch_cfg_lookup() -> tuple[tuple[Callable[[], bool], tuple[Path, ...]]
         (
             lambda: running_on_rocknix() or Path("/storage").exists(),
             (DEFAULT_ROCKNIX_RETROARCH_CFG,),
+        ),
+        # Ahead of the shared /mnt/SDCARD entry: spruce lives on the same card as Onion
+        # but launches RetroArch with --config pointing at a per-device file, so it never
+        # reads .retroarch/retroarch.cfg. Candidates stay empty off spruce so the device
+        # lookup behind spruce_retroarch_cfg() only runs where it applies.
+        (
+            running_on_spruce,
+            (spruce_retroarch_cfg(),) if running_on_spruce() else (),
         ),
         (lambda: Path("/mnt/SDCARD").exists(), tuple(SDCARD_RETROARCH_CFG_CANDIDATES)),
     )

@@ -44,6 +44,16 @@ ROCKNIX also ships standalone PPSSPP with its own RetroAchievements support. Whe
 /storage/.config/ppsspp/PSP/SYSTEM/ppsspp.ini
 ```
 
+== spruce
+
+spruce launches RetroArch with its own per-device config rather than the usual one, so that is the file RAOfflineProxy patches:
+
+```text
+/mnt/SDCARD/RetroArch/platform/retroarch-<device>.cfg
+```
+
+spruce rewrites the account and achievement keys in this file on every game launch from its own RetroAchievements settings, so starting the proxy also switches spruce's achievements mode to `Softcore`. Stopping the proxy restores whatever it was before.
+
 :::
 
 ## What Gets Patched

@@ -13,6 +13,11 @@ if [ -d "${PYGAME_DIR}" ]; then
   PYTHONPATH_ENTRIES="${PYTHONPATH_ENTRIES}:${PYGAME_DIR}"
 fi
 
+# glibc gives every allocating thread its own heap and grows each in 1MB chunks it never
+# returns; the proxy runs a thread per connection plus background workers. Measured on a
+# 103MB Miyoo Mini: 9 threads held 9 arenas totalling 14.6MB, and capping this cut the
+# service from 32MB to 19MB RSS.
+export MALLOC_ARENA_MAX=2
 export PYTHONPATH="${PYTHONPATH_ENTRIES}${PYTHONPATH:+:${PYTHONPATH}}"
 
 case "${1:-}" in

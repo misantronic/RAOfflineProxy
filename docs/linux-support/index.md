@@ -11,14 +11,15 @@ The Linux version is for handheld Linux devices where you want the same basic of
 - Keep earning casual achievements while offline
 - Let queued awards sync later when you reconnect
 
-Use the `KNULLI`, `Onion`, `muOS`, and `ROCKNIX` tabs throughout the Linux section to switch target-specific instructions.
+Use the `KNULLI`, `Onion`, `muOS`, `ROCKNIX`, and `spruce` tabs throughout the Linux section to switch target-specific instructions.
 
 ## Supported Targets
 
-- KNULLI (alpha)
-- Onion (alpha)
-- muOS (alpha)
-- ROCKNIX (alpha)
+- KNULLI
+- Onion
+- muOS
+- ROCKNIX
+- spruce (experimental)
 
 ## Specifics
 
@@ -48,10 +49,16 @@ The ROCKNIX target ships as a self-extracting installer and runs the same SDL me
 
 Both RetroArch and standalone PPSSPP are supported on ROCKNIX. Starting the proxy patches both `retroarch.cfg` and, when present, `ppsspp.ini`.
 
+== spruce
+
+spruce support is experimental. It is currently compatible with [spruce 4.3.x](https://github.com/spruceUI/spruceOS/releases), tested on a Miyoo Mini Plus running spruce 4.3.4.
+
+The bundled Python runtime and SDL libraries are 32-bit ARM builds, which covers spruce's 32-bit devices: the Miyoo Mini family and the A30. spruce's other devices (TrimUI, Anbernic, Miyoo Flip, GKD Pixel 2, MagicX Zero 28) are 64-bit and would need an aarch64 build, which this bundle does not ship.
+
 :::
 
 ## Important Notes
 
 - Linux support is currently in alpha and should still be treated as a prerelease feature.
 - Linux install, startup, and UI behavior can vary a lot by firmware and frontend.
-- Always check the correct tab for your device instead of assuming KNULLI, Onion, muOS, and ROCKNIX behave the same way.
+- Always check the correct tab for your device instead of assuming KNULLI, Onion, muOS, ROCKNIX, and spruce behave the same way.

@@ -9,7 +9,14 @@ import sys
 import time
 
 from .boot import LISTEN_FD_ENV
-from .config import CONFIG_DIR, DATABASE_FILE, LOG_FILE, configure_logging
+from .config import (
+    CONFIG_DIR,
+    DATABASE_FILE,
+    LOG_FILE,
+    configure_logging,
+    proxy_host,
+    proxy_port,
+)
 from .proxy_service import run_proxy_service
 from .state import (
     clear_pid,
@@ -178,8 +185,8 @@ def save_running_service_state(
             "running": True,
             "pid": pid,
             "startedAt": started_at or int(time.time()),
-            "proxyHost": config_data.get("proxy_host", "127.0.0.1"),
-            "proxyPort": int(config_data.get("proxy_port", 8080)),
+            "proxyHost": proxy_host(config_data),
+            "proxyPort": proxy_port(config_data),
         }
     )
 
@@ -201,6 +208,23 @@ def _kill_orphaned_pid(pid: int, timeout_seconds: int = 5) -> None:
             pass
 
 
+def port_is_available(config_data: dict) -> bool:
+    import socket
+
+    probe = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        # Same option the real server binds with (ThreadingTCPServer.allow_reuse_address),
+        # so a port left in TIME_WAIT by our own previous run is not reported as taken.
+        # It still fails against a live listener, which is the case worth catching.
+        probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        probe.bind((proxy_host(config_data), proxy_port(config_data)))
+    except OSError:
+        return False
+    finally:
+        probe.close()
+    return True
+
+
 def start_service_process(config_data: dict) -> dict:
     discovered_pids = discover_service_pids()
     healthy_pids = [pid for pid in discovered_pids if not process_is_orphaned(pid)]
@@ -217,6 +241,14 @@ def start_service_process(config_data: dict) -> dict:
 
     LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
     listen_fd = os.environ.get(LISTEN_FD_ENV)
+    # The service is spawned detached, so a failed bind would only ever surface as a bare
+    # errno in service.log while the menu reports a successful start. Check here, where
+    # the error can still be shown, unless the boot entrypoint already holds the socket.
+    if not listen_fd and not port_is_available(config_data):
+        port = proxy_port(config_data)
+        raise RuntimeError(
+            f"Port {port} already in use - change proxy_port in config.json"
+        )
     pass_fds: tuple[int, ...] = ()
     env = None
     if listen_fd:
@@ -347,8 +379,8 @@ def run_service_foreground(config_data: dict) -> None:
             "running": True,
             "pid": os.getpid(),
             "startedAt": int(time.time()),
-            "proxyHost": config_data.get("proxy_host", "127.0.0.1"),
-            "proxyPort": int(config_data.get("proxy_port", 8080)),
+            "proxyHost": proxy_host(config_data),
+            "proxyPort": proxy_port(config_data),
         }
     )
     save_pid(os.getpid())

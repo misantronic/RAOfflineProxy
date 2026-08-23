@@ -15,6 +15,7 @@ from .retroarch_cfg import (
     cheevos_append_cfg_path,
     load_retroarch_password_credentials,
     load_retroarch_token_credentials,
+    load_spruce_credentials,
 )
 from .storage import Storage
 from .utils import proxy_user_agent
@@ -48,10 +49,14 @@ def resolve_credentials(
     if cached is not None and not storage.is_token_invalid(cached["token"]):
         return cached
 
+    # spruce keeps its credentials in its own settings file and only copies them into
+    # the RetroArch config when a game launches, so before the first launch that file is
+    # the only source.
     password_credentials = (
         load_retroarch_password_credentials(cfg_path)
         or load_retroarch_password_credentials(cheevos_cfg)
         or load_retroarch_password_credentials(rocknix_cfg, last_wins=True)
+        or load_spruce_credentials()
     )
     if password_credentials is not None:
         refreshed = login_and_cache_token(

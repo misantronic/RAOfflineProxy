@@ -23,6 +23,7 @@ GITHUB_RELEASES_URL = "https://api.github.com/repos/misantronic/RAOfflineProxy/r
 UPDATE_CHECK_INTERVAL_SECONDS = 24 * 60 * 60
 PLATFORM_KNULLI = "knulli"
 PLATFORM_ONION = "onion"
+PLATFORM_SPRUCE = "spruce"
 PLATFORM_MUOS = "muos"
 PLATFORM_ROCKNIX = "rocknix"
 KNULLI_UPDATE_INSTALLER_PATH = CONFIG_DIR / "update-installer.sh"
@@ -246,6 +247,9 @@ def find_platform_asset_url(platform: str, assets: list[dict]) -> str | None:
                 continue
         elif platform == PLATFORM_ONION:
             if "onion" not in lower_name or not lower_name.endswith(".zip"):
+                continue
+        elif platform == PLATFORM_SPRUCE:
+            if "spruce" not in lower_name or not lower_name.endswith(".zip"):
                 continue
         elif platform == PLATFORM_MUOS:
             if "muos" not in lower_name or not lower_name.endswith(".muxapp"):
@@ -613,7 +617,13 @@ def parse_version(raw: str) -> ParsedVersion | None:
 
 def validate_platform(platform: str) -> str:
     lowered = platform.strip().lower()
-    if lowered not in {PLATFORM_KNULLI, PLATFORM_ONION, PLATFORM_MUOS, PLATFORM_ROCKNIX}:
+    if lowered not in {
+        PLATFORM_KNULLI,
+        PLATFORM_ONION,
+        PLATFORM_SPRUCE,
+        PLATFORM_MUOS,
+        PLATFORM_ROCKNIX,
+    }:
         raise ValueError(f"Unsupported update platform: {platform}")
     return lowered
 
