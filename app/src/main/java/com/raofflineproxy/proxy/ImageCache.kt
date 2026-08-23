@@ -81,6 +81,12 @@ fun resolveCachedStaticAsset(context: Context, path: String): File? {
     return File(staticDir(context), cleanPath).takeIf { it.isFile }
 }
 
+fun cachedBadgeFileNames(context: Context): Set<String> =
+    File(staticDir(context), "Badge").list()?.toSet().orEmpty()
+
+fun cachedBadgePath(context: Context, badgeName: String): String =
+    File(staticDir(context), "Badge/$badgeName.png").absolutePath
+
 fun resolveCachedGameIconPath(context: Context, gameId: Int): String? =
     gameImageDir(context, gameId)
         .listFiles()

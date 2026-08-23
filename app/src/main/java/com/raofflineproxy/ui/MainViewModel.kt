@@ -30,6 +30,7 @@ import com.raofflineproxy.proxyUserAgent
 import com.raofflineproxy.isLoopbackPortAvailable
 import com.raofflineproxy.data.AppDatabase
 import com.raofflineproxy.data.CacheEntry
+import com.raofflineproxy.data.CacheEntrySummary
 import com.raofflineproxy.data.CacheKeys
 import com.raofflineproxy.data.CachedGame
 import com.raofflineproxy.data.PendingAward
@@ -45,6 +46,8 @@ import com.raofflineproxy.proxy.PasswordCredentials
 import com.raofflineproxy.proxy.patchImagePath
 import com.raofflineproxy.proxy.patchImageUrl
 import com.raofflineproxy.proxy.resolveCachedStaticAsset
+import com.raofflineproxy.proxy.cachedBadgeFileNames
+import com.raofflineproxy.proxy.cachedBadgePath
 import com.raofflineproxy.proxy.cacheLoginCredentialsResponse
 import com.raofflineproxy.proxy.clearAllCachedImages
 import com.raofflineproxy.proxy.deleteCachedImagesForGame
@@ -76,6 +79,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -83,6 +89,8 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.util.concurrent.ConcurrentHashMap
+import org.json.JSONArray
 import org.json.JSONObject
 import kotlin.time.Duration.Companion.milliseconds
 
@@ -170,7 +178,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     val events = _events.asSharedFlow()
     private val _cachedGames = MutableStateFlow<List<CachedGame>>(emptyList())
     val cachedGames: StateFlow<List<CachedGame>> = _cachedGames.asStateFlow()
-    private val pendingDeletedGameIds = mutableSetOf<String>()
+    private val pendingDeletedGameIds: MutableSet<String> = ConcurrentHashMap.newKeySet()
+    private val patchCache = mutableMapOf<Long, ParsedPatch>()
+    private val unlockCache = mutableMapOf<Long, CachedUnlocks>()
     private val connectivityManager =
         app.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
     private var pendingProxyStart = false
@@ -268,80 +278,41 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
         viewModelScope.launch {
             combine(
-                db.pendingAwardDao().observeByStatus(),
-                db.pendingAwardDao().observeByStatus(PENDING_AWARD_STATUS_FLUSHED),
-                db.cacheDao().observePatchEntries(),
+                db.pendingAwardDao().observeByStatus().distinctUntilChanged(),
+                db.pendingAwardDao().observeByStatus(PENDING_AWARD_STATUS_FLUSHED).distinctUntilChanged(),
+                db.cacheDao().observePatchEntrySummaries().distinctUntilChanged(),
+                db.cacheDao().observeUnlockSummaries().distinctUntilChanged(),
                 db.cacheDao().observeByPrefix(CacheKeys.PREFIX_LOGIN)
-            ) { awards, historyAwards, entries, loginEntries ->
-                val resolvedAwards = awards.map { award -> resolvePendingAward(award) }
-                val resolvedHistoryAwards = historyAwards.map { award -> resolvePendingAward(award) }
-                val hasLoginCredentials = loginEntries.isNotEmpty()
-                val pendingAwardsByGameId = buildPendingAwardsByGameId(entries, awards)
-                pendingDeletedGameIds.retainAll(
-                    entries.mapNotNull { CacheKeys.parseGameIdStringFromPatchKey(it.cacheKey) }.toSet()
-                )
-                val games = run {
-                    entries
-                        .filter { CacheKeys.parseGameIdStringFromPatchKey(it.cacheKey) !in pendingDeletedGameIds }
-                        .mapNotNull { entry ->
-                            val parts = entry.cacheKey.split(":")
-                            if (parts.size < 3) return@mapNotNull null
-                            val gameId = parts[1]
-                            val user = parts[2]
-                            val patchData = runCatching {
-                                JSONObject(entry.responseBody).getJSONObject("PatchData")
-                            }.getOrNull()
-                            val title = patchData?.optString("Title") ?: gameId
-                            val imageIconUrl = gameId.toIntOrNull()?.let {
-                                resolveCachedGameIconPath(application, it)
-                            } ?: patchData?.let { pd ->
-                                patchImagePath(pd)?.let { resolveCachedStaticAsset(application, it)?.absolutePath }
-                                    ?: patchImageUrl(pd)
-                            }
-                            val unlocksBody = db.cacheDao().get(CacheKeys.unlocks(gameId, user))?.responseBody
-                            val unlockedIds = runCatching {
-                                val json = JSONObject(unlocksBody ?: return@runCatching emptySet())
-                                val unlocks = json.optJSONArray("UserUnlocks") ?: return@runCatching emptySet()
-                                buildSet(unlocks.length()) {
-                                    for (i in 0 until unlocks.length()) {
-                                        add(unlocks.optInt(i))
-                                    }
-                                }
-                            }.getOrDefault(emptySet())
-                            val unlockedCount = unlockedIds.size
-                            val totalAchievements = patchData?.optJSONArray("Achievements")?.let { arr ->
-                                var count = 0
-                                for (i in 0 until arr.length()) {
-                                    val a = arr.optJSONObject(i) ?: continue
-                                    val id = a.optInt("ID", 0)
-                                    if (id > 0 && id != WARNING_ACHIEVEMENT_ID && a.optInt("Flags", RC_ACHIEVEMENT_FLAG_CORE) == RC_ACHIEVEMENT_FLAG_CORE) count++
-                                }
-                                count
-                            } ?: 0
-                            val achievements = buildAchievements(patchData, unlockedIds)
-                            val consoleId = patchData?.optInt("ConsoleID", 0) ?: 0
-                            CachedGame(
-                                gameId = gameId,
-                                title = title,
-                                user = user,
-                                consoleId = consoleId,
-                                sourceRomPath = entry.sourceRomPath,
-                                cachedAt = entry.cachedAt,
-                                imageIconUrl = imageIconUrl,
-                                unlockedCount = unlockedCount,
-                                pendingAwardCount = pendingAwardsByGameId[gameId] ?: 0,
-                                totalAchievements = totalAchievements,
-                                achievements = achievements
-                            )
-                        }.sortedWith(
-                            compareBy(
-                                { com.raofflineproxy.data.ConsoleNames.nameForId(it.consoleId) },
-                                { it.title.lowercase() }
-                            )
+                    .map { it.isNotEmpty() }
+                    .distinctUntilChanged()
+            ) { awards, historyAwards, patchSummaries, unlockSummaries, hasLoginCredentials ->
+                val badgeNames = cachedBadgeFileNames(application)
+                val patches = loadPatchViews(patchSummaries, badgeNames)
+                val achievementIndex = buildAchievementIndex(patches)
+                val resolvedAwards = awards.map { resolvePendingAward(it, achievementIndex) }
+                val resolvedHistoryAwards = historyAwards.map { resolvePendingAward(it, achievementIndex) }
+                val pendingAwardsByGameId = buildPendingAwardsByGameId(achievementIndex, awards)
+                pendingDeletedGameIds.retainAll(patches.mapTo(HashSet()) { it.gameId })
+                unlockCache.keys.retainAll(unlockSummaries.mapTo(HashSet()) { it.id })
+                val unlockSummariesByKey = unlockSummaries.associateBy { it.cacheKey }
+                val games = patches
+                    .filter { it.gameId !in pendingDeletedGameIds }
+                    .map { patch ->
+                        buildCachedGame(
+                            patch = patch,
+                            unlockSummary = unlockSummariesByKey[CacheKeys.unlocks(patch.gameId, patch.user)],
+                            pendingAwardCount = pendingAwardsByGameId[patch.gameId] ?: 0
                         )
-                }
+                    }
+                    .sortedWith(
+                        compareBy(
+                            { com.raofflineproxy.data.ConsoleNames.nameForId(it.consoleId) },
+                            { it.title.lowercase() }
+                        )
+                    )
                 Quadruple(resolvedAwards, resolvedHistoryAwards, games, hasLoginCredentials)
-            }.collect { (resolvedAwards, resolvedHistoryAwards, games, hasLoginCredentials) ->
+            }.flowOn(Dispatchers.Default)
+                .collect { (resolvedAwards, resolvedHistoryAwards, games, hasLoginCredentials) ->
                     _state.value = _state.value.copy(
                         pendingAwards = resolvedAwards,
                         awardHistory = resolvedHistoryAwards
@@ -1732,44 +1703,183 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    private suspend fun resolvePendingAward(award: PendingAward): PendingAwardUi {
+    private class ParsedAchievement(
+        val id: Int,
+        val title: String?,
+        val description: String?,
+        val points: Int,
+        val badgeName: String?,
+        val core: Boolean
+    )
+
+    private class ParsedPatch(
+        val cachedAt: Long,
+        val gameId: String,
+        val user: String,
+        val title: String,
+        val consoleId: Int,
+        val imagePath: String?,
+        val imageUrl: String?,
+        val achievements: List<ParsedAchievement>
+    )
+
+    private class CachedUnlocks(val cachedAt: Long, val ids: Set<Int>)
+
+    private inner class PatchView(
+        val summary: CacheEntrySummary,
+        val parsed: ParsedPatch,
+        private val badgeNames: Set<String>
+    ) {
+        val gameId: String get() = parsed.gameId
+        val user: String get() = parsed.user
+        val achievements: List<ParsedAchievement> get() = parsed.achievements
+
+        val imageIconUrl: String? by lazy {
+            parsed.gameId.toIntOrNull()?.let { resolveCachedGameIconPath(application, it) }
+                ?: parsed.imagePath?.let { resolveCachedStaticAsset(application, it)?.absolutePath }
+                ?: parsed.imageUrl
+        }
+
+        fun badgeUrl(achievement: ParsedAchievement): String? = achievement.badgeName?.let { name ->
+            if ("$name.png" in badgeNames) cachedBadgePath(application, name)
+            else "https://i.retroachievements.org/Badge/$name.png"
+        }
+    }
+
+    private class AchievementRef(val patch: PatchView, val achievement: ParsedAchievement)
+
+    private fun parsePatch(summary: CacheEntrySummary, body: String): ParsedPatch? {
+        val parts = summary.cacheKey.split(":")
+        if (parts.size < 3) return null
+        val patchData = runCatching { JSONObject(body).getJSONObject("PatchData") }.getOrNull()
+        return ParsedPatch(
+            cachedAt = summary.cachedAt,
+            gameId = parts[1],
+            user = parts[2],
+            title = patchData?.optString("Title") ?: parts[1],
+            consoleId = patchData?.optInt("ConsoleID", 0) ?: 0,
+            imagePath = patchData?.let(::patchImagePath),
+            imageUrl = patchData?.let(::patchImageUrl),
+            achievements = parseAchievements(patchData?.optJSONArray("Achievements"))
+        )
+    }
+
+    private fun parseAchievements(achievements: JSONArray?): List<ParsedAchievement> {
+        if (achievements == null) return emptyList()
+        return buildList(achievements.length()) {
+            for (i in 0 until achievements.length()) {
+                val achievement = achievements.optJSONObject(i) ?: continue
+                val achievementId = achievement.optInt("ID", 0)
+                if (achievementId == 0) continue
+                add(
+                    ParsedAchievement(
+                        id = achievementId,
+                        title = if (achievement.has("Title")) achievement.optString("Title") else null,
+                        description = achievement.optString("Description").takeIf { it.isNotEmpty() },
+                        points = achievement.optInt("Points", 0),
+                        badgeName = achievement.optString("BadgeName").takeIf { it.isNotEmpty() },
+                        core = achievement.optInt("Flags", RC_ACHIEVEMENT_FLAG_CORE) == RC_ACHIEVEMENT_FLAG_CORE
+                    )
+                )
+            }
+        }
+    }
+
+    private suspend fun loadPatchViews(
+        summaries: List<CacheEntrySummary>,
+        badgeNames: Set<String>
+    ): List<PatchView> {
+        val views = ArrayList<PatchView>(summaries.size)
+        for (summary in summaries) {
+            val parsed = patchCache[summary.id]?.takeIf { it.cachedAt == summary.cachedAt }
+                ?: db.cacheDao().bodyForSummary(summary)
+                    ?.let { body -> parsePatch(summary, body) }
+                    ?.also { patchCache[summary.id] = it }
+                ?: continue
+            views += PatchView(summary, parsed, badgeNames)
+        }
+        patchCache.keys.retainAll(summaries.mapTo(HashSet()) { it.id })
+        return views
+    }
+
+    private fun buildAchievementIndex(patches: List<PatchView>): Map<Int, AchievementRef> = buildMap {
+        patches.forEach { patch ->
+            patch.achievements.forEach { achievement ->
+                putIfAbsent(achievement.id, AchievementRef(patch, achievement))
+            }
+        }
+    }
+
+    private suspend fun unlockedIdsFor(summary: CacheEntrySummary?): Set<Int> {
+        if (summary == null) return emptySet()
+        unlockCache[summary.id]?.let { if (it.cachedAt == summary.cachedAt) return it.ids }
+        val body = db.cacheDao().bodyForSummary(summary) ?: return emptySet()
+        val ids = runCatching {
+            val unlocks = JSONObject(body).optJSONArray("UserUnlocks") ?: return@runCatching emptySet()
+            buildSet(unlocks.length()) {
+                for (i in 0 until unlocks.length()) add(unlocks.optInt(i))
+            }
+        }.getOrDefault(emptySet())
+        unlockCache[summary.id] = CachedUnlocks(summary.cachedAt, ids)
+        return ids
+    }
+
+    private suspend fun buildCachedGame(
+        patch: PatchView,
+        unlockSummary: CacheEntrySummary?,
+        pendingAwardCount: Int
+    ): CachedGame {
+        val unlocked = unlockedIdsFor(unlockSummary)
+        val coreAchievements = patch.achievements.filter { it.id > 0 && it.id != WARNING_ACHIEVEMENT_ID && it.core }
+        return CachedGame(
+            gameId = patch.gameId,
+            title = patch.parsed.title,
+            user = patch.user,
+            consoleId = patch.parsed.consoleId,
+            sourceRomPath = patch.summary.sourceRomPath,
+            cachedAt = patch.summary.cachedAt,
+            imageIconUrl = patch.imageIconUrl,
+            unlockedCount = unlocked.size,
+            pendingAwardCount = pendingAwardCount,
+            totalAchievements = coreAchievements.size,
+            achievements = coreAchievements
+                .map { achievement ->
+                    CachedAchievement(
+                        id = achievement.id,
+                        title = achievement.title ?: str(R.string.achievement_fallback, achievement.id),
+                        description = achievement.description,
+                        points = achievement.points,
+                        badgeUrl = patch.badgeUrl(achievement),
+                        unlocked = unlocked.contains(achievement.id)
+                    )
+                }
+                .sortedByDescending { it.unlocked }
+        )
+    }
+
+    private fun resolvePendingAward(
+        award: PendingAward,
+        achievementIndex: Map<Int, AchievementRef>
+    ): PendingAwardUi {
         val params = parseFormParams(award.queryString.substringAfter("?", "") + "&" + award.requestBody)
         val achievementId = params["a"]?.toIntOrNull()
         val hardcore = params["h"] == "1"
+        val ref = achievementId?.let(achievementIndex::get)
+
         var gameTitle = str(R.string.unknown_game)
         var gameIconUrl: String? = null
-        var achievementTitle = if (achievementId != null) str(R.string.achievement_fallback, achievementId) else str(R.string.unknown_game)
+        var achievementTitle =
+            if (achievementId != null) str(R.string.achievement_fallback, achievementId) else str(R.string.unknown_game)
         var points = 0
         var badgeUrl: String? = null
-        var resolved = false
-        for (entry in db.cacheDao().getAllByPrefix(CacheKeys.PREFIX_PATCH)) {
-            if (resolved) break
-            runCatching {
-                val gameId = CacheKeys.parseGameIdFromPatchKey(entry.cacheKey)
-                val patchData = JSONObject(entry.responseBody).getJSONObject("PatchData")
-                val arr = patchData.getJSONArray("Achievements")
-                for (i in 0 until arr.length()) {
-                    val a = arr.getJSONObject(i)
-                    if (a.getInt("ID") == achievementId) {
-                        gameTitle = patchData.optString("Title", gameTitle)
-                        gameIconUrl = gameId?.let {
-                            resolveCachedGameIconPath(application, it)
-                        } ?: patchImagePath(patchData)?.let { resolveCachedStaticAsset(application, it)?.absolutePath }
-                            ?: patchImageUrl(patchData)
-                        achievementTitle = a.optString("Title", achievementTitle)
-                        points = a.optInt("Points", 0)
-                        val badgeName = a.optString("BadgeName").takeIf { it.isNotEmpty() }
-                        badgeUrl = badgeName?.let { name ->
-                            resolveCachedStaticAsset(application, "/Badge/$name.png")?.absolutePath
-                                ?: "https://i.retroachievements.org/Badge/$name.png"
-                        }
-                        resolved = true
-                        break
-                    }
-                }
-            }
-        }
-        if (!resolved) {
+
+        if (ref != null) {
+            gameTitle = ref.patch.parsed.title.takeIf { it.isNotEmpty() } ?: gameTitle
+            gameIconUrl = ref.patch.imageIconUrl
+            achievementTitle = ref.achievement.title ?: achievementTitle
+            points = ref.achievement.points
+            badgeUrl = ref.patch.badgeUrl(ref.achievement)
+        } else {
             gameTitle = award.snapshotGameTitle ?: gameTitle
             achievementTitle = award.snapshotAchievementTitle ?: achievementTitle
             points = award.snapshotPoints
@@ -1799,38 +1909,16 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private fun buildPendingAwardsByGameId(
-        patchEntries: List<CacheEntry>,
+        achievementIndex: Map<Int, AchievementRef>,
         awards: List<PendingAward>
     ): Map<String, Int> {
-        if (patchEntries.isEmpty() || awards.isEmpty()) return emptyMap()
-
-        val achievementGameIds = buildAchievementGameIds(patchEntries)
-        if (achievementGameIds.isEmpty()) return emptyMap()
+        if (achievementIndex.isEmpty() || awards.isEmpty()) return emptyMap()
 
         return buildMap {
             awards.forEach { award ->
                 val achievementId = parsePendingAwardAchievementId(award) ?: return@forEach
-                val gameId = achievementGameIds[achievementId] ?: return@forEach
+                val gameId = achievementIndex[achievementId]?.patch?.gameId ?: return@forEach
                 put(gameId, (get(gameId) ?: 0) + 1)
-            }
-        }
-    }
-
-    private fun buildAchievementGameIds(
-        patchEntries: List<CacheEntry>
-    ): Map<Int, String> = buildMap {
-        patchEntries.forEach { entry ->
-            val gameId = CacheKeys.parseGameIdStringFromPatchKey(entry.cacheKey) ?: return@forEach
-            val patchData = runCatching {
-                JSONObject(entry.responseBody).getJSONObject("PatchData")
-            }.getOrNull() ?: return@forEach
-            val achievements = patchData.optJSONArray("Achievements") ?: return@forEach
-            for (i in 0 until achievements.length()) {
-                val achievement = achievements.optJSONObject(i) ?: continue
-                val achievementId = achievement.optInt("ID")
-                if (achievementId != 0) {
-                    putIfAbsent(achievementId, gameId)
-                }
             }
         }
     }
@@ -1838,42 +1926,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private fun parsePendingAwardAchievementId(award: PendingAward): Int? {
         val params = parseFormParams(award.queryString.substringAfter("?", "") + "&" + award.requestBody)
         return params["a"]?.toIntOrNull()
-    }
-
-    private fun buildAchievements(
-        patchData: JSONObject?,
-        unlockedIds: Set<Int>
-    ): List<CachedAchievement> {
-        if (patchData == null) return emptyList()
-
-        val achievements = patchData.optJSONArray("Achievements") ?: return emptyList()
-
-        return buildList {
-            for (i in 0 until achievements.length()) {
-                val achievement = achievements.optJSONObject(i) ?: continue
-                val achievementId = achievement.optInt("ID", 0)
-                if (achievementId <= 0 || achievementId == WARNING_ACHIEVEMENT_ID) continue
-                if (achievement.optInt("Flags", RC_ACHIEVEMENT_FLAG_CORE) != RC_ACHIEVEMENT_FLAG_CORE) continue
-
-                val badgeName = achievement.optString("BadgeName").takeIf { it.isNotEmpty() }
-                add(
-                    CachedAchievement(
-                        id = achievementId,
-                        title = achievement.optString(
-                            "Title",
-                            str(R.string.achievement_fallback, achievementId)
-                        ),
-                        description = achievement.optString("Description").takeIf { it.isNotEmpty() },
-                        points = achievement.optInt("Points", 0),
-                        badgeUrl = badgeName?.let { name ->
-                            resolveCachedStaticAsset(application, "/Badge/$name.png")?.absolutePath
-                                ?: "https://i.retroachievements.org/Badge/$name.png"
-                        },
-                        unlocked = unlockedIds.contains(achievementId)
-                    )
-                )
-            }
-        }.sortedByDescending { it.unlocked }
     }
 
     fun setAutostartProxy(enabled: Boolean) {

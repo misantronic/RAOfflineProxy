@@ -26,7 +26,6 @@ import com.raofflineproxy.R
 import com.raofflineproxy.data.CachedGame
 import com.raofflineproxy.data.ConsoleNames
 import java.io.File
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 private const val TAG = "RAProxy/CachedGamesFragment"
@@ -139,7 +138,6 @@ class CachedGamesFragment : Fragment() {
         }
 
         viewLifecycleOwner.lifecycleScope.launch {
-            delay(300)
             viewModel.cachedGames.collect { games ->
                 currentGames = games
                 gamesAdapter?.submitList(buildGroupedList(games, collapsedConsoleIds))
