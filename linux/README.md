@@ -134,6 +134,12 @@ Default detection order for `retroarch.cfg`:
 6. `/storage/.config/retroarch/retroarch.cfg`
 7. `~/.config/retroarch/retroarch.cfg`
 
+On KNULLI/Batocera, `retroarchcustom.cfg` is generated at the first libretro
+launch, so none of candidates 2-5 exist on a freshly flashed device. Detection
+then keeps candidate 2 as the path, and starting the proxy skips the missing
+file instead of failing: `knulli.conf`/`batocera.conf` carries the host override
+on its own, and configgen rebuilds the cfg from it at every launch.
+
 Saved patch state is stored in:
 
 ```text

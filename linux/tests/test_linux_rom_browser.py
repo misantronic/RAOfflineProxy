@@ -79,6 +79,44 @@ class LinuxRomBrowserTests(unittest.TestCase):
 
             self.assertEqual(entries, [zip_path])
 
+    def test_list_browser_entries_includes_arcade_7z(self) -> None:
+        # .7z is never opened — rc_hash treats it as an arcade set and hashes
+        # the base filename — but it must still be listed.
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            archive_path = root / "mslug.7z"
+            archive_path.write_bytes(b"7z\xbc\xaf\x27\x1c" + b"\x00" * 64)
+
+            entries = rom_browser.list_browser_entries(root)
+
+            self.assertEqual(entries, [archive_path])
+
+    def test_list_browser_entries_shows_directory_holding_only_7z(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / "neogeo").mkdir()
+            (root / "neogeo" / "mslug.7z").write_bytes(b"7z")
+
+            entries = rom_browser.list_browser_entries(root)
+
+            self.assertEqual([entry.name for entry in entries], ["neogeo"])
+
+    def test_list_scannable_files_recursive_includes_7z(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / "neogeo").mkdir()
+            (root / "neogeo" / "mslug.7z").write_bytes(b"7z")
+            (root / "gba").mkdir()
+            (root / "gba" / "pokemon.gba").write_bytes(b"gba")
+            (root / "notes.txt").write_text("skip", encoding="utf-8")
+
+            paths = rom_browser.list_scannable_files_recursive(root)
+
+            self.assertEqual(
+                sorted(path.name for path in paths),
+                ["mslug.7z", "pokemon.gba"],
+            )
+
     def test_list_browser_entries_hides_empty_directory_trees(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)

@@ -18,6 +18,12 @@ caller (``rom_browser``) before hashing — rcheevos' own zip path is for
 arcade/MAME images, not zipped cartridges. ``.cue`` and ``.m3u`` are resolved
 natively by rc_hash from their path.
 
+``.7z`` has no reader in rc_hash at all (it maps the extension to arcade, which
+hashes the filename), so the same library exposes
+``raproxy_7z_list_entries``/``raproxy_hash_7z_entry`` on top of the vendored
+LZMA SDK. :func:`list_7z_entries` and :func:`hash_7z_entry_candidates` bind
+those; ``rom_browser`` applies the same entry-selection rule it uses for zip.
+
 ``.rvz`` (Dolphin's compressed GameCube/Wii disc container) is the one format
 rc_hash can't read directly — it expects a raw disc layout. Those go through
 ``raproxy_hash_disc_datasource`` instead: a random-access callback pair lets
@@ -38,6 +44,8 @@ LOGGER = logging.getLogger("raofflineproxy")
 
 _HASH_STRIDE = 33  # 32 hex chars + NUL, matching rc_hash's char[33]
 _MAX_CANDIDATES = 8
+_MAX_ARCHIVE_ENTRIES = 512
+_ARCHIVE_NAMES_BYTES = 64 * 1024
 
 _LIBRCHASH: ctypes.CDLL | None = None
 _LIBRCHASH_ERROR: str | None = None
@@ -209,6 +217,44 @@ def hash_rom_candidates_result(path: Path) -> RomHashResult:
     if _LIBRCHASH_ERROR is not None:
         return RomHashResult([], _LIBRCHASH_ERROR)
     return RomHashResult([], f"Could not hash {path.name}")
+
+
+def list_7z_entries(path: Path) -> list[str]:
+    """Names of the files inside a .7z, or [] if it could not be read."""
+    library = load_rchash()
+    if library is None:
+        return []
+
+    buffer = ctypes.create_string_buffer(_ARCHIVE_NAMES_BYTES)
+    count = library.raproxy_7z_list_entries(
+        str(path).encode("utf-8"), buffer, _ARCHIVE_NAMES_BYTES, _MAX_ARCHIVE_ENTRIES
+    )
+    if count <= 0:
+        return []
+
+    names = buffer.raw.split(b"\x00")[:count]
+    return [name.decode("utf-8", "replace") for name in names]
+
+
+def hash_7z_entry_candidates(path: Path, entry_name: str) -> list[str]:
+    """Hash candidates for one file inside a .7z, hashed by its own content.
+
+    Empty when the entry cannot be extracted — an unsupported codec (the reader
+    covers LZMA, LZMA2, PPMd and stored entries) or an entry above the native
+    size cap. Callers fall back to the arcade hash of the archive name.
+    """
+    library = load_rchash()
+    if library is None:
+        return []
+
+    buffer = ctypes.create_string_buffer(_MAX_CANDIDATES * _HASH_STRIDE)
+    count = library.raproxy_hash_7z_entry(
+        str(path).encode("utf-8"),
+        entry_name.encode("utf-8"),
+        buffer,
+        _MAX_CANDIDATES,
+    )
+    return _extract_candidates(buffer, count)
 
 
 def hash_rom_candidates(path: Path) -> list[str]:

@@ -11,10 +11,14 @@ set(THIRD_PARTY_ROOT "${CMAKE_SOURCE_DIR}/../../../../third_party")
 set(LIBCHDR_ROOT "${THIRD_PARTY_ROOT}/libchdr")
 set(RCHEEVOS_ROOT "${THIRD_PARTY_ROOT}/rcheevos")
 set(RCHASH_GLUE_ROOT "${THIRD_PARTY_ROOT}/rcheevos_glue")
+set(LZMA_SDK_ROOT "${THIRD_PARTY_ROOT}/lzma-sdk")
+
+file(GLOB LZMA_SDK_SOURCES "${LZMA_SDK_ROOT}/*.c")
 
 # Unified ROM/disc hasher: rcheevos' rc_hash + the libchdr-backed CHD reader
-# (rcheevos_glue) + libchdr, plus the JNI shim. Replaces the previous
-# hand-written per-format hashing and the CHD-only chd_jni bridge.
+# and the LZMA SDK 7z reader (rcheevos_glue) + libchdr, plus the JNI shim.
+# Replaces the previous hand-written per-format hashing and the CHD-only
+# chd_jni bridge.
 add_library(raproxy_rchash SHARED
     rchash_jni.cpp
     # rcheevos rc_hash (ROM + disc + zip; encrypted/3DS excluded)
@@ -30,7 +34,10 @@ add_library(raproxy_rchash SHARED
     ${RCHASH_GLUE_ROOT}/cdfs_chd.c
     ${RCHASH_GLUE_ROOT}/cdfs_pbp.c
     ${RCHASH_GLUE_ROOT}/strl_compat.c
+    ${RCHASH_GLUE_ROOT}/sevenzip.c
     ${RCHASH_GLUE_ROOT}/rchash_glue.c
+    # LZMA SDK (.7z container reader)
+    ${LZMA_SDK_SOURCES}
     # libchdr
     ${LIBCHDR_ROOT}/src/libchdr_bitstream.c
     ${LIBCHDR_ROOT}/src/libchdr_cdrom.c
@@ -62,10 +69,12 @@ target_include_directories(raproxy_rchash PRIVATE
     ${LIBCHDR_ROOT}/deps/miniz-3.1.1
     ${LIBCHDR_ROOT}/deps/lzma-25.01/include
     ${LIBCHDR_ROOT}/deps/zstd-1.5.7
+    ${LZMA_SDK_ROOT}
 )
 
 target_compile_definitions(raproxy_rchash PRIVATE
     RC_HASH_NO_ENCRYPTED
+    Z7_PPMD_SUPPORT
     WANT_RAW_DATA_SECTOR=1
     WANT_SUBCODE=1
     VERIFY_BLOCK_CRC=1

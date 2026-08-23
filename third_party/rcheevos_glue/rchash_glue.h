@@ -40,6 +40,26 @@ int raproxy_hash_disc_datasource(void* ctx, raproxy_ds_size_fn size_fn,
                                  raproxy_ds_read_fn read_fn,
                                  char* out_hashes, int max_hashes);
 
+/* Lists the file entries of the .7z at `path` as consecutive NUL-terminated
+ * UTF-8 strings in `out_names`. Returns the entry count, or -1 if the archive
+ * could not be read or does not fit in the supplied buffer.
+ *
+ * rc_hash cannot read 7z: it maps the extension to arcade, which hashes the
+ * filename. Callers use this plus raproxy_hash_7z_entry to hash a console ROM
+ * stored inside a .7z, mirroring what they already do for .zip.
+ */
+int raproxy_7z_list_entries(const char* path, char* out_names,
+                            int out_names_bytes, int max_entries);
+
+/* Decompresses `entry_name` out of the .7z at `path` and hashes its contents,
+ * picking the console from the entry's own filename. Returns the number of
+ * candidates written to `out_hashes` (the same flat `max_hashes * 33` buffer as
+ * raproxy_hash_file), or 0 if the entry could not be extracted — callers then
+ * fall back to the arcade hash of the archive name.
+ */
+int raproxy_hash_7z_entry(const char* path, const char* entry_name,
+                          char* out_hashes, int max_hashes);
+
 #ifdef __cplusplus
 }
 #endif
