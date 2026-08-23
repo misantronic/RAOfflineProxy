@@ -64,6 +64,15 @@ the runtime should load, but the vendored SDL2 is steward-fu's Miyoo Mini build:
 and `menu_sdl` falls back to a plain fullscreen surface. Whether that build works on A30
 hardware is untested.
 
+## Timezone
+
+spruce's PyUI applies the chosen zone by exporting `TZ` into its own environment, so
+anything it launches inherits it. The boot hook runs from `.tmp_update/updater` long
+before PyUI exists, so an autostarted proxy would stamp every award timestamp in UTC.
+`resolve_spruce_timezone()` reads the zone name out of `/mnt/SDCARD/Saves/*-system.json`
+(globbed rather than mapped per device) and exports `TZ=":<zoneinfo>/<zone>"`, the same
+absolute-path form spruce itself uses. It never overrides a `TZ` that is already set.
+
 ## Credentials
 
 spruce stores the RetroAchievements username and password entered in its own settings in

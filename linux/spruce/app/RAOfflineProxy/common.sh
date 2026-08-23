@@ -10,6 +10,10 @@ APP_LIB_DIR="$APP_DIR/lib"
 APP_RETROARCH_CFG=
 APP_CERT_FILE="$APP_RUNTIME_DIR/lib/python3.9/site-packages/pip/_vendor/certifi/cacert.pem"
 APP_SPRUCE_PLATFORM=
+APP_SPRUCE_ZONEINFO_DIR=/mnt/SDCARD/spruce/zoneinfo
+# Every spruce device stores its settings in /mnt/SDCARD/Saves/<device>-system.json.
+# Globbed rather than mapped per device so this stays device-agnostic.
+APP_SPRUCE_SYSTEM_JSON_GLOB='/mnt/SDCARD/Saves/*-system.json'
 APP_ACTIVE_RUNTIME_ROOT=
 RESOLVED_PYTHON_BIN=
 RUNTIME_FAILURE_REASON=
@@ -40,6 +44,37 @@ detect_spruce_platform() {
     esac
 }
 
+resolve_spruce_timezone() {
+    # spruce's PyUI applies the chosen zone by exporting TZ into its own environment, so
+    # anything it launches inherits it. The boot hook runs from .tmp_update/updater long
+    # before PyUI exists, so an autostarted proxy would otherwise stamp every award
+    # timestamp in UTC.
+    if [ -n "${TZ:-}" ]; then
+        return 0
+    fi
+
+    if [ ! -d "$APP_SPRUCE_ZONEINFO_DIR" ]; then
+        return 0
+    fi
+
+    for spruce_system_json in $APP_SPRUCE_SYSTEM_JSON_GLOB; do
+        [ -r "$spruce_system_json" ] || continue
+
+        spruce_tz="$(sed -n 's/.*"timezone"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$spruce_system_json" 2>/dev/null | head -n 1)"
+        [ -n "$spruce_tz" ] || continue
+
+        spruce_zone_file="$APP_SPRUCE_ZONEINFO_DIR/$spruce_tz"
+        if [ -r "$spruce_zone_file" ]; then
+            # glibc reads a tz file from an absolute path when TZ starts with a colon,
+            # which is exactly how spruce itself applies the setting.
+            export TZ=":$spruce_zone_file"
+            return 0
+        fi
+    done
+
+    return 0
+}
+
 normalize_display_paths() {
     sed 's#/mnt/SDCARD/#/#g'
 }
@@ -49,6 +84,7 @@ prepare_env() {
     : > "$RUNTIME_DETECT_LOG"
 
     detect_spruce_platform
+    resolve_spruce_timezone
 
     # spruce launches RetroArch with --config pointing at this per-device file, so its
     # .retroarch/retroarch.cfg is never read (spruce/scripts/emu/lib/ra_functions.sh).
