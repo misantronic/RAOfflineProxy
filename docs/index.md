@@ -65,6 +65,10 @@ features:
           <span>WatermelonDS</span>
         </div>
         <div class="supported-platforms__item">
+          <img class="supported-platforms__logo--rounded" src="/flycast.png" alt="Flycast logo">
+          <span>Flycast</span>
+        </div>
+        <div class="supported-platforms__item">
           <img src="/mupen64plus-ae.png" alt="Mupen64Plus logo">
           <span>Mupen64Plus AE (fork)</span>
         </div>
