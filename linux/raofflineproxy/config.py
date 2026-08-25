@@ -10,6 +10,10 @@ from pathlib import Path
 
 DEFAULT_ONION_APP_DIR = Path("/mnt/SDCARD/App/RAOfflineProxy")
 DEFAULT_ONION_STARTUP_SCRIPT = Path("/mnt/SDCARD/.tmp_update/startup/raofflineproxy.sh")
+# Allium packages apps as .pak directories under Apps/, not Onion's App/ layout, but runs
+# on the same Miyoo Mini firmware base (same /mnt/SDCARD/.tmp_update/updater boot chain).
+DEFAULT_ALLIUM_APP_DIR = Path("/mnt/SDCARD/Apps/RAOfflineProxy.pak")
+ALLIUM_MARKER_DIR = Path("/mnt/SDCARD/.allium")
 # spruceOS keeps its bare version string ("4.3.3") in this file — the same one its own
 # updater and spruceRestore upgrade scripts read.
 SPRUCE_VERSION_FILE = Path("/mnt/SDCARD/spruce/spruce")
@@ -81,11 +85,15 @@ def running_on_onion() -> bool:
     return DEFAULT_ONION_APP_DIR.exists() and not running_on_spruce()
 
 
-def running_on_onion_or_spruce() -> bool:
-    """These two share the /mnt/SDCARD layout and the hardware, so this app ships one
-    bundled stack for both: the "Mini" SDL2 video driver, no fontconfig, and
+def running_on_allium() -> bool:
+    return ALLIUM_MARKER_DIR.is_dir()
+
+
+def running_on_shared_miyoo_stack() -> bool:
+    """Onion, spruce and Allium share the same Miyoo Mini hardware, so this app ships one
+    bundled stack for all three: the "Mini" SDL2 video driver, no fontconfig, and
     gpio-keys-polled raw evdev input."""
-    return running_on_onion() or running_on_spruce()
+    return running_on_onion() or running_on_spruce() or running_on_allium()
 
 
 # Mirrors spruce's own device detection (spruce/scripts/helperFunctions.sh). The Anbernic
@@ -167,6 +175,9 @@ def resolve_config_dir() -> Path:
 
     if DEFAULT_ONION_APP_DIR.exists():
         return DEFAULT_ONION_APP_DIR / "data"
+
+    if DEFAULT_ALLIUM_APP_DIR.exists():
+        return DEFAULT_ALLIUM_APP_DIR / "data"
 
     if DEFAULT_MUOS_APPLICATION_DIR.exists():
         return DEFAULT_MUOS_APPLICATION_DIR / "data"

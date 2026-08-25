@@ -25,6 +25,8 @@ MUOS_MARKER_PATH = Path("/opt/muos/script/archive")
 # two files for its "System log snapshot" support tool.
 ONION_VERSION_FILE = config.ONION_VERSION_FILE
 ONION_DEVICE_MODEL_FILE = Path("/tmp/deviceModel")
+# Allium's own version marker, the same file its updater migrations check against.
+ALLIUM_VERSION_FILE = Path("/mnt/SDCARD/.allium/version.txt")
 # /etc/os-release's OS_VERSION is deliberately truncated to just the leading number by Knulli's
 # own build script (board/scripts/post-build-script.sh in knulli-cfw/knulli-linux); this
 # untruncated file (version + build date + time) is what Knulli's own knulli-report-stats tool
@@ -159,6 +161,8 @@ def _platform_label() -> str:
         return "spruce"
     if config.running_on_onion():
         return "Onion"
+    if config.running_on_allium():
+        return "Allium"
     if MUOS_MARKER_PATH.exists():
         return "muOS"
     if config.running_on_rocknix():
@@ -217,6 +221,10 @@ def spruce_os_version() -> str | None:
     return _spruce_os_version()
 
 
+def _allium_os_version() -> str | None:
+    return _read_stripped(ALLIUM_VERSION_FILE)
+
+
 # OnionOS v4.3.1-1 ships a bundled RetroArch build whose achievements client is not
 # reliably compatible with a custom host, so we only support the build after it.
 SUPPORTED_ONION_VERSION_PREFIX = "v4.4.0"
@@ -262,6 +270,11 @@ def _device_label(platform: str) -> str:
         return config.spruce_platform()
     if platform == "Onion":
         return _onion_device_label()
+    if platform == "Allium":
+        # Deliberately NOT _onion_device_label(): /tmp/deviceModel is written by Onion's own
+        # runtime and does not exist on Allium (verified on a Miyoo Mini Plus), so that
+        # helper's fallback would label every Allium device the literal string "Onion".
+        return _hardware_device_label(platform)
     if platform == "muOS":
         return _muos_device_label() or _hardware_device_label(platform)
     return _hardware_device_label(platform)
@@ -274,6 +287,8 @@ def _os_version_value(platform: str) -> str | None:
     if platform == "Onion":
         # Onion has no /etc/os-release; its own diagnostics tool reads this file instead.
         return _onion_os_version()
+    if platform == "Allium":
+        return _allium_os_version()
     if platform == "Knulli":
         # The dedicated file has the full version + build date/time; os-release's OS_VERSION
         # is a truncated copy of just the leading number.

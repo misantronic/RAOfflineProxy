@@ -39,6 +39,13 @@ Before using `RAOfflineProxy` on Linux:
   > Settings -> Additional Settings -> RetroAchievements Settings
 - Make sure the system clock is correct so award timestamps are accurate
 
+== Allium
+
+- Enter your RetroAchievements account details in RetroArch<br>
+  > Allium launches RetroArch directly, so its own achievements login is what RAOfflineProxy reads.
+- Make sure the system clock is correct so award timestamps are accurate<br>
+  > Settings -> Wi-Fi -> enable NTP
+
 :::
 
 ::: warning Emulator configs are patched automatically
@@ -141,6 +148,23 @@ RAOfflineProxy patches the emulator configs it needs in order to redirect RetroA
 ```
 
 3. Launch **RAOfflineProxy** from spruce's Apps section
+4. Start the proxy while online
+5. Launch a game once so its data is cached
+
+== Allium
+
+> Allium support is currently experimental.
+>
+> Tested on a Miyoo Mini Plus running [Allium v1.0.1](https://github.com/goweiwen/Allium/releases). Allium runs only on the Miyoo Mini, Mini Plus and Mini Flip, and this bundle covers all of them.
+
+1. Download the latest `RAOfflineProxy-Allium-*.zip` from [GitHub Releases](https://github.com/misantronic/RAOfflineProxy/releases)
+2. Extract it over the root of your SD card so the app lands in:
+
+```text
+/Apps/RAOfflineProxy.pak/
+```
+
+3. Launch **RAOfflineProxy** from Allium's Apps section
 4. Start the proxy while online
 5. Launch a game once so its data is cached
 
