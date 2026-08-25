@@ -143,9 +143,9 @@ Confirmed on-device (ROCKNIX `next`, `OS_NAME="ROCKNIX"` in `/etc/os-release`):
 
 ### pygame
 
-ROCKNIX ships Python 3.13 but **no `pip` and no `pygame`**. The bundle vendors a self-contained
-`pygame-ce` (Community Edition) 2.5.7 cp313 aarch64 manylinux wheel (its own SDL 2.32.10 in
-`pygame_ce.libs`, built with both the wayland and kmsdrm video drivers — no reliance on system
+ROCKNIX ships a system Python but **no `pip` and no `pygame`**. The bundle vendors a
+self-contained `pygame-ce` (Community Edition) 2.5.7 aarch64 manylinux wheel (its own SDL 2.32.10
+in `pygame_ce.libs`, built with both the wayland and kmsdrm video drivers — no reliance on system
 SDL). The package still imports as `pygame` (pygame-ce is API-compatible).
 
 The vanilla `pygame` 2.6.1 wheel used before segfaulted inside SDL's native wayland/EGL init on
@@ -154,20 +154,28 @@ RK3326 devices with the `libmali` GPU blob (issue #55, and an earlier Discord re
 device class run fine using `pygame-ce`/`pygame_sdl2` builds instead of the vanilla wheel, so we
 switched the vendored build rather than adding more launch-script workarounds.
 
+Which CPython the wheel has to match is not fixed: stable ROCKNIX ships 3.13, nightlies since
+20260822 ship 3.14, and a bundle carrying only one of them dies at startup on the other with
+`No module named 'pygame.base'` (issue #127), because the `.so` files are ABI-tagged and an
+interpreter never sees extension modules built for another minor version. The vendor directory
+therefore holds **every supported ABI at once**: `base.cpython-313-aarch64-linux-gnu.so` and
+`base.cpython-314-aarch64-linux-gnu.so` sit side by side and each interpreter picks its own. The
+wheels' pure-Python files and their `pygame_ce.libs` payload are byte-identical across ABIs of the
+same release, so only the extra `.so` files add to the installer.
+
 The vendored payload is **not** checked in (see `.gitignore`). Populate it before building:
 
 ```bash
-# downloads a prebuilt cp313 aarch64 manylinux pygame-ce wheel, no build toolchain needed
-cd linux/rocknix/vendor
-pip download pygame-ce --platform manylinux_2_17_aarch64 --python-version 313 \
-  --implementation cp --abi cp313 --only-binary=:all: --no-deps -d .
-unzip pygame_ce-*-cp313-cp313-manylinux2014_aarch64.manylinux_2_17_aarch64.whl
-# leaves vendor/pygame and vendor/pygame_ce.libs in place
+./linux/rocknix/fetch_vendor.sh
 ```
 
-> Note: the vendored `.so` files are cp313-specific, and the `pygame_ce.libs` directory name is
-> baked into each `.so`'s RPATH (`$ORIGIN/../pygame_ce.libs`) — don't rename it. If ROCKNIX moves
-> to a different Python minor version, re-vendor a matching wheel.
+That downloads the prebuilt cp313 and cp314 wheels (no build toolchain needed) and merges them
+into `vendor/pygame` + `vendor/pygame_ce.libs`. To support a further Python version, add it to
+`PY_VERSIONS` in `fetch_vendor.sh` and `REQUIRED_PY_VERSIONS` in `build_bundle.sh`; the build
+refuses to run if a required ABI is missing from the vendor directory.
+
+> Note: the `pygame_ce.libs` directory name is baked into each `.so`'s RPATH
+> (`$ORIGIN/../pygame_ce.libs`), so don't rename it.
 
 ## Build
 

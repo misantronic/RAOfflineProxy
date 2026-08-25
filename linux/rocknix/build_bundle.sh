@@ -11,11 +11,23 @@ VERSION="${RAOFFLINEPROXY_APP_VERSION:-1.11.1-alpha1}"
 INSTALLER_PATH="${DIST_DIR}/RAOfflineProxy-Rocknix-v${VERSION}-Install.sh"
 TEMP_TARBALL="${DIST_DIR}/.raofflineproxy-rocknix-bundle.tar.gz"
 
+# ROCKNIX builds ship different CPython minor versions (3.13 through nightly's
+# 3.14), and pygame's extension modules only import into the interpreter whose
+# ABI tag they carry, so the vendored pygame must cover every one of them.
+REQUIRED_PY_VERSIONS=(313 314)
+
 if [ ! -d "${SCRIPT_DIR}/vendor/pygame" ] || [ ! -d "${SCRIPT_DIR}/vendor/pygame_ce.libs" ]; then
-  echo "Missing vendored pygame-ce. Populate linux/rocknix/vendor/{pygame,pygame_ce.libs}" >&2
-  echo "from a pygame-ce cp313 aarch64 manylinux wheel before building." >&2
+  echo "Missing vendored pygame-ce. Run linux/rocknix/fetch_vendor.sh before building." >&2
   exit 1
 fi
+
+for py_version in "${REQUIRED_PY_VERSIONS[@]}"; do
+  if [ ! -f "${SCRIPT_DIR}/vendor/pygame/base.cpython-${py_version}-aarch64-linux-gnu.so" ]; then
+    echo "Vendored pygame-ce has no cpython-${py_version} extension modules." >&2
+    echo "Re-run linux/rocknix/fetch_vendor.sh before building." >&2
+    exit 1
+  fi
+done
 
 TARGET="aarch64-linux-gnu.2.17" OUT_DIR="${SCRIPT_DIR}/native" \
   "${LINUX_DIR}/build_rchash.sh"
