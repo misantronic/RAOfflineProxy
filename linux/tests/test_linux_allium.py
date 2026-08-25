@@ -1,3 +1,4 @@
+import os
 import tempfile
 import zipfile
 import unittest
@@ -27,9 +28,15 @@ class AlliumDetectionTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             app_dir = Path(temp_dir) / "RAOfflineProxy.pak"
             app_dir.mkdir()
-            with patch.object(config, "DEFAULT_ONION_APP_DIR", Path(temp_dir) / "absent"):
-                with patch.object(config, "DEFAULT_ALLIUM_APP_DIR", app_dir):
-                    self.assertEqual(config.resolve_config_dir(), app_dir / "data")
+            # Both env vars are checked before any platform path, so leaving them to the
+            # ambient environment makes this pass or fail depending on the machine: CI
+            # sets XDG_CONFIG_HOME and returned from it long before the Allium branch.
+            with patch.dict(os.environ):
+                os.environ.pop("RAOFFLINEPROXY_CONFIG_DIR", None)
+                os.environ.pop("XDG_CONFIG_HOME", None)
+                with patch.object(config, "DEFAULT_ONION_APP_DIR", Path(temp_dir) / "absent"):
+                    with patch.object(config, "DEFAULT_ALLIUM_APP_DIR", app_dir):
+                        self.assertEqual(config.resolve_config_dir(), app_dir / "data")
 
 
 # Verbatim copy of Allium v1.0.1's /mnt/SDCARD/.tmp_update/updater, pulled off a real Miyoo
