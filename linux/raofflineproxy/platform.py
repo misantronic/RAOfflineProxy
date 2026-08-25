@@ -7,6 +7,7 @@ from .config import (
     DEFAULT_ONION_STARTUP_SCRIPT,
     MUOS_USER_INIT_CONFIG,
     detect_retroarch_cfg,
+    running_on_allium,
     running_on_rocknix,
     running_on_spruce,
     save_config,
@@ -24,6 +25,13 @@ DEFAULT_ROCKNIX_STARTUP_SCRIPT = Path("/storage/.config/autostart/raofflineproxy
 # hook is inserted into that file, above the dispatch, rather than appended.
 DEFAULT_SPRUCE_STARTUP_SCRIPT = Path("/mnt/SDCARD/.tmp_update/updater")
 SPRUCE_AUTOSTART_LAUNCHER = Path("/mnt/SDCARD/App/RAOfflineProxy/autostart-launch.sh")
+# Allium's alliumd is exec'd from the same .tmp_update/updater file spruce uses (both are
+# Miyoo Mini firmwares built on the same base), so the boot hook is installed the same way.
+DEFAULT_ALLIUM_STARTUP_SCRIPT = Path("/mnt/SDCARD/.tmp_update/updater")
+ALLIUM_AUTOSTART_LAUNCHER = Path("/mnt/SDCARD/Apps/RAOfflineProxy.pak/autostart-launch.sh")
+# The drop file Allium's own updater looks for before handing off to ota-update.sh. Our
+# boot hook sits above that check, so it has to test the same path to stay out of the way.
+ALLIUM_OTA_ARCHIVE = Path("/mnt/SDCARD/allium-ota.zip")
 ROCKNIX_MODULES_DIR = Path("/storage/.config/modules")
 ROCKNIX_MODULES_LAUNCHER = ROCKNIX_MODULES_DIR / "RAOfflineProxy.sh"
 ROCKNIX_TOOL_SOURCE = Path("/storage/.local/share/raofflineproxy/RAOfflineProxy.sh")
@@ -146,6 +154,10 @@ def ensure_boot_hook(config_data: dict) -> None:
         startup_script.write_text(onion_boot_hook_script(), encoding="utf-8")
         return
 
+    if startup_script == DEFAULT_ALLIUM_STARTUP_SCRIPT and running_on_allium():
+        install_allium_boot_hook(startup_script)
+        return
+
     if startup_script == DEFAULT_SPRUCE_STARTUP_SCRIPT:
         install_spruce_boot_hook(startup_script)
         return
@@ -198,6 +210,12 @@ def resolve_startup_script_path(config_data: dict) -> Path | None:
     if configured:
         return Path(str(configured))
 
+    # Checked before spruce/Onion: Allium also ships a /mnt/SDCARD/.tmp_update of its own,
+    # never sources the startup/ directory Onion uses, and packages apps as .pak
+    # directories rather than spruce/Onion's shared App/ layout.
+    if running_on_allium():
+        return DEFAULT_ALLIUM_STARTUP_SCRIPT
+
     # Checked before Onion: spruce ships a /mnt/SDCARD/.tmp_update of its own, but never
     # sources the startup/ directory Onion uses, so an Onion hook there would never fire.
     if running_on_spruce():
@@ -235,6 +253,9 @@ def autostart_command(config_data: dict) -> tuple[str]:
     startup_script = resolve_startup_script_path(config_data)
     if startup_script == DEFAULT_ONION_STARTUP_SCRIPT:
         return ("/mnt/SDCARD/App/RAOfflineProxy/autostart-launch.sh",)
+
+    if startup_script == DEFAULT_ALLIUM_STARTUP_SCRIPT and running_on_allium():
+        return (str(ALLIUM_AUTOSTART_LAUNCHER),)
 
     if startup_script == DEFAULT_SPRUCE_STARTUP_SCRIPT:
         return (str(SPRUCE_AUTOSTART_LAUNCHER),)
@@ -312,6 +333,47 @@ def install_spruce_boot_hook(startup_script: Path) -> None:
     # lstrip so repeated installs (every app launch) don't accumulate blank lines where
     # strip_autostart_block removed the previous copy.
     updated = f"{shebang}\n\n{spruce_boot_hook_block()}\n\n{remainder.lstrip(chr(10))}"
+    if updated != existing:
+        startup_script.write_text(updated, encoding="utf-8")
+
+
+def allium_boot_hook_block() -> str:
+    # Same reasoning as spruce_boot_hook_block(): .tmp_update/updater is the only path to a
+    # usable device on this firmware, so the hook is backgrounded and guarded.
+    #
+    # The pending-OTA guard matters because this block sits above the updater's own OTA
+    # check: on an update boot, ota-update.sh extracts the release over the whole card and
+    # then reboots, so without the guard the service would be opening its SQLite database
+    # on that card mid-extract and seconds before a forced reboot.
+    return "\n".join(
+        [
+            AUTOSTART_SENTINEL_START,
+            f'if [ ! -f "{ALLIUM_OTA_ARCHIVE}" ] && [ -x "{ALLIUM_AUTOSTART_LAUNCHER}" ]; then',
+            f'  sh "{ALLIUM_AUTOSTART_LAUNCHER}" >/dev/null 2>&1 &',
+            "fi",
+            AUTOSTART_SENTINEL_END,
+        ]
+    )
+
+
+def install_allium_boot_hook(startup_script: Path) -> None:
+    """Prepends the hook to Allium's boot entry point, straight after the shebang.
+
+    Same file and mechanism as spruce's install_spruce_boot_hook(): the script ends by
+    exec'ing alliumd, which never returns, so appending would leave the hook dead code.
+    """
+    if not startup_script.exists():
+        raise ValueError(f"allium boot script not found: {startup_script}")
+
+    existing = startup_script.read_text(encoding="utf-8", errors="replace")
+    if not existing.startswith("#!"):
+        raise ValueError(
+            f"unrecognised allium boot script, autostart not installed: {startup_script}"
+        )
+
+    cleaned = strip_autostart_block(existing)
+    shebang, _, remainder = cleaned.partition("\n")
+    updated = f"{shebang}\n\n{allium_boot_hook_block()}\n\n{remainder.lstrip(chr(10))}"
     if updated != existing:
         startup_script.write_text(updated, encoding="utf-8")
 

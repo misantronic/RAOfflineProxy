@@ -31,10 +31,12 @@ from .dolphin_cfg import (
 from .config import (
     APP_VERSION,
     CONFIG_DIR,
+    DEFAULT_ALLIUM_APP_DIR,
     DEFAULT_ONION_APP_DIR,
     load_config,
+    running_on_allium,
     running_on_onion,
-    running_on_onion_or_spruce,
+    running_on_shared_miyoo_stack,
     running_on_rocknix,
     running_on_spruce,
     save_config,
@@ -318,7 +320,7 @@ def run_menu_sdl(command_runner: str) -> None:
         pygame.init()
         pygame.font.init()
 
-        if running_on_onion_or_spruce():
+        if running_on_shared_miyoo_stack():
             try:
                 surface = _init_onion_display(pygame)
             except pygame.error as exc:
@@ -571,7 +573,7 @@ class MenuSdlSession:
         self.refresh_cached_games()
 
     def load_font(self, size: int, bold: bool = False):
-        if running_on_onion_or_spruce():
+        if running_on_shared_miyoo_stack():
             font_path = ONION_FONT_BOLD if bold else ONION_FONT_REGULAR
             if font_path.exists():
                 return self.pygame.font.Font(str(font_path), size)
@@ -1042,7 +1044,7 @@ class MenuSdlSession:
         # existing KEYDOWN path on unverified assumptions. Keep draining the
         # event queue regardless (QUIT still matters, and an undrained SDL
         # event queue can back up).
-        skip_keydown = running_on_onion_or_spruce() and bool(getattr(self, "input_handles", None))
+        skip_keydown = running_on_shared_miyoo_stack() and bool(getattr(self, "input_handles", None))
         for event in self.pygame.event.get():
             if event.type == self.pygame.QUIT:
                 self.running = False
@@ -1380,13 +1382,21 @@ class MenuSdlSession:
     def is_knulli_platform(self) -> bool:
         return Path("/userdata/system").exists()
 
-    def update_platform(self) -> str:
+    def update_platform(self) -> str | None:
+        """The release channel to check for updates, or None where there is none.
+
+        None is a normal state, not a failure: it must not be signalled by returning a
+        platform name that `update.validate_platform()` rejects, because every caller
+        would then log a spurious "update check failed" line on each refresh.
+        """
         if running_on_muos():
             return "muos"
         if running_on_spruce():
             return "spruce"
         if running_on_onion():
             return "onion"
+        if running_on_allium():
+            return "allium"
         if running_on_rocknix():
             return "rocknix"
         return "knulli"
@@ -2388,16 +2398,22 @@ class MenuSdlSession:
                 and is_autostart_enabled(self.config_data)
             )
         if force:
-            try:
-                update = update_status(self.update_platform())
-                self.main_update_available = update.update_available
-                self.main_update_version = update.latest_version
-                self.main_update_asset_url = update.asset_url
-            except Exception as exc:
-                log_menu_sdl(f"update check failed error={exc}")
+            update_platform = self.update_platform()
+            if update_platform is None:
                 self.main_update_available = False
                 self.main_update_version = None
                 self.main_update_asset_url = None
+            else:
+                try:
+                    update = update_status(update_platform)
+                    self.main_update_available = update.update_available
+                    self.main_update_version = update.latest_version
+                    self.main_update_asset_url = update.asset_url
+                except Exception as exc:
+                    log_menu_sdl(f"update check failed error={exc}")
+                    self.main_update_available = False
+                    self.main_update_version = None
+                    self.main_update_asset_url = None
         self.main_state_refreshed_at = now
         if (
             self.view == "main"
@@ -2745,7 +2761,10 @@ class MenuSdlSession:
         asset_url = getattr(self, "main_update_asset_url", None)
         if asset_url:
             return asset_url
-        update = update_status(self.update_platform(), force=True)
+        update_platform = self.update_platform()
+        if update_platform is None:
+            return None
+        update = update_status(update_platform, force=True)
         self.main_update_asset_url = update.asset_url
         self.main_update_version = update.latest_version
         self.main_update_available = update.update_available
@@ -2762,8 +2781,13 @@ class MenuSdlSession:
         if running_on_muos():
             self.install_update_muos()
             return
-        if running_on_onion_or_spruce():
-            self.install_update_onion()
+        # Each target passes its own layout: Onion and spruce share App/RAOfflineProxy,
+        # Allium ships Apps/RAOfflineProxy.pak. Everything else about the flow is common.
+        if running_on_allium():
+            self.install_update_archive(DEFAULT_ALLIUM_APP_DIR, "Apps")
+            return
+        if running_on_onion() or running_on_spruce():
+            self.install_update_archive(DEFAULT_ONION_APP_DIR, "App")
             return
 
         self.show_update_progress("Checking for update...")
@@ -2787,7 +2811,12 @@ class MenuSdlSession:
             self.message = (f"Update install failed: {exc}", time.monotonic() + ERROR_SECONDS)
             self.dismiss_update_prompt()
 
-    def install_update_onion(self) -> None:
+    def install_update_archive(self, app_dir: Path, archive_root: str) -> None:
+        """Zip-archive update flow, shared by every target that ships one.
+
+        `archive_root` is where the app directory sits inside the archive — `App` for
+        Onion and spruce, `Apps` for Allium's .pak layout.
+        """
         self.show_update_progress("Checking for update...")
         asset_url = self.resolve_update_asset_url()
         if not asset_url:
@@ -2795,14 +2824,13 @@ class MenuSdlSession:
             self.dismiss_update_prompt()
             return
 
-        app_dir = DEFAULT_ONION_APP_DIR
         try:
             self.show_update_progress("Stopping proxy...")
             stop_proxy_inline()
             self.show_update_progress("Downloading update...")
             archive_path = download_onion_update_archive(asset_url)
             self.show_update_progress("Installing update...")
-            install_onion_update_archive(archive_path, app_dir)
+            install_onion_update_archive(archive_path, app_dir, archive_root)
             self.storage.close()
             close_input_devices(self.input_handles)
             self.pygame.quit()

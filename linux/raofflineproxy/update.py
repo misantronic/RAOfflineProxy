@@ -26,6 +26,7 @@ PLATFORM_ONION = "onion"
 PLATFORM_SPRUCE = "spruce"
 PLATFORM_MUOS = "muos"
 PLATFORM_ROCKNIX = "rocknix"
+PLATFORM_ALLIUM = "allium"
 KNULLI_UPDATE_INSTALLER_PATH = CONFIG_DIR / "update-installer.sh"
 ONION_UPDATE_ARCHIVE_PATH = CONFIG_DIR / "update-onion.zip"
 MUOS_UPDATE_ARCHIVE_PATH = CONFIG_DIR / "update-muos.muxapp"
@@ -257,6 +258,9 @@ def find_platform_asset_url(platform: str, assets: list[dict]) -> str | None:
         elif platform == PLATFORM_ROCKNIX:
             if "rocknix" not in lower_name or not lower_name.endswith(".sh"):
                 continue
+        elif platform == PLATFORM_ALLIUM:
+            if "allium" not in lower_name or not lower_name.endswith(".zip"):
+                continue
         else:
             continue
 
@@ -344,7 +348,43 @@ def download_onion_update_archive(asset_url: str, destination: Path | None = Non
     return destination_path
 
 
-def install_onion_update_archive(archive_path: Path, app_dir: Path) -> None:
+CLEANUP_RETRIES = 3
+CLEANUP_RETRY_DELAY_SECONDS = 1.0
+
+
+def remove_tree_best_effort(path: Path) -> None:
+    """Delete a temp tree, retrying before giving up quietly.
+
+    A plain rmtree(ignore_errors=True) measurably loses on a Miyoo Mini: right after an
+    install has written ~129MB, the first pass over the old tree bails partway on the
+    card's FAT32 write-back and silently leaves hundreds of files behind, while an
+    immediate second pass removes all of them with no errors at all. Left as-is the
+    debris accumulates with every update — which on Allium can push the card under the
+    300MB its own OTA updater demands (see linux/allium/README.md).
+    """
+    for attempt in range(1, CLEANUP_RETRIES + 1):
+        if not path.exists():
+            return
+        shutil.rmtree(path, ignore_errors=attempt < CLEANUP_RETRIES)
+        if not path.exists():
+            return
+        if attempt < CLEANUP_RETRIES:
+            time.sleep(CLEANUP_RETRY_DELAY_SECONDS)
+
+    # Never fatal: the update itself already succeeded, so this is only tidy-up. But it is
+    # logged rather than swallowed, so the debris is diagnosable instead of invisible.
+    LOGGER.warning("Could not fully remove temporary update directory path=%s", path)
+
+
+def install_onion_update_archive(
+    archive_path: Path, app_dir: Path, archive_root: str = "App"
+) -> None:
+    """Swap `app_dir` for the copy inside the archive, atomically and with rollback.
+
+    Everything here is layout-agnostic except where the app directory sits inside the
+    archive, which is what `archive_root` names: Onion and spruce ship `App/RAOfflineProxy`,
+    Allium ships `Apps/RAOfflineProxy.pak`.
+    """
     app_dir = Path(app_dir)
     parent_dir = app_dir.parent
     temp_extract_dir = parent_dir / f".{app_dir.name}.update"
@@ -364,9 +404,9 @@ def install_onion_update_archive(archive_path: Path, app_dir: Path) -> None:
         archive.extractall(temp_extract_dir)
         restore_archive_permissions(archive, temp_extract_dir)
 
-    extracted_app_dir = temp_extract_dir / "App" / app_dir.name
+    extracted_app_dir = temp_extract_dir / archive_root / app_dir.name
     if not extracted_app_dir.exists():
-        raise RuntimeError("update archive missing App/RAOfflineProxy")
+        raise RuntimeError(f"update archive missing {archive_root}/{app_dir.name}")
 
     preserve_data = should_preserve_onion_data(current_version(), extracted_app_dir)
 
@@ -391,12 +431,9 @@ def install_onion_update_archive(archive_path: Path, app_dir: Path) -> None:
             os.replace(backup_dir, app_dir)
         raise
     finally:
-        if temp_extract_dir.exists():
-            shutil.rmtree(temp_extract_dir, ignore_errors=True)
-        if backup_dir.exists():
-            shutil.rmtree(backup_dir, ignore_errors=True)
-        if preserved_data_dir.exists():
-            shutil.rmtree(preserved_data_dir, ignore_errors=True)
+        remove_tree_best_effort(temp_extract_dir)
+        remove_tree_best_effort(backup_dir)
+        remove_tree_best_effort(preserved_data_dir)
 
     clear_stale_update_status(app_dir)
 
@@ -484,12 +521,9 @@ def install_muos_update_archive(archive_path: Path, app_dir: Path) -> None:
                 os.replace(backup_dir, app_dir)
             raise
     finally:
-        if temp_extract_dir.exists():
-            shutil.rmtree(temp_extract_dir, ignore_errors=True)
-        if backup_dir.exists():
-            shutil.rmtree(backup_dir, ignore_errors=True)
-        if preserved_data_dir.exists():
-            shutil.rmtree(preserved_data_dir, ignore_errors=True)
+        remove_tree_best_effort(temp_extract_dir)
+        remove_tree_best_effort(backup_dir)
+        remove_tree_best_effort(preserved_data_dir)
         if archive_path.exists():
             archive_path.unlink()
 
@@ -623,6 +657,7 @@ def validate_platform(platform: str) -> str:
         PLATFORM_SPRUCE,
         PLATFORM_MUOS,
         PLATFORM_ROCKNIX,
+        PLATFORM_ALLIUM,
     }:
         raise ValueError(f"Unsupported update platform: {platform}")
     return lowered

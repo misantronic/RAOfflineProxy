@@ -22,13 +22,13 @@ class SpruceDetectionTests(unittest.TestCase):
         with patch.object(config, "running_on_spruce", return_value=True):
             with patch.object(Path, "exists", return_value=True):
                 self.assertFalse(config.running_on_onion())
-                self.assertTrue(config.running_on_onion_or_spruce())
+                self.assertTrue(config.running_on_shared_miyoo_stack())
 
     def test_running_on_onion_still_true_without_spruce_marker(self) -> None:
         with patch.object(config, "running_on_spruce", return_value=False):
             with patch.object(Path, "exists", return_value=True):
                 self.assertTrue(config.running_on_onion())
-                self.assertTrue(config.running_on_onion_or_spruce())
+                self.assertTrue(config.running_on_shared_miyoo_stack())
 
     def test_onion_wins_when_a_stale_spruce_directory_is_left_on_the_card(self) -> None:
         # Reinstalling Onion over a card that once ran spruce leaves /mnt/SDCARD/spruce
