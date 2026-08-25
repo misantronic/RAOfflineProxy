@@ -106,6 +106,10 @@ features:
           <span>spruce</span>
           <em class="supported-platforms__tag">experimental</em>
         </div>
+        <div class="supported-platforms__item">
+          <span>Allium</span>
+          <em class="supported-platforms__tag">experimental</em>
+        </div>
       </div>
     </div>
   </div>
