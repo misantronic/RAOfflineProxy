@@ -86,11 +86,10 @@ root so the app lands in `/mnt/SDCARD/Apps/RAOfflineProxy.pak`.
 
 ## Hardware coverage
 
-The bundled runtime, native lib and SDL2 are armv7 builds, so this bundle covers Allium's
-Miyoo Mini target (Mini, Mini Plus, Mini Flip). Allium also supports aarch64 boards (TrimUI
-Smart/Smart Pro/Brick, RG35XX-class devices); those would need an aarch64 runtime and are
-not covered here, mirroring the same gap spruce's README documents for its non-MiyooMini
-targets.
+Allium runs only on the Miyoo Mini, Mini Plus and Mini Flip, and the armv7 runtime, native
+lib and SDL2 bundled here cover all three. There is no uncovered hardware: unlike spruce,
+whose 64-bit devices this stack cannot reach, Allium has no targets beyond the Miyoo Mini
+family.
 
 Verified on a Miyoo Mini Plus running Allium v1.0.1.
 
