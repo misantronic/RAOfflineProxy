@@ -49,7 +49,8 @@ chmod +x "${BIN_DIR}/raofflineproxy-uninstall"
 # `sudo systemctl ...` non-interactively). `sudo -n` fails fast instead of
 # hanging on a password prompt if that assumption doesn't hold here.
 if ! /usr/bin/python3 -c "import pygame" >/dev/null 2>&1; then
-  if command -v apt >/dev/null 2>&1 && sudo -n apt install -y python3-pygame >/dev/null 2>&1; then
+  echo "RAOfflineProxy will try to refresh the Debian package list and install python3-pygame; it might take a few minutes."
+  if command -v apt >/dev/null 2>&1 && sudo -n apt update >/dev/null 2>&1 && sudo -n apt install -y python3-pygame >/dev/null 2>&1; then
     echo "python3-pygame installed."
   else
     echo "pygame is not installed for python3 -- the RAOfflineProxy menu needs it."
