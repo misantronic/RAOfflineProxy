@@ -62,6 +62,7 @@ fi
 cat << 'EOF' | sudo tee "${AUTOSTART_UNIT}" > /dev/null
 [Unit]
 Description=RAOfflineProxy server
+After=emulationstation.service network.target
 
 [Service]
 Type=simple
