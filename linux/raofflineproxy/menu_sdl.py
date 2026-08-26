@@ -41,7 +41,8 @@ from .platform import (
     resolve_retroarch_cfg,
     resolve_rom_root,
     darkos_start_service,
-    darkos_stop_service
+    darkos_stop_service,
+    darkos_service_status
 )
 from .pending_awards import delete_pending_award, list_pending_awards
 from .network import online_check
@@ -370,7 +371,7 @@ def runtime_config() -> tuple[dict, str]:
     return config_data, cfg_path
 
 
-def start_proxy_inline() -> None:
+def start_proxy_inline(darkos: bool = False) -> None:
     config_data, cfg_path = runtime_config()
     remove_stale_hook()
     patch_retroarch_cfg(cfg_path, config_data)
@@ -383,15 +384,24 @@ def start_proxy_inline() -> None:
     store_ppsspp_previous(patch_state, ppsspp)
     store_dolphin_previous(patch_state, dolphin)
     save_patch_state(patch_state)
-    start_service_process(config_data)
+    if darkos:
+        darkos_start_service()
+    else:
+        start_service_process(config_data)
 
 
-def stop_proxy_inline() -> None:
+def stop_proxy_inline(darkos: bool = False) -> None:
     config_data, cfg_path = runtime_config()
     remove_stale_hook()
     patch_state = load_patch_state() or {}
     revert_cfg_path = patch_state.get("cfg_path") or cfg_path
-    service = stop_service_process()
+    if darkos:
+        service = {}
+        _exit_zero = darkos_stop_service()
+        if _exit_zero:
+            service = {"stopped": True, "already_stopped": False}
+    else:
+        service = stop_service_process()
     previous_batocera = patch_state.get("batocera_previous", {})
     revert_batocera_conf(config_data, previous_batocera)
     revert_ppsspp_ini(config_data, patch_state.get("ppsspp_previous", {}))
@@ -2584,6 +2594,8 @@ class MenuSdlSession:
     def read_proxy_running(self) -> bool:
         try:
             service = service_status() or {}
+            if self.is_darkos_platform():
+                service['running'] = darkos_service_status()
         except Exception:
             return False
         return bool(service.get("running"))
@@ -2599,10 +2611,9 @@ class MenuSdlSession:
         try:
             if service_mode_active():
                 start_service()
-            elif self.is_darkos_platform():
-                darkos_start_service()
             else:
-                start_proxy_inline()
+                _darkos = self.is_darkos_platform()
+                start_proxy_inline(darkos=_darkos)
             self.refresh_main_menu_state(force=True)
             self.maybe_offer_smart_cache()
             if self.view != "smart_cache_prompt":
@@ -2615,10 +2626,9 @@ class MenuSdlSession:
             if service_mode_active():
                 stop_service()
                 stop_service_process()
-            elif self.is_darkos_platform():
-                darkos_stop_service()
             else:
-                stop_proxy_inline()
+                _darkos = self.is_darkos_platform()
+                stop_proxy_inline(darkos=_darkos)
             self.refresh_main_menu_state(force=True)
             self.message = ("Proxy stopped", time.monotonic() + 1.2)
         except Exception as exc:

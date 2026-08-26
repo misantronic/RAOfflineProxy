@@ -369,16 +369,22 @@ def darkos_boot_hook_script(config_data: dict) -> str:
     )
 
 
-def darkos_disable_service() -> None:
-    _run_privileged(["systemctl", "disable", DARKOS_SERVICE_NAME])
+def darkos_service_status() -> bool:
+    # Active: active => True
+    # Active: inactive => False
+    return _run_privileged(["systemctl", "is-active", "--quiet", DARKOS_SERVICE_NAME])
 
 
-def darkos_start_service() -> None:
-    _run_privileged(["systemctl", "start", DARKOS_SERVICE_NAME])
+def darkos_disable_service() -> bool:
+    return _run_privileged(["systemctl", "disable", DARKOS_SERVICE_NAME])
 
 
-def darkos_stop_service() -> None:
-    _run_privileged(["systemctl", "start", DARKOS_SERVICE_NAME])
+def darkos_start_service() -> bool:
+    return _run_privileged(["systemctl", "start", DARKOS_SERVICE_NAME])
+
+
+def darkos_stop_service() -> bool:
+   return _run_privileged(["systemctl", "stop", DARKOS_SERVICE_NAME])
 
 
 def _run_privileged(args: list[str]) -> bool:
