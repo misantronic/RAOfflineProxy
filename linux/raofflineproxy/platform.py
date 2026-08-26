@@ -25,8 +25,9 @@ DEFAULT_ROCKNIX_STARTUP_SCRIPT = Path("/storage/.config/autostart/raofflineproxy
 ROCKNIX_MODULES_DIR = Path("/storage/.config/modules")
 ROCKNIX_MODULES_LAUNCHER = ROCKNIX_MODULES_DIR / "RAOfflineProxy.sh"
 ROCKNIX_TOOL_SOURCE = Path("/storage/.local/share/raofflineproxy/RAOfflineProxy.sh")
-DEFAULT_DARKOS_AUTOSTART_UNIT = Path("/etc/systemd/system/raofflineproxy-autostart.service")
-DARKOS_SERVICE_NAME = "raofflineproxy-autostart.service"
+DEFAULT_DARKOS_AUTOSTART_UNIT = Path("/etc/systemd/system/raofflineproxy.service")
+DARKOS_SERVICE_NAME = "raofflineproxy.service"
+DARKOS_APP_DIR = DEFAULT_DARKOS_HOME.joinpath('raofflineproxy', 'app')
 ROM_DIRECTORY_KEYS = [
     "content_directory",
 ]
@@ -131,6 +132,9 @@ def enable_autostart(config_data: dict) -> None:
 
 
 def disable_autostart(config_data: dict) -> None:
+    startup_script = resolve_startup_script_path(config_data)
+    if startup_script == DEFAULT_DARKOS_AUTOSTART_UNIT:
+        darkos_disable_service()
     config_data[AUTOSTART_CONFIG_KEY] = False
     save_config(config_data)
 
@@ -345,22 +349,36 @@ def rocknix_boot_hook_script(config_data: dict) -> str:
 
 
 def darkos_boot_hook_script(config_data: dict) -> str:
-    launcher = autostart_command(config_data)[0]
     return "\n".join(
         [
             "[Unit]",
-            "Description=RAOfflineProxy autostart reconcile",
+            "Description=RAOfflineProxy server",
             "After=emulationstation.service network.target",
             "",
             "[Service]",
-            "Type=oneshot",
-            f"ExecStart={launcher} boot-reconcile",
+            "Type=simple",
+            f"WorkingDirectory={DARKOS_APP_DIR}",
+            f"ExecStart=/usr/bin/python3 -m raofflineproxy.main run-service",
+            "Restart=always",
+            "RestartSec=1",
             "",
             "[Install]",
             "WantedBy=multi-user.target",
             "",
         ]
     )
+
+
+def darkos_disable_service() -> None:
+    _run_privileged(["systemctl", "disable", DARKOS_SERVICE_NAME])
+
+
+def darkos_start_service() -> None:
+    _run_privileged(["systemctl", "start", DARKOS_SERVICE_NAME])
+
+
+def darkos_stop_service() -> None:
+    _run_privileged(["systemctl", "start", DARKOS_SERVICE_NAME])
 
 
 def _run_privileged(args: list[str]) -> bool:

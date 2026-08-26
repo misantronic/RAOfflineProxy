@@ -40,6 +40,8 @@ from .platform import (
     is_autostart_enabled,
     resolve_retroarch_cfg,
     resolve_rom_root,
+    darkos_start_service,
+    darkos_stop_service
 )
 from .pending_awards import delete_pending_award, list_pending_awards
 from .network import online_check
@@ -2597,6 +2599,8 @@ class MenuSdlSession:
         try:
             if service_mode_active():
                 start_service()
+            elif self.is_darkos_platform():
+                darkos_start_service()
             else:
                 start_proxy_inline()
             self.refresh_main_menu_state(force=True)
@@ -2611,6 +2615,8 @@ class MenuSdlSession:
             if service_mode_active():
                 stop_service()
                 stop_service_process()
+            elif self.is_darkos_platform():
+                darkos_stop_service()
             else:
                 stop_proxy_inline()
             self.refresh_main_menu_state(force=True)

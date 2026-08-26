@@ -67,7 +67,7 @@ After=emulationstation.service network.target
 [Service]
 Type=simple
 WorkingDirectory=/home/ark/raofflineproxy/app
-ExecStart=/usr/bin/env -a raofflineproxy /usr/bin/python3 -m raofflineproxy.main run-service
+ExecStart=/usr/bin/python3 -m raofflineproxy.main run-service
 Restart=always
 RestartSec=1
 
