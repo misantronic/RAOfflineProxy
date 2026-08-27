@@ -4,17 +4,23 @@
 # Runs the controller-driven SDL menu fullscreen under the sway compositor.
 # The menu requests SDL fullscreen itself, so no sway_fullscreen call is needed.
 #
-# Two device-specific failures are worked around here, both of which kill the
-# process natively inside SDL before any Python error handler can run:
+# The SDL bundled inside the pygame-ce wheel is a generic manylinux build and
+# is unreliable on these Rockchip/Mali devices, in two different ways:
 #
-#   1. The video driver may not be usable, so candidates are tried in separate
-#      attempts.
-#   2. On RK3326 with the libmali blob, the SDL 2.32.10 bundled inside the
-#      pygame-ce wheel segfaults creating a wayland window, while ROCKNIX's own
-#      libSDL2 (which every emulator on the device uses) works. Preloading the
-#      system library overrides the bundled one for that attempt.
+#   1. On RK3326 with the libmali blob it segfaults creating a wayland window.
+#   2. On the RG DS (RK3566, Mali-G52) it does not crash at all, it just renders
+#      garbage: a correct 640x480 surface reaches the compositor as black with a
+#      white top-right quadrant (issue #55, verified on-device with grim).
 #
-# Whichever combination survives is cached and tried first next time.
+# ROCKNIX's own libSDL2, which every emulator on the device already uses, is
+# built for this hardware and renders correctly in both cases, so it is
+# preferred and the wheel's own SDL is only a fallback. Case 2 is why the
+# preload cannot be chosen by exit code alone: nothing crashes, so a bad render
+# still "succeeds".
+#
+# The video driver may also not be usable, so driver candidates are tried in
+# separate attempts. Whichever combination survives is cached and tried first
+# next time.
 
 source /etc/profile
 
@@ -29,17 +35,14 @@ export WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-wayland-1}"
 export LD_LIBRARY_PATH="${BASE_DIR}/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
 export PYTHONPATH="${BASE_DIR}/app:${BASE_DIR}"
 
-# SDL fakes fullscreen mode changes on wayland by scaling the surface through
-# wp_viewporter rather than setting a real mode. On the RG DS the menu renders
-# into a correct 640x480 surface but reaches the panel as a mis-scaled quadrant
-# (issue #55), which is what a bad viewport path looks like, so opt out of it.
-export SDL_VIDEO_WAYLAND_MODE_EMULATION=0
 # Without this the wayland app_id is not the binary name, so sway cannot match
 # the window by app_id at all - give it a stable one to match on.
 export SDL_VIDEO_WAYLAND_WMCLASS=raofflineproxy
 
 CONFIG_DIR="/storage/.config/raofflineproxy"
-ATTEMPT_CACHE_FILE="${CONFIG_DIR}/rocknix_sdl_attempt"
+# v2: the ordering below changed, so a cache written by an older build would
+# pin the wheel's SDL again and reintroduce issue #55 on upgrade.
+ATTEMPT_CACHE_FILE="${CONFIG_DIR}/rocknix_sdl_attempt2"
 STDOUT_LOG="${CONFIG_DIR}/menu-stdout.log"
 DRIVER_CANDIDATES=(wayland kmsdrm x11)
 SYSTEM_SDL="$(ls /usr/lib/libSDL2-2.0.so.0* 2>/dev/null | head -n1)"
@@ -47,10 +50,11 @@ SYSTEM_SDL="$(ls /usr/lib/libSDL2-2.0.so.0* 2>/dev/null | head -n1)"
 mkdir -p "${CONFIG_DIR}"
 
 # Attempts are "<driver>|<preload>", an empty preload meaning the wheel's own SDL.
+# The system library goes first: it is the one built for this hardware.
 attempts=()
 for d in "${DRIVER_CANDIDATES[@]}"; do
-  attempts+=("${d}|")
   [ -n "${SYSTEM_SDL}" ] && attempts+=("${d}|${SYSTEM_SDL}")
+  attempts+=("${d}|")
 done
 
 ordered=()

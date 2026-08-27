@@ -133,26 +133,43 @@ Confirmed on-device (ROCKNIX `next`, `OS_NAME="ROCKNIX"` in `/etc/os-release`):
   call is needed.
 - Autostart drops an executable script into `/storage/.config/autostart/`; ROCKNIX's
   `/usr/bin/autostart` runs every script there at boot (no separate registration step)
-- Some devices (e.g. RK3326 with the `libmali` blob) segfaulted inside SDL's wayland/EGL init
-  before the app's own `pygame.error` fallback could run — a native crash never reached Python.
-  This turned out to be the vendored SDL build itself (see pygame section below), not driver
-  choice, but `tool-launcher.sh` still tries `SDL_VIDEODRIVER` candidates (`wayland`, `kmsdrm`,
-  `x11`) as separate attempts, detects a crash via exit code (`>=128` means signal death), falls
-  back to the next candidate, and caches the first one that works in
-  `/storage/.config/raofflineproxy/rocknix_video_driver` so later launches skip straight to it.
+- The SDL bundled in the pygame-ce wheel is a generic manylinux build and misbehaves on these
+  Rockchip/Mali devices in two different ways, so `tool-launcher.sh` prefers ROCKNIX's own
+  `/usr/lib/libSDL2-2.0.so.0` via `LD_PRELOAD` and only falls back to the wheel's copy. See the
+  pygame section below.
+- `tool-launcher.sh` pairs each `SDL_VIDEODRIVER` candidate (`wayland`, `kmsdrm`, `x11`) with each
+  SDL choice, detects a native crash via exit code (`>=128` means signal death), falls back to the
+  next combination, and caches the first that survives in
+  `/storage/.config/raofflineproxy/rocknix_sdl_attempt2` so later launches skip straight to it.
+  The cache filename is versioned because the preference order changed; a cache written by an
+  older build would otherwise pin the wheel's SDL again.
 
 ### pygame
 
 ROCKNIX ships a system Python but **no `pip` and no `pygame`**. The bundle vendors a
-self-contained `pygame-ce` (Community Edition) 2.5.7 aarch64 manylinux wheel (its own SDL 2.32.10
-in `pygame_ce.libs`, built with both the wayland and kmsdrm video drivers — no reliance on system
-SDL). The package still imports as `pygame` (pygame-ce is API-compatible).
+self-contained `pygame-ce` (Community Edition) 2.5.7 aarch64 manylinux wheel. The package still
+imports as `pygame` (pygame-ce is API-compatible).
 
-The vanilla `pygame` 2.6.1 wheel used before segfaulted inside SDL's native wayland/EGL init on
-RK3326 devices with the `libmali` GPU blob (issue #55, and an earlier Discord report) — every
-`SDL_VIDEODRIVER` crashed identically, ruling out driver selection. PortMaster ports on the same
-device class run fine using `pygame-ce`/`pygame_sdl2` builds instead of the vanilla wheel, so we
-switched the vendored build rather than adding more launch-script workarounds.
+**The wheel's own SDL is not trusted for rendering.** It ships an SDL 2.32.10 in `pygame_ce.libs`,
+but that is a generic manylinux build and it fails on Rockchip/Mali hardware in two distinct ways:
+
+- **RK3326 + `libmali`**: segfaults creating a wayland window, before any `pygame.error` handler
+  can run, because a native crash never reaches Python.
+- **RG DS (RK3566, Mali-G52)**: does not crash at all, it renders garbage. A correct 640x480
+  surface arrives at the compositor as black with a white top-right quadrant (issue #55).
+
+The second case is the important one for the launcher design: nothing crashes, so exit-code-based
+fallback cannot detect it. That is why the system SDL is *preferred* rather than merely used as a
+crash fallback.
+
+ROCKNIX's `/usr/lib/libSDL2-2.0.so.0` is the same upstream version (2.32.10) but built for this
+hardware, and it is what every emulator on the device already uses. `LD_PRELOAD`-ing it makes its
+symbols win over the wheel's copy (both end up mapped, since pygame's extension modules have a
+`NEEDED` entry on the bundled SONAME).
+
+Verified on real RG DS hardware (ROCKNIX 20260801) by capturing the compositor's own output with
+`grim`: an 8-line pygame script doing nothing but `fill((255,0,0))` reproduced the corruption with
+the bundled SDL and rendered correctly with the system SDL, which is what ruled out the app itself.
 
 Which CPython the wheel has to match is not fixed: stable ROCKNIX ships 3.13, nightlies since
 20260822 ship 3.14, and a bundle carrying only one of them dies at startup on the other with
