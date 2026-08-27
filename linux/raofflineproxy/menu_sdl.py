@@ -18,6 +18,11 @@ from .ppsspp_cfg import (
     revert_ppsspp_ini,
     store_ppsspp_previous,
 )
+from .spruce_conf import (
+    patch_spruce_mode,
+    revert_spruce_mode,
+    store_spruce_previous,
+)
 from .dolphin_cfg import (
     patch_dolphin_ini,
     revert_dolphin_ini,
@@ -26,11 +31,15 @@ from .dolphin_cfg import (
 from .config import (
     APP_VERSION,
     CONFIG_DIR,
+    DEFAULT_ALLIUM_APP_DIR,
     DEFAULT_DARKOS_HOME,
     DEFAULT_ONION_APP_DIR,
     load_config,
+    running_on_allium,
     running_on_onion,
+    running_on_shared_miyoo_stack,
     running_on_rocknix,
+    running_on_spruce,
     save_config,
 )
 from .platform import (
@@ -93,7 +102,13 @@ from .update import (
     install_onion_update_archive,
     update_status,
 )
-from .log_uploader import report_storage_corruption, upload_logs
+from .log_uploader import (
+    SUPPORTED_ONION_VERSION_PREFIX,
+    onion_os_version,
+    onion_version_supported,
+    report_storage_corruption,
+    upload_logs,
+)
 from .menu_input import (
     BTN_DPAD_DOWN,
     BTN_DPAD_LEFT,
@@ -129,6 +144,7 @@ TEXT_COLOR = (255, 255, 255)
 SELECTED_COLOR = SECONDARY_COLOR
 STATUS_COLOR = (180, 180, 180)
 SECONDARY_TEXT_COLOR = (110, 110, 110)
+ERROR_COLOR = (200, 70, 60)
 ERROR_SECONDS = 3
 FPS = 60
 LEFT_MARGIN = 32
@@ -308,8 +324,18 @@ def run_menu_sdl(command_runner: str) -> None:
         pygame.init()
         pygame.font.init()
 
-        if running_on_onion():
-            surface = _init_onion_display(pygame)
+        if running_on_shared_miyoo_stack():
+            try:
+                surface = _init_onion_display(pygame)
+            except pygame.error as exc:
+                # The vendored "Mini" SDL2 driver this path needs only exists on the
+                # hardware it was built for. spruce also runs on boards outside that set,
+                # so fall back to a plain fullscreen surface rather than failing to start.
+                log_menu_sdl(f"mini display init failed, falling back: {exc}")
+                os.environ.pop("SDL_VIDEODRIVER", None)
+                pygame.display.quit()
+                pygame.display.init()
+                surface = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
         else:
             try:
                 surface = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
@@ -325,7 +351,16 @@ def run_menu_sdl(command_runner: str) -> None:
                     surface = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
                 else:
                     raise
+            try:
+                log_menu_sdl(
+                    f"display probe driver={pygame.display.get_driver()} "
+                    f"num_displays={pygame.display.get_num_displays()} "
+                    f"desktop_sizes={pygame.display.get_desktop_sizes()}"
+                )
+            except pygame.error as exc:
+                log_menu_sdl(f"display probe failed: {exc}")
         width, height = surface.get_size()
+        log_menu_sdl(f"display set_mode surface_size={width}x{height}")
         session = MenuSdlSession(command_runner, surface, width, height, pygame)
         session.run()
     except Exception:
@@ -337,11 +372,33 @@ def run_menu_sdl(command_runner: str) -> None:
             pygame.quit()
 
 
+_DEBUG_DUMP_FRAME_PATH = CONFIG_DIR / "debug_frame.png"
+_debug_frame_dumped = False
+
+
+def maybe_dump_debug_frame(surface, pygame) -> None:
+    global _debug_frame_dumped
+    if _debug_frame_dumped or os.environ.get("RAOFFLINEPROXY_DEBUG_DUMP_FRAME") != "1":
+        return
+    _debug_frame_dumped = True
+    try:
+        CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+        pygame.image.save(surface, str(_DEBUG_DUMP_FRAME_PATH))
+        log_menu_sdl(f"debug frame dumped to {_DEBUG_DUMP_FRAME_PATH}")
+    except Exception as exc:
+        log_menu_sdl(f"debug frame dump failed: {exc}")
+
+
 def log_menu_sdl(message: str) -> None:
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
     timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
     with SDL_LOG_PATH.open("a", encoding="utf-8") as handle:
         handle.write(f"{timestamp} {message}\n")
+
+
+def log_action_failure(action: str, exc: Exception) -> None:
+    log_menu_sdl(f"{action} failed error={exc}")
+    log_menu_sdl(traceback.format_exc().rstrip())
 
 
 def remove_stale_hook() -> None:
@@ -374,15 +431,17 @@ def runtime_config() -> tuple[dict, str]:
 def start_proxy_inline(darkos: bool = False) -> None:
     config_data, cfg_path = runtime_config()
     remove_stale_hook()
-    patch_retroarch_cfg(cfg_path, config_data)
+    patch_result = patch_retroarch_cfg(cfg_path, config_data)
     enforce_patched_cfg(cfg_path, config_data)
     batocera = patch_batocera_conf(config_data)
     ppsspp = patch_ppsspp_ini(config_data)
     dolphin = patch_dolphin_ini(config_data)
+    spruce = patch_spruce_mode(config_data)
     patch_state = load_patch_state() or {}
     store_batocera_previous(patch_state, batocera)
     store_ppsspp_previous(patch_state, ppsspp)
     store_dolphin_previous(patch_state, dolphin)
+    store_spruce_previous(patch_state, spruce)
     save_patch_state(patch_state)
     if darkos:
         darkos_start_service()
@@ -405,21 +464,22 @@ def stop_proxy_inline(darkos: bool = False) -> None:
     previous_batocera = patch_state.get("batocera_previous", {})
     revert_batocera_conf(config_data, previous_batocera)
     revert_ppsspp_ini(config_data, patch_state.get("ppsspp_previous", {}))
+    revert_spruce_mode(config_data, patch_state.get("spruce_previous_mode"))
     revert_dolphin_ini(config_data, patch_state.get("dolphin_previous", {}))
 
     if patch_state:
-        revert_retroarch_cfg(revert_cfg_path, patch_state)
+        revert_retroarch_cfg(revert_cfg_path, patch_state, config_data=config_data)
         return
 
     if not service.get("already_stopped"):
         try:
-            revert_retroarch_cfg(revert_cfg_path)
+            revert_retroarch_cfg(revert_cfg_path, config_data=config_data)
         except Exception:
             pass
         return
 
     try:
-        revert_retroarch_cfg(revert_cfg_path)
+        revert_retroarch_cfg(revert_cfg_path, config_data=config_data)
     except Exception:
         pass
 
@@ -435,7 +495,11 @@ class MenuSdlSession:
         self.pygame = pygame
         self.config_data = load_config()
         self.running = True
-        self.view = "controller_calibration" if self.needs_controller_calibration() else "main"
+        self.onion_unsupported = running_on_onion() and not onion_version_supported()
+        if self.onion_unsupported:
+            self.view = "unsupported_onion"
+        else:
+            self.view = "controller_calibration" if self.needs_controller_calibration() else "main"
         self.selected_index = 0
         self.scroll_offset = 0
         self.message: tuple[str, float] | None = None
@@ -520,7 +584,7 @@ class MenuSdlSession:
         self.refresh_cached_games()
 
     def load_font(self, size: int, bold: bool = False):
-        if running_on_onion():
+        if running_on_shared_miyoo_stack():
             font_path = ONION_FONT_BOLD if bold else ONION_FONT_REGULAR
             if font_path.exists():
                 return self.pygame.font.Font(str(font_path), size)
@@ -571,8 +635,15 @@ class MenuSdlSession:
     def render(self) -> None:
         self.surface.fill(BACKGROUND_COLOR)
 
+        if self.view == "unsupported_onion":
+            self.render_unsupported_onion_view()
+            maybe_dump_debug_frame(self.surface, self.pygame)
+            self.pygame.display.flip()
+            return
+
         if self.view == "key_logger":
             self.render_key_logger_view()
+            maybe_dump_debug_frame(self.surface, self.pygame)
             self.pygame.display.flip()
             return
 
@@ -637,6 +708,7 @@ class MenuSdlSession:
             )
             self.surface.blit(version, version_rect)
 
+        maybe_dump_debug_frame(self.surface, self.pygame)
         self.pygame.display.flip()
 
     def labels(self, running: bool) -> list[str]:
@@ -987,19 +1059,26 @@ class MenuSdlSession:
         # existing KEYDOWN path on unverified assumptions. Keep draining the
         # event queue regardless (QUIT still matters, and an undrained SDL
         # event queue can back up).
-        skip_keydown = running_on_onion() and bool(getattr(self, "input_handles", None))
+        skip_keydown = running_on_shared_miyoo_stack() and bool(getattr(self, "input_handles", None))
         for event in self.pygame.event.get():
             if event.type == self.pygame.QUIT:
                 self.running = False
                 return
 
             if event.type == self.pygame.KEYDOWN:
+                if self.view == "unsupported_onion":
+                    self.running = False
+                    return
                 if not skip_keydown:
                     self.handle_key(event.key)
                 continue
 
     def handle_raw_input(self) -> None:
         for key in read_keys(self.input_handles, self.last_key_press):
+            if self.view == "unsupported_onion":
+                self.running = False
+                return
+
             if self.handle_calibration_key(key):
                 continue
 
@@ -1321,11 +1400,21 @@ class MenuSdlSession:
     def is_darkos_platform(self) -> bool:
         return DEFAULT_DARKOS_HOME.exists()
 
-    def update_platform(self) -> str:
+    def update_platform(self) -> str | None:
+        """The release channel to check for updates, or None where there is none.
+
+        None is a normal state, not a failure: it must not be signalled by returning a
+        platform name that `update.validate_platform()` rejects, because every caller
+        would then log a spurious "update check failed" line on each refresh.
+        """
         if running_on_muos():
             return "muos"
+        if running_on_spruce():
+            return "spruce"
         if running_on_onion():
             return "onion"
+        if running_on_allium():
+            return "allium"
         if running_on_rocknix():
             return "rocknix"
         if self.is_darkos_platform():
@@ -1501,6 +1590,24 @@ class MenuSdlSession:
         if self.is_cancel_key(key):
             self.view = "main"
             self.restore_view_position("main")
+
+    def render_unsupported_onion_view(self) -> None:
+        title = self.title_font.render("Unsupported Onion version", False, ERROR_COLOR)
+        title_rect = title.get_rect(topleft=(LEFT_MARGIN, max(36, self.height // 12)))
+        self.surface.blit(title, title_rect)
+
+        detected = onion_os_version() or "unknown"
+        message = (
+            f"This OnionOS build ({detected}) is not supported.\n"
+            f"RAOfflineProxy requires Onion {SUPPORTED_ONION_VERSION_PREFIX} or newer — "
+            "older builds ship a RetroArch achievements client that is not reliably "
+            "compatible with a custom host.\n"
+            "All functionality is disabled until Onion is updated."
+        )
+        body_bottom = self.render_wrapped_status(message, title_rect.bottom + 20)
+
+        hint = self.status_font.render("Press any key to exit", False, SELECTED_COLOR)
+        self.surface.blit(hint, hint.get_rect(topleft=(LEFT_MARGIN, body_bottom + 20)))
 
     def render_key_logger_view(self) -> None:
         title_text = self.title_for_view()
@@ -2311,16 +2418,22 @@ class MenuSdlSession:
                 and is_autostart_enabled(self.config_data)
             )
         if force:
-            try:
-                update = update_status(self.update_platform())
-                self.main_update_available = update.update_available
-                self.main_update_version = update.latest_version
-                self.main_update_asset_url = update.asset_url
-            except Exception as exc:
-                log_menu_sdl(f"update check failed error={exc}")
+            update_platform = self.update_platform()
+            if update_platform is None:
                 self.main_update_available = False
                 self.main_update_version = None
                 self.main_update_asset_url = None
+            else:
+                try:
+                    update = update_status(update_platform)
+                    self.main_update_available = update.update_available
+                    self.main_update_version = update.latest_version
+                    self.main_update_asset_url = update.asset_url
+                except Exception as exc:
+                    log_menu_sdl(f"update check failed error={exc}")
+                    self.main_update_available = False
+                    self.main_update_version = None
+                    self.main_update_asset_url = None
         self.main_state_refreshed_at = now
         if (
             self.view == "main"
@@ -2609,16 +2722,26 @@ class MenuSdlSession:
 
     def start_proxy(self) -> None:
         try:
+            cfg_skipped = False
             if service_mode_active():
                 start_service()
             else:
                 _darkos = self.is_darkos_platform()
-                start_proxy_inline(darkos=_darkos)
+                cfg_skipped = start_proxy_inline(darkos=_darkos)
             self.refresh_main_menu_state(force=True)
             self.maybe_offer_smart_cache()
+            if cfg_skipped:
+                log_menu_sdl("start_proxy retroarch cfg missing, patched conf only")
             if self.view != "smart_cache_prompt":
-                self.message = ("Proxy started", time.monotonic() + 1.2)
+                if cfg_skipped:
+                    self.message = (
+                        "Proxy started, no RetroArch cfg",
+                        time.monotonic() + ERROR_SECONDS,
+                    )
+                else:
+                    self.message = ("Proxy started", time.monotonic() + 1.2)
         except Exception as exc:
+            log_action_failure("start_proxy", exc)
             self.message = (f"Start failed: {exc}", time.monotonic() + ERROR_SECONDS)
 
     def stop_proxy(self) -> None:
@@ -2632,6 +2755,7 @@ class MenuSdlSession:
             self.refresh_main_menu_state(force=True)
             self.message = ("Proxy stopped", time.monotonic() + 1.2)
         except Exception as exc:
+            log_action_failure("stop_proxy", exc)
             self.message = (f"Stop failed: {exc}", time.monotonic() + ERROR_SECONDS)
 
     def toggle_autostart(self, config_data: dict) -> None:
@@ -2651,6 +2775,7 @@ class MenuSdlSession:
                 self.message = ("Autostart enabled", time.monotonic() + 1.2)
             self.refresh_main_menu_state(force=True)
         except Exception as exc:
+            log_action_failure("toggle_autostart", exc)
             self.message = (
                 f"Autostart failed: {exc}",
                 time.monotonic() + ERROR_SECONDS,
@@ -2660,7 +2785,10 @@ class MenuSdlSession:
         asset_url = getattr(self, "main_update_asset_url", None)
         if asset_url:
             return asset_url
-        update = update_status(self.update_platform(), force=True)
+        update_platform = self.update_platform()
+        if update_platform is None:
+            return None
+        update = update_status(update_platform, force=True)
         self.main_update_asset_url = update.asset_url
         self.main_update_version = update.latest_version
         self.main_update_available = update.update_available
@@ -2677,8 +2805,13 @@ class MenuSdlSession:
         if running_on_muos():
             self.install_update_muos()
             return
-        if running_on_onion():
-            self.install_update_onion()
+        # Each target passes its own layout: Onion and spruce share App/RAOfflineProxy,
+        # Allium ships Apps/RAOfflineProxy.pak. Everything else about the flow is common.
+        if running_on_allium():
+            self.install_update_archive(DEFAULT_ALLIUM_APP_DIR, "Apps")
+            return
+        if running_on_onion() or running_on_spruce():
+            self.install_update_archive(DEFAULT_ONION_APP_DIR, "App")
             return
 
         self.show_update_progress("Checking for update...")
@@ -2702,7 +2835,12 @@ class MenuSdlSession:
             self.message = (f"Update install failed: {exc}", time.monotonic() + ERROR_SECONDS)
             self.dismiss_update_prompt()
 
-    def install_update_onion(self) -> None:
+    def install_update_archive(self, app_dir: Path, archive_root: str) -> None:
+        """Zip-archive update flow, shared by every target that ships one.
+
+        `archive_root` is where the app directory sits inside the archive — `App` for
+        Onion and spruce, `Apps` for Allium's .pak layout.
+        """
         self.show_update_progress("Checking for update...")
         asset_url = self.resolve_update_asset_url()
         if not asset_url:
@@ -2710,14 +2848,13 @@ class MenuSdlSession:
             self.dismiss_update_prompt()
             return
 
-        app_dir = DEFAULT_ONION_APP_DIR
         try:
             self.show_update_progress("Stopping proxy...")
             stop_proxy_inline()
             self.show_update_progress("Downloading update...")
             archive_path = download_onion_update_archive(asset_url)
             self.show_update_progress("Installing update...")
-            install_onion_update_archive(archive_path, app_dir)
+            install_onion_update_archive(archive_path, app_dir, archive_root)
             self.storage.close()
             close_input_devices(self.input_handles)
             self.pygame.quit()

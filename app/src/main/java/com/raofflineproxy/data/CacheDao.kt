@@ -2,7 +2,6 @@ package com.raofflineproxy.data
 
 import androidx.room.*
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.map
 
 @Dao
 interface CacheDao {
@@ -39,10 +38,11 @@ interface CacheDao {
     @Query("SELECT id, cacheKey, sourceRomPath, cachedAt, firstCachedAt FROM api_cache WHERE cacheKey LIKE 'patch:%' ORDER BY firstCachedAt DESC")
     fun observePatchEntrySummaries(): Flow<List<CacheEntrySummary>>
 
-    fun observePatchEntries(): Flow<List<CacheEntry>> =
-        observePatchEntrySummaries().map { entries ->
-            entries.mapNotNull { entry -> entry.withResponseBody(this) }
-        }
+    @Query("SELECT id, cacheKey, sourceRomPath, cachedAt, firstCachedAt FROM api_cache WHERE cacheKey LIKE 'unlocks:%'")
+    fun observeUnlockSummaries(): Flow<List<CacheEntrySummary>>
+
+    suspend fun bodyForSummary(summary: CacheEntrySummary): String? =
+        summary.withResponseBody(this)?.responseBody
 
     @Query("SELECT * FROM api_cache WHERE cacheKey LIKE :prefix || '%' ORDER BY cachedAt DESC")
     fun observeByPrefix(prefix: String): Flow<List<CacheEntry>>

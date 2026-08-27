@@ -12,6 +12,7 @@ import android.text.style.ForegroundColorSpan
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.CheckBox
 import android.widget.ImageView
@@ -25,12 +26,14 @@ import androidx.core.net.toUri
 import androidx.swiperefreshlayout.widget.CircularProgressDrawable
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.button.MaterialButtonToggleGroup
+import com.google.android.material.textfield.MaterialAutoCompleteTextView
 import com.google.android.material.textfield.TextInputEditText
 import com.google.android.material.textfield.TextInputLayout
 import com.raofflineproxy.BuildConfig
 import com.raofflineproxy.R
+import com.raofflineproxy.donation.DonationAmountOption
+import com.raofflineproxy.donation.DonationLinks
 import com.raofflineproxy.donation.DonationManager
-import kotlin.math.roundToInt
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -39,10 +42,11 @@ class HomeFragment : Fragment() {
     private val viewModel: MainViewModel by activityViewModels()
 
     private data class EmulatorToggleViews(
+        val emulator: Emulator,
         val row: LinearLayout,
         val icon: ImageView,
         val checkBox: CheckBox,
-        val label: TextView
+        val appIcon: Drawable?
     )
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View =
@@ -62,22 +66,9 @@ class HomeFragment : Fragment() {
         val enabledEmulatorIcons = view.findViewById<LinearLayout>(R.id.layout_enabled_emulator_icons)
         val emulatorSelectorDialogView = LayoutInflater.from(requireContext())
             .inflate(R.layout.dialog_emulator_selector, null, false)
-        val retroArchToggle = bindToggle(emulatorSelectorDialogView.findViewById(R.id.layout_retroarch_toggle), R.string.emulator_retroarch)
-        val dolphinToggle = bindToggle(emulatorSelectorDialogView.findViewById(R.id.layout_dolphin_toggle), R.string.emulator_dolphin)
-        val ppssppToggle = bindToggle(emulatorSelectorDialogView.findViewById(R.id.layout_ppsspp_toggle), R.string.emulator_ppsspp)
-        val armsx2Toggle = bindToggle(emulatorSelectorDialogView.findViewById(R.id.layout_armsx2_toggle), R.string.emulator_armsx2)
-        val flycastToggle = bindToggle(emulatorSelectorDialogView.findViewById(R.id.layout_flycast_toggle), R.string.emulator_flycast)
-        val melonDualDsToggle = bindToggle(emulatorSelectorDialogView.findViewById(R.id.layout_melondualds_toggle), R.string.emulator_melondualds)
-        val mupen64Toggle = bindToggle(emulatorSelectorDialogView.findViewById(R.id.layout_mupen64_toggle), R.string.emulator_mupen64)
-        val emuCoreXToggle = bindToggle(emulatorSelectorDialogView.findViewById(R.id.layout_emucorex_toggle), R.string.emulator_emucorex)
-        val retroArchAppIcon = loadInstalledAppIcon(RETROARCH_PACKAGE_CANDIDATES)
-        val dolphinAppIcon = loadInstalledAppIcon(DOLPHIN_PACKAGE_CANDIDATES)
-        val ppssppAppIcon = loadInstalledAppIcon(UI_PPSSPP_PACKAGE_CANDIDATES)
-        val armsx2AppIcon = loadInstalledAppIcon(UI_ARMSX2_PACKAGE_CANDIDATES)
-        val flycastAppIcon = loadInstalledAppIcon(UI_FLYCAST_PACKAGE_CANDIDATES)
-        val melonDualDsAppIcon = loadInstalledAppIcon(UI_MELONDUALDS_PACKAGE_CANDIDATES)
-        val mupen64AppIcon = loadInstalledAppIcon(UI_MUPEN64_PACKAGE_CANDIDATES)
-        val emuCoreXAppIcon = loadInstalledAppIcon(UI_EMUCOREX_PACKAGE_CANDIDATES)
+        val toggles = inflateEmulatorToggles(
+            emulatorSelectorDialogView.findViewById(R.id.layout_emulator_toggles)
+        )
 
         if (resources.getBoolean(R.bool.show_home_description)) {
             val fullText = getString(R.string.home_description)
@@ -126,53 +117,23 @@ class HomeFragment : Fragment() {
             }
         }
 
-        retroArchToggle.row.setOnClickListener {
-            if (retroArchToggle.row.isEnabled) {
-                viewModel.setRetroArchEnabled(!viewModel.state.value.retroArchEnabled)
-            }
-        }
-        dolphinToggle.row.setOnClickListener {
-            if (dolphinToggle.row.isEnabled) {
-                viewModel.setDolphinEnabled(!viewModel.state.value.dolphinEnabled)
-            }
-        }
-        ppssppToggle.row.setOnClickListener {
-            if (ppssppToggle.row.isEnabled) {
-                viewModel.setPpssppEnabled(!viewModel.state.value.ppssppEnabled)
-            }
-        }
-        armsx2Toggle.row.setOnClickListener {
-            if (armsx2Toggle.row.isEnabled) {
-                viewModel.setArmsx2Enabled(!viewModel.state.value.armsx2Enabled)
-            }
-        }
-        flycastToggle.row.setOnClickListener {
-            if (flycastToggle.row.isEnabled) {
-                viewModel.setFlycastEnabled(!viewModel.state.value.flycastEnabled)
-            }
-        }
-        melonDualDsToggle.row.setOnClickListener {
-            if (melonDualDsToggle.row.isEnabled) {
-                viewModel.setMelonDualDsEnabled(!viewModel.state.value.melonDualDsEnabled)
-            }
-        }
-        mupen64Toggle.row.setOnClickListener {
-            if (mupen64Toggle.row.isEnabled) {
-                viewModel.setMupen64Enabled(!viewModel.state.value.mupen64Enabled)
-            }
-        }
-        emuCoreXToggle.row.setOnClickListener {
-            if (emuCoreXToggle.row.isEnabled) {
-                viewModel.setEmuCoreXEnabled(!viewModel.state.value.emuCoreXEnabled)
+        toggles.forEach { toggle ->
+            toggle.row.setOnClickListener {
+                if (toggle.row.isEnabled) {
+                    viewModel.setEmulatorEnabled(
+                        toggle.emulator,
+                        !viewModel.state.value.emulators.isEnabled(toggle.emulator)
+                    )
+                }
             }
         }
 
         viewLifecycleOwner.lifecycleScope.launch {
             viewModel.state.collect { state ->
-                val installedCount = listOf(state.retroArchInstalled, state.dolphinInstalled, state.ppssppInstalled, state.armsx2Installed, state.flycastInstalled, state.melonDualDsInstalled, state.mupen64Installed, state.emuCoreXInstalled).count { it }
+                val installedCount = state.emulators.installedCount
                 val noEmulatorInstalled = installedCount == 0
                 val onlyOneInstalled = installedCount == 1
-                val hasManualSetupManagedEmulator = state.retroArchInstalled || state.dolphinInstalled || state.ppssppInstalled
+                val hasManualSetupManagedEmulator = Emulator.SHIZUKU_MANAGED.any { state.emulators.isInstalled(it) }
                 val proxyStartPending = state.proxyToggleInProgress || state.needsSafGrant
                 val shouldRecommendManualSetup = hasManualSetupManagedEmulator &&
                     !state.manualEmulatorPatchingEnabled &&
@@ -194,7 +155,7 @@ class HomeFragment : Fragment() {
 
                 btnStartProxy.visibility = if (shouldShowManualSetupButton) View.GONE else View.VISIBLE
                 btnStartProxy.text = getString(if (state.proxyRunning) R.string.proxy_stop else R.string.proxy_start)
-                btnStartProxy.isEnabled = if (state.proxyRunning) !proxyStartPending else !proxyStartPending && (state.retroArchEnabled || state.dolphinEnabled || state.ppssppEnabled || state.armsx2Enabled || state.flycastEnabled || state.melonDualDsEnabled || state.mupen64Enabled || state.emuCoreXEnabled)
+                btnStartProxy.isEnabled = if (state.proxyRunning) !proxyStartPending else !proxyStartPending && state.hasEnabledEmulator
                 btnStartProxy.alpha = if (proxyStartPending) 0.45f else 1f
                 btnManualEmulatorSetup.visibility = if (shouldShowManualSetupButton) View.VISIBLE else View.GONE
                 btnGoToCachedGames.visibility = if (state.proxyRunning) View.VISIBLE else View.GONE
@@ -207,73 +168,33 @@ class HomeFragment : Fragment() {
                 emulatorSelector.visibility = if (installedCount > 0) View.VISIBLE else View.GONE
                 emulatorSelector.isEnabled = !state.proxyRunning
                 emulatorSelector.alpha = if (state.proxyRunning) 0.6f else 1f
-                retroArchToggle.row.visibility = if (state.retroArchInstalled) View.VISIBLE else View.GONE
-                dolphinToggle.row.visibility = if (state.dolphinInstalled) View.VISIBLE else View.GONE
-                ppssppToggle.row.visibility = if (state.ppssppInstalled) View.VISIBLE else View.GONE
-                armsx2Toggle.row.visibility = if (state.armsx2Installed) View.VISIBLE else View.GONE
-                flycastToggle.row.visibility = if (state.flycastInstalled) View.VISIBLE else View.GONE
-                melonDualDsToggle.row.visibility = if (state.melonDualDsInstalled) View.VISIBLE else View.GONE
-                mupen64Toggle.row.visibility = if (state.mupen64Installed) View.VISIBLE else View.GONE
-                emuCoreXToggle.row.visibility = if (state.emuCoreXInstalled) View.VISIBLE else View.GONE
-
-                retroArchToggle.row.isEnabled = state.retroArchInstalled && !state.proxyRunning && !onlyOneInstalled
-                dolphinToggle.row.isEnabled = state.dolphinInstalled && !state.proxyRunning && !onlyOneInstalled
-                ppssppToggle.row.isEnabled = state.ppssppInstalled && !state.proxyRunning && !onlyOneInstalled
-                armsx2Toggle.row.isEnabled = state.armsx2Installed && !state.proxyRunning && !onlyOneInstalled
-                flycastToggle.row.isEnabled = state.flycastInstalled && !state.proxyRunning && !onlyOneInstalled
-                melonDualDsToggle.row.isEnabled = state.melonDualDsInstalled && !state.proxyRunning && !onlyOneInstalled
-                mupen64Toggle.row.isEnabled = state.mupen64Installed && !state.proxyRunning && !onlyOneInstalled
-                emuCoreXToggle.row.isEnabled = state.emuCoreXInstalled && !state.proxyRunning && !onlyOneInstalled
-
-                listOf(retroArchToggle, dolphinToggle, ppssppToggle, armsx2Toggle, flycastToggle, melonDualDsToggle, mupen64Toggle, emuCoreXToggle).forEach { toggle ->
+                toggles.forEach { toggle ->
+                    val installed = state.emulators.isInstalled(toggle.emulator)
+                    toggle.row.visibility = if (installed) View.VISIBLE else View.GONE
+                    toggle.row.isEnabled = installed && !state.proxyRunning && !onlyOneInstalled
                     toggle.row.alpha = if (toggle.row.isEnabled) 1f else 0.5f
+                    toggle.icon.setImageDrawable(toggle.appIcon)
                     toggle.checkBox.isEnabled = toggle.row.isEnabled
+                    toggle.checkBox.isChecked = state.emulators.isEnabled(toggle.emulator)
                 }
-
-                retroArchToggle.icon.setImageDrawable(retroArchAppIcon)
-                dolphinToggle.icon.setImageDrawable(dolphinAppIcon)
-                ppssppToggle.icon.setImageDrawable(ppssppAppIcon)
-                armsx2Toggle.icon.setImageDrawable(armsx2AppIcon)
-                flycastToggle.icon.setImageDrawable(flycastAppIcon)
-                melonDualDsToggle.icon.setImageDrawable(melonDualDsAppIcon)
-                mupen64Toggle.icon.setImageDrawable(mupen64AppIcon)
-                emuCoreXToggle.icon.setImageDrawable(emuCoreXAppIcon)
-
-                applyToggleRowStyle(toggle = retroArchToggle, isSelected = state.retroArchEnabled)
-                applyToggleRowStyle(toggle = dolphinToggle, isSelected = state.dolphinEnabled)
-                applyToggleRowStyle(toggle = ppssppToggle, isSelected = state.ppssppEnabled)
-                applyToggleRowStyle(toggle = armsx2Toggle, isSelected = state.armsx2Enabled)
-                applyToggleRowStyle(toggle = flycastToggle, isSelected = state.flycastEnabled)
-                applyToggleRowStyle(toggle = melonDualDsToggle, isSelected = state.melonDualDsEnabled)
-                applyToggleRowStyle(toggle = mupen64Toggle, isSelected = state.mupen64Enabled)
-                applyToggleRowStyle(toggle = emuCoreXToggle, isSelected = state.emuCoreXEnabled)
 
                 enabledEmulatorIcons.removeAllViews()
                 val iconSizePx = (28 * resources.displayMetrics.density).toInt()
                 val iconSpacingPx = (6 * resources.displayMetrics.density).toInt()
-                listOf(
-                    (state.retroArchInstalled && state.retroArchEnabled) to retroArchAppIcon,
-                    (state.dolphinInstalled && state.dolphinEnabled) to dolphinAppIcon,
-                    (state.ppssppInstalled && state.ppssppEnabled) to ppssppAppIcon,
-                    (state.armsx2Installed && state.armsx2Enabled) to armsx2AppIcon,
-                    (state.flycastInstalled && state.flycastEnabled) to flycastAppIcon,
-                    (state.melonDualDsInstalled && state.melonDualDsEnabled) to melonDualDsAppIcon,
-                    (state.mupen64Installed && state.mupen64Enabled) to mupen64AppIcon,
-                    (state.emuCoreXInstalled && state.emuCoreXEnabled) to emuCoreXAppIcon
-                ).forEach { (enabled, icon) ->
-                    if (enabled && icon != null) {
-                        // Never share the Drawable instance with the dialog row's icon ImageView:
-                        // Drawable.setBounds() mutates the instance itself, so two ImageViews
-                        // fighting over the same object's bounds causes icons to intermittently
-                        // render blank/clipped depending on which view laid out last.
-                        val clusterIcon = icon.constantState?.newDrawable(resources) ?: icon
-                        enabledEmulatorIcons.addView(ImageView(requireContext()).apply {
-                            layoutParams = LinearLayout.LayoutParams(iconSizePx, iconSizePx).apply {
-                                marginEnd = iconSpacingPx
-                            }
-                            setImageDrawable(clusterIcon)
-                        })
-                    }
+                toggles.forEach { toggle ->
+                    val icon = toggle.appIcon ?: return@forEach
+                    if (!state.emulators.isEnabled(toggle.emulator)) return@forEach
+                    // Never share the Drawable instance with the dialog row's icon ImageView:
+                    // Drawable.setBounds() mutates the instance itself, so two ImageViews
+                    // fighting over the same object's bounds causes icons to intermittently
+                    // render blank/clipped depending on which view laid out last.
+                    val clusterIcon = icon.constantState?.newDrawable(resources) ?: icon
+                    enabledEmulatorIcons.addView(ImageView(requireContext()).apply {
+                        layoutParams = LinearLayout.LayoutParams(iconSizePx, iconSizePx).apply {
+                            marginEnd = iconSpacingPx
+                        }
+                        setImageDrawable(clusterIcon)
+                    })
                 }
             }
         }
@@ -283,21 +204,36 @@ class HomeFragment : Fragment() {
         val dialogView = LayoutInflater.from(requireContext()).inflate(R.layout.dialog_support_donation, null, false)
         val frequencyToggle = dialogView.findViewById<MaterialButtonToggleGroup>(R.id.toggle_donation_frequency)
         val deliveryToggle = dialogView.findViewById<MaterialButtonToggleGroup>(R.id.toggle_donation_delivery)
-        val amountInput = dialogView.findViewById<TextInputLayout>(R.id.input_donation_amount)
-        val amountEdit = dialogView.findViewById<TextInputEditText>(R.id.et_donation_amount)
+        val amountDropdown = dialogView.findViewById<MaterialAutoCompleteTextView>(R.id.dropdown_donation_amount)
         val emailInput = dialogView.findViewById<TextInputLayout>(R.id.input_donation_email)
         val emailEdit = dialogView.findViewById<TextInputEditText>(R.id.et_donation_email)
         val kofiButton = dialogView.findViewById<Button>(R.id.btn_donation_kofi)
         val testCheckbox = dialogView.findViewById<CheckBox>(R.id.cb_donation_test)
-        testCheckbox.visibility = if (BuildConfig.DEBUG) View.VISIBLE else View.GONE
+
+        fun amountOptionsFor(isMonthly: Boolean) = if (isMonthly) DonationLinks.MONTHLY else DonationLinks.ONE_TIME
+        fun defaultIndexFor(isMonthly: Boolean) = if (isMonthly) DonationLinks.MONTHLY_DEFAULT_INDEX else DonationLinks.ONE_TIME_DEFAULT_INDEX
+        fun selectedAmountOption(isMonthly: Boolean): DonationAmountOption {
+            val options = amountOptionsFor(isMonthly)
+            val selectedLabel = amountDropdown.text.toString()
+            return options.firstOrNull { it.label == selectedLabel } ?: options[defaultIndexFor(isMonthly)]
+        }
 
         frequencyToggle.check(R.id.btn_donation_monthly)
         deliveryToggle.check(R.id.btn_donation_pay_now)
-        deliveryToggle.addOnButtonCheckedListener { _, checkedId, isChecked ->
-            if (isChecked) {
-                emailInput.visibility = if (checkedId == R.id.btn_donation_email_link) View.VISIBLE else View.GONE
-            }
+
+        fun updateFieldVisibility() {
+            val isMonthly = frequencyToggle.checkedButtonId == R.id.btn_donation_monthly
+            val isEmailDelivery = deliveryToggle.checkedButtonId == R.id.btn_donation_email_link
+            emailInput.visibility = if (isEmailDelivery) View.VISIBLE else View.GONE
+            testCheckbox.visibility = if (BuildConfig.DEBUG && isEmailDelivery) View.VISIBLE else View.GONE
+
+            val labels = amountOptionsFor(isMonthly).map { it.label }
+            amountDropdown.setAdapter(ArrayAdapter(requireContext(), android.R.layout.simple_list_item_1, labels))
+            amountDropdown.setText(labels.getOrElse(defaultIndexFor(isMonthly)) { labels.first() }, false)
         }
+        updateFieldVisibility()
+        frequencyToggle.addOnButtonCheckedListener { _, _, isChecked -> if (isChecked) updateFieldVisibility() }
+        deliveryToggle.addOnButtonCheckedListener { _, _, isChecked -> if (isChecked) updateFieldVisibility() }
 
         val dialog = AlertDialog.Builder(requireContext())
             .setTitle(R.string.support_dialog_title)
@@ -314,75 +250,60 @@ class HomeFragment : Fragment() {
         dialog.setOnShowListener {
             val positiveButton = dialog.getButton(AlertDialog.BUTTON_POSITIVE)
             positiveButton.setOnClickListener {
-                amountInput.error = null
                 emailInput.error = null
 
-                val amountText = amountEdit.text?.toString()?.trim().orEmpty()
-                val amountDollars = amountText.toDoubleOrNull()
+                val isMonthly = frequencyToggle.checkedButtonId == R.id.btn_donation_monthly
+                val isEmailDelivery = deliveryToggle.checkedButtonId == R.id.btn_donation_email_link
+                val amountOption = selectedAmountOption(isMonthly)
+
+                if (!isEmailDelivery) {
+                    // Pay now: no backend call, just open the matching hosted Stripe link. Pass
+                    // the RA username along as client_reference_id when logged in — monthly
+                    // links use it to tie the subscription to the account (see the webhook's
+                    // linkRaUsernameFromCheckoutSession); one-time links carry it too for
+                    // consistency, even though nothing on the backend reads it there yet.
+                    viewLifecycleOwner.lifecycleScope.launch {
+                        val raUsername = viewModel.currentRaCredentials()?.user
+                        val url = if (raUsername != null) {
+                            amountOption.url.toUri().buildUpon()
+                                .appendQueryParameter("client_reference_id", raUsername)
+                                .build()
+                        } else {
+                            amountOption.url.toUri()
+                        }
+                        startActivity(Intent(Intent.ACTION_VIEW, url))
+                        dialog.dismiss()
+                    }
+                    return@setOnClickListener
+                }
+
+                val useTestMode = BuildConfig.DEBUG && testCheckbox.isChecked
+                val email = emailEdit.text?.toString()?.trim().orEmpty()
                 when {
-                    amountText.isBlank() -> {
-                        amountInput.error = getString(R.string.donation_amount_required)
+                    email.isBlank() -> {
+                        emailInput.error = getString(R.string.donation_email_required)
                         return@setOnClickListener
                     }
-                    amountDollars == null || amountDollars < 1.0 || amountDollars > 1000.0 -> {
-                        amountInput.error = getString(R.string.donation_amount_invalid)
+                    !android.util.Patterns.EMAIL_ADDRESS.matcher(email).matches() -> {
+                        emailInput.error = getString(R.string.donation_email_invalid)
                         return@setOnClickListener
                     }
                 }
-                val amountCents = (amountDollars!! * 100).roundToInt()
-                val isMonthly = frequencyToggle.checkedButtonId == R.id.btn_donation_monthly
-                val isEmailDelivery = deliveryToggle.checkedButtonId == R.id.btn_donation_email_link
-                val useTestMode = BuildConfig.DEBUG && testCheckbox.isChecked
 
-                if (isEmailDelivery) {
-                    val email = emailEdit.text?.toString()?.trim().orEmpty()
-                    when {
-                        email.isBlank() -> {
-                            emailInput.error = getString(R.string.donation_email_required)
-                            return@setOnClickListener
-                        }
-                        !android.util.Patterns.EMAIL_ADDRESS.matcher(email).matches() -> {
-                            emailInput.error = getString(R.string.donation_email_invalid)
-                            return@setOnClickListener
-                        }
+                setButtonLoading(positiveButton, true)
+                viewLifecycleOwner.lifecycleScope.launch {
+                    val frequency = if (isMonthly) "monthly" else "once"
+                    val raCredentials = if (isMonthly) viewModel.currentRaCredentials() else null
+                    val result = withContext(Dispatchers.IO) {
+                        DonationManager.requestEmailInvoice(amountOption.amountCents, frequency, email, raCredentials, useTestMode)
                     }
-
-                    setButtonLoading(positiveButton, true)
-                    viewLifecycleOwner.lifecycleScope.launch {
-                        val frequency = if (isMonthly) "monthly" else "once"
-                        val raCredentials = if (isMonthly) viewModel.currentRaCredentials() else null
-                        val result = withContext(Dispatchers.IO) {
-                            DonationManager.requestEmailInvoice(amountCents, frequency, email, raCredentials, useTestMode)
-                        }
-                        setButtonLoading(positiveButton, false)
-                        result.onSuccess {
-                            viewModel.setHideSupportButtonEnabled(true)
-                            dialog.dismiss()
-                            showOutcomeDialog(R.string.donation_email_sent_title, R.string.donation_email_sent_message)
-                        }.onFailure {
-                            showOutcomeDialog(R.string.support_dialog_title, R.string.donation_error_message)
-                        }
-                    }
-                } else {
-                    setButtonLoading(positiveButton, true)
-                    viewLifecycleOwner.lifecycleScope.launch {
-                        val raCredentials = if (isMonthly) viewModel.currentRaCredentials() else null
-                        val result = withContext(Dispatchers.IO) {
-                            if (isMonthly) {
-                                DonationManager.createSubscription(amountCents, raCredentials, useTestMode).map { checkout ->
-                                    Triple(checkout.clientSecret, checkout.customerId, checkout.ephemeralKey)
-                                }
-                            } else {
-                                DonationManager.createPaymentIntent(amountCents, useTestMode).map { clientSecret -> Triple(clientSecret, null, null) }
-                            }
-                        }
-                        setButtonLoading(positiveButton, false)
-                        result.onSuccess { (clientSecret, customerId, ephemeralKey) ->
-                            dialog.dismiss()
-                            (activity as? MainActivity)?.presentDonationCheckout(clientSecret, customerId, ephemeralKey, useTestMode)
-                        }.onFailure {
-                            showOutcomeDialog(R.string.support_dialog_title, R.string.donation_error_message)
-                        }
+                    setButtonLoading(positiveButton, false)
+                    result.onSuccess {
+                        viewModel.setHideSupportButtonEnabled(true)
+                        dialog.dismiss()
+                        showOutcomeDialog(R.string.donation_email_sent_title, R.string.donation_email_sent_message)
+                    }.onFailure {
+                        showOutcomeDialog(R.string.support_dialog_title, R.string.donation_error_message)
                     }
                 }
             }
@@ -453,20 +374,22 @@ class HomeFragment : Fragment() {
             val neutralButton = dialog.getButton(AlertDialog.BUTTON_NEUTRAL)
 
             fun refreshNeutralButton() {
-                val installed = installedEmulatorToggles()
-                val allEnabled = installed.isNotEmpty() && installed.all { it.second }
+                val support = viewModel.state.value.emulators
+                val allEnabled = support.installedCount > 0 && support.installed.all { support.isEnabled(it) }
                 neutralButton.setText(
                     if (allEnabled) R.string.emulator_selector_select_none else R.string.emulator_selector_select_all
                 )
-                neutralButton.isEnabled = installed.size > 1
+                neutralButton.isEnabled = support.installedCount > 1
             }
 
             refreshNeutralButton()
             neutralButton.setOnClickListener {
-                val installed = installedEmulatorToggles()
-                val allEnabled = installed.isNotEmpty() && installed.all { it.second }
-                installed.forEach { (setEnabled, enabled) ->
-                    if (allEnabled) setEnabled(false) else if (!enabled) setEnabled(true)
+                val support = viewModel.state.value.emulators
+                val enableAll = !support.installed.all { support.isEnabled(it) }
+                support.installed.forEach { emulator ->
+                    if (support.isEnabled(emulator) != enableAll) {
+                        viewModel.setEmulatorEnabled(emulator, enableAll)
+                    }
                 }
                 refreshNeutralButton()
             }
@@ -475,33 +398,21 @@ class HomeFragment : Fragment() {
         dialog.show()
     }
 
-    private fun installedEmulatorToggles(): List<Pair<(Boolean) -> Unit, Boolean>> {
-        val state = viewModel.state.value
-        return buildList {
-            if (state.retroArchInstalled) add(viewModel::setRetroArchEnabled to state.retroArchEnabled)
-            if (state.dolphinInstalled) add(viewModel::setDolphinEnabled to state.dolphinEnabled)
-            if (state.ppssppInstalled) add(viewModel::setPpssppEnabled to state.ppssppEnabled)
-            if (state.armsx2Installed) add(viewModel::setArmsx2Enabled to state.armsx2Enabled)
-            if (state.flycastInstalled) add(viewModel::setFlycastEnabled to state.flycastEnabled)
-            if (state.melonDualDsInstalled) add(viewModel::setMelonDualDsEnabled to state.melonDualDsEnabled)
-            if (state.mupen64Installed) add(viewModel::setMupen64Enabled to state.mupen64Enabled)
-            if (state.emuCoreXInstalled) add(viewModel::setEmuCoreXEnabled to state.emuCoreXEnabled)
+    private fun inflateEmulatorToggles(container: LinearLayout): List<EmulatorToggleViews> {
+        val inflater = LayoutInflater.from(container.context)
+        return Emulator.entries.map { emulator ->
+            val row = inflater.inflate(R.layout.view_emulator_toggle, container, false) as LinearLayout
+            row.visibility = View.GONE
+            row.findViewById<TextView>(R.id.tv_label).setText(emulator.labelRes)
+            container.addView(row)
+            EmulatorToggleViews(
+                emulator = emulator,
+                row = row,
+                icon = row.findViewById(R.id.iv_icon),
+                checkBox = row.findViewById(R.id.cb_toggle),
+                appIcon = loadInstalledAppIcon(emulator.packageCandidates)
+            )
         }
-    }
-
-    private fun bindToggle(root: LinearLayout, labelRes: Int): EmulatorToggleViews {
-        val label = root.findViewById<TextView>(R.id.tv_label)
-        label.setText(labelRes)
-        return EmulatorToggleViews(
-            row = root,
-            icon = root.findViewById(R.id.iv_icon),
-            checkBox = root.findViewById(R.id.cb_toggle),
-            label = label
-        )
-    }
-
-    private fun applyToggleRowStyle(toggle: EmulatorToggleViews, isSelected: Boolean) {
-        toggle.checkBox.isChecked = isSelected
     }
 
     private fun shouldRecommendManualSetupForDevice(): Boolean {

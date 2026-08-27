@@ -23,13 +23,10 @@ AGENTS.md
 CLAUDE.md
 RELEASING.md
 SUPPORT-TRIAGE.md
-linux/knulli/dist/
-linux/knulli/native/
-linux/onion/native/
-linux/muos/native/
-linux/rocknix/native/
-linux/darkos/dist/
-linux/darkos/native/
+linux/**/dist/
+linux/**/native/
+linux/**/runtime-cache/
+linux/**/tmp_assets/
 **/__pycache__
 infra/dist/
 infra/cdk.out/

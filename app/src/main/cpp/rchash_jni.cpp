@@ -1,5 +1,6 @@
 #include <jni.h>
 
+#include <cstring>
 #include <vector>
 
 #include "rchash_glue.h"
@@ -7,6 +8,8 @@
 namespace {
 constexpr int kMaxCandidates = 8;
 constexpr int kHashStride = 33; /* 32 hex chars + NUL, matches rc_hash */
+constexpr int kMaxArchiveEntries = 512;
+constexpr int kArchiveNamesBytes = 64 * 1024;
 
 /* Bridges rc_hash's random-access reads to a Kotlin RomDataSource. The whole
  * hash runs synchronously on the calling thread, so the JNIEnv is reused. */
@@ -106,6 +109,66 @@ Java_com_raofflineproxy_proxy_hash_RcHashNativeBridge_nativeHashDiscDataSource(
     std::vector<char> buffer(static_cast<size_t>(kMaxCandidates) * kHashStride, 0);
     const int count = raproxy_hash_disc_datasource(
         &ctx, dataSourceSize, dataSourceRead, buffer.data(), kMaxCandidates);
+
+    return buildHashArray(env, buffer.data(), count);
+}
+
+/* Lists the file entries of a .7z as a String[]. rc_hash has no 7z reader, so
+ * the archive is opened by the bundled LZMA SDK instead; entry selection stays
+ * in Kotlin, next to the equivalent zip logic. Empty array on failure. */
+extern "C" JNIEXPORT jobjectArray JNICALL
+Java_com_raofflineproxy_proxy_hash_RcHashNativeBridge_nativeList7zEntries(
+    JNIEnv* env,
+    jclass,
+    jstring path
+) {
+    jclass stringClass = env->FindClass("java/lang/String");
+
+    const char* rawPath = (path != nullptr) ? env->GetStringUTFChars(path, nullptr) : nullptr;
+    if (rawPath == nullptr) {
+        return env->NewObjectArray(0, stringClass, nullptr);
+    }
+
+    std::vector<char> buffer(static_cast<size_t>(kArchiveNamesBytes), 0);
+    const int count = raproxy_7z_list_entries(
+        rawPath, buffer.data(), kArchiveNamesBytes, kMaxArchiveEntries);
+    env->ReleaseStringUTFChars(path, rawPath);
+
+    const int safeCount = (count > 0) ? count : 0;
+    jobjectArray result = env->NewObjectArray(safeCount, stringClass, nullptr);
+    const char* cursor = buffer.data();
+    for (int i = 0; i < safeCount; ++i) {
+        jstring name = env->NewStringUTF(cursor);
+        env->SetObjectArrayElement(result, i, name);
+        env->DeleteLocalRef(name);
+        cursor += strlen(cursor) + 1;
+    }
+    return result;
+}
+
+/* Hashes one entry of a .7z by its decompressed contents. Empty array when the
+ * entry cannot be extracted; the caller then falls back to the arcade hash. */
+extern "C" JNIEXPORT jobjectArray JNICALL
+Java_com_raofflineproxy_proxy_hash_RcHashNativeBridge_nativeHash7zEntry(
+    JNIEnv* env,
+    jclass,
+    jstring path,
+    jstring entryName
+) {
+    jclass stringClass = env->FindClass("java/lang/String");
+
+    const char* rawPath = (path != nullptr) ? env->GetStringUTFChars(path, nullptr) : nullptr;
+    const char* rawEntry = (entryName != nullptr) ? env->GetStringUTFChars(entryName, nullptr) : nullptr;
+    if (rawPath == nullptr || rawEntry == nullptr) {
+        if (rawPath != nullptr) env->ReleaseStringUTFChars(path, rawPath);
+        if (rawEntry != nullptr) env->ReleaseStringUTFChars(entryName, rawEntry);
+        return env->NewObjectArray(0, stringClass, nullptr);
+    }
+
+    std::vector<char> buffer(static_cast<size_t>(kMaxCandidates) * kHashStride, 0);
+    const int count = raproxy_hash_7z_entry(rawPath, rawEntry, buffer.data(), kMaxCandidates);
+    env->ReleaseStringUTFChars(path, rawPath);
+    env->ReleaseStringUTFChars(entryName, rawEntry);
 
     return buildHashArray(env, buffer.data(), count);
 }

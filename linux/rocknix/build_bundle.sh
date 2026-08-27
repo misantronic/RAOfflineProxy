@@ -7,15 +7,27 @@ DIST_DIR="${SCRIPT_DIR}/dist"
 BUILD_DIR="${DIST_DIR}/raofflineproxy-rocknix-bundle"
 APP_DIR="${BUILD_DIR}/app"
 LIB_DIR="${BUILD_DIR}/lib"
-VERSION="${RAOFFLINEPROXY_APP_VERSION:-1.9.0-alpha1}"
+VERSION="${RAOFFLINEPROXY_APP_VERSION:-1.12.0-alpha1}"
 INSTALLER_PATH="${DIST_DIR}/RAOfflineProxy-Rocknix-v${VERSION}-Install.sh"
 TEMP_TARBALL="${DIST_DIR}/.raofflineproxy-rocknix-bundle.tar.gz"
 
-if [ ! -d "${SCRIPT_DIR}/vendor/pygame" ] || [ ! -d "${SCRIPT_DIR}/vendor/pygame.libs" ]; then
-  echo "Missing vendored pygame. Populate linux/rocknix/vendor/{pygame,pygame.libs}" >&2
-  echo "from a pygame cp313 aarch64 manylinux wheel before building." >&2
+# ROCKNIX builds ship different CPython minor versions (3.13 through nightly's
+# 3.14), and pygame's extension modules only import into the interpreter whose
+# ABI tag they carry, so the vendored pygame must cover every one of them.
+REQUIRED_PY_VERSIONS=(313 314)
+
+if [ ! -d "${SCRIPT_DIR}/vendor/pygame" ] || [ ! -d "${SCRIPT_DIR}/vendor/pygame_ce.libs" ]; then
+  echo "Missing vendored pygame-ce. Run linux/rocknix/fetch_vendor.sh before building." >&2
   exit 1
 fi
+
+for py_version in "${REQUIRED_PY_VERSIONS[@]}"; do
+  if [ ! -f "${SCRIPT_DIR}/vendor/pygame/base.cpython-${py_version}-aarch64-linux-gnu.so" ]; then
+    echo "Vendored pygame-ce has no cpython-${py_version} extension modules." >&2
+    echo "Re-run linux/rocknix/fetch_vendor.sh before building." >&2
+    exit 1
+  fi
+done
 
 TARGET="aarch64-linux-gnu.2.17" OUT_DIR="${SCRIPT_DIR}/native" \
   "${LINUX_DIR}/build_rchash.sh"
@@ -31,7 +43,7 @@ cp -r "${LINUX_DIR}/raofflineproxy" "${APP_DIR}/raofflineproxy"
 cp "${LINUX_DIR}/requirements.txt" "${APP_DIR}/requirements.txt"
 cp "${LINUX_DIR}/../docs/public/logo-320.png" "${APP_DIR}/raofflineproxy/logo-320.png"
 cp -R "${SCRIPT_DIR}/vendor/pygame/." "${APP_DIR}/pygame/"
-cp -R "${SCRIPT_DIR}/vendor/pygame.libs/." "${APP_DIR}/pygame.libs/"
+cp -R "${SCRIPT_DIR}/vendor/pygame_ce.libs/." "${APP_DIR}/pygame_ce.libs/"
 cp -r "${SCRIPT_DIR}/scripts" "${BUILD_DIR}/scripts"
 cp "${SCRIPT_DIR}/native/libraproxy_rchash.so" "${LIB_DIR}/libraproxy_rchash.so"
 cp "${SCRIPT_DIR}/scripts/install.sh" "${BUILD_DIR}/install.sh"
@@ -48,6 +60,7 @@ chmod +x "${BUILD_DIR}/uninstall.sh"
 chmod +x "${BUILD_DIR}/scripts/launcher-raofflineproxy"
 chmod +x "${BUILD_DIR}/scripts/launcher-raofflineproxy-uninstall"
 chmod +x "${BUILD_DIR}/scripts/tool-launcher.sh"
+chmod +x "${BUILD_DIR}/scripts/sdl-doctor.sh"
 
 mkdir -p "${DIST_DIR}"
 rm -f "${TEMP_TARBALL}"
@@ -56,6 +69,11 @@ tar -czf "${TEMP_TARBALL}" -C "${DIST_DIR}" "raofflineproxy-rocknix-bundle"
 cat > "${INSTALLER_PATH}" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
+
+# Set to true to also install the SDL Doctor diagnostic as a second Tools
+# entry. Only needed when troubleshooting a menu that crashes on launch; it
+# writes a report to /storage/.config/raofflineproxy/sdl-doctor.log.
+INSTALL_SDL_DOCTOR="${INSTALL_SDL_DOCTOR:-false}"
 
 SCRIPT_PATH="$0"
 PAYLOAD_MARKER="__RAOFFLINEPROXY_PAYLOAD_BELOW__"
@@ -86,7 +104,7 @@ fi
 
 mv "${SHARE_DIR}/raofflineproxy-rocknix-bundle" "${TARGET_DIR}"
 cd "${TARGET_DIR}"
-./install.sh
+INSTALL_SDL_DOCTOR="${INSTALL_SDL_DOCTOR}" ./install.sh
 rm -f "${SCRIPT_PATH}"
 echo "RAOfflineProxy installed."
 exit 0

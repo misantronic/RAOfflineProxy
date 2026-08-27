@@ -5,7 +5,7 @@
 
 RAOfflineProxy is a local proxy that lets you earn **casual RetroAchievements** without an internet connection.
 
-> **Current release stage: `v1.9.0-alpha1`.** This is a public prerelease and has not gone through formal QA.
+> **Current release stage: `v1.12.0-alpha1`.** This is a public prerelease and has not gone through formal QA.
 
 RAOfflineProxy runs a tiny local proxy on your device. It sits between supported emulators and the RetroAchievements server, saving game and achievement data for offline use and queuing any achievements you unlock while offline. When you reconnect, queued awards are automatically sent to RetroAchievements.
 
@@ -13,13 +13,13 @@ RAOfflineProxy runs a tiny local proxy on your device. It sits between supported
 
 ## Supported Platforms
 
-- **Android**: RetroArch, Dolphin, PPSSPP, ARMSX2, MelonDualDS
-- **Linux**: KNULLI, Onion, muOS, ROCKNIX
+- **Android**: RetroArch, Dolphin, PPSSPP, ARMSX2, WatermelonDS, Flycast
+- **Linux**: KNULLI, Onion, muOS, ROCKNIX, spruce (experimental)
 
 ## Current Releases
 
-- **Android**: [`v1.9.0-alpha1`](https://github.com/misantronic/RAOfflineProxy/releases/tag/v1.9.0-alpha1)
-- **Linux**: [`v1.9.0-alpha1`](https://github.com/misantronic/RAOfflineProxy/releases/tag/v1.9.0-alpha1)
+- **Android**: [`v1.12.0-alpha1`](https://github.com/misantronic/RAOfflineProxy/releases/tag/v1.12.0-alpha1)
+- **Linux**: [`v1.12.0-alpha1`](https://github.com/misantronic/RAOfflineProxy/releases/tag/v1.12.0-alpha1)
 
 ## Obtainium
 

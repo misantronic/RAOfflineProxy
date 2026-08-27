@@ -10,10 +10,10 @@ const status = ref<Status>('idle');
 const errorMessage = ref('');
 
 const APP_VERSIONS = [
-  '1.9.0-alpha1',
-  '1.8.0-alpha1',
-  '1.7.0-alpha1',
-  '1.6.0-alpha1'
+  '1.12.0-alpha1',
+  '1.11.1-alpha1',
+  '1.11.0-alpha1',
+  '1.10.0-alpha2'
 ];
 const OTHER_VERSION = 'Other / older';
 

@@ -62,6 +62,48 @@ If you enable it, RAOfflineProxy installs a boot hook under ROCKNIX's autostart 
 
 ROCKNIX runs every script in that directory on boot. The hook re-adds the **Tools** menu entry (ROCKNIX rebuilds that menu from a read-only source on each boot) and, when autostart is enabled, starts the proxy.
 
+== spruce
+
+spruce autostart is available from the app menu.
+
+spruce has no drop-in startup folder, so RAOfflineProxy adds a small guarded block to spruce's own boot script:
+
+```text
+/.tmp_update/updater
+```
+
+That block calls the app's headless launcher:
+
+```text
+/App/RAOfflineProxy/autostart-launch.sh
+```
+
+::: tip Reinstalled automatically
+A spruce update replaces `/.tmp_update` and removes the block. The app reinstalls it every time you open RAOfflineProxy, so autostart repairs itself after a spruce update.
+:::
+
+== Allium
+
+Allium autostart is available from the app menu.
+
+Allium has no drop-in startup folder either, so RAOfflineProxy adds a small guarded block to Allium's own boot script:
+
+```text
+/.tmp_update/updater
+```
+
+That block calls the app's headless launcher in the background, so Allium's own startup is never held up:
+
+```text
+/Apps/RAOfflineProxy.pak/autostart-launch.sh
+```
+
+It is also skipped entirely while an Allium firmware update is pending, so the proxy never starts up in the middle of an update.
+
+::: tip Reinstalled automatically
+An Allium update rewrites `/.tmp_update` and removes the block. The app reinstalls it every time you open RAOfflineProxy, so autostart repairs itself after an Allium update.
+:::
+
 == dArkOS
 
 dArkOS is systemd-native and has no `custom.sh`-style startup hook, so autostart works differently than on the other targets.

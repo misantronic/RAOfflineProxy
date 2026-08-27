@@ -8,6 +8,7 @@
         "noUnusedLocals": true,
         "noUnusedParameters": true,
         "skipLibCheck": true,
-        "outDir": "dist"
+        "outDir": "dist",
+        "types": ["node"]
     }
 }

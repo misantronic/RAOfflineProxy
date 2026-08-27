@@ -11,14 +11,16 @@ The Linux version is for handheld Linux devices where you want the same basic of
 - Keep earning casual achievements while offline
 - Let queued awards sync later when you reconnect
 
-Use the `KNULLI`, `Onion`, `muOS`, `ROCKNIX`, and `dArkOS` tabs throughout the Linux section to switch target-specific instructions.
+Use the `KNULLI`, `Onion`, `muOS`, `ROCKNIX`, `spruce`, `Allium`, and `dArkOS` tabs throughout the Linux section to switch target-specific instructions.
 
 ## Supported Targets
 
-- KNULLI (alpha)
-- Onion (alpha)
-- muOS (alpha)
-- ROCKNIX (alpha)
+- KNULLI
+- Onion
+- muOS
+- ROCKNIX
+- spruce (experimental)
+- Allium (experimental)
 - dArkOS (community-contributed, unverified by the developer)
 
 ## Specifics
@@ -33,7 +35,7 @@ It is currently intended for [KNULLI Scarab](https://github.com/knulli-cfw/knull
 
 It is currently compatible with [Onion V4.4.0-beta-20260120](https://github.com/OnionUI/Onion/releases/tag/latest).
 
-[OnionOS v4.3.1-1](https://github.com/OnionUI/Onion/releases/tag/v4.3.1-1) ships an older bundled RetroArch build whose achievements client is not reliably compatible with a custom host, so achievements may fail to appear there even though the proxy and caching work correctly.
+[OnionOS v4.3.1-1](https://github.com/OnionUI/Onion/releases/tag/v4.3.1-1) ships an older bundled RetroArch build whose achievements client is not reliably compatible with a custom host. RAOfflineProxy detects this on launch and refuses to run, showing an unsupported-version error instead.
 
 == muOS
 
@@ -48,6 +50,18 @@ It is currently compatible with [ROCKNIX 20260701](https://github.com/ROCKNIX/di
 The ROCKNIX target ships as a self-extracting installer and runs the same SDL menu used on the other Linux targets. The app installs under `/storage/.local/share/raofflineproxy` and appears in the **Tools** menu.
 
 Both RetroArch and standalone PPSSPP are supported on ROCKNIX. Starting the proxy patches both `retroarch.cfg` and, when present, `ppsspp.ini`.
+
+== spruce
+
+spruce support is experimental. It is currently compatible with [spruce 4.3.x](https://github.com/spruceUI/spruceOS/releases), tested on a Miyoo Mini Plus running spruce 4.3.4.
+
+The bundled Python runtime and SDL libraries are 32-bit ARM builds, which covers spruce's 32-bit devices: the Miyoo Mini family and the A30. spruce's other devices (TrimUI, Anbernic, Miyoo Flip, GKD Pixel 2, MagicX Zero 28) are 64-bit and would need an aarch64 build, which this bundle does not ship.
+
+== Allium
+
+Allium support is experimental. It is currently compatible with [Allium v1.0.1](https://github.com/goweiwen/Allium/releases), tested on a Miyoo Mini Plus.
+
+Allium is a Miyoo-only launcher, so this target covers exactly the devices Allium itself runs on: the Miyoo Mini, Mini Plus and Mini Flip.
 
 == dArkOS
 
@@ -65,4 +79,4 @@ Current rough edges:
 
 - Linux support is currently in alpha and should still be treated as a prerelease feature.
 - Linux install, startup, and UI behavior can vary a lot by firmware and frontend.
-- Always check the correct tab for your device instead of assuming KNULLI, Onion, muOS, ROCKNIX, and dArkOS behave the same way.
+- Always check the correct tab for your device instead of assuming KNULLI, Onion, muOS, ROCKNIX, spruce, Allium, and dArkOS behave the same way.

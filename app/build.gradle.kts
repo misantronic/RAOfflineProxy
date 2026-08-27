@@ -11,37 +11,16 @@ val keystoreProperties = Properties().also { props ->
     if (propsFile.exists()) props.load(propsFile.inputStream())
 }
 
-val localProperties = Properties().also { props ->
-    val propsFile = rootProject.file("local.properties")
-    if (propsFile.exists()) props.load(propsFile.inputStream())
-}
-
 android {
     namespace = "com.raofflineproxy"
-    compileSdk = 36
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "com.raofflineproxy"
         minSdk = 26
         targetSdk = 36
-        versionCode = 25
-        versionName = "1.9.0-alpha1"
-
-        // The backend (lambda/raop-support-payment) is a single shared live instance, not
-        // separate dev/prod ones, so every build type needs the live publishable key to match
-        // the live client secrets it issues — a debug build with the test key can't check out.
-        buildConfigField(
-            "String",
-            "STRIPE_PUBLISHABLE_KEY",
-            "\"${localProperties.getProperty("STRIPE_PUBLISHABLE_KEY_LIVE", "")}\""
-        )
-        // Used only behind the debug-only "test" checkbox in the donation dialog, to pair with
-        // client secrets the backend issues in Stripe test mode.
-        buildConfigField(
-            "String",
-            "STRIPE_PUBLISHABLE_KEY_TEST",
-            "\"${localProperties.getProperty("STRIPE_PUBLISHABLE_KEY_TEST", "")}\""
-        )
+        versionCode = 29
+        versionName = "1.12.0-alpha1"
     }
 
     signingConfigs {
@@ -120,7 +99,6 @@ dependencies {
     ksp(libs.room.compiler)
     implementation(libs.okhttp)
     implementation(libs.coroutines.android)
-    implementation(libs.stripe.android)
     implementation(libs.swiperefreshlayout)
     implementation(libs.coil)
     implementation(libs.documentfile)

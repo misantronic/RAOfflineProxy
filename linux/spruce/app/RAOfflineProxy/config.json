@@ -1,0 +1,7 @@
+{
+  "label": "RAOfflineProxy",
+  "icon": "icon.png",
+  "iconsel": "",
+  "launch": "launch.sh",
+  "description": "Offline RetroAchievements"
+}

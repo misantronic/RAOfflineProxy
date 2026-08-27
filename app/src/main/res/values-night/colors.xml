@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <color name="console_header_background">#FF111111</color>
+    <color name="achievement_offline_tag">#FF8AB4E8</color>
 </resources>

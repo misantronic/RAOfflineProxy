@@ -17,52 +17,7 @@ private const val TAG = "RAProxy/DonationManager"
 // present as this same client when verifying RA credentials on the app's behalf.
 private val RA_USER_AGENT = "$PROXY_UA_TAG/${BuildConfig.VERSION_NAME}"
 
-data class SubscriptionCheckout(
-    val clientSecret: String,
-    val customerId: String,
-    val ephemeralKey: String
-)
-
 object DonationManager {
-
-    fun createPaymentIntent(amountCents: Int, test: Boolean = false): Result<String> = runCatching {
-        val body = JSONObject().put("amount", amountCents)
-        if (test) body.put("test", true)
-        val json = post("$SUPPORT_PAYMENT_BASE_URL/payment-intent", body)
-        json.getString("clientSecret")
-    }.onFailure { error ->
-        Log.e(TAG, "createPaymentIntent failed: ${error.message}", error)
-    }
-
-    fun createSubscription(amountCents: Int, raCredentials: LoginCredentials?, test: Boolean = false): Result<SubscriptionCheckout> = runCatching {
-        val body = JSONObject().put("amount", amountCents)
-        if (raCredentials != null) {
-            body.put("raUsername", raCredentials.user)
-            body.put("raToken", raCredentials.token)
-            body.put("raUserAgent", RA_USER_AGENT)
-        }
-        if (test) body.put("test", true)
-        val json = post("$SUPPORT_PAYMENT_BASE_URL/subscription", body)
-        SubscriptionCheckout(
-            clientSecret = json.getString("clientSecret"),
-            customerId = json.getString("customerId"),
-            ephemeralKey = json.getString("ephemeralKey")
-        )
-    }.onFailure { error ->
-        Log.e(TAG, "createSubscription failed: ${error.message}", error)
-    }
-
-    fun syncCustomerEmail(paymentIntentId: String, customerId: String): Result<Unit> = runCatching {
-        post(
-            "$SUPPORT_PAYMENT_BASE_URL/subscription/sync-email",
-            JSONObject()
-                .put("paymentIntentId", paymentIntentId)
-                .put("customerId", customerId)
-        )
-        Unit
-    }.onFailure { error ->
-        Log.e(TAG, "syncCustomerEmail failed: ${error.message}", error)
-    }
 
     fun requestEmailInvoice(
         amountCents: Int,

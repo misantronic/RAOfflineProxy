@@ -14,7 +14,9 @@ from .config import (
     detect_retroarch_cfg,
     load_config,
     proxy_value,
+    running_on_onion,
 )
+from .log_uploader import onion_os_version, onion_version_supported
 from .platform import (
     disable_autostart,
     enable_autostart,
@@ -38,6 +40,11 @@ from .dolphin_cfg import (
     patch_dolphin_ini,
     revert_dolphin_ini,
     store_dolphin_previous,
+)
+from .spruce_conf import (
+    patch_spruce_mode,
+    revert_spruce_mode,
+    store_spruce_previous,
 )
 from .retroarch_cfg import (
     enforce_patched_cfg,
@@ -94,22 +101,37 @@ def remove_stale_hook() -> None:
 
 
 def _apply_proxy(config_data: dict, cfg_path: str) -> list[str]:
+    if running_on_onion() and not onion_version_supported():
+        detected = onion_os_version() or "unknown"
+        raise RuntimeError(
+            f"Unsupported OnionOS build ({detected}). RAOfflineProxy requires Onion "
+            "v4.4.0-beta-20260120 or newer."
+        )
+
     output: list[str] = []
 
     remove_stale_hook()
+    # Spawn the service first so its interpreter starts up (and binds the proxy
+    # port) while the config patching below runs. At boot on devices that resume
+    # content automatically, the emulator's achievement login can arrive within
+    # seconds of this hook being scheduled.
+    service = start_service_process(config_data)
     result = patch_retroarch_cfg(cfg_path, config_data)
     enforce_patched_cfg(cfg_path, config_data)
     batocera = patch_batocera_conf(config_data)
     ppsspp = patch_ppsspp_ini(config_data)
     dolphin = patch_dolphin_ini(config_data)
+    spruce = patch_spruce_mode(config_data)
     patch_state = load_patch_state() or {}
     store_batocera_previous(patch_state, batocera)
     store_ppsspp_previous(patch_state, ppsspp)
     store_dolphin_previous(patch_state, dolphin)
+    store_spruce_previous(patch_state, spruce)
     save_patch_state(patch_state)
-    service = start_service_process(config_data)
 
-    if result["already_patched"]:
+    if not result.get("exists", True):
+        output.append(f"Skipped missing retroarch.cfg at {result['cfg_path']}")
+    elif result["already_patched"]:
         output.append("retroarch.cfg already patched")
     elif result["changed"]:
         output.append("Patched retroarch.cfg")
@@ -141,6 +163,7 @@ def _revert_proxy_config(config_data: dict, cfg_path: str | None) -> list[str]:
     revert_cfg_path = patch_state.get("cfg_path") or cfg_path
     batocera = revert_batocera_conf(config_data, patch_state.get("batocera_previous", {}))
     ppsspp = revert_ppsspp_ini(config_data, patch_state.get("ppsspp_previous", {}))
+    revert_spruce_mode(config_data, patch_state.get("spruce_previous_mode"))
     dolphin = revert_dolphin_ini(config_data, patch_state.get("dolphin_previous", {}))
 
     if batocera.get("exists"):
@@ -154,14 +177,18 @@ def _revert_proxy_config(config_data: dict, cfg_path: str | None) -> list[str]:
 
     revert_result = None
     if patch_state:
-        revert_result = revert_retroarch_cfg(revert_cfg_path, patch_state)
+        revert_result = revert_retroarch_cfg(
+            revert_cfg_path, patch_state, config_data=config_data
+        )
     elif revert_cfg_path:
         try:
-            revert_result = revert_retroarch_cfg(revert_cfg_path)
+            revert_result = revert_retroarch_cfg(
+                revert_cfg_path, config_data=config_data
+            )
         except Exception:
             revert_result = None
 
-    if revert_result is None:
+    if revert_result is None or not revert_result.get("exists", True):
         output.append("retroarch.cfg already reverted")
     elif revert_result["changed"]:
         output.append("Reverted retroarch.cfg")

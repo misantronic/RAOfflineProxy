@@ -3,7 +3,7 @@
     <string name="app_name">RAOfflineProxy</string>
     <string name="nav_open">Open navigation drawer</string>
     <string name="nav_close">Close navigation drawer</string>
-    <string name="setting_autostart_label">Autostart %s at startup</string>
+    <string name="setting_autostart_label">Enable autostart</string>
 
     <!-- Navigation titles -->
     <string name="title_home">Home</string>
@@ -16,6 +16,7 @@
 
     <!-- Send logs -->
     <string name="btn_send_logs">Send logs</string>
+    <string name="send_logs_action">Send</string>
     <string name="send_logs_success_title">Logs sent</string>
     <string name="send_logs_success_message">Share this ID when reporting an issue:\n\n%s</string>
     <string name="send_logs_copy_id">Copy ID</string>
@@ -49,7 +50,7 @@
     <string name="home_emulators_label">Enabled Emulators</string>
     <string name="home_manual_setup_warning">With your Android version (%1$s), automatic emulator setup will most likely not work on this device. Please consider using Manual Emulator Setup instead. Android builds can differ, so you can still try Start proxy with automatic setup if you want.</string>
     <string name="home_shizuku_info">You are running the proxy through Shizuku.</string>
-    <string name="home_no_emulator_warning">No supported emulator was found. Install RetroArch, Dolphin, PPSSPP, ARMSX2, Flycast, melonDualDS, Mupen64Plus, or EmuCoreX to use RAOfflineProxy.</string>
+    <string name="home_no_emulator_warning">No supported emulator was found. Install RetroArch, Dolphin, PPSSPP, ARMSX2, Flycast, WatermelonDS, Mupen64Plus, EmuCoreX, or ARMSX1 to use RAOfflineProxy.</string>
     <string name="home_go_to_cached_games">Cached Games</string>
     <string name="btn_support_development">💛 Support me</string>
     <string name="support_dialog_title">💛 Support RAOfflineProxy</string>
@@ -64,12 +65,8 @@
     <string name="donation_submit">Donate</string>
     <string name="donation_kofi_alt">Support on Ko-fi instead</string>
     <string name="donation_test_mode">Test (Stripe sandbox, no real charge)</string>
-    <string name="donation_amount_required">Enter an amount</string>
-    <string name="donation_amount_invalid">Enter an amount between $1 and $1000</string>
     <string name="donation_email_required">Enter your email address</string>
     <string name="donation_email_invalid">Enter a valid email address</string>
-    <string name="donation_success_title">Thank you! 💛</string>
-    <string name="donation_success_message">Your support means a lot. Thank you for helping keep RAOfflineProxy going!</string>
     <string name="donation_email_sent_title">Check your email</string>
     <string name="donation_email_sent_message">We\'ve sent a payment link to your email. You can complete it from any device.</string>
     <string name="donation_error_message">Something went wrong. Please try again later.</string>
@@ -79,9 +76,10 @@
     <string name="emulator_ppsspp">PPSSPP</string>
     <string name="emulator_armsx2">ARMSX2</string>
     <string name="emulator_flycast">Flycast</string>
-    <string name="emulator_melondualds">melonDualDS</string>
+    <string name="emulator_watermelonds">WatermelonDS</string>
     <string name="emulator_mupen64">Mupen64Plus</string>
     <string name="emulator_emucorex">EmuCoreX</string>
+    <string name="emulator_armsx1">ARMSX1</string>
     <string name="emulator_toggle_icon_cd">Installed emulator icon</string>
     <string name="emulator_selector_caret">▼</string>
     <string name="emulator_selector_cd">Enabled emulators, tap to change</string>
@@ -139,12 +137,14 @@
     <string name="armsx2_patch_error_unavailable">Could not patch ARMSX2 automatically. Make sure a supported ARMSX2 build is installed and try again.</string>
     <string name="flycast_patch_success">Flycast patched successfully.</string>
     <string name="flycast_patch_error_unavailable">Could not patch Flycast automatically. Make sure a supported Flycast build is installed and try again.</string>
-    <string name="melondualds_patch_success">melonDualDS patched successfully.</string>
-    <string name="melondualds_patch_error_unavailable">Could not patch melonDualDS automatically. Make sure a supported melonDualDS build is installed and try again.</string>
+    <string name="watermelonds_patch_success">WatermelonDS patched successfully.</string>
+    <string name="watermelonds_patch_error_unavailable">Could not patch WatermelonDS automatically. Make sure a supported WatermelonDS build is installed and try again.</string>
     <string name="mupen64_patch_success">Mupen64Plus patched successfully.</string>
     <string name="mupen64_patch_error_unavailable">Could not patch Mupen64Plus automatically. Make sure a supported Mupen64Plus build is installed and try again.</string>
     <string name="emucorex_patch_success">EmuCoreX patched successfully.</string>
     <string name="emucorex_patch_error_unavailable">Could not patch EmuCoreX automatically. Make sure a supported EmuCoreX build is installed and try again.</string>
+    <string name="armsx1_patch_success">ARMSX1 patched successfully.</string>
+    <string name="armsx1_patch_error_unavailable">Could not patch ARMSX1 automatically. Make sure a supported ARMSX1 build is installed and try again.</string>
     <!-- CFG revert messages -->
     <string name="revert_already_reverted">Already reverted — no changes needed.</string>
     <string name="revert_success_saf">Reverted successfully via folder access.</string>
@@ -168,12 +168,14 @@
     <string name="armsx2_revert_error_unavailable">Could not revert ARMSX2 automatically. Reopen the app and try again.</string>
     <string name="flycast_revert_success">Flycast reverted successfully.</string>
     <string name="flycast_revert_error_unavailable">Could not revert Flycast automatically. Reopen the app and try again.</string>
-    <string name="melondualds_revert_success">melonDualDS reverted successfully.</string>
-    <string name="melondualds_revert_error_unavailable">Could not revert melonDualDS automatically. Reopen the app and try again.</string>
+    <string name="watermelonds_revert_success">WatermelonDS reverted successfully.</string>
+    <string name="watermelonds_revert_error_unavailable">Could not revert WatermelonDS automatically. Reopen the app and try again.</string>
     <string name="mupen64_revert_success">Mupen64Plus reverted successfully.</string>
     <string name="mupen64_revert_error_unavailable">Could not revert Mupen64Plus automatically. Reopen the app and try again.</string>
     <string name="emucorex_revert_success">EmuCoreX reverted successfully.</string>
     <string name="emucorex_revert_error_unavailable">Could not revert EmuCoreX automatically. Reopen the app and try again.</string>
+    <string name="armsx1_revert_success">ARMSX1 reverted successfully.</string>
+    <string name="armsx1_revert_error_unavailable">Could not revert ARMSX1 automatically. Reopen the app and try again.</string>
 
     <!-- Flush messages -->
     <string name="flush_started">Flushing awards…</string>
@@ -205,6 +207,8 @@
     <string name="scan_complete_limit">Scan complete: %1$d game(s) matched out of %2$d file(s), %3$d skipped. Reached the %4$d-game cache limit.</string>
     <string name="scan_aborted">Scan aborted.</string>
     <string name="smart_cache_starting">Starting Smart Cache…</string>
+    <string name="smart_cache_aborting">Aborting Smart Cache…</string>
+    <string name="smart_cache_aborted">Smart Cache aborted.</string>
     <string name="smart_cache_progress">Smart Cache %1$d/%2$d: %3$s</string>
     <string name="smart_cache_complete">Smart Cache complete: %1$d game(s) cached from %2$d candidate(s), %3$d skipped.</string>
     <string name="smart_cache_complete_limit">Smart Cache complete: %1$d game(s) cached from %2$d candidate(s), %3$d skipped. Reached the %4$d-game cache limit.</string>
@@ -250,6 +254,8 @@
     <string name="clear_permissions_confirm_message">This will remove all granted folder access permissions and reset saved access choices.</string>
     <string name="clear_database_confirm_title">Clear database?</string>
     <string name="clear_database_confirm_message">This will remove all cached data and all pending awards.</string>
+    <string name="delete_console_games_confirm_title">Remove %1$s games?</string>
+    <string name="delete_console_games_confirm_message">This will remove all %1$d cached games for %2$s.</string>
     <string name="clear_action">Clear</string>
 
     <!-- Pending award fallbacks -->
@@ -259,9 +265,10 @@
     <!-- Cached games adapter -->
     <string name="game_meta_format">%1$d / %2$d unlocked · %3$s</string>
     <string name="cached_game_meta_with_pending">%1$d / %2$d unlocked · %3$s · %4$s</string>
-    <string name="cached_game_expand">Show unlocked achievements</string>
-    <string name="cached_game_collapse">Hide unlocked achievements</string>
+    <string name="cached_game_expand">Show achievements</string>
+    <string name="cached_game_collapse">Hide achievements</string>
     <string name="cached_game_no_description">No description.</string>
+    <string name="cached_game_origin_offline">Offline</string>
 
     <!-- Pending awards adapter -->
     <string name="achievement_title_hardcore">%s (Hardcore)</string>
@@ -277,18 +284,33 @@
     <string name="awards_history_clear_blocked_message">You can only clear award history when there are no pending awards.</string>
 
     <!-- Settings fragment -->
+    <string name="settings_section_proxy">Proxy</string>
+    <string name="settings_section_achievements">Achievements</string>
+    <string name="settings_section_general">General</string>
+    <string name="settings_section_maintenance">Maintenance</string>
+    <string name="setting_clear_cache_row_label">Cache</string>
+    <string name="setting_clear_cache_row_caption">Removes all cached games and cached RetroAchievements data</string>
+    <string name="setting_clear_permissions_row_label">Permissions</string>
+    <string name="setting_clear_permissions_row_caption">Resets granted folder access permissions and saved access choices</string>
+    <string name="setting_clear_database_row_label">Database</string>
+    <string name="setting_clear_database_row_caption">Removes all cached data and pending awards</string>
+    <string name="send_logs_row_caption">Uploads recent logs to help diagnose an issue</string>
+    <string name="setting_proxy_port_row_caption">Local port used by the emulator proxy</string>
     <string name="setting_smart_caching_label">Enable smart caching</string>
-    <string name="setting_app_update_check_label">Enable app update checker</string>
+    <string name="setting_smart_caching_caption">Automatically prefetches achievement data for offline play when the proxy starts</string>
+    <string name="setting_app_update_check_label">Enable update checker</string>
+    <string name="setting_app_update_check_caption">Checks for new app versions on startup</string>
     <string name="setting_hide_support_button_label">Hide "Support me"-button</string>
+    <string name="setting_hide_support_button_caption">Hides the donation button on the home screen</string>
+    <string name="setting_show_locked_achievements_label">Show locked achievements</string>
+    <string name="setting_show_locked_achievements_caption">Includes achievements you haven\'t unlocked yet in the achievements list</string>
+    <string name="setting_autostart_caption">Starts the proxy automatically when the system boots</string>
     <string name="btn_manage_subscription">Manage subscription</string>
     <string name="manage_subscription_error">Could not open subscription management. Please try again later.</string>
     <string name="setting_proxy_port_label">Proxy port</string>
     <string name="setting_proxy_port_hint">Used for the local emulator proxy. Range: 1024 to 65535. Stop the proxy to change it.</string>
     <string name="setting_proxy_port_invalid">Enter a port between 1024 and 65535.</string>
     <string name="proxy_port_unavailable">Port %1$d is already in use. Free it or choose a different port before starting the proxy.</string>
-    <string name="btn_clear_cache">Clear Cache</string>
-    <string name="btn_clear_permissions">Clear Permissions</string>
-    <string name="btn_clear_database">Clear Database</string>
     <string name="btn_contact_feedback">Contact</string>
     <string name="contact_feedback_url">https://forms.gle/XPRfWe2hAqzYy3JX9</string>
 
@@ -315,6 +337,7 @@
     <string name="cd_expand_achievements">Expand achievements</string>
     <string name="cd_delete_cache">Delete cache</string>
     <string name="cd_delete_cached_game">Delete cached game</string>
+    <string name="cd_delete_console_games">Delete all cached games for this console</string>
     <string name="cd_delete_pending_award">Delete pending award</string>
 
     <!-- Notification -->

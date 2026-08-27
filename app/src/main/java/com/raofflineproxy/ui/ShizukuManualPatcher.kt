@@ -8,6 +8,7 @@ import android.os.IBinder
 import android.provider.DocumentsContract
 import android.util.Log
 import androidx.annotation.Keep
+import androidx.core.content.edit
 import com.raofflineproxy.PrefsConstants
 import com.raofflineproxy.R
 import com.raofflineproxy.proxyValue
@@ -25,7 +26,8 @@ private const val TAG = "RAProxy/ShizukuManual"
 internal suspend fun executeShizukuManualPatch(
     context: Context,
     support: EmulatorSupport,
-    action: String
+    action: String,
+    restoreHardcore: Map<Emulator, Boolean> = emptyMap()
 ): ManualPatchExecutionResult {
     if (!canUseShizuku(context)) {
         return ManualPatchExecutionResult(success = false, message = shizukuStatusLabel(context, resolveShizukuStatus(context)))
@@ -36,7 +38,7 @@ internal suspend fun executeShizukuManualPatch(
     }
 
     val ppssppRootMode = PrefsConstants.loadPpssppRootMode(context)
-    val ppssppIniPath = if (support.ppssppEnabled) {
+    val ppssppIniPath = if (support.isEnabled(Emulator.Ppsspp)) {
         resolvePpssppIniPathForShizuku(context)
     } else {
         null
@@ -48,9 +50,14 @@ internal suspend fun executeShizukuManualPatch(
         .put("ppssppRootMode", ppssppRootMode.name)
         .put("ppssppIniPath", ppssppIniPath)
         .put("enabledEmulators", JSONArray().apply {
-            if (support.retroArchEnabled) put("retroarch")
-            if (support.dolphinEnabled) put("dolphin")
-            if (support.ppssppEnabled) put("ppsspp")
+            Emulator.SHIZUKU_MANAGED
+                .filter { support.isEnabled(it) }
+                .forEach { put(requireConfigOverride(it).shizukuKey) }
+        })
+        .put("hardcoreWasEnabled", JSONObject().apply {
+            restoreHardcore.forEach { (emulator, wasEnabled) ->
+                put(requireConfigOverride(emulator).shizukuKey, wasEnabled)
+            }
         })
         .toString()
     val userServiceArgs = Shizuku.UserServiceArgs(
@@ -88,11 +95,17 @@ internal suspend fun executeShizukuManualPatch(
                         }
 
                         val response = JSONObject(rawResponse)
+                        val detectedHardcore = response.optJSONObject("hardcoreWasEnabled")
                         ManualPatchExecutionResult(
                             success = response.optBoolean("success", false),
                             needsPpssppSafGrant = response.optBoolean("needsPpssppSafGrant", false),
                             message = response.optString("message").takeIf { it.isNotBlank() }
-                                ?: context.getString(R.string.manual_patching_shizuku_service_no_response)
+                                ?: context.getString(R.string.manual_patching_shizuku_service_no_response),
+                            hardcoreWasEnabled = Emulator.SHIZUKU_MANAGED
+                                .filter { support.isEnabled(it) }
+                                .associateWith { emulator ->
+                                    detectedHardcore?.optBoolean(requireConfigOverride(emulator).shizukuKey, false) == true
+                                }
                         )
                     }.getOrElse {
                         Log.e(TAG, "Shizuku client call failed for action=$action", it)
@@ -133,6 +146,29 @@ internal suspend fun executeShizukuManualPatch(
     }
 }
 
+internal fun saveShizukuHardcoreWasEnabled(context: Context, flags: Map<Emulator, Boolean>) {
+    context.getSharedPreferences(PrefsConstants.PREFS_NAME, Context.MODE_PRIVATE).edit {
+        flags.forEach { (emulator, wasEnabled) ->
+            putBoolean(requireConfigOverride(emulator).hardcoreWasEnabledPrefsKey, wasEnabled)
+        }
+    }
+}
+
+internal fun loadShizukuHardcoreWasEnabled(context: Context): Map<Emulator, Boolean> {
+    val prefs = context.getSharedPreferences(PrefsConstants.PREFS_NAME, Context.MODE_PRIVATE)
+    return Emulator.SHIZUKU_MANAGED.associateWith { emulator ->
+        prefs.getBoolean(requireConfigOverride(emulator).hardcoreWasEnabledPrefsKey, false)
+    }
+}
+
+internal fun clearShizukuHardcoreWasEnabled(context: Context) {
+    context.getSharedPreferences(PrefsConstants.PREFS_NAME, Context.MODE_PRIVATE).edit {
+        Emulator.SHIZUKU_MANAGED.forEach {
+            remove(requireConfigOverride(it).hardcoreWasEnabledPrefsKey)
+        }
+    }
+}
+
 class ShizukuManualPatcherService() : IShizukuManualPatcher.Stub() {
     private var context: Context? = null
 
@@ -159,12 +195,22 @@ class ShizukuManualPatcherService() : IShizukuManualPatcher.Stub() {
                 ?: PrefsConstants.PpssppRootMode.Unknown
             val ppssppIniPath = request.optString("ppssppIniPath").takeIf { it.isNotBlank() }
             val enabledEmulators = request.getJSONArray("enabledEmulators")
+            val requestedHardcore = request.optJSONObject("hardcoreWasEnabled")
             val messages = mutableListOf<String>()
+            val detectedHardcore = JSONObject()
 
             for (index in 0 until enabledEmulators.length()) {
-                val result = when (enabledEmulators.getString(index)) {
-                    "retroarch" -> {
-                        forceStopPackages(RETROARCH_PACKAGE_CANDIDATES)
+                val requestedKey = enabledEmulators.getString(index)
+                val emulator = Emulator.SHIZUKU_MANAGED.firstOrNull {
+                    requireConfigOverride(it).shizukuKey == requestedKey
+                }
+                emulator?.let { forceStopPackages(it.packageCandidates) }
+                val restoreHardcore = requestedHardcore?.optBoolean(requestedKey, false) == true
+                val detectHardcore = emulator?.let { requireConfigOverride(it).detectHardcoreEnabled }
+                    ?: { false }
+
+                val result = when (emulator) {
+                    Emulator.RetroArch -> {
                         transformFirstExistingFile(
                             candidates = RETROARCH_SOURCE_CANDIDATES,
                             patchMessage = "RetroArch patched successfully.",
@@ -175,15 +221,15 @@ class ShizukuManualPatcherService() : IShizukuManualPatcher.Stub() {
                                 "Could not revert RetroArch automatically."
                             },
                             action = action,
+                            detectHardcore = detectHardcore,
                             transform = {
                                 if (action == SHIZUKU_ACTION_PATCH) buildPatchedContent(it, proxyAddress)
-                                else buildRevertedContent(it, restoreHardcore = false)
+                                else buildRevertedContent(it, restoreHardcore)
                             }
                         )
                     }
 
-                    "dolphin" -> {
-                        forceStopPackages(DOLPHIN_PACKAGE_CANDIDATES)
+                    Emulator.Dolphin -> {
                         val globalResult = transformFirstExistingFile(
                             candidates = DOLPHIN_SHIZUKU_SOURCE_CANDIDATES,
                             patchMessage = "Dolphin patched successfully.",
@@ -194,9 +240,10 @@ class ShizukuManualPatcherService() : IShizukuManualPatcher.Stub() {
                                 "Could not revert Dolphin automatically."
                             },
                             action = action,
+                            detectHardcore = detectHardcore,
                             transform = {
                                 if (action == SHIZUKU_ACTION_PATCH) buildPatchedDolphinContent(it, proxyAddress)
-                                else buildRevertedDolphinContent(it, restoreHardcore = false)
+                                else buildRevertedDolphinContent(it, restoreHardcore)
                             }
                         )
                         if (!globalResult.success) {
@@ -237,8 +284,7 @@ class ShizukuManualPatcherService() : IShizukuManualPatcher.Stub() {
                         }
                     }
 
-                    "ppsspp" -> {
-                        forceStopPackages(listOf(UI_PPSSPP_PACKAGE))
+                    Emulator.Ppsspp -> {
                         val resolvedPpssppPath = resolvePpssppIniPathForService(ppssppIniPath, ppssppRootMode)
                         if (action == SHIZUKU_ACTION_PATCH && resolvedPpssppPath == null) {
                             return JSONObject()
@@ -250,15 +296,18 @@ class ShizukuManualPatcherService() : IShizukuManualPatcher.Stub() {
                         Log.i(TAG, "PPSSPP resolved path=$resolvedPpssppPath requestPath=$ppssppIniPath")
                         transformFile(
                             path = resolvedPpssppPath,
+                            patchMessage = "PPSSPP patched successfully.",
+                            revertMessage = "PPSSPP reverted successfully.",
                             unavailableMessage = if (action == SHIZUKU_ACTION_PATCH) {
                                 "Could not patch PPSSPP automatically."
                             } else {
                                 "Could not revert PPSSPP automatically."
                             },
                             action = action,
+                            detectHardcore = detectHardcore,
                             transform = {
                                 if (action == SHIZUKU_ACTION_PATCH) buildPatchedPpssppContent(it, proxyAddress)
-                                else buildRevertedPpssppContent(it, restoreHardcore = false)
+                                else buildRevertedPpssppContent(it, restoreHardcore)
                             }
                         )
                     }
@@ -274,11 +323,13 @@ class ShizukuManualPatcherService() : IShizukuManualPatcher.Stub() {
                 }
 
                 messages += result.message
+                detectedHardcore.put(requestedKey, result.hardcoreWasEnabled)
             }
 
             val response = JSONObject()
                 .put("success", true)
                 .put("message", messages.joinToString("\n"))
+                .put("hardcoreWasEnabled", detectedHardcore)
                 .toString()
             Log.i(TAG, "Shizuku user service success action=$action")
             response
@@ -294,7 +345,10 @@ class ShizukuManualPatcherService() : IShizukuManualPatcher.Stub() {
 
 private data class ServiceFileResult(
     val success: Boolean,
-    val message: String
+    val message: String,
+    // Hardcore state read off the file *before* patching, so the app can persist it and ask for
+    // it back on revert. Meaningless for the revert action itself.
+    val hardcoreWasEnabled: Boolean = false
 )
 
 private fun transformFirstExistingFile(
@@ -303,54 +357,53 @@ private fun transformFirstExistingFile(
     revertMessage: String,
     unavailableMessage: String,
     action: String,
+    detectHardcore: (String) -> Boolean,
     transform: (String) -> String
 ): ServiceFileResult {
     val target = candidates.asSequence().map(::File).firstOrNull(File::exists)
         ?: return ServiceFileResult(success = false, message = unavailableMessage)
 
-    return runCatching {
-        val original = target.readText()
-        val updated = transform(original)
-        if (updated != original) {
-            target.writeText(updated)
-        }
-
-        ServiceFileResult(
-            success = true,
-            message = if (action == SHIZUKU_ACTION_PATCH) patchMessage else revertMessage
-        )
-    }.getOrElse {
-        ServiceFileResult(success = false, message = it.message ?: unavailableMessage)
-    }
+    return transformTarget(target, patchMessage, revertMessage, unavailableMessage, action, detectHardcore, transform)
 }
 
 private fun transformFile(
     path: String?,
+    patchMessage: String,
+    revertMessage: String,
     unavailableMessage: String,
     action: String,
+    detectHardcore: (String) -> Boolean,
     transform: (String) -> String
 ): ServiceFileResult {
     val target = path?.let(::File)?.takeIf(File::exists)
         ?: return ServiceFileResult(success = false, message = unavailableMessage)
 
-    return runCatching {
-        val original = target.readText()
-        val updated = transform(original)
-        if (updated != original) {
-            target.writeText(updated)
-        }
+    return transformTarget(target, patchMessage, revertMessage, unavailableMessage, action, detectHardcore, transform)
+}
 
-        ServiceFileResult(
-            success = true,
-            message = if (action == SHIZUKU_ACTION_PATCH) {
-                "PPSSPP patched successfully."
-            } else {
-                "PPSSPP reverted successfully."
-            }
-        )
-    }.getOrElse {
-        ServiceFileResult(success = false, message = it.message ?: unavailableMessage)
+private fun transformTarget(
+    target: File,
+    patchMessage: String,
+    revertMessage: String,
+    unavailableMessage: String,
+    action: String,
+    detectHardcore: (String) -> Boolean,
+    transform: (String) -> String
+): ServiceFileResult = runCatching {
+    val original = target.readText()
+    val hardcoreWasEnabled = action == SHIZUKU_ACTION_PATCH && detectHardcore(original)
+    val updated = transform(original)
+    if (updated != original) {
+        target.writeText(updated)
     }
+
+    ServiceFileResult(
+        success = true,
+        message = if (action == SHIZUKU_ACTION_PATCH) patchMessage else revertMessage,
+        hardcoreWasEnabled = hardcoreWasEnabled
+    )
+}.getOrElse {
+    ServiceFileResult(success = false, message = it.message ?: unavailableMessage)
 }
 
 private fun resolvePpssppIniPathForShizuku(context: Context): String? {

@@ -16,6 +16,10 @@ from pathlib import Path
 
 from linux.raofflineproxy import rom_browser, rom_hashing
 
+# The stdlib has no 7z writer, so these archives are committed rather than built
+# at test time. Contents are documented in each test.
+FIXTURES_DIR = Path(__file__).parent / "fixtures"
+
 
 def _library_available() -> bool:
     # reset cached state so an env-provided lib path is picked up
@@ -126,6 +130,73 @@ class ArcadeZipTests(unittest.TestCase):
             candidates = rom_browser.hash_candidates_for_manual_cache(zip_path)
 
         self.assertEqual(candidates, [hashlib.md5(body).hexdigest()])
+
+
+@REQUIRE_LIB
+class SevenZipTests(unittest.TestCase):
+    """.7z goes through the LZMA SDK reader bundled into libraproxy_rchash.
+
+    rc_hash has no 7z support of its own — it maps the extension to the arcade
+    console, which hashes the filename — so an inner console ROM only gets its
+    real content hash because the glue decompresses it first.
+    """
+
+    def test_single_console_rom_hashes_by_content(self) -> None:
+        # pokemon.7z holds one file: game.nes, an iNES image whose 16-byte
+        # header must be skipped, proving rc_hash applied console rules to the
+        # decompressed bytes rather than hashing the archive.
+        body = b"NESDATA" * 64
+
+        candidates = rom_browser.hash_candidates_for_manual_cache(
+            FIXTURES_DIR / "pokemon.7z"
+        )
+
+        self.assertEqual(candidates, [hashlib.md5(body).hexdigest()])
+
+    def test_single_file_of_unenumerated_system_uses_content(self) -> None:
+        # mystery.7z holds game.xyz — no recognized ROM extension, but a
+        # single-file archive is treated as a ROM, same rule as for zip.
+        body = b"MYSTERY" * 40
+
+        candidates = rom_browser.hash_candidates_for_manual_cache(
+            FIXTURES_DIR / "mystery.7z"
+        )
+
+        self.assertEqual(candidates, [hashlib.md5(body).hexdigest()])
+
+    def test_arcade_set_hashes_by_filename(self) -> None:
+        # mslug.7z holds 201-p1.p1 and 201-c1.c1: a Neo Geo set, no console
+        # extension inside, so the arcade rule applies to the archive name.
+        candidates = rom_browser.hash_candidates_for_manual_cache(
+            FIXTURES_DIR / "mslug.7z"
+        )
+
+        self.assertEqual(candidates, [hashlib.md5(b"mslug").hexdigest()])
+
+    def test_multiple_console_roms_are_rejected(self) -> None:
+        # bundle.7z holds one.gb and two.gbc; as with zip we refuse to guess.
+        with self.assertRaises(ValueError) as raised:
+            rom_browser.hash_candidates_for_manual_cache(FIXTURES_DIR / "bundle.7z")
+
+        self.assertEqual(str(raised.exception), "archive contains multiple supported ROMs")
+
+    def test_list_entries_reads_names(self) -> None:
+        self.assertEqual(
+            rom_hashing.list_7z_entries(FIXTURES_DIR / "bundle.7z"),
+            ["one.gb", "two.gbc"],
+        )
+
+    def test_unreadable_archive_yields_no_entries(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            broken = Path(temp_dir) / "broken.7z"
+            broken.write_bytes(b"7z\xbc\xaf\x27\x1c" + b"\x00" * 64)
+
+            self.assertEqual(rom_hashing.list_7z_entries(broken), [])
+            # Still hashable: it falls back to the arcade rule on the filename.
+            self.assertEqual(
+                rom_browser.hash_candidates_for_manual_cache(broken),
+                [hashlib.md5(b"broken").hexdigest()],
+            )
 
 
 class SupportedExtensionsTests(unittest.TestCase):

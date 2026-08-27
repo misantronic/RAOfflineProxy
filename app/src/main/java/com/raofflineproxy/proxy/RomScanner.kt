@@ -713,16 +713,10 @@ private suspend fun buildUnlocksArray(db: AppDatabase, gameId: Int, user: String
         }
     }
 
-    val achievementGameIds = buildAchievementGameIds(
-        runCatching { db.cacheDao().getAllByPrefix(CacheKeys.PREFIX_PATCH) }.getOrDefault(emptyList()),
-        runCatching { db.cacheDao().getAllByPrefix(CacheKeys.PREFIX_ACHIEVEMENTSETS) }.getOrDefault(emptyList()),
-    )
-
     val unlockIds = mergeStartSessionUnlockIds(
         cachedUnlockIds = cachedUnlockIds,
         pendingAwards = pendingAwards,
-        achievementGameIds = achievementGameIds,
-        gameId = gameId,
+        gameAchievementIds = cachedGameAchievementIds(db, gameId),
         user = user
     )
 
@@ -739,8 +733,7 @@ private suspend fun buildUnlocksArray(db: AppDatabase, gameId: Int, user: String
 internal fun mergeStartSessionUnlockIds(
     cachedUnlockIds: List<Int>,
     pendingAwards: List<PendingAward>,
-    achievementGameIds: Map<Int, Int>,
-    gameId: Int,
+    gameAchievementIds: Set<Int>,
     user: String
 ): List<Int> {
     val mergedIds = linkedSetOf<Int>()
@@ -750,7 +743,7 @@ internal fun mergeStartSessionUnlockIds(
         .filter { it.status == PENDING_AWARD_STATUS_PENDING }
         .filterNot(::isHardcoreAward)
         .filter { pendingAwardUser(it) == user }
-        .filter { achievementGameIds[it.achievementId] == gameId }
+        .filter { it.achievementId in gameAchievementIds }
         .map(PendingAward::achievementId)
         .forEach(mergedIds::add)
 

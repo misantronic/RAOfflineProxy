@@ -12,11 +12,11 @@
         "typecheck": "npm run typecheck --workspaces"
     },
     "devDependencies": {
-        "@aws-sdk/client-s3": "^3.1092.0",
-        "@aws-sdk/s3-request-presigner": "^3.1092.0",
-        "@types/node": "^22.13.13",
-        "archiver": "^7.0.1",
-        "esbuild": "^0.24.2",
-        "typescript": "5.4.5"
+        "@aws-sdk/client-s3": "^3.1115.0",
+        "@aws-sdk/s3-request-presigner": "^3.1115.0",
+        "@types/node": "^26.2.0",
+        "archiver": "^8.0.0",
+        "esbuild": "^0.28.2",
+        "typescript": "7.0.2"
     }
 }

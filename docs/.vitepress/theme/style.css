@@ -31,7 +31,7 @@
 }
 
 .VPNavBarTitle .title::after {
-  content: 'v1.9.0-alpha1';
+  content: 'v1.12.0-alpha1';
   grid-column: 2;
   grid-row: 2;
   margin-top: -1.4rem;
@@ -108,6 +108,17 @@
 
 .supported-platforms__item span {
   font-weight: 600;
+}
+
+.supported-platforms__tag {
+  margin-top: -0.45rem;
+  padding: 0.1rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-style: normal;
+  font-weight: 600;
+  color: var(--vp-c-warning-1);
+  background: var(--vp-c-warning-soft);
 }
 
 @media (min-width: 768px) {

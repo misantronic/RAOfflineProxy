@@ -1,23 +1,22 @@
 [versions]
-agp = "9.3.0"
-ksp = "2.3.6"
-coreKtx = "1.18.0"
-appcompat = "1.7.1"
+agp = "9.3.2"
+ksp = "2.3.11"
+coreKtx = "1.19.0"
+appcompat = "1.8.0"
 material = "1.14.0"
-lifecycleViewmodel = "2.10.0"
+lifecycleViewmodel = "2.11.0"
 room = "2.8.4"
-okhttp = "5.3.2"
+okhttp = "5.5.0"
 coroutines = "1.11.0"
 activityKtx = "1.13.0"
-fragmentKtx = "1.8.9"
+fragmentKtx = "1.9.0"
 coil = "2.7.0"
 documentfile = "1.1.0"
 recyclerview = "1.4.0"
 junit = "4.13.2"
-zstdJni = "1.5.7-8"
+zstdJni = "1.5.7-15"
 shizuku = "13.1.5"
-orgJson = "20240303"
-stripeAndroid = "23.13.0"
+orgJson = "20260814"
 swiperefreshlayout = "1.2.0"
 
 [libraries]
@@ -41,7 +40,6 @@ zstd-jni = { group = "com.github.luben", name = "zstd-jni", version.ref = "zstdJ
 shizuku-api = { group = "dev.rikka.shizuku", name = "api", version.ref = "shizuku" }
 shizuku-provider = { group = "dev.rikka.shizuku", name = "provider", version.ref = "shizuku" }
 org-json = { group = "org.json", name = "json", version.ref = "orgJson" }
-stripe-android = { group = "com.stripe", name = "stripe-android", version.ref = "stripeAndroid" }
 swiperefreshlayout = { group = "androidx.swiperefreshlayout", name = "swiperefreshlayout", version.ref = "swiperefreshlayout" }
 
 [plugins]

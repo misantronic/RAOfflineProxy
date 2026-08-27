@@ -13,17 +13,19 @@ internal fun putPatchImageFields(target: JSONObject, imageUrl: String?) {
 }
 
 internal fun patchImagePath(patchData: JSONObject): String? =
-    patchData.optString("ImageIcon")
-        .takeIf { it.isNotEmpty() }
-        ?: patchData.optString("ImageIconUrl")
-            .takeIf { it.isNotEmpty() }
-            ?.let(::patchImagePathFromUrl)
+    rawPatchImageValue(patchData)?.let(::patchImagePathFromUrl)
 
 internal fun patchImageUrl(patchData: JSONObject): String? =
     patchData.optString("ImageIconUrl")
         .takeIf { it.isNotEmpty() }
-        ?: patchImagePath(patchData)
+        ?: rawPatchImageValue(patchData)
             ?.let(::absolutePatchImageUrl)
+
+private fun rawPatchImageValue(patchData: JSONObject): String? =
+    patchData.optString("ImageIcon")
+        .takeIf { it.isNotEmpty() }
+        ?: patchData.optString("ImageIconUrl")
+            .takeIf { it.isNotEmpty() }
 
 internal fun absolutePatchImageUrl(imagePath: String): String =
     if (imagePath.startsWith("http://") || imagePath.startsWith("https://")) {
@@ -33,7 +35,4 @@ internal fun absolutePatchImageUrl(imagePath: String): String =
     }
 
 internal fun patchImagePathFromUrl(imageUrl: String): String =
-    imageUrl.substringAfter("retroachievements.org", imageUrl)
-        .substringAfter("media.retroachievements.org", imageUrl)
-        .takeIf { it.startsWith('/') }
-        ?: imageUrl
+    extractImagePath(imageUrl) ?: imageUrl

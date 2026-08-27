@@ -6,7 +6,6 @@ import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import android.text.InputFilter
-import android.view.KeyEvent
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -18,6 +17,7 @@ import androidx.core.net.toUri
 import androidx.swiperefreshlayout.widget.CircularProgressDrawable
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
+import androidx.appcompat.widget.SwitchCompat
 import androidx.lifecycle.lifecycleScope
 import com.google.android.material.textfield.TextInputEditText
 import com.google.android.material.textfield.TextInputLayout
@@ -37,20 +37,18 @@ class SettingsFragment : Fragment() {
         inflater.inflate(R.layout.fragment_settings, container, false)
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
-        val cbAutostart = view.findViewById<CheckBox>(R.id.cb_autostart_proxy)
-        val cbSmartCaching = view.findViewById<CheckBox>(R.id.cb_smart_caching)
-        val cbAppUpdateCheck = view.findViewById<CheckBox>(R.id.cb_app_update_check)
-        val cbHideSupportButton = view.findViewById<CheckBox>(R.id.cb_hide_support_button)
+        val cbAutostart = view.findViewById<SwitchCompat>(R.id.cb_autostart_proxy)
+        val cbSmartCaching = view.findViewById<SwitchCompat>(R.id.cb_smart_caching)
+        val cbAppUpdateCheck = view.findViewById<SwitchCompat>(R.id.cb_app_update_check)
+        val cbHideSupportButton = view.findViewById<SwitchCompat>(R.id.cb_hide_support_button)
+        val cbShowLockedAchievements = view.findViewById<SwitchCompat>(R.id.cb_show_locked_achievements)
         val btnManageSubscription = view.findViewById<Button>(R.id.btn_manage_subscription)
-        val inputProxyPort = view.findViewById<TextInputLayout>(R.id.input_proxy_port)
-        val etProxyPort = view.findViewById<TextInputEditText>(R.id.et_proxy_port)
-        val tvProxyPortHint = view.findViewById<TextView>(R.id.tv_proxy_port_hint)
+        val rowProxyPort = view.findViewById<View>(R.id.row_proxy_port)
+        val tvProxyPortValue = view.findViewById<TextView>(R.id.tv_proxy_port_value)
         val btnClearCache = view.findViewById<Button>(R.id.btn_clear_cache)
         val btnClearPermissions = view.findViewById<Button>(R.id.btn_clear_permissions)
         val btnClearDatabase = view.findViewById<Button>(R.id.btn_clear_database)
         val btnSendLogs = view.findViewById<Button>(R.id.btn_send_logs)
-        cbAutostart.text = getString(R.string.setting_autostart_label, getString(R.string.app_name))
-        etProxyPort.filters = arrayOf(InputFilter.LengthFilter(5))
 
         cbAutostart.setOnCheckedChangeListener { _, isChecked ->
             if (syncingState) return@setOnCheckedChangeListener
@@ -67,6 +65,10 @@ class SettingsFragment : Fragment() {
         cbHideSupportButton.setOnCheckedChangeListener { _, isChecked ->
             if (syncingState) return@setOnCheckedChangeListener
             viewModel.setHideSupportButtonEnabled(isChecked)
+        }
+        cbShowLockedAchievements.setOnCheckedChangeListener { _, isChecked ->
+            if (syncingState) return@setOnCheckedChangeListener
+            viewModel.setShowLockedAchievementsEnabled(isChecked)
         }
 
         btnManageSubscription.setOnClickListener {
@@ -85,30 +87,8 @@ class SettingsFragment : Fragment() {
             }
         }
 
-        fun submitProxyPort(): Boolean {
-            val portText = etProxyPort.text?.toString()?.trim().orEmpty()
-            if (viewModel.setProxyPort(portText)) {
-                inputProxyPort.error = null
-                etProxyPort.clearFocus()
-                return true
-            }
-
-            inputProxyPort.error = getString(R.string.setting_proxy_port_invalid)
-            return false
-        }
-
-        etProxyPort.setOnFocusChangeListener { _, hasFocus ->
-            if (!hasFocus && etProxyPort.isEnabled) {
-                submitProxyPort()
-            }
-        }
-        etProxyPort.setOnEditorActionListener { _, _, _ -> submitProxyPort() }
-        etProxyPort.setOnKeyListener { _, keyCode, event ->
-            if (keyCode == KeyEvent.KEYCODE_ENTER && event.action == KeyEvent.ACTION_UP) {
-                submitProxyPort()
-            } else {
-                false
-            }
+        rowProxyPort.setOnClickListener {
+            showProxyPortDialog()
         }
 
         btnClearCache.setOnClickListener {
@@ -180,21 +160,17 @@ class SettingsFragment : Fragment() {
                 if (cbHideSupportButton.isChecked != state.hideSupportButton) {
                     cbHideSupportButton.isChecked = state.hideSupportButton
                 }
-                val proxyPortText = state.proxyPort.toString()
-                if (etProxyPort.text?.toString() != proxyPortText && !etProxyPort.hasFocus()) {
-                    etProxyPort.setText(proxyPortText)
+                if (cbShowLockedAchievements.isChecked != state.showLockedAchievements) {
+                    cbShowLockedAchievements.isChecked = state.showLockedAchievements
                 }
-                inputProxyPort.isEnabled = !state.proxyRunning
-                etProxyPort.isEnabled = !state.proxyRunning
-                tvProxyPortHint.isEnabled = !state.proxyRunning
+                tvProxyPortValue.text = state.proxyPort.toString()
+                rowProxyPort.isEnabled = !state.proxyRunning
+                tvProxyPortValue.isEnabled = !state.proxyRunning
                 btnClearCache.isEnabled = !state.proxyRunning
                 btnClearPermissions.isEnabled = !state.proxyRunning
                 btnClearDatabase.isEnabled = !state.proxyRunning
                 if (!sendingLogs) {
                     btnSendLogs.isEnabled = state.isOnline
-                }
-                if (!state.proxyRunning) {
-                    inputProxyPort.error = null
                 }
                 syncingState = false
             }
@@ -214,6 +190,35 @@ class SettingsFragment : Fragment() {
             }
             btnManageSubscription.visibility = if (hasActiveSubscription) View.VISIBLE else View.GONE
         }
+    }
+
+    private fun showProxyPortDialog() {
+        val dialogView = LayoutInflater.from(requireContext())
+            .inflate(R.layout.dialog_proxy_port, view as? ViewGroup, false)
+        val inputProxyPort = dialogView.findViewById<TextInputLayout>(R.id.input_proxy_port)
+        val etProxyPort = dialogView.findViewById<TextInputEditText>(R.id.et_proxy_port)
+        etProxyPort.filters = arrayOf(InputFilter.LengthFilter(5))
+        etProxyPort.setText(viewModel.state.value.proxyPort.toString())
+
+        val dialog = AlertDialog.Builder(requireContext())
+            .setTitle(R.string.setting_proxy_port_label)
+            .setView(dialogView)
+            .setPositiveButton(android.R.string.ok, null)
+            .setNegativeButton(android.R.string.cancel, null)
+            .create()
+
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                val portText = etProxyPort.text?.toString()?.trim().orEmpty()
+                if (viewModel.setProxyPort(portText)) {
+                    dialog.dismiss()
+                } else {
+                    inputProxyPort.error = getString(R.string.setting_proxy_port_invalid)
+                }
+            }
+        }
+
+        dialog.show()
     }
 
     private fun showSendLogsSuccessDialog(id: String) {

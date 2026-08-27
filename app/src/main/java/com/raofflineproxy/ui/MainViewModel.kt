@@ -2,6 +2,7 @@ package com.raofflineproxy.ui
 
 import android.app.Application
 import android.content.Context
+import android.content.SharedPreferences
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
@@ -29,6 +30,7 @@ import com.raofflineproxy.proxyUserAgent
 import com.raofflineproxy.isLoopbackPortAvailable
 import com.raofflineproxy.data.AppDatabase
 import com.raofflineproxy.data.CacheEntry
+import com.raofflineproxy.data.CacheEntrySummary
 import com.raofflineproxy.data.CacheKeys
 import com.raofflineproxy.data.CachedGame
 import com.raofflineproxy.data.PendingAward
@@ -36,7 +38,7 @@ import com.raofflineproxy.data.PendingAwardUi
 import com.raofflineproxy.data.PENDING_AWARD_STATUS_DELETED
 import com.raofflineproxy.data.PENDING_AWARD_STATUS_FLUSHED
 import com.raofflineproxy.data.PENDING_AWARD_STATUS_PENDING
-import com.raofflineproxy.data.UnlockedAchievement
+import com.raofflineproxy.data.CachedAchievement
 import com.raofflineproxy.proxy.AwardFlusher
 import com.raofflineproxy.proxy.FlushEvent
 import com.raofflineproxy.proxy.LoginCredentials
@@ -44,6 +46,8 @@ import com.raofflineproxy.proxy.PasswordCredentials
 import com.raofflineproxy.proxy.patchImagePath
 import com.raofflineproxy.proxy.patchImageUrl
 import com.raofflineproxy.proxy.resolveCachedStaticAsset
+import com.raofflineproxy.proxy.cachedBadgeFileNames
+import com.raofflineproxy.proxy.cachedBadgePath
 import com.raofflineproxy.proxy.cacheLoginCredentialsResponse
 import com.raofflineproxy.proxy.clearAllCachedImages
 import com.raofflineproxy.proxy.deleteCachedImagesForGame
@@ -75,6 +79,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -82,6 +89,8 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.util.concurrent.ConcurrentHashMap
+import org.json.JSONArray
 import org.json.JSONObject
 import kotlin.time.Duration.Companion.milliseconds
 
@@ -119,23 +128,9 @@ data class MainUiState(
     val smartCachingEnabled: Boolean = true,
     val appUpdateCheckEnabled: Boolean = true,
     val hideSupportButton: Boolean = false,
+    val showLockedAchievements: Boolean = false,
     val proxyPort: Int = PrefsConstants.DEFAULT_PROXY_PORT,
-    val retroArchInstalled: Boolean = false,
-    val dolphinInstalled: Boolean = false,
-    val ppssppInstalled: Boolean = false,
-    val armsx2Installed: Boolean = false,
-    val flycastInstalled: Boolean = false,
-    val melonDualDsInstalled: Boolean = false,
-    val mupen64Installed: Boolean = false,
-    val emuCoreXInstalled: Boolean = false,
-    val retroArchEnabled: Boolean = false,
-    val dolphinEnabled: Boolean = false,
-    val ppssppEnabled: Boolean = false,
-    val armsx2Enabled: Boolean = false,
-    val flycastEnabled: Boolean = false,
-    val melonDualDsEnabled: Boolean = false,
-    val mupen64Enabled: Boolean = false,
-    val emuCoreXEnabled: Boolean = false,
+    val emulators: EmulatorSupport = EmulatorSupport.NONE,
     val pendingAwards: List<PendingAwardUi> = emptyList(),
     val awardHistory: List<PendingAwardUi> = emptyList(),
     val cachedGames: List<CachedGame> = emptyList(),
@@ -154,8 +149,8 @@ data class MainUiState(
     val flushInProgress: Boolean = false,
     val availableAppUpdate: AppUpdateInfo? = null
 ) {
-    val hasEnabledEmulator: Boolean = retroArchEnabled || dolphinEnabled || ppssppEnabled || armsx2Enabled || flycastEnabled || melonDualDsEnabled || mupen64Enabled || emuCoreXEnabled
-    val hasShizukuManagedEnabledEmulator: Boolean = hasEnabledEmulator && (retroArchEnabled || dolphinEnabled || ppssppEnabled)
+    val hasEnabledEmulator: Boolean = emulators.hasAnyEnabled
+    val hasShizukuManagedEnabledEmulator: Boolean = emulators.hasAnyShizukuManagedEnabled
 
     fun clearedPermissions(): MainUiState = copy(
         manualEmulatorPatchingEnabled = false,
@@ -183,6 +178,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     val events = _events.asSharedFlow()
     private val _cachedGames = MutableStateFlow<List<CachedGame>>(emptyList())
     val cachedGames: StateFlow<List<CachedGame>> = _cachedGames.asStateFlow()
+    private val pendingDeletedGameIds: MutableSet<String> = ConcurrentHashMap.newKeySet()
+    private val patchCache = mutableMapOf<Long, ParsedPatch>()
+    private val unlockCache = mutableMapOf<Long, CachedUnlocks>()
     private val connectivityManager =
         app.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
     private var pendingProxyStart = false
@@ -237,7 +235,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val emulatorSupport = loadEmulatorSupport(app)
         Log.i(
             "RAProxy/Emulators",
-            "init support retroArchInstalled=${emulatorSupport.retroArchInstalled} dolphinInstalled=${emulatorSupport.dolphinInstalled} ppssppInstalled=${emulatorSupport.ppssppInstalled} armsx2Installed=${emulatorSupport.armsx2Installed} flycastInstalled=${emulatorSupport.flycastInstalled} melonDualDsInstalled=${emulatorSupport.melonDualDsInstalled} mupen64Installed=${emulatorSupport.mupen64Installed} emuCoreXInstalled=${emulatorSupport.emuCoreXInstalled} retroArchEnabled=${emulatorSupport.retroArchEnabled} dolphinEnabled=${emulatorSupport.dolphinEnabled} ppssppEnabled=${emulatorSupport.ppssppEnabled} armsx2Enabled=${emulatorSupport.armsx2Enabled} flycastEnabled=${emulatorSupport.flycastEnabled} melonDualDsEnabled=${emulatorSupport.melonDualDsEnabled} mupen64Enabled=${emulatorSupport.mupen64Enabled} emuCoreXEnabled=${emulatorSupport.emuCoreXEnabled}"
+            "init support " + emulatorSupport.states.joinToString(" ") { state ->
+                "${state.emulator.name}=installed:${state.installed},enabled:${state.enabled}"
+            }
         )
         _state.value = _state.value.copy(
             autostartProxy = loadAutostartPref(),
@@ -245,23 +245,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             smartCachingEnabled = loadSmartCachingEnabled(),
             appUpdateCheckEnabled = loadAppUpdateCheckEnabled(),
             hideSupportButton = loadHideSupportButtonEnabled(),
+            showLockedAchievements = loadShowLockedAchievementsEnabled(),
             proxyPort = PrefsConstants.loadProxyPort(app),
-            retroArchInstalled = emulatorSupport.retroArchInstalled,
-            dolphinInstalled = emulatorSupport.dolphinInstalled,
-            ppssppInstalled = emulatorSupport.ppssppInstalled,
-            armsx2Installed = emulatorSupport.armsx2Installed,
-            flycastInstalled = emulatorSupport.flycastInstalled,
-            melonDualDsInstalled = emulatorSupport.melonDualDsInstalled,
-            mupen64Installed = emulatorSupport.mupen64Installed,
-            emuCoreXInstalled = emulatorSupport.emuCoreXInstalled,
-            retroArchEnabled = emulatorSupport.retroArchEnabled,
-            dolphinEnabled = emulatorSupport.dolphinEnabled,
-            ppssppEnabled = emulatorSupport.ppssppEnabled,
-            armsx2Enabled = emulatorSupport.armsx2Enabled,
-            flycastEnabled = emulatorSupport.flycastEnabled,
-            melonDualDsEnabled = emulatorSupport.melonDualDsEnabled,
-            mupen64Enabled = emulatorSupport.mupen64Enabled,
-            emuCoreXEnabled = emulatorSupport.emuCoreXEnabled,
+            emulators = emulatorSupport,
             shizukuStatus = resolveShizukuStatus(app),
             shizukuManualPatchingEnabled = loadShizukuManualPatchingEnabled(),
             ppssppShizukuRootModeUnknown = loadPpssppRootMode() == PrefsConstants.PpssppRootMode.Unknown
@@ -292,75 +278,41 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
         viewModelScope.launch {
             combine(
-                db.pendingAwardDao().observeByStatus(),
-                db.pendingAwardDao().observeByStatus(PENDING_AWARD_STATUS_FLUSHED),
-                db.cacheDao().observePatchEntries(),
+                db.pendingAwardDao().observeByStatus().distinctUntilChanged(),
+                db.pendingAwardDao().observeByStatus(PENDING_AWARD_STATUS_FLUSHED).distinctUntilChanged(),
+                db.cacheDao().observePatchEntrySummaries(),
+                db.cacheDao().observeUnlockSummaries().distinctUntilChanged(),
                 db.cacheDao().observeByPrefix(CacheKeys.PREFIX_LOGIN)
-            ) { awards, historyAwards, entries, loginEntries ->
-                val resolvedAwards = awards.map { award -> resolvePendingAward(award) }
-                val resolvedHistoryAwards = historyAwards.map { award -> resolvePendingAward(award) }
-                val hasLoginCredentials = loginEntries.isNotEmpty()
-                val pendingAwardsByGameId = buildPendingAwardsByGameId(entries, awards)
-                val games = run {
-                    entries.mapNotNull { entry ->
-                        val parts = entry.cacheKey.split(":")
-                        if (parts.size < 3) return@mapNotNull null
-                        val gameId = parts[1]
-                        val user = parts[2]
-                        val patchData = runCatching {
-                            JSONObject(entry.responseBody).getJSONObject("PatchData")
-                        }.getOrNull()
-                        val title = patchData?.optString("Title") ?: gameId
-                        val imageIconUrl = gameId.toIntOrNull()?.let {
-                            resolveCachedGameIconPath(application, it)
-                        } ?: patchData?.let { pd ->
-                            patchImagePath(pd)?.let { resolveCachedStaticAsset(application, it)?.absolutePath }
-                                ?: patchImageUrl(pd)
-                        }
-                        val unlocksBody = db.cacheDao().get(CacheKeys.unlocks(gameId, user))?.responseBody
-                        val unlockedIds = runCatching {
-                            val json = JSONObject(unlocksBody ?: return@runCatching emptySet())
-                            val unlocks = json.optJSONArray("UserUnlocks") ?: return@runCatching emptySet()
-                            buildSet(unlocks.length()) {
-                                for (i in 0 until unlocks.length()) {
-                                    add(unlocks.optInt(i))
-                                }
-                            }
-                        }.getOrDefault(emptySet())
-                        val unlockedCount = unlockedIds.size
-                        val totalAchievements = patchData?.optJSONArray("Achievements")?.let { arr ->
-                            var count = 0
-                            for (i in 0 until arr.length()) {
-                                val a = arr.optJSONObject(i) ?: continue
-                                val id = a.optInt("ID", 0)
-                                if (id > 0 && id != WARNING_ACHIEVEMENT_ID && a.optInt("Flags", RC_ACHIEVEMENT_FLAG_CORE) == RC_ACHIEVEMENT_FLAG_CORE) count++
-                            }
-                            count
-                        } ?: 0
-                        val unlockedAchievements = buildUnlockedAchievements(patchData, unlockedIds)
-                        val consoleId = patchData?.optInt("ConsoleID", 0) ?: 0
-                        CachedGame(
-                            gameId = gameId,
-                            title = title,
-                            user = user,
-                            consoleId = consoleId,
-                            sourceRomPath = entry.sourceRomPath,
-                            cachedAt = entry.cachedAt,
-                            imageIconUrl = imageIconUrl,
-                            unlockedCount = unlockedCount,
-                            pendingAwardCount = pendingAwardsByGameId[gameId] ?: 0,
-                            totalAchievements = totalAchievements,
-                            unlockedAchievements = unlockedAchievements
+                    .map { it.isNotEmpty() }
+                    .distinctUntilChanged()
+            ) { awards, historyAwards, patchSummaries, unlockSummaries, hasLoginCredentials ->
+                val badgeNames = cachedBadgeFileNames(application)
+                val patches = loadPatchViews(patchSummaries, badgeNames)
+                val achievementIndex = buildAchievementIndex(patches)
+                val resolvedAwards = awards.map { resolvePendingAward(it, achievementIndex) }
+                val resolvedHistoryAwards = historyAwards.map { resolvePendingAward(it, achievementIndex) }
+                val pendingAwardsByGameId = buildPendingAwardsByGameId(achievementIndex, awards)
+                pendingDeletedGameIds.retainAll(patches.mapTo(HashSet()) { it.gameId })
+                unlockCache.keys.retainAll(unlockSummaries.mapTo(HashSet()) { it.id })
+                val unlockSummariesByKey = unlockSummaries.associateBy { it.cacheKey }
+                val games = patches
+                    .filter { it.gameId !in pendingDeletedGameIds }
+                    .map { patch ->
+                        buildCachedGame(
+                            patch = patch,
+                            unlockSummary = unlockSummariesByKey[CacheKeys.unlocks(patch.gameId, patch.user)],
+                            pendingAwardCount = pendingAwardsByGameId[patch.gameId] ?: 0
                         )
-                    }.sortedWith(
+                    }
+                    .sortedWith(
                         compareBy(
                             { com.raofflineproxy.data.ConsoleNames.nameForId(it.consoleId) },
                             { it.title.lowercase() }
                         )
                     )
-                }
                 Quadruple(resolvedAwards, resolvedHistoryAwards, games, hasLoginCredentials)
-            }.collect { (resolvedAwards, resolvedHistoryAwards, games, hasLoginCredentials) ->
+            }.flowOn(Dispatchers.Default)
+                .collect { (resolvedAwards, resolvedHistoryAwards, games, hasLoginCredentials) ->
                     _state.value = _state.value.copy(
                         pendingAwards = resolvedAwards,
                         awardHistory = resolvedHistoryAwards
@@ -397,44 +349,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     }
 
                     val prefs = app.getSharedPreferences(PrefsConstants.PREFS_NAME, Context.MODE_PRIVATE)
-                    if (prefs.getBoolean(PrefsConstants.KEY_ARMSX2_PATCHED_THIS_RUN, false)) {
-                        val armsx2Result = withContext(Dispatchers.IO) { revertArmsx2Cfg(app) }
-                        if (armsx2Result.success) {
-                            prefs.edit { remove(PrefsConstants.KEY_ARMSX2_PATCHED_THIS_RUN) }
+                    for (emulator in Emulator.BROADCAST_MANAGED) {
+                        if (!prefs.getBoolean(emulator.patchedThisRunPrefsKey, false)) continue
+                        val result = withContext(Dispatchers.IO) { revertBroadcastCfg(app, emulator) }
+                        if (result.success) {
+                            prefs.edit { remove(emulator.patchedThisRunPrefsKey) }
                         } else {
-                            SnackbarManager.showError(armsx2Result.message)
-                        }
-                    }
-                    if (prefs.getBoolean(PrefsConstants.KEY_FLYCAST_PATCHED_THIS_RUN, false)) {
-                        val flycastResult = withContext(Dispatchers.IO) { revertFlycastCfg(app) }
-                        if (flycastResult.success) {
-                            prefs.edit { remove(PrefsConstants.KEY_FLYCAST_PATCHED_THIS_RUN) }
-                        } else {
-                            SnackbarManager.showError(flycastResult.message)
-                        }
-                    }
-                    if (prefs.getBoolean(PrefsConstants.KEY_MELONDUALDS_PATCHED_THIS_RUN, false)) {
-                        val melonDualDsResult = withContext(Dispatchers.IO) { revertMelonDualDsCfg(app) }
-                        if (melonDualDsResult.success) {
-                            prefs.edit { remove(PrefsConstants.KEY_MELONDUALDS_PATCHED_THIS_RUN) }
-                        } else {
-                            SnackbarManager.showError(melonDualDsResult.message)
-                        }
-                    }
-                    if (prefs.getBoolean(PrefsConstants.KEY_MUPEN64_PATCHED_THIS_RUN, false)) {
-                        val mupen64Result = withContext(Dispatchers.IO) { revertMupen64Cfg(app) }
-                        if (mupen64Result.success) {
-                            prefs.edit { remove(PrefsConstants.KEY_MUPEN64_PATCHED_THIS_RUN) }
-                        } else {
-                            SnackbarManager.showError(mupen64Result.message)
-                        }
-                    }
-                    if (prefs.getBoolean(PrefsConstants.KEY_EMUCOREX_PATCHED_THIS_RUN, false)) {
-                        val emuCoreXResult = withContext(Dispatchers.IO) { revertEmuCoreXCfg(app) }
-                        if (emuCoreXResult.success) {
-                            prefs.edit { remove(PrefsConstants.KEY_EMUCOREX_PATCHED_THIS_RUN) }
-                        } else {
-                            SnackbarManager.showError(emuCoreXResult.message)
+                            SnackbarManager.showError(result.message)
                         }
                     }
                 }
@@ -454,22 +375,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             val retroArchPatched = withContext(Dispatchers.IO) { checkRetroArchIsPatched(app, retroArchTreeUri) }
             val dolphinPatched = withContext(Dispatchers.IO) { checkIsDolphinPatched(app, dolphinTreeUri) }
             val ppssppPatched = withContext(Dispatchers.IO) { checkIsPpssppPatched(app, ppssppTreeUri) }
-            val armsx2Patched = withContext(Dispatchers.IO) { checkIsArmsx2Patched(app) }
-            val flycastPatched = withContext(Dispatchers.IO) { checkIsFlycastPatched(app) }
-            val melonDualDsPatched = withContext(Dispatchers.IO) { checkIsMelonDualDsPatched(app) }
-            val mupen64Patched = withContext(Dispatchers.IO) { checkIsMupen64Patched(app) }
-            val emuCoreXPatched = withContext(Dispatchers.IO) { checkIsEmuCoreXPatched(app) }
-            val anyPatched = retroArchPatched || dolphinPatched || ppssppPatched || armsx2Patched || flycastPatched || melonDualDsPatched || mupen64Patched || emuCoreXPatched
+            val anyBroadcastPatched = Emulator.BROADCAST_MANAGED.any { checkIsBroadcastPatched(app, it) }
+            val anyPatched = retroArchPatched || dolphinPatched || ppssppPatched || anyBroadcastPatched
             val proxyRunning = ProxyService.isRunning(app)
             val prefs = app.getSharedPreferences(PrefsConstants.PREFS_NAME, Context.MODE_PRIVATE)
             val retroArchPatchedThisRun = prefs.getBoolean(PrefsConstants.KEY_RETROARCH_PATCHED_THIS_RUN, false)
             val dolphinPatchedThisRun = prefs.getBoolean(PrefsConstants.KEY_DOLPHIN_PATCHED_THIS_RUN, false)
             val ppssppPatchedThisRun = prefs.getBoolean(PrefsConstants.KEY_PPSSPP_PATCHED_THIS_RUN, false)
-            val armsx2PatchedThisRun = prefs.getBoolean(PrefsConstants.KEY_ARMSX2_PATCHED_THIS_RUN, false)
-            val flycastPatchedThisRun = prefs.getBoolean(PrefsConstants.KEY_FLYCAST_PATCHED_THIS_RUN, false)
-            val melonDualDsPatchedThisRun = prefs.getBoolean(PrefsConstants.KEY_MELONDUALDS_PATCHED_THIS_RUN, false)
-            val mupen64PatchedThisRun = prefs.getBoolean(PrefsConstants.KEY_MUPEN64_PATCHED_THIS_RUN, false)
-            val emuCoreXPatchedThisRun = prefs.getBoolean(PrefsConstants.KEY_EMUCOREX_PATCHED_THIS_RUN, false)
 
             if (!proxyRunning && shouldKeepRunning) {
                 ProxyService.start(app)
@@ -483,7 +395,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 return@launch
             }
 
-            if ((!anyPatched && !retroArchPatchedThisRun && !dolphinPatchedThisRun && !ppssppPatchedThisRun && !armsx2PatchedThisRun && !flycastPatchedThisRun && !melonDualDsPatchedThisRun && !mupen64PatchedThisRun && !emuCoreXPatchedThisRun) || proxyRunning) {
+            if ((!anyPatched && !retroArchPatchedThisRun && !dolphinPatchedThisRun && !ppssppPatchedThisRun) || proxyRunning) {
                 _state.value = _state.value.copy(
                     proxyRunning = proxyRunning,
                     cfgIsPatched = anyPatched
@@ -497,7 +409,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     revertRetroArchCfg(app, retroArchTreeUri, restoreHardcore)
                 }
             } else {
-                PatchResult(success = true, message = "RetroArch not patched this run.")
+                ConfigPatchResult(success = true, message = "RetroArch not patched this run.")
             }
             val retroArchRevertedTarget = retroArchResult.success && retroArchResult.copyBackPath == null
 
@@ -507,7 +419,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     revertDolphinCfg(app, dolphinTreeUri, restoreDolphinHardcore)
                 }
             } else {
-                DolphinPatchResult(success = true, message = "Dolphin not patched this run.", skippedNotInstalled = true)
+                ConfigPatchResult(success = true, message = "Dolphin not patched this run.", skippedNotInstalled = true)
             }
             val dolphinRevertedTarget = dolphinResult.success && dolphinResult.copyBackPath == null
 
@@ -517,54 +429,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     revertPpssppCfg(app, ppssppTreeUri, restorePpssppHardcore)
                 }
             } else {
-                PpssppPatchResult(success = true, message = "PPSSPP not patched this run.", skippedNotInstalled = true)
+                ConfigPatchResult(success = true, message = "PPSSPP not patched this run.", skippedNotInstalled = true)
             }
             val ppssppRevertedTarget = ppssppResult.success && ppssppResult.copyBackPath == null
 
-            val armsx2Result = if (armsx2PatchedThisRun || armsx2Patched) {
-                withContext(Dispatchers.IO) {
-                    revertArmsx2Cfg(app)
-                }
-            } else {
-                Armsx2PatchResult(success = true, message = "ARMSX2 not patched this run.", skippedNotInstalled = true)
-            }
-            val armsx2RevertedTarget = armsx2Result.success
-
-            val flycastResult = if (flycastPatchedThisRun || flycastPatched) {
-                withContext(Dispatchers.IO) {
-                    revertFlycastCfg(app)
-                }
-            } else {
-                FlycastPatchResult(success = true, message = "Flycast not patched this run.", skippedNotInstalled = true)
-            }
-            val flycastRevertedTarget = flycastResult.success
-
-            val melonDualDsResult = if (melonDualDsPatchedThisRun || melonDualDsPatched) {
-                withContext(Dispatchers.IO) {
-                    revertMelonDualDsCfg(app)
-                }
-            } else {
-                MelonDualDsPatchResult(success = true, message = "melonDualDS not patched this run.", skippedNotInstalled = true)
-            }
-            val melonDualDsRevertedTarget = melonDualDsResult.success
-
-            val mupen64Result = if (mupen64PatchedThisRun || mupen64Patched) {
-                withContext(Dispatchers.IO) {
-                    revertMupen64Cfg(app)
-                }
-            } else {
-                Mupen64PatchResult(success = true, message = "Mupen64Plus not patched this run.", skippedNotInstalled = true)
-            }
-            val mupen64RevertedTarget = mupen64Result.success
-
-            val emuCoreXResult = if (emuCoreXPatchedThisRun || emuCoreXPatched) {
-                withContext(Dispatchers.IO) {
-                    revertEmuCoreXCfg(app)
-                }
-            } else {
-                EmuCoreXPatchResult(success = true, message = "EmuCoreX not patched this run.", skippedNotInstalled = true)
-            }
-            val emuCoreXRevertedTarget = emuCoreXResult.success
+            val broadcastResults = revertBroadcastEmulators(app, prefs)
+            val failedBroadcastRevert = broadcastResults.values.firstOrNull { !it.success }
 
             if (retroArchRevertedTarget) {
                 prefs.edit {
@@ -587,36 +457,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 }
             }
 
-            if (armsx2RevertedTarget) {
-                prefs.edit {
-                    remove(PrefsConstants.KEY_ARMSX2_PATCHED_THIS_RUN)
-                }
-            }
-
-            if (flycastRevertedTarget) {
-                prefs.edit {
-                    remove(PrefsConstants.KEY_FLYCAST_PATCHED_THIS_RUN)
-                }
-            }
-
-            if (melonDualDsRevertedTarget) {
-                prefs.edit {
-                    remove(PrefsConstants.KEY_MELONDUALDS_PATCHED_THIS_RUN)
-                }
-            }
-
-            if (mupen64RevertedTarget) {
-                prefs.edit {
-                    remove(PrefsConstants.KEY_MUPEN64_PATCHED_THIS_RUN)
-                }
-            }
-
-            if (emuCoreXRevertedTarget) {
-                prefs.edit {
-                    remove(PrefsConstants.KEY_EMUCOREX_PATCHED_THIS_RUN)
-                }
-            }
-
             val needsSafGrant = retroArchResult.needsSafGrant || dolphinResult.needsSafGrant || ppssppResult.needsSafGrant
             val safGrantTarget = when {
                 retroArchResult.needsSafGrant -> SafGrantTarget.RetroArch
@@ -628,7 +468,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
             _state.value = _state.value.copy(
                 proxyRunning = false,
-                cfgIsPatched = !(retroArchRevertedTarget && dolphinRevertedTarget && ppssppRevertedTarget && armsx2RevertedTarget && flycastRevertedTarget && melonDualDsRevertedTarget && mupen64RevertedTarget && emuCoreXRevertedTarget),
+                cfgIsPatched = !(retroArchRevertedTarget && dolphinRevertedTarget && ppssppRevertedTarget && failedBroadcastRevert == null),
                 needsSafGrant = needsSafGrant,
                 safGrantTarget = safGrantTarget,
                 cfgCopyBackPath = cfgCopyBackPath
@@ -640,22 +480,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 SnackbarManager.showError(dolphinResult.message)
             } else if (!ppssppRevertedTarget && !ppssppResult.needsSafGrant) {
                 SnackbarManager.showError(ppssppResult.message)
-            } else if (!armsx2RevertedTarget) {
-                SnackbarManager.showError(armsx2Result.message)
-            } else if (!flycastRevertedTarget) {
-                SnackbarManager.showError(flycastResult.message)
-            } else if (!melonDualDsRevertedTarget) {
-                SnackbarManager.showError(melonDualDsResult.message)
-            } else if (!mupen64RevertedTarget) {
-                SnackbarManager.showError(mupen64Result.message)
-            } else if (!emuCoreXRevertedTarget) {
-                SnackbarManager.showError(emuCoreXResult.message)
+            } else if (failedBroadcastRevert != null) {
+                SnackbarManager.showError(failedBroadcastRevert.message)
             }
         }
     }
 
     private fun restoreDolphinCredentialsOnLaunch(emulatorSupport: EmulatorSupport) {
-        if (!emulatorSupport.dolphinEnabled) return
+        if (!emulatorSupport.isEnabled(Emulator.Dolphin)) return
 
         val app = getApplication<Application>()
         viewModelScope.launch {
@@ -949,7 +781,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 PrefsConstants.clearPpssppSafUri(app)
                 PrefsConstants.savePpssppRootMode(app, PrefsConstants.PpssppRootMode.Unknown)
                 _state.value = _state.value.copy(ppssppShizukuRootModeUnknown = true)
-                setPpssppEnabledInternal(false)
+                setEmulatorEnabledInternal(Emulator.Ppsspp, false)
                 SnackbarManager.showMessage(str(R.string.proxy_start_aborted_ppsspp_saf_rejected), SnackbarDuration.Indefinite)
             }
             SafGrantTarget.AllFilesAccess -> {
@@ -1109,6 +941,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                             executeShizukuManualPatch(app, emulatorSupport, "patch")
                         }
                         refreshShizukuStatus()
+                        if (shizukuResult.success) {
+                            saveShizukuHardcoreWasEnabled(app, shizukuResult.hardcoreWasEnabled)
+                        }
                         if (!shizukuResult.success) {
                             if (shizukuResult.needsPpssppSafGrant) {
                                 PrefsConstants.savePpssppRootMode(app, PrefsConstants.PpssppRootMode.CustomRoot)
@@ -1128,94 +963,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         }
                     }
 
-                    val armsx2Result = if (emulatorSupport.armsx2Enabled) {
-                        withContext(Dispatchers.IO) { patchArmsx2Cfg(app) }
-                    } else {
-                        Armsx2PatchResult(success = true, message = "ARMSX2 disabled.", skippedNotInstalled = true)
-                    }
-                    if (emulatorSupport.armsx2Enabled) {
-                        if (!armsx2Result.success && !armsx2Result.skippedNotInstalled) {
-                            pendingProxyStart = false
-                            SnackbarManager.showError(armsx2Result.message)
-                            return@launch
-                        }
-                        if (armsx2Result.success && !armsx2Result.skippedNotInstalled) {
-                            prefs.edit { putBoolean(PrefsConstants.KEY_ARMSX2_PATCHED_THIS_RUN, true) }
-                        }
-                    } else {
-                        prefs.edit { remove(PrefsConstants.KEY_ARMSX2_PATCHED_THIS_RUN) }
-                    }
-
-                    val flycastResult = if (emulatorSupport.flycastEnabled) {
-                        withContext(Dispatchers.IO) { patchFlycastCfg(app) }
-                    } else {
-                        FlycastPatchResult(success = true, message = "Flycast disabled.", skippedNotInstalled = true)
-                    }
-                    if (emulatorSupport.flycastEnabled) {
-                        if (!flycastResult.success && !flycastResult.skippedNotInstalled) {
-                            pendingProxyStart = false
-                            SnackbarManager.showError(flycastResult.message)
-                            return@launch
-                        }
-                        if (flycastResult.success && !flycastResult.skippedNotInstalled) {
-                            prefs.edit { putBoolean(PrefsConstants.KEY_FLYCAST_PATCHED_THIS_RUN, true) }
-                        }
-                    } else {
-                        prefs.edit { remove(PrefsConstants.KEY_FLYCAST_PATCHED_THIS_RUN) }
-                    }
-
-                    val melonDualDsResult = if (emulatorSupport.melonDualDsEnabled) {
-                        withContext(Dispatchers.IO) { patchMelonDualDsCfg(app) }
-                    } else {
-                        MelonDualDsPatchResult(success = true, message = "melonDualDS disabled.", skippedNotInstalled = true)
-                    }
-                    if (emulatorSupport.melonDualDsEnabled) {
-                        if (!melonDualDsResult.success && !melonDualDsResult.skippedNotInstalled) {
-                            pendingProxyStart = false
-                            SnackbarManager.showError(melonDualDsResult.message)
-                            return@launch
-                        }
-                        if (melonDualDsResult.success && !melonDualDsResult.skippedNotInstalled) {
-                            prefs.edit { putBoolean(PrefsConstants.KEY_MELONDUALDS_PATCHED_THIS_RUN, true) }
-                        }
-                    } else {
-                        prefs.edit { remove(PrefsConstants.KEY_MELONDUALDS_PATCHED_THIS_RUN) }
-                    }
-
-                    val mupen64Result = if (emulatorSupport.mupen64Enabled) {
-                        withContext(Dispatchers.IO) { patchMupen64Cfg(app) }
-                    } else {
-                        Mupen64PatchResult(success = true, message = "Mupen64Plus disabled.", skippedNotInstalled = true)
-                    }
-                    if (emulatorSupport.mupen64Enabled) {
-                        if (!mupen64Result.success && !mupen64Result.skippedNotInstalled) {
-                            pendingProxyStart = false
-                            SnackbarManager.showError(mupen64Result.message)
-                            return@launch
-                        }
-                        if (mupen64Result.success && !mupen64Result.skippedNotInstalled) {
-                            prefs.edit { putBoolean(PrefsConstants.KEY_MUPEN64_PATCHED_THIS_RUN, true) }
-                        }
-                    } else {
-                        prefs.edit { remove(PrefsConstants.KEY_MUPEN64_PATCHED_THIS_RUN) }
-                    }
-
-                    val emuCoreXResult = if (emulatorSupport.emuCoreXEnabled) {
-                        withContext(Dispatchers.IO) { patchEmuCoreXCfg(app) }
-                    } else {
-                        EmuCoreXPatchResult(success = true, message = "EmuCoreX disabled.", skippedNotInstalled = true)
-                    }
-                    if (emulatorSupport.emuCoreXEnabled) {
-                        if (!emuCoreXResult.success && !emuCoreXResult.skippedNotInstalled) {
-                            pendingProxyStart = false
-                            SnackbarManager.showError(emuCoreXResult.message)
-                            return@launch
-                        }
-                        if (emuCoreXResult.success && !emuCoreXResult.skippedNotInstalled) {
-                            prefs.edit { putBoolean(PrefsConstants.KEY_EMUCOREX_PATCHED_THIS_RUN, true) }
-                        }
-                    } else {
-                        prefs.edit { remove(PrefsConstants.KEY_EMUCOREX_PATCHED_THIS_RUN) }
+                    patchBroadcastEmulators(app, prefs, emulatorSupport)?.let { failure ->
+                        pendingProxyStart = false
+                        SnackbarManager.showError(failure.message)
+                        return@launch
                     }
 
                     ProxyService.start(app)
@@ -1240,12 +991,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 val dolphinTreeUri = loadDolphinSafUri()
                 val ppssppTreeUri = loadPpssppSafUri()
 
-                val result = if (emulatorSupport.retroArchEnabled) {
+                val result = if (emulatorSupport.isEnabled(Emulator.RetroArch)) {
                     withContext(Dispatchers.IO) { patchRetroArchCfg(app, retroArchTreeUri) }
                 } else {
-                    PatchResult(success = true, message = "RetroArch disabled.")
+                    ConfigPatchResult(success = true, message = "RetroArch disabled.")
                 }
-                if (emulatorSupport.retroArchEnabled) {
+                if (emulatorSupport.isEnabled(Emulator.RetroArch)) {
                     if (result.needsSafGrant) {
                         PrefsConstants.clearSafUri(app)
                         _state.value = _state.value.copy(
@@ -1278,19 +1029,19 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     prefs.edit { remove(PrefsConstants.KEY_RETROARCH_PATCHED_THIS_RUN) }
                 }
 
-                val dolphinStoredCredentials = if (emulatorSupport.dolphinEnabled) {
+                val dolphinStoredCredentials = if (emulatorSupport.isEnabled(Emulator.Dolphin)) {
                     withContext(Dispatchers.IO) { loadLoginCredentials(db) }
                 } else {
                     null
                 }
-                val dolphinResult = if (emulatorSupport.dolphinEnabled) {
+                val dolphinResult = if (emulatorSupport.isEnabled(Emulator.Dolphin)) {
                     withContext(Dispatchers.IO) {
                         patchDolphinCfg(app, dolphinTreeUri, dolphinStoredCredentials)
                     }
                 } else {
-                    DolphinPatchResult(success = true, message = "Dolphin disabled.", skippedNotInstalled = true)
+                    ConfigPatchResult(success = true, message = "Dolphin disabled.", skippedNotInstalled = true)
                 }
-                if (emulatorSupport.dolphinEnabled) {
+                if (emulatorSupport.isEnabled(Emulator.Dolphin)) {
                     if (dolphinResult.needsSafGrant) {
                         PrefsConstants.clearDolphinSafUri(app)
                         _state.value = _state.value.copy(
@@ -1318,14 +1069,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     prefs.edit { remove(PrefsConstants.KEY_DOLPHIN_PATCHED_THIS_RUN) }
                 }
 
-                val ppssppResult = if (emulatorSupport.ppssppEnabled) {
+                val ppssppResult = if (emulatorSupport.isEnabled(Emulator.Ppsspp)) {
                     withContext(Dispatchers.IO) {
                         patchPpssppCfg(app, ppssppTreeUri)
                     }
                 } else {
-                    PpssppPatchResult(success = true, message = "PPSSPP disabled.", skippedNotInstalled = true)
+                    ConfigPatchResult(success = true, message = "PPSSPP disabled.", skippedNotInstalled = true)
                 }
-                if (emulatorSupport.ppssppEnabled) {
+                if (emulatorSupport.isEnabled(Emulator.Ppsspp)) {
                     if (ppssppResult.needsSafGrant) {
                         PrefsConstants.clearPpssppSafUri(app)
                         _state.value = _state.value.copy(
@@ -1353,109 +1104,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     prefs.edit { remove(PrefsConstants.KEY_PPSSPP_PATCHED_THIS_RUN) }
                 }
 
-                val armsx2Result = if (emulatorSupport.armsx2Enabled) {
-                    withContext(Dispatchers.IO) {
-                        patchArmsx2Cfg(app)
-                    }
-                } else {
-                    Armsx2PatchResult(success = true, message = "ARMSX2 disabled.", skippedNotInstalled = true)
-                }
-                if (emulatorSupport.armsx2Enabled) {
-                    if (!armsx2Result.success && !armsx2Result.skippedNotInstalled) {
-                        SnackbarManager.showError(armsx2Result.message)
-                        pendingProxyStart = false
-                        return@launch
-                    } else if (armsx2Result.success && !armsx2Result.skippedNotInstalled) {
-                        prefs.edit {
-                            putBoolean(PrefsConstants.KEY_ARMSX2_PATCHED_THIS_RUN, true)
-                        }
-                    }
-                } else {
-                    prefs.edit { remove(PrefsConstants.KEY_ARMSX2_PATCHED_THIS_RUN) }
-                }
-
-                val flycastResult = if (emulatorSupport.flycastEnabled) {
-                    withContext(Dispatchers.IO) {
-                        patchFlycastCfg(app)
-                    }
-                } else {
-                    FlycastPatchResult(success = true, message = "Flycast disabled.", skippedNotInstalled = true)
-                }
-                if (emulatorSupport.flycastEnabled) {
-                    if (!flycastResult.success && !flycastResult.skippedNotInstalled) {
-                        SnackbarManager.showError(flycastResult.message)
-                        pendingProxyStart = false
-                        return@launch
-                    } else if (flycastResult.success && !flycastResult.skippedNotInstalled) {
-                        prefs.edit {
-                            putBoolean(PrefsConstants.KEY_FLYCAST_PATCHED_THIS_RUN, true)
-                        }
-                    }
-                } else {
-                    prefs.edit { remove(PrefsConstants.KEY_FLYCAST_PATCHED_THIS_RUN) }
-                }
-
-                val melonDualDsResult = if (emulatorSupport.melonDualDsEnabled) {
-                    withContext(Dispatchers.IO) {
-                        patchMelonDualDsCfg(app)
-                    }
-                } else {
-                    MelonDualDsPatchResult(success = true, message = "melonDualDS disabled.", skippedNotInstalled = true)
-                }
-                if (emulatorSupport.melonDualDsEnabled) {
-                    if (!melonDualDsResult.success && !melonDualDsResult.skippedNotInstalled) {
-                        SnackbarManager.showError(melonDualDsResult.message)
-                        pendingProxyStart = false
-                        return@launch
-                    } else if (melonDualDsResult.success && !melonDualDsResult.skippedNotInstalled) {
-                        prefs.edit {
-                            putBoolean(PrefsConstants.KEY_MELONDUALDS_PATCHED_THIS_RUN, true)
-                        }
-                    }
-                } else {
-                    prefs.edit { remove(PrefsConstants.KEY_MELONDUALDS_PATCHED_THIS_RUN) }
-                }
-
-                val mupen64Result = if (emulatorSupport.mupen64Enabled) {
-                    withContext(Dispatchers.IO) {
-                        patchMupen64Cfg(app)
-                    }
-                } else {
-                    Mupen64PatchResult(success = true, message = "Mupen64Plus disabled.", skippedNotInstalled = true)
-                }
-                if (emulatorSupport.mupen64Enabled) {
-                    if (!mupen64Result.success && !mupen64Result.skippedNotInstalled) {
-                        SnackbarManager.showError(mupen64Result.message)
-                        pendingProxyStart = false
-                        return@launch
-                    } else if (mupen64Result.success && !mupen64Result.skippedNotInstalled) {
-                        prefs.edit {
-                            putBoolean(PrefsConstants.KEY_MUPEN64_PATCHED_THIS_RUN, true)
-                        }
-                    }
-                } else {
-                    prefs.edit { remove(PrefsConstants.KEY_MUPEN64_PATCHED_THIS_RUN) }
-                }
-
-                val emuCoreXResult = if (emulatorSupport.emuCoreXEnabled) {
-                    withContext(Dispatchers.IO) {
-                        patchEmuCoreXCfg(app)
-                    }
-                } else {
-                    EmuCoreXPatchResult(success = true, message = "EmuCoreX disabled.", skippedNotInstalled = true)
-                }
-                if (emulatorSupport.emuCoreXEnabled) {
-                    if (!emuCoreXResult.success && !emuCoreXResult.skippedNotInstalled) {
-                        SnackbarManager.showError(emuCoreXResult.message)
-                        pendingProxyStart = false
-                        return@launch
-                    } else if (emuCoreXResult.success && !emuCoreXResult.skippedNotInstalled) {
-                        prefs.edit {
-                            putBoolean(PrefsConstants.KEY_EMUCOREX_PATCHED_THIS_RUN, true)
-                        }
-                    }
-                } else {
-                    prefs.edit { remove(PrefsConstants.KEY_EMUCOREX_PATCHED_THIS_RUN) }
+                patchBroadcastEmulators(app, prefs, emulatorSupport)?.let { failure ->
+                    SnackbarManager.showError(failure.message)
+                    pendingProxyStart = false
+                    return@launch
                 }
 
                 val credentialsToCache = selectImportedCredentials(
@@ -1520,63 +1172,22 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     val shizukuEnabled = loadShizukuManualPatchingEnabled()
                     val shizukuResult = if (shizukuEnabled && loadEmulatorSupport(app).hasAnyShizukuManagedEnabled) {
                         withContext(Dispatchers.IO) {
-                            executeShizukuManualPatch(app, loadEmulatorSupport(app), "revert")
+                            executeShizukuManualPatch(
+                                context = app,
+                                support = loadEmulatorSupport(app),
+                                action = "revert",
+                                restoreHardcore = loadShizukuHardcoreWasEnabled(app)
+                            )
                         }.also {
                             refreshShizukuStatus()
+                            if (it.success) clearShizukuHardcoreWasEnabled(app)
                         }
                     } else {
                         null
                     }
                     val prefs = app.getSharedPreferences(PrefsConstants.PREFS_NAME, Context.MODE_PRIVATE)
-                    val armsx2PatchedThisRun = prefs.getBoolean(PrefsConstants.KEY_ARMSX2_PATCHED_THIS_RUN, false)
-                    val armsx2Result = if (armsx2PatchedThisRun) {
-                        withContext(Dispatchers.IO) { revertArmsx2Cfg(app) }
-                    } else {
-                        Armsx2PatchResult(success = true, message = "ARMSX2 not patched this run.", skippedNotInstalled = true)
-                    }
-                    if (armsx2Result.success) {
-                        prefs.edit { remove(PrefsConstants.KEY_ARMSX2_PATCHED_THIS_RUN) }
-                    }
-
-                    val flycastPatchedThisRun = prefs.getBoolean(PrefsConstants.KEY_FLYCAST_PATCHED_THIS_RUN, false)
-                    val flycastResult = if (flycastPatchedThisRun) {
-                        withContext(Dispatchers.IO) { revertFlycastCfg(app) }
-                    } else {
-                        FlycastPatchResult(success = true, message = "Flycast not patched this run.", skippedNotInstalled = true)
-                    }
-                    if (flycastResult.success) {
-                        prefs.edit { remove(PrefsConstants.KEY_FLYCAST_PATCHED_THIS_RUN) }
-                    }
-
-                    val melonDualDsPatchedThisRun = prefs.getBoolean(PrefsConstants.KEY_MELONDUALDS_PATCHED_THIS_RUN, false)
-                    val melonDualDsResult = if (melonDualDsPatchedThisRun) {
-                        withContext(Dispatchers.IO) { revertMelonDualDsCfg(app) }
-                    } else {
-                        MelonDualDsPatchResult(success = true, message = "melonDualDS not patched this run.", skippedNotInstalled = true)
-                    }
-                    if (melonDualDsResult.success) {
-                        prefs.edit { remove(PrefsConstants.KEY_MELONDUALDS_PATCHED_THIS_RUN) }
-                    }
-
-                    val mupen64PatchedThisRun = prefs.getBoolean(PrefsConstants.KEY_MUPEN64_PATCHED_THIS_RUN, false)
-                    val mupen64Result = if (mupen64PatchedThisRun) {
-                        withContext(Dispatchers.IO) { revertMupen64Cfg(app) }
-                    } else {
-                        Mupen64PatchResult(success = true, message = "Mupen64Plus not patched this run.", skippedNotInstalled = true)
-                    }
-                    if (mupen64Result.success) {
-                        prefs.edit { remove(PrefsConstants.KEY_MUPEN64_PATCHED_THIS_RUN) }
-                    }
-
-                    val emuCoreXPatchedThisRun = prefs.getBoolean(PrefsConstants.KEY_EMUCOREX_PATCHED_THIS_RUN, false)
-                    val emuCoreXResult = if (emuCoreXPatchedThisRun) {
-                        withContext(Dispatchers.IO) { revertEmuCoreXCfg(app) }
-                    } else {
-                        EmuCoreXPatchResult(success = true, message = "EmuCoreX not patched this run.", skippedNotInstalled = true)
-                    }
-                    if (emuCoreXResult.success) {
-                        prefs.edit { remove(PrefsConstants.KEY_EMUCOREX_PATCHED_THIS_RUN) }
-                    }
+                    val broadcastResults = revertBroadcastEmulators(app, prefs)
+                    val failedBroadcastRevert = broadcastResults.values.firstOrNull { !it.success }
 
                     ProxyService.stop(app)
                     _state.value = _state.value.copy(
@@ -1586,18 +1197,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         safGrantTarget = null,
                         cfgCopyBackPath = null
                     )
-                    if ((shizukuResult == null || shizukuResult.success) && armsx2Result.success && flycastResult.success && melonDualDsResult.success && mupen64Result.success && emuCoreXResult.success) {
+                    if ((shizukuResult == null || shizukuResult.success) && failedBroadcastRevert == null) {
                         SnackbarManager.showMessage(str(R.string.proxy_stopped_success))
-                    } else if (!armsx2Result.success) {
-                        SnackbarManager.showError(armsx2Result.message)
-                    } else if (!flycastResult.success) {
-                        SnackbarManager.showError(flycastResult.message)
-                    } else if (!melonDualDsResult.success) {
-                        SnackbarManager.showError(melonDualDsResult.message)
-                    } else if (!mupen64Result.success) {
-                        SnackbarManager.showError(mupen64Result.message)
-                    } else if (!emuCoreXResult.success) {
-                        SnackbarManager.showError(emuCoreXResult.message)
+                    } else if (failedBroadcastRevert != null) {
+                        SnackbarManager.showError(failedBroadcastRevert.message)
                     } else {
                         SnackbarManager.showError(shizukuResult?.message ?: "Failed to stop proxy.")
                     }
@@ -1613,7 +1216,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     val restoreHardcore = prefs.getBoolean(PrefsConstants.KEY_RETROARCH_HARDCORE_WAS_ENABLED, false)
                     withContext(Dispatchers.IO) { revertRetroArchCfg(app, retroArchTreeUri, restoreHardcore) }
                 } else {
-                    PatchResult(success = true, message = "RetroArch not patched this run.")
+                    ConfigPatchResult(success = true, message = "RetroArch not patched this run.")
                 }
                 val revertedTarget = result.success && result.copyBackPath == null
 
@@ -1624,7 +1227,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         revertDolphinCfg(app, dolphinTreeUri, restoreDolphinHardcore)
                     }
                 } else {
-                    DolphinPatchResult(success = true, message = "Dolphin not patched this run.", skippedNotInstalled = true)
+                    ConfigPatchResult(success = true, message = "Dolphin not patched this run.", skippedNotInstalled = true)
                 }
 
                 val ppssppPatchedThisRun = prefs.getBoolean(PrefsConstants.KEY_PPSSPP_PATCHED_THIS_RUN, false)
@@ -1634,53 +1237,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         revertPpssppCfg(app, ppssppTreeUri, restorePpssppHardcore)
                     }
                 } else {
-                    PpssppPatchResult(success = true, message = "PPSSPP not patched this run.", skippedNotInstalled = true)
+                    ConfigPatchResult(success = true, message = "PPSSPP not patched this run.", skippedNotInstalled = true)
                 }
 
-                val armsx2PatchedThisRun = prefs.getBoolean(PrefsConstants.KEY_ARMSX2_PATCHED_THIS_RUN, false)
-                val armsx2Result = if (armsx2PatchedThisRun) {
-                    withContext(Dispatchers.IO) {
-                        revertArmsx2Cfg(app)
-                    }
-                } else {
-                    Armsx2PatchResult(success = true, message = "ARMSX2 not patched this run.", skippedNotInstalled = true)
-                }
-
-                val flycastPatchedThisRun = prefs.getBoolean(PrefsConstants.KEY_FLYCAST_PATCHED_THIS_RUN, false)
-                val flycastResult = if (flycastPatchedThisRun) {
-                    withContext(Dispatchers.IO) {
-                        revertFlycastCfg(app)
-                    }
-                } else {
-                    FlycastPatchResult(success = true, message = "Flycast not patched this run.", skippedNotInstalled = true)
-                }
-
-                val melonDualDsPatchedThisRun = prefs.getBoolean(PrefsConstants.KEY_MELONDUALDS_PATCHED_THIS_RUN, false)
-                val melonDualDsResult = if (melonDualDsPatchedThisRun) {
-                    withContext(Dispatchers.IO) {
-                        revertMelonDualDsCfg(app)
-                    }
-                } else {
-                    MelonDualDsPatchResult(success = true, message = "melonDualDS not patched this run.", skippedNotInstalled = true)
-                }
-
-                val mupen64PatchedThisRun = prefs.getBoolean(PrefsConstants.KEY_MUPEN64_PATCHED_THIS_RUN, false)
-                val mupen64Result = if (mupen64PatchedThisRun) {
-                    withContext(Dispatchers.IO) {
-                        revertMupen64Cfg(app)
-                    }
-                } else {
-                    Mupen64PatchResult(success = true, message = "Mupen64Plus not patched this run.", skippedNotInstalled = true)
-                }
-
-                val emuCoreXPatchedThisRun = prefs.getBoolean(PrefsConstants.KEY_EMUCOREX_PATCHED_THIS_RUN, false)
-                val emuCoreXResult = if (emuCoreXPatchedThisRun) {
-                    withContext(Dispatchers.IO) {
-                        revertEmuCoreXCfg(app)
-                    }
-                } else {
-                    EmuCoreXPatchResult(success = true, message = "EmuCoreX not patched this run.", skippedNotInstalled = true)
-                }
+                val broadcastResults = revertBroadcastEmulators(app, prefs)
+                val failedBroadcastRevert = broadcastResults.values.firstOrNull { !it.success }
 
                 if (revertedTarget) {
                     prefs.edit {
@@ -1701,36 +1262,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         remove(PrefsConstants.KEY_PPSSPP_PATCHED_THIS_RUN)
                     }
                 }
-                if (armsx2Result.success) {
-                    prefs.edit {
-                        remove(PrefsConstants.KEY_ARMSX2_PATCHED_THIS_RUN)
-                    }
-                }
-
-                if (flycastResult.success) {
-                    prefs.edit {
-                        remove(PrefsConstants.KEY_FLYCAST_PATCHED_THIS_RUN)
-                    }
-                }
-
-                if (mupen64Result.success) {
-                    prefs.edit {
-                        remove(PrefsConstants.KEY_MUPEN64_PATCHED_THIS_RUN)
-                    }
-                }
-
-                if (emuCoreXResult.success) {
-                    prefs.edit {
-                        remove(PrefsConstants.KEY_EMUCOREX_PATCHED_THIS_RUN)
-                    }
-                }
-
-                if (melonDualDsResult.success) {
-                    prefs.edit {
-                        remove(PrefsConstants.KEY_MELONDUALDS_PATCHED_THIS_RUN)
-                    }
-                }
-
                 ProxyService.stop(app)
 
                 _state.value = _state.value.copy(
@@ -1777,16 +1308,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     SnackbarManager.showError(ppssppResult.message)
                 } else if (!ppssppResult.success && !ppssppResult.skippedNotInstalled) {
                     SnackbarManager.showError(ppssppResult.message)
-                } else if (!armsx2Result.success && !armsx2Result.skippedNotInstalled) {
-                    SnackbarManager.showError(armsx2Result.message)
-                } else if (!flycastResult.success && !flycastResult.skippedNotInstalled) {
-                    SnackbarManager.showError(flycastResult.message)
-                } else if (!melonDualDsResult.success && !melonDualDsResult.skippedNotInstalled) {
-                    SnackbarManager.showError(melonDualDsResult.message)
-                } else if (!mupen64Result.success && !mupen64Result.skippedNotInstalled) {
-                    SnackbarManager.showError(mupen64Result.message)
-                } else if (!emuCoreXResult.success && !emuCoreXResult.skippedNotInstalled) {
-                    SnackbarManager.showError(emuCoreXResult.message)
+                } else if (failedBroadcastRevert != null && !failedBroadcastRevert.skippedNotInstalled) {
+                    SnackbarManager.showError(failedBroadcastRevert.message)
                 }
             } finally {
                 delay(250.milliseconds)
@@ -1812,11 +1335,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 checkRetroArchIsPatched(app, treeUri) ||
                     checkIsDolphinPatched(app, loadDolphinSafUri()) ||
                     checkIsPpssppPatched(app, loadPpssppSafUri()) ||
-                    checkIsArmsx2Patched(app) ||
-                    checkIsFlycastPatched(app) ||
-                    checkIsMelonDualDsPatched(app) ||
-                    checkIsMupen64Patched(app) ||
-                    checkIsEmuCoreXPatched(app)
+                    Emulator.BROADCAST_MANAGED.any { checkIsBroadcastPatched(app, it) }
             }
             _state.value = _state.value.copy(cfgIsPatched = patched)
         }
@@ -2000,10 +1519,31 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun deleteCachedGame(game: CachedGame) {
+        removeCachedGamesFromState(setOf(game.gameId))
         viewModelScope.launch(Dispatchers.IO) {
             db.cacheDao().deleteByKeyPrefix(CacheKeys.patchPrefix(game.gameId))
             deleteCachedImagesForGame(application, game.gameId)
         }
+    }
+
+    fun deleteConsoleGames(consoleId: Int) {
+        val games = _state.value.cachedGames.filter { it.consoleId == consoleId }
+        if (games.isEmpty()) return
+        val gameIds = games.map { it.gameId }.toSet()
+        removeCachedGamesFromState(gameIds)
+        viewModelScope.launch(Dispatchers.IO) {
+            games.forEach { game ->
+                db.cacheDao().deleteByKeyPrefix(CacheKeys.patchPrefix(game.gameId))
+                deleteCachedImagesForGame(application, game.gameId)
+            }
+        }
+    }
+
+    private fun removeCachedGamesFromState(gameIds: Set<String>) {
+        pendingDeletedGameIds.addAll(gameIds)
+        val remaining = _state.value.cachedGames.filter { it.gameId !in gameIds }
+        _cachedGames.value = remaining
+        _state.value = _state.value.copy(cachedGames = remaining)
     }
 
     fun refreshGames() {
@@ -2041,9 +1581,19 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    private var smartCacheJob: Job? = null
+
+    fun cancelSmartCache() {
+        if (smartCacheJob?.isActive != true) return
+        val abortingMessage = str(R.string.smart_cache_aborting)
+        _state.value = _state.value.copy(scanProgress = abortingMessage)
+        SnackbarManager.showProgress(abortingMessage)
+        smartCacheJob?.cancel()
+    }
+
     fun startSmartCache() {
         val app = getApplication<Application>()
-        viewModelScope.launch {
+        smartCacheJob = viewModelScope.launch {
             Log.i("RAProxy/SmartCache", "startSmartCache invoked cachedGames=${_state.value.cachedGames.size}")
             if (_state.value.cachedGames.size >= MAX_CACHED_GAMES) {
                 SnackbarManager.showMessage(str(R.string.cached_games_limit_reached, MAX_CACHED_GAMES), SnackbarDuration.Indefinite)
@@ -2053,8 +1603,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             val romTreeUris = loadSmartCacheRomSafUris()
             val startingMessage = str(R.string.smart_cache_starting)
             _state.value = _state.value.copy(scanInProgress = true, scanProgress = startingMessage)
-            SnackbarManager.showProgress(startingMessage)
+            SnackbarManager.showProgress(startingMessage, onAbort = ::cancelSmartCache)
             var completionMessage: String? = null
+            var completionDuration = SnackbarDuration.Indefinite
             try {
                 val userAgent = withContext(Dispatchers.IO) { proxyUserAgent(loadUserAgent(db)) }
                 val result = withContext(Dispatchers.IO) {
@@ -2071,7 +1622,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     ) { current, total, label ->
                         val progressMessage = str(R.string.smart_cache_progress, current, total, label)
                         _state.value = _state.value.copy(scanProgress = progressMessage)
-                        SnackbarManager.showProgress(progressMessage)
+                        SnackbarManager.showProgress(progressMessage, onAbort = ::cancelSmartCache)
                     }
                 }
                 Log.i(
@@ -2086,6 +1637,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                                 SmartCacheEmulator.RetroArch -> add(SafGrantTarget.RetroArch)
                                 SmartCacheEmulator.Dolphin -> add(SafGrantTarget.Dolphin)
                                 SmartCacheEmulator.Ppsspp -> add(SafGrantTarget.Ppsspp)
+                                SmartCacheEmulator.WatermelonDs -> Unit
+                                SmartCacheEmulator.Armsx1 -> Unit
+                                SmartCacheEmulator.Armsx2 -> Unit
                             }
                         }
                         if (result.message == "needs_retroarch_shared_access") {
@@ -2146,6 +1700,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     }
                 }
                 completionMessage = message
+            } catch (c: CancellationException) {
+                Log.i("RAProxy/SmartCache", "startSmartCache aborted")
+                completionMessage = str(R.string.smart_cache_aborted)
+                completionDuration = SnackbarDuration.Short
             } catch (t: Throwable) {
                 Log.e("RAProxy/SmartCache", "startSmartCache failed", t)
                 SnackbarManager.showError(t.message ?: "Smart Cache failed.")
@@ -2155,49 +1713,191 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 SnackbarManager.showProgress(null)
             }
             completionMessage?.let {
-                SnackbarManager.showMessage(it, SnackbarDuration.Indefinite)
+                SnackbarManager.showMessage(it, completionDuration)
             }
         }
     }
 
-    private suspend fun resolvePendingAward(award: PendingAward): PendingAwardUi {
+    private class ParsedAchievement(
+        val id: Int,
+        val title: String?,
+        val description: String?,
+        val points: Int,
+        val badgeName: String?,
+        val core: Boolean
+    )
+
+    private class ParsedPatch(
+        val cacheKey: String,
+        val cachedAt: Long,
+        val gameId: String,
+        val user: String,
+        val title: String,
+        val consoleId: Int,
+        val imagePath: String?,
+        val imageUrl: String?,
+        val achievements: List<ParsedAchievement>
+    )
+
+    private class CachedUnlocks(val cachedAt: Long, val ids: Set<Int>)
+
+    private inner class PatchView(
+        val summary: CacheEntrySummary,
+        val parsed: ParsedPatch,
+        private val badgeNames: Set<String>
+    ) {
+        val gameId: String get() = parsed.gameId
+        val user: String get() = parsed.user
+        val achievements: List<ParsedAchievement> get() = parsed.achievements
+
+        val imageIconUrl: String? by lazy {
+            parsed.gameId.toIntOrNull()?.let { resolveCachedGameIconPath(application, it) }
+                ?: parsed.imagePath?.let { resolveCachedStaticAsset(application, it)?.absolutePath }
+                ?: parsed.imageUrl
+        }
+
+        fun badgeUrl(achievement: ParsedAchievement): String? = achievement.badgeName?.let { name ->
+            if ("$name.png" in badgeNames) cachedBadgePath(application, name)
+            else "https://i.retroachievements.org/Badge/$name.png"
+        }
+    }
+
+    private class AchievementRef(val patch: PatchView, val achievement: ParsedAchievement)
+
+    private fun parsePatch(summary: CacheEntrySummary, body: String): ParsedPatch? {
+        val parts = summary.cacheKey.split(":")
+        if (parts.size < 3) return null
+        val patchData = runCatching { JSONObject(body).getJSONObject("PatchData") }.getOrNull()
+        return ParsedPatch(
+            cacheKey = summary.cacheKey,
+            cachedAt = summary.cachedAt,
+            gameId = parts[1],
+            user = parts[2],
+            title = patchData?.optString("Title") ?: parts[1],
+            consoleId = patchData?.optInt("ConsoleID", 0) ?: 0,
+            imagePath = patchData?.let(::patchImagePath),
+            imageUrl = patchData?.let(::patchImageUrl),
+            achievements = parseAchievements(patchData?.optJSONArray("Achievements"))
+        )
+    }
+
+    private fun parseAchievements(achievements: JSONArray?): List<ParsedAchievement> {
+        if (achievements == null) return emptyList()
+        return buildList(achievements.length()) {
+            for (i in 0 until achievements.length()) {
+                val achievement = achievements.optJSONObject(i) ?: continue
+                val achievementId = achievement.optInt("ID", 0)
+                if (achievementId == 0) continue
+                add(
+                    ParsedAchievement(
+                        id = achievementId,
+                        title = achievement.optString("Title").takeIf { it.isNotEmpty() },
+                        description = achievement.optString("Description").takeIf { it.isNotEmpty() },
+                        points = achievement.optInt("Points", 0),
+                        badgeName = achievement.optString("BadgeName").takeIf { it.isNotEmpty() },
+                        core = achievement.optInt("Flags", RC_ACHIEVEMENT_FLAG_CORE) == RC_ACHIEVEMENT_FLAG_CORE
+                    )
+                )
+            }
+        }
+    }
+
+    private suspend fun loadPatchViews(
+        summaries: List<CacheEntrySummary>,
+        badgeNames: Set<String>
+    ): List<PatchView> {
+        val views = ArrayList<PatchView>(summaries.size)
+        for (summary in summaries) {
+            val parsed = patchCache[summary.id]
+                ?.takeIf { it.cachedAt == summary.cachedAt && it.cacheKey == summary.cacheKey }
+                ?: db.cacheDao().bodyForSummary(summary)
+                    ?.let { body -> parsePatch(summary, body) }
+                    ?.also { patchCache[summary.id] = it }
+                ?: continue
+            views += PatchView(summary, parsed, badgeNames)
+        }
+        patchCache.keys.retainAll(summaries.mapTo(HashSet()) { it.id })
+        return views
+    }
+
+    private fun buildAchievementIndex(patches: List<PatchView>): Map<Int, AchievementRef> = buildMap {
+        patches.forEach { patch ->
+            patch.achievements.forEach { achievement ->
+                putIfAbsent(achievement.id, AchievementRef(patch, achievement))
+            }
+        }
+    }
+
+    private suspend fun unlockedIdsFor(summary: CacheEntrySummary?): Set<Int> {
+        if (summary == null) return emptySet()
+        unlockCache[summary.id]?.let { if (it.cachedAt == summary.cachedAt) return it.ids }
+        val body = db.cacheDao().bodyForSummary(summary) ?: return emptySet()
+        val ids = runCatching {
+            val unlocks = JSONObject(body).optJSONArray("UserUnlocks") ?: return@runCatching emptySet()
+            buildSet(unlocks.length()) {
+                for (i in 0 until unlocks.length()) add(unlocks.optInt(i))
+            }
+        }.getOrDefault(emptySet())
+        unlockCache[summary.id] = CachedUnlocks(summary.cachedAt, ids)
+        return ids
+    }
+
+    private suspend fun buildCachedGame(
+        patch: PatchView,
+        unlockSummary: CacheEntrySummary?,
+        pendingAwardCount: Int
+    ): CachedGame {
+        val unlocked = unlockedIdsFor(unlockSummary)
+        val coreAchievements = patch.achievements.filter { it.id > 0 && it.id != WARNING_ACHIEVEMENT_ID && it.core }
+        return CachedGame(
+            gameId = patch.gameId,
+            title = patch.parsed.title,
+            user = patch.user,
+            consoleId = patch.parsed.consoleId,
+            sourceRomPath = patch.summary.sourceRomPath,
+            cachedAt = patch.summary.cachedAt,
+            imageIconUrl = patch.imageIconUrl,
+            unlockedCount = unlocked.size,
+            pendingAwardCount = pendingAwardCount,
+            totalAchievements = coreAchievements.size,
+            achievements = coreAchievements
+                .map { achievement ->
+                    CachedAchievement(
+                        id = achievement.id,
+                        title = achievement.title ?: str(R.string.achievement_fallback, achievement.id),
+                        description = achievement.description,
+                        points = achievement.points,
+                        badgeUrl = patch.badgeUrl(achievement),
+                        unlocked = unlocked.contains(achievement.id)
+                    )
+                }
+                .sortedByDescending { it.unlocked }
+        )
+    }
+
+    private fun resolvePendingAward(
+        award: PendingAward,
+        achievementIndex: Map<Int, AchievementRef>
+    ): PendingAwardUi {
         val params = parseFormParams(award.queryString.substringAfter("?", "") + "&" + award.requestBody)
         val achievementId = params["a"]?.toIntOrNull()
         val hardcore = params["h"] == "1"
+        val ref = achievementId?.let(achievementIndex::get)
+
         var gameTitle = str(R.string.unknown_game)
         var gameIconUrl: String? = null
-        var achievementTitle = if (achievementId != null) str(R.string.achievement_fallback, achievementId) else str(R.string.unknown_game)
+        var achievementTitle =
+            if (achievementId != null) str(R.string.achievement_fallback, achievementId) else str(R.string.unknown_game)
         var points = 0
         var badgeUrl: String? = null
-        var resolved = false
-        for (entry in db.cacheDao().getAllByPrefix(CacheKeys.PREFIX_PATCH)) {
-            if (resolved) break
-            runCatching {
-                val gameId = CacheKeys.parseGameIdFromPatchKey(entry.cacheKey)
-                val patchData = JSONObject(entry.responseBody).getJSONObject("PatchData")
-                val arr = patchData.getJSONArray("Achievements")
-                for (i in 0 until arr.length()) {
-                    val a = arr.getJSONObject(i)
-                    if (a.getInt("ID") == achievementId) {
-                        gameTitle = patchData.optString("Title", gameTitle)
-                        gameIconUrl = gameId?.let {
-                            resolveCachedGameIconPath(application, it)
-                        } ?: patchImagePath(patchData)?.let { resolveCachedStaticAsset(application, it)?.absolutePath }
-                            ?: patchImageUrl(patchData)
-                        achievementTitle = a.optString("Title", achievementTitle)
-                        points = a.optInt("Points", 0)
-                        val badgeName = a.optString("BadgeName").takeIf { it.isNotEmpty() }
-                        badgeUrl = badgeName?.let { name ->
-                            resolveCachedStaticAsset(application, "/Badge/$name.png")?.absolutePath
-                                ?: "https://i.retroachievements.org/Badge/$name.png"
-                        }
-                        resolved = true
-                        break
-                    }
-                }
-            }
-        }
-        if (!resolved) {
+
+        if (ref != null) {
+            gameTitle = ref.patch.parsed.title.takeIf { it.isNotEmpty() } ?: gameTitle
+            gameIconUrl = ref.patch.imageIconUrl
+            achievementTitle = ref.achievement.title ?: achievementTitle
+            points = ref.achievement.points
+            badgeUrl = ref.patch.badgeUrl(ref.achievement)
+        } else {
             gameTitle = award.snapshotGameTitle ?: gameTitle
             achievementTitle = award.snapshotAchievementTitle ?: achievementTitle
             points = award.snapshotPoints
@@ -2227,38 +1927,16 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private fun buildPendingAwardsByGameId(
-        patchEntries: List<CacheEntry>,
+        achievementIndex: Map<Int, AchievementRef>,
         awards: List<PendingAward>
     ): Map<String, Int> {
-        if (patchEntries.isEmpty() || awards.isEmpty()) return emptyMap()
-
-        val achievementGameIds = buildAchievementGameIds(patchEntries)
-        if (achievementGameIds.isEmpty()) return emptyMap()
+        if (achievementIndex.isEmpty() || awards.isEmpty()) return emptyMap()
 
         return buildMap {
             awards.forEach { award ->
                 val achievementId = parsePendingAwardAchievementId(award) ?: return@forEach
-                val gameId = achievementGameIds[achievementId] ?: return@forEach
+                val gameId = achievementIndex[achievementId]?.patch?.gameId ?: return@forEach
                 put(gameId, (get(gameId) ?: 0) + 1)
-            }
-        }
-    }
-
-    private fun buildAchievementGameIds(
-        patchEntries: List<CacheEntry>
-    ): Map<Int, String> = buildMap {
-        patchEntries.forEach { entry ->
-            val gameId = CacheKeys.parseGameIdStringFromPatchKey(entry.cacheKey) ?: return@forEach
-            val patchData = runCatching {
-                JSONObject(entry.responseBody).getJSONObject("PatchData")
-            }.getOrNull() ?: return@forEach
-            val achievements = patchData.optJSONArray("Achievements") ?: return@forEach
-            for (i in 0 until achievements.length()) {
-                val achievement = achievements.optJSONObject(i) ?: continue
-                val achievementId = achievement.optInt("ID")
-                if (achievementId != 0) {
-                    putIfAbsent(achievementId, gameId)
-                }
             }
         }
     }
@@ -2266,40 +1944,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private fun parsePendingAwardAchievementId(award: PendingAward): Int? {
         val params = parseFormParams(award.queryString.substringAfter("?", "") + "&" + award.requestBody)
         return params["a"]?.toIntOrNull()
-    }
-
-    private fun buildUnlockedAchievements(
-        patchData: JSONObject?,
-        unlockedIds: Set<Int>
-    ): List<UnlockedAchievement> {
-        if (patchData == null || unlockedIds.isEmpty()) return emptyList()
-
-        val achievements = patchData.optJSONArray("Achievements") ?: return emptyList()
-
-        return buildList {
-            for (i in 0 until achievements.length()) {
-                val achievement = achievements.optJSONObject(i) ?: continue
-                val achievementId = achievement.optInt("ID")
-                if (!unlockedIds.contains(achievementId)) continue
-
-                val badgeName = achievement.optString("BadgeName").takeIf { it.isNotEmpty() }
-                add(
-                    UnlockedAchievement(
-                        id = achievementId,
-                        title = achievement.optString(
-                            "Title",
-                            str(R.string.achievement_fallback, achievementId)
-                        ),
-                        description = achievement.optString("Description").takeIf { it.isNotEmpty() },
-                        points = achievement.optInt("Points", 0),
-                        badgeUrl = badgeName?.let { name ->
-                            resolveCachedStaticAsset(application, "/Badge/$name.png")?.absolutePath
-                                ?: "https://i.retroachievements.org/Badge/$name.png"
-                        }
-                    )
-                )
-            }
-        }
     }
 
     fun setAutostartProxy(enabled: Boolean) {
@@ -2317,6 +1961,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun setHideSupportButtonEnabled(enabled: Boolean) {
         PrefsConstants.saveHideSupportButtonEnabled(getApplication(), enabled)
         _state.value = _state.value.copy(hideSupportButton = enabled)
+    }
+
+    fun setShowLockedAchievementsEnabled(enabled: Boolean) {
+        PrefsConstants.saveShowLockedAchievementsEnabled(getApplication(), enabled)
+        _state.value = _state.value.copy(showLockedAchievements = enabled)
     }
 
     fun setAppUpdateCheckEnabled(enabled: Boolean) {
@@ -2463,188 +2112,53 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun setRetroArchEnabled(enabled: Boolean) {
-        val app = getApplication<Application>()
-        val support = loadEmulatorSupport(app)
-        if (!support.retroArchInstalled || (support.installedCount == 1) || _state.value.proxyRunning) {
+    private suspend fun patchBroadcastEmulators(
+        app: Application,
+        prefs: SharedPreferences,
+        emulatorSupport: EmulatorSupport
+    ): BroadcastPatchResult? {
+        for (emulator in Emulator.BROADCAST_MANAGED) {
+            if (!emulatorSupport.isEnabled(emulator)) {
+                prefs.edit { remove(emulator.patchedThisRunPrefsKey) }
+                continue
+            }
+
+            val result = withContext(Dispatchers.IO) { patchBroadcastCfg(app, emulator) }
+            if (result.skippedNotInstalled) continue
+            if (!result.success) return result
+            prefs.edit { putBoolean(emulator.patchedThisRunPrefsKey, true) }
+        }
+        return null
+    }
+
+    private suspend fun revertBroadcastEmulators(
+        app: Application,
+        prefs: SharedPreferences
+    ): Map<Emulator, BroadcastPatchResult> = Emulator.BROADCAST_MANAGED.associateWith { emulator ->
+        val result = if (prefs.getBoolean(emulator.patchedThisRunPrefsKey, false)) {
+            withContext(Dispatchers.IO) { revertBroadcastCfg(app, emulator) }
+        } else {
+            notPatchedThisRun(emulator)
+        }
+        if (result.success) {
+            prefs.edit { remove(emulator.patchedThisRunPrefsKey) }
+        }
+        result
+    }
+
+    fun setEmulatorEnabled(emulator: Emulator, enabled: Boolean) {
+        val support = loadEmulatorSupport(getApplication())
+        if (!support.isInstalled(emulator) || support.installedCount == 1 || _state.value.proxyRunning) {
             return
         }
-
-        app.getSharedPreferences(PrefsConstants.PREFS_NAME, Context.MODE_PRIVATE)
-            .edit { putBoolean(PrefsConstants.KEY_ENABLE_RETROARCH, enabled) }
-        val updated = loadEmulatorSupport(app)
-        _state.value = _state.value.copy(
-            retroArchEnabled = updated.retroArchEnabled,
-            dolphinEnabled = updated.dolphinEnabled,
-            ppssppEnabled = updated.ppssppEnabled,
-            armsx2Enabled = updated.armsx2Enabled,
-            flycastEnabled = updated.flycastEnabled,
-            melonDualDsEnabled = updated.melonDualDsEnabled,
-            mupen64Enabled = updated.mupen64Enabled,
-            emuCoreXEnabled = updated.emuCoreXEnabled
-        )
+        setEmulatorEnabledInternal(emulator, enabled)
     }
 
-    fun setDolphinEnabled(enabled: Boolean) {
-        val app = getApplication<Application>()
-        val support = loadEmulatorSupport(app)
-        if (!support.dolphinInstalled || (support.installedCount == 1) || _state.value.proxyRunning) {
-            return
-        }
-        setDolphinEnabledInternal(enabled)
-    }
-
-    private fun setDolphinEnabledInternal(enabled: Boolean) {
+    private fun setEmulatorEnabledInternal(emulator: Emulator, enabled: Boolean) {
         val app = getApplication<Application>()
         app.getSharedPreferences(PrefsConstants.PREFS_NAME, Context.MODE_PRIVATE)
-            .edit { putBoolean(PrefsConstants.KEY_ENABLE_DOLPHIN, enabled) }
-        val updated = loadEmulatorSupport(app)
-        _state.value = _state.value.copy(
-            retroArchEnabled = updated.retroArchEnabled,
-            dolphinEnabled = updated.dolphinEnabled,
-            ppssppEnabled = updated.ppssppEnabled,
-            armsx2Enabled = updated.armsx2Enabled,
-            flycastEnabled = updated.flycastEnabled,
-            melonDualDsEnabled = updated.melonDualDsEnabled,
-            mupen64Enabled = updated.mupen64Enabled,
-            emuCoreXEnabled = updated.emuCoreXEnabled
-        )
-    }
-
-    fun setPpssppEnabled(enabled: Boolean) {
-        val app = getApplication<Application>()
-        val support = loadEmulatorSupport(app)
-        if (!support.ppssppInstalled || (support.installedCount == 1) || _state.value.proxyRunning) {
-            return
-        }
-        setPpssppEnabledInternal(enabled)
-    }
-
-    private fun setPpssppEnabledInternal(enabled: Boolean) {
-        val app = getApplication<Application>()
-        app.getSharedPreferences(PrefsConstants.PREFS_NAME, Context.MODE_PRIVATE)
-            .edit { putBoolean(PrefsConstants.KEY_ENABLE_PPSSPP, enabled) }
-        val updated = loadEmulatorSupport(app)
-        _state.value = _state.value.copy(
-            retroArchEnabled = updated.retroArchEnabled,
-            dolphinEnabled = updated.dolphinEnabled,
-            ppssppEnabled = updated.ppssppEnabled,
-            armsx2Enabled = updated.armsx2Enabled,
-            flycastEnabled = updated.flycastEnabled,
-            melonDualDsEnabled = updated.melonDualDsEnabled,
-            mupen64Enabled = updated.mupen64Enabled,
-            emuCoreXEnabled = updated.emuCoreXEnabled
-        )
-    }
-
-    fun setArmsx2Enabled(enabled: Boolean) {
-        val app = getApplication<Application>()
-        val support = loadEmulatorSupport(app)
-        if (!support.armsx2Installed || (support.installedCount == 1) || _state.value.proxyRunning) {
-            return
-        }
-
-        app.getSharedPreferences(PrefsConstants.PREFS_NAME, Context.MODE_PRIVATE)
-            .edit { putBoolean(PrefsConstants.KEY_ENABLE_ARMSX2, enabled) }
-        val updated = loadEmulatorSupport(app)
-        _state.value = _state.value.copy(
-            retroArchEnabled = updated.retroArchEnabled,
-            dolphinEnabled = updated.dolphinEnabled,
-            ppssppEnabled = updated.ppssppEnabled,
-            armsx2Enabled = updated.armsx2Enabled,
-            flycastEnabled = updated.flycastEnabled,
-            melonDualDsEnabled = updated.melonDualDsEnabled,
-            mupen64Enabled = updated.mupen64Enabled,
-            emuCoreXEnabled = updated.emuCoreXEnabled
-        )
-    }
-
-    fun setFlycastEnabled(enabled: Boolean) {
-        val app = getApplication<Application>()
-        val support = loadEmulatorSupport(app)
-        if (!support.flycastInstalled || (support.installedCount == 1) || _state.value.proxyRunning) {
-            return
-        }
-
-        app.getSharedPreferences(PrefsConstants.PREFS_NAME, Context.MODE_PRIVATE)
-            .edit { putBoolean(PrefsConstants.KEY_ENABLE_FLYCAST, enabled) }
-        val updated = loadEmulatorSupport(app)
-        _state.value = _state.value.copy(
-            retroArchEnabled = updated.retroArchEnabled,
-            dolphinEnabled = updated.dolphinEnabled,
-            ppssppEnabled = updated.ppssppEnabled,
-            armsx2Enabled = updated.armsx2Enabled,
-            flycastEnabled = updated.flycastEnabled,
-            melonDualDsEnabled = updated.melonDualDsEnabled,
-            mupen64Enabled = updated.mupen64Enabled,
-            emuCoreXEnabled = updated.emuCoreXEnabled
-        )
-    }
-
-    fun setMelonDualDsEnabled(enabled: Boolean) {
-        val app = getApplication<Application>()
-        val support = loadEmulatorSupport(app)
-        if (!support.melonDualDsInstalled || (support.installedCount == 1) || _state.value.proxyRunning) {
-            return
-        }
-
-        app.getSharedPreferences(PrefsConstants.PREFS_NAME, Context.MODE_PRIVATE)
-            .edit { putBoolean(PrefsConstants.KEY_ENABLE_MELONDUALDS, enabled) }
-        val updated = loadEmulatorSupport(app)
-        _state.value = _state.value.copy(
-            retroArchEnabled = updated.retroArchEnabled,
-            dolphinEnabled = updated.dolphinEnabled,
-            ppssppEnabled = updated.ppssppEnabled,
-            armsx2Enabled = updated.armsx2Enabled,
-            flycastEnabled = updated.flycastEnabled,
-            melonDualDsEnabled = updated.melonDualDsEnabled,
-            mupen64Enabled = updated.mupen64Enabled,
-            emuCoreXEnabled = updated.emuCoreXEnabled
-        )
-    }
-
-    fun setMupen64Enabled(enabled: Boolean) {
-        val app = getApplication<Application>()
-        val support = loadEmulatorSupport(app)
-        if (!support.mupen64Installed || (support.installedCount == 1) || _state.value.proxyRunning) {
-            return
-        }
-
-        app.getSharedPreferences(PrefsConstants.PREFS_NAME, Context.MODE_PRIVATE)
-            .edit { putBoolean(PrefsConstants.KEY_ENABLE_MUPEN64, enabled) }
-        val updated = loadEmulatorSupport(app)
-        _state.value = _state.value.copy(
-            retroArchEnabled = updated.retroArchEnabled,
-            dolphinEnabled = updated.dolphinEnabled,
-            ppssppEnabled = updated.ppssppEnabled,
-            armsx2Enabled = updated.armsx2Enabled,
-            flycastEnabled = updated.flycastEnabled,
-            melonDualDsEnabled = updated.melonDualDsEnabled,
-            mupen64Enabled = updated.mupen64Enabled,
-            emuCoreXEnabled = updated.emuCoreXEnabled
-        )
-    }
-
-    fun setEmuCoreXEnabled(enabled: Boolean) {
-        val app = getApplication<Application>()
-        val support = loadEmulatorSupport(app)
-        if (!support.emuCoreXInstalled || (support.installedCount == 1) || _state.value.proxyRunning) {
-            return
-        }
-
-        app.getSharedPreferences(PrefsConstants.PREFS_NAME, Context.MODE_PRIVATE)
-            .edit { putBoolean(PrefsConstants.KEY_ENABLE_EMUCOREX, enabled) }
-        val updated = loadEmulatorSupport(app)
-        _state.value = _state.value.copy(
-            retroArchEnabled = updated.retroArchEnabled,
-            dolphinEnabled = updated.dolphinEnabled,
-            ppssppEnabled = updated.ppssppEnabled,
-            armsx2Enabled = updated.armsx2Enabled,
-            flycastEnabled = updated.flycastEnabled,
-            melonDualDsEnabled = updated.melonDualDsEnabled,
-            mupen64Enabled = updated.mupen64Enabled,
-            emuCoreXEnabled = updated.emuCoreXEnabled
-        )
+            .edit { putBoolean(emulator.enabledPrefsKey, enabled) }
+        _state.value = _state.value.copy(emulators = loadEmulatorSupport(app))
     }
 
     fun setProxyPort(portText: String): Boolean {
@@ -2711,6 +2225,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private fun loadHideSupportButtonEnabled(): Boolean =
         PrefsConstants.loadHideSupportButtonEnabled(getApplication())
 
+    private fun loadShowLockedAchievementsEnabled(): Boolean =
+        PrefsConstants.loadShowLockedAchievementsEnabled(getApplication())
+
     private fun loadManualEmulatorPatchingEnabled(): Boolean =
         PrefsConstants.loadManualEmulatorPatchingEnabled(getApplication())
 
@@ -2730,7 +2247,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         PrefsConstants.loadPpssppRootMode(getApplication())
 
     private fun shouldPromptForPpssppShizukuRootMode(emulatorSupport: EmulatorSupport): Boolean {
-        if (!emulatorSupport.ppssppEnabled) {
+        if (!emulatorSupport.isEnabled(Emulator.Ppsspp)) {
             return false
         }
 
@@ -2865,6 +2382,12 @@ internal fun selectImportedCredentials(
     retroArch is ImportedCredentials.Password -> retroArch
     else -> null
 }
+
+private fun notPatchedThisRun(emulator: Emulator): BroadcastPatchResult = BroadcastPatchResult(
+    success = true,
+    message = "${emulator.displayName} not patched this run.",
+    skippedNotInstalled = true
+)
 
 private data class Quadruple<A, B, C, D>(
     val first: A,

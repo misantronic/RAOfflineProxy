@@ -33,6 +33,19 @@ Before using `RAOfflineProxy` on Linux:
 - Enter your RetroAchievements account details<br>
   > Game Settings -> Retroachievement settings
 
+== spruce
+
+- Enter your RetroAchievements account details<br>
+  > Settings -> Additional Settings -> RetroAchievements Settings
+- Make sure the system clock is correct so award timestamps are accurate
+
+== Allium
+
+- Enter your RetroAchievements account details in RetroArch<br>
+  > Allium launches RetroArch directly, so its own achievements login is what RAOfflineProxy reads.
+- Make sure the system clock is correct so award timestamps are accurate<br>
+  > Settings -> Wi-Fi -> enable NTP
+
 == dArkOS
 
 - Enter your RetroAchievements account details in RetroArch
@@ -69,7 +82,7 @@ RAOfflineProxy patches the emulator configs it needs in order to redirect RetroA
 
 > Onion support is currently in alpha.
 >
-> Compatible with [OnionOS v4.3.1-1](https://github.com/OnionUI/Onion/releases/tag/v4.3.1-1) and [Onion V4.4.0-beta-20260120](https://github.com/OnionUI/Onion/releases/tag/latest).
+> Compatible with [Onion V4.4.0-beta-20260120](https://github.com/OnionUI/Onion/releases/tag/latest). [OnionOS v4.3.1-1](https://github.com/OnionUI/Onion/releases/tag/v4.3.1-1) is not supported and RAOfflineProxy will refuse to run on it.
 
 1. Download the latest release for Onion from [GitHub Releases](https://github.com/misantronic/RAOfflineProxy/releases)
 2. Copy the generated app folder to:
@@ -125,6 +138,40 @@ RAOfflineProxy patches the emulator configs it needs in order to redirect RetroA
 5. Launch **RAOfflineProxy** from the **Tools** menu
 6. Start the proxy while online
 7. Cache games either from **Cached Games** then **Add ROM** or by launching them once in RetroArch
+
+== spruce
+
+> spruce support is currently experimental.
+>
+> Tested on a Miyoo Mini Plus running [spruce 4.3.4](https://github.com/spruceUI/spruceOS/releases). The bundled runtime is a 32-bit ARM build, so it covers the Miyoo Mini family and the A30; spruce's 64-bit devices are not supported by this bundle.
+
+1. Download the latest `RAOfflineProxy-Spruce-*.zip` from [GitHub Releases](https://github.com/misantronic/RAOfflineProxy/releases)
+2. Extract it over the root of your SD card so the app lands in:
+
+```text
+/App/RAOfflineProxy/
+```
+
+3. Launch **RAOfflineProxy** from spruce's Apps section
+4. Start the proxy while online
+5. Launch a game once so its data is cached
+
+== Allium
+
+> Allium support is currently experimental.
+>
+> Tested on a Miyoo Mini Plus running [Allium v1.0.1](https://github.com/goweiwen/Allium/releases). Allium runs only on the Miyoo Mini, Mini Plus and Mini Flip, and this bundle covers all of them.
+
+1. Download the latest `RAOfflineProxy-Allium-*.zip` from [GitHub Releases](https://github.com/misantronic/RAOfflineProxy/releases)
+2. Extract it over the root of your SD card so the app lands in:
+
+```text
+/Apps/RAOfflineProxy.pak/
+```
+
+3. Launch **RAOfflineProxy** from Allium's Apps section
+4. Start the proxy while online
+5. Launch a game once so its data is cached
 
 == dArkOS
 

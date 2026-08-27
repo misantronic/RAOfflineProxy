@@ -32,17 +32,23 @@ PPSSPP supports two patching paths depending on the installed build. RAOfflinePr
 - The saved `AchievementsUserName` and token from `ppsspp_retroachievements.dat` are imported into RAOfflineProxy's local credential cache when present
 - When broadcast override support is available, RAOfflineProxy uses that path instead of editing the config file
 
-== ARMSX2
+== Other Emulators
 
-ARMSX2 exposes a RetroAchievements host-override broadcast receiver. To redirect achievement traffic to the local proxy, RAOfflineProxy sends a targeted broadcast to the installed ARMSX2 package:
+**ARMSX1**, **ARMSX2**, **Flycast**, **WatermelonDS**, **Mupen64Plus AE**, and **EmuCoreX** all expose a RetroAchievements host-override broadcast receiver. To redirect achievement traffic to the local proxy, RAOfflineProxy sends a targeted broadcast to the installed package instead of editing a config file:
 
 - The RetroAchievements host override is set to the proxy on your device
-- No config file patching or SAF grant is required for ARMSX2 itself
-- RAOfflineProxy uses the same broadcast-only patch and revert flow for all supported ARMSX2 package IDs (current and legacy builds)
+- The emulator writes the change to its own configuration and applies it on the next game load
+- No config file patching or SAF grant is required
+- Emulators that ship under more than one package ID (current, legacy, and debug builds) use the same broadcast flow
+- Hardcore mode is left to the emulator, see [Why Hardcore Mode is Disabled](#why-hardcore-mode-is-disabled)
+
+This requires an emulator build that actually ships the receiver. See [Platforms](/platforms.html) for the minimum version per emulator.
 
 :::
 
-RetroArch, Dolphin, PPSSPP, and ARMSX2 are patched and reverted independently depending on which emulator toggles are enabled in the app.
+Each supported emulator is patched and reverted independently depending on which emulator toggles are enabled in the app.
+
+[Argosy Launcher](https://github.com/rommapp/argosy-launcher) is the exception: it has its own proxy URL setting, so RAOfflineProxy does not patch it at all.
 
 Patching and reverting happen **automatically** when you start and stop the proxy: there is no separate setup step. For the patched settings to be picked up reliably, fully close the emulator before starting or stopping the proxy, then relaunch it afterward.
 
@@ -80,11 +86,12 @@ For PPSSPP, the app prefers a package-targeted broadcast override when the insta
 - The PPSSPP folder grant must resolve to a tree containing `PSP/SYSTEM/ppsspp.ini`
 - The emulator should still be fully closed before patching so the new override or config is picked up cleanly on next launch
 
-== ARMSX2
+== Other Emulators
 
-For ARMSX2, the app sends a package-targeted broadcast to set the RetroAchievements host override.
+For these emulators, the app sends a package-targeted broadcast to set the RetroAchievements host override.
 
-- It supports `com.armsx2` (current ARMSX2) and `come.nanodata.armsx2` (legacy build)
+- It resolves the installed package from the known package IDs for that emulator, including legacy and debug variants such as `come.nanodata.armsx2` for ARMSX2
+- Before sending, it checks that the installed build declares the host-override receiver, and reports a patch error when it does not
 - No config file is edited
 - No folder access prompt is needed
 - The emulator should still be fully closed before patching so the new override is picked up cleanly on next launch
@@ -109,16 +116,21 @@ The app reverts `Config/RetroAchievements.ini` so Dolphin connects directly to R
 
 For PPSSPP, the app clears the broadcast host override when available. Otherwise, it reverts `PSP/SYSTEM/ppsspp.ini` so PPSSPP connects directly to RetroAchievements again.
 
-== ARMSX2
+== Other Emulators
 
-The app sends a package-targeted broadcast to clear the RetroAchievements host override so ARMSX2 connects directly to RetroAchievements again.
+The app sends a package-targeted broadcast to clear the RetroAchievements host override so the emulator connects directly to RetroAchievements again.
 
 :::
 
-If hardcore mode was enabled before you started the proxy, it is automatically restored when you stop the proxy. The app records the original hardcore setting when patching and saves it so it survives process restarts.
-
 ## Why Hardcore Mode is Disabled
 
-The patcher disables hardcore mode because **hardcore mode is not supported** by RAOfflineProxy. Any hardcore award request is rejected by the proxy. Keeping hardcore enabled in a supported emulator while using the proxy would result in silent unlock failures.
+**Hardcore mode is not supported** by RAOfflineProxy. Any hardcore award request is rejected by the proxy, so leaving hardcore enabled while the proxy is running would result in silent unlock failures.
 
-When you stop the proxy, hardcore mode is restored to its original state: if you had it enabled before, it will be re-enabled automatically.
+Which side turns it off depends on how the emulator is patched:
+
+- **RetroArch**, **Dolphin**, and **PPSSPP** when its config file is patched: RAOfflineProxy disables hardcore while patching, records the original value so it survives a process restart, and restores it when you stop the proxy
+- **PPSSPP** on the broadcast path, **Flycast**, and **WatermelonDS**: the emulator disables hardcore itself while the custom host is active and restores your setting once the override is cleared, so RAOfflineProxy never writes the setting
+- **ARMSX2**: hardcore is deliberately left under your own control, so turn it off in the emulator before starting the proxy
+- **ARMSX1** and **Mupen64Plus AE (fork)**: have no hardcore mode at all, so there is nothing to disable. ARMSX1 is softcore-only by construction: its achievements client is hardwired to softcore and the hardcore toggle was removed from its UI
+
+If you are unsure how your emulator behaves, turn hardcore off in the emulator yourself before starting the proxy.

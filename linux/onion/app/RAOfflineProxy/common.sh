@@ -1,7 +1,7 @@
 #!/bin/sh
 
 APP_DIR=/mnt/SDCARD/App/RAOfflineProxy
-APP_VERSION=v1.9.0-alpha1
+APP_VERSION=v1.12.0-alpha1
 APP_MAX_CACHED_GAMES=100
 APP_DATA_DIR="$APP_DIR/data"
 APP_RUNTIME_DIR="$APP_DIR/runtime"
@@ -14,6 +14,7 @@ APP_ONION_STARTUP_DIR=/mnt/SDCARD/.tmp_update/startup
 APP_ONION_AUTOSTART_SCRIPT="$APP_ONION_STARTUP_DIR/raofflineproxy.sh"
 APP_ONION_CHECKOFF_DIR=/mnt/SDCARD/.tmp_update/checkoff
 APP_ONION_CHECKOFF_SCRIPT="$APP_ONION_CHECKOFF_DIR/raofflineproxy.sh"
+APP_ONION_TZ_FILE=/mnt/SDCARD/.tmp_update/config/.tz
 APP_ACTIVE_RUNTIME_ROOT=
 RESOLVED_PYTHON_BIN=
 RUNTIME_FAILURE_REASON=
@@ -36,9 +37,31 @@ normalize_display_paths() {
     sed 's#/mnt/SDCARD/#/#g'
 }
 
+resolve_onion_timezone() {
+    # Onion exports TZ only for MainUI and its game launcher, so an app started
+    # from the Apps list or a startup hook inherits an empty TZ and renders
+    # every local timestamp as UTC.
+    if [ -n "${TZ:-}" ]; then
+        return 0
+    fi
+
+    if [ ! -r "$APP_ONION_TZ_FILE" ]; then
+        return 0
+    fi
+
+    onion_tz="$(cat "$APP_ONION_TZ_FILE" 2>/dev/null || true)"
+    if [ -n "$onion_tz" ]; then
+        export TZ="$onion_tz"
+    fi
+
+    return 0
+}
+
 prepare_env() {
     mkdir -p "$APP_DATA_DIR"
     : > "$RUNTIME_DETECT_LOG"
+
+    resolve_onion_timezone
 
     if [ -f /mnt/SDCARD/.tmp_update/config/retroarch.cfg ]; then
         APP_RETROARCH_CFG=/mnt/SDCARD/.tmp_update/config/retroarch.cfg
@@ -50,6 +73,11 @@ prepare_env() {
     export RAOFFLINEPROXY_RETROARCH_CFG="$APP_RETROARCH_CFG"
     export RAOFFLINEPROXY_APP_VERSION="${APP_VERSION#v}"
     export RAOFFLINEPROXY_CACHE_IMAGES=0
+    # glibc gives every allocating thread its own heap and grows each in 1MB chunks it never
+    # returns; the proxy runs a thread per connection plus background workers. Measured on a
+    # 103MB Miyoo Mini: 9 threads held 9 arenas totalling 14.6MB, and capping this cut the
+    # service from 32MB to 19MB RSS.
+    export MALLOC_ARENA_MAX=2
     export PYTHONPATH="$APP_PACKAGE_DIR${PYTHONPATH:+:$PYTHONPATH}"
     export LD_LIBRARY_PATH="$APP_LIB_DIR:/config/lib:/customer/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
     export SDL_VIDEODRIVER=Mini
@@ -153,7 +181,17 @@ run_backend() {
 run_backend_raw() {
     python_bin="$1"
     shift
-    "$python_bin" -m raofflineproxy.main "$@"
+    case "${1:-}" in
+        boot-reconcile | start-proxy)
+            # raofflineproxy.boot opens the proxy port before loading the rest
+            # of the package, so an emulator started alongside this hook is not
+            # refused.
+            "$python_bin" -m raofflineproxy.boot "$@"
+            ;;
+        *)
+            "$python_bin" -m raofflineproxy.main "$@"
+            ;;
+    esac
 }
 
 log_path() {

@@ -26,7 +26,6 @@ import com.raofflineproxy.R
 import com.raofflineproxy.data.CachedGame
 import com.raofflineproxy.data.ConsoleNames
 import java.io.File
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 private const val TAG = "RAProxy/CachedGamesFragment"
@@ -88,7 +87,25 @@ class CachedGamesFragment : Fragment() {
                 saveCollapsedState()
                 gamesAdapter?.submitList(buildGroupedList(currentGames, collapsedConsoleIds))
             },
-            onDelete = viewModel::deleteCachedGame
+            onDelete = viewModel::deleteCachedGame,
+            onDeleteConsole = { header ->
+                AlertDialog.Builder(requireContext())
+                    .setTitle(getString(R.string.delete_console_games_confirm_title, header.consoleName))
+                    .setMessage(
+                        getString(
+                            R.string.delete_console_games_confirm_message,
+                            header.gameCount,
+                            header.consoleName
+                        )
+                    )
+                    .setPositiveButton(R.string.clear_action) { _, _ ->
+                        viewModel.deleteConsoleGames(header.consoleId)
+                    }
+                    .setNegativeButton(android.R.string.cancel, null)
+                    .create()
+                    .also { it.setCanceledOnTouchOutside(false) }
+                    .show()
+            }
         )
         gamesAdapter = adapter
 
@@ -121,7 +138,6 @@ class CachedGamesFragment : Fragment() {
         }
 
         viewLifecycleOwner.lifecycleScope.launch {
-            delay(300)
             viewModel.cachedGames.collect { games ->
                 currentGames = games
                 gamesAdapter?.submitList(buildGroupedList(games, collapsedConsoleIds))
@@ -130,6 +146,10 @@ class CachedGamesFragment : Fragment() {
 
         viewLifecycleOwner.lifecycleScope.launch {
             viewModel.state.collect { state ->
+                gamesAdapter?.showLocked = state.showLockedAchievements
+                gamesAdapter?.setOfflineEarnedAchievements(
+                    state.awardHistory.mapTo(HashSet()) { it.achievementId }
+                )
                 val actionsEnabled = state.isOnline
                     && !state.scanInProgress
                 val showSmartCache = !viewModel.isSmartCacheDisabledForShizuku(state)

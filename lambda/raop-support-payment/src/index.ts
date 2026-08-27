@@ -656,17 +656,23 @@ async function handleStripeWebhook(event: any): Promise<any> {
     return respond(200, { received: true });
 }
 
-// The static monthly Payment Links (Linux QR codes, docs website) collect an optional
-// "RA username" custom field directly on Stripe's own checkout page — self-reported, not
-// verified against RA the way the in-app flow is, but that's an acceptable tradeoff here
-// (see donate-me design discussion: typing someone else's username only gives *them* power
-// over *your* subscription, not the other way around). This copies that value onto the
-// resulting Subscription's metadata so it's discoverable the same way as verified ones.
+// The static monthly Payment Links (Linux QR codes, docs website, and the Android app's
+// pay-now flow) collect the RA username one of two ways — self-reported, not verified against
+// RA the way the in-app subscription-creation flow used to be, but that's an acceptable
+// tradeoff here (see donate-me design discussion: typing someone else's username only gives
+// *them* power over *your* subscription, not the other way around). This copies whichever
+// value is present onto the resulting Subscription's metadata so it's discoverable the same
+// way as verified ones.
 async function linkRaUsernameFromCheckoutSession(session: Stripe.Checkout.Session, test = false): Promise<void> {
     if (session.mode !== 'subscription' || !session.subscription) return;
 
+    // Preferred: the Android app appends this automatically when the donor is logged into RA,
+    // so it doesn't depend on them noticing/filling the optional field below.
+    const referenceId = session.client_reference_id?.trim();
+    // Fallback: the "RA username" custom field on Stripe's own checkout page — used by the
+    // static QR/docs-website links, which have no app session to source a reference ID from.
     const field = session.custom_fields?.find((customField) => customField.key === RA_USERNAME_METADATA_KEY);
-    const raUsername = field?.text?.value?.trim();
+    const raUsername = referenceId || field?.text?.value?.trim();
     if (!raUsername) return;
 
     const stripe = await getStripeClient(test);

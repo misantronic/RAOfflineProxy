@@ -133,35 +133,53 @@ Confirmed on-device (ROCKNIX `next`, `OS_NAME="ROCKNIX"` in `/etc/os-release`):
   call is needed.
 - Autostart drops an executable script into `/storage/.config/autostart/`; ROCKNIX's
   `/usr/bin/autostart` runs every script there at boot (no separate registration step)
-- Some devices (e.g. RK3326 with the `libmali` blob) segfault inside SDL's wayland/EGL init
-  before the app's own `pygame.error` fallback can run — a native crash never reaches Python.
-  `tool-launcher.sh` tries `SDL_VIDEODRIVER` candidates (`wayland`, `kmsdrm`, `x11`) as separate
-  attempts, detects a crash via exit code (`>=128` means signal death), falls back to the next
-  candidate, and caches the first one that works in
+- Some devices (e.g. RK3326 with the `libmali` blob) segfaulted inside SDL's wayland/EGL init
+  before the app's own `pygame.error` fallback could run — a native crash never reached Python.
+  This turned out to be the vendored SDL build itself (see pygame section below), not driver
+  choice, but `tool-launcher.sh` still tries `SDL_VIDEODRIVER` candidates (`wayland`, `kmsdrm`,
+  `x11`) as separate attempts, detects a crash via exit code (`>=128` means signal death), falls
+  back to the next candidate, and caches the first one that works in
   `/storage/.config/raofflineproxy/rocknix_video_driver` so later launches skip straight to it.
 
 ### pygame
 
-ROCKNIX ships Python 3.13 but **no `pip` and no `pygame`**. The bundle vendors a self-contained
-`pygame` 2.6.1 cp313 aarch64 manylinux wheel (its own SDL 2.28.4 in `pygame.libs`, which includes
-the wayland video driver — no reliance on system SDL). This is verified working under sway on
-Python 3.13.5.
+ROCKNIX ships a system Python but **no `pip` and no `pygame`**. The bundle vendors a
+self-contained `pygame-ce` (Community Edition) 2.5.7 aarch64 manylinux wheel (its own SDL 2.32.10
+in `pygame_ce.libs`, built with both the wayland and kmsdrm video drivers — no reliance on system
+SDL). The package still imports as `pygame` (pygame-ce is API-compatible).
+
+The vanilla `pygame` 2.6.1 wheel used before segfaulted inside SDL's native wayland/EGL init on
+RK3326 devices with the `libmali` GPU blob (issue #55, and an earlier Discord report) — every
+`SDL_VIDEODRIVER` crashed identically, ruling out driver selection. PortMaster ports on the same
+device class run fine using `pygame-ce`/`pygame_sdl2` builds instead of the vanilla wheel, so we
+switched the vendored build rather than adding more launch-script workarounds.
+
+Which CPython the wheel has to match is not fixed: stable ROCKNIX ships 3.13, nightlies since
+20260822 ship 3.14, and a bundle carrying only one of them dies at startup on the other with
+`No module named 'pygame.base'` (issue #127), because the `.so` files are ABI-tagged and an
+interpreter never sees extension modules built for another minor version. The vendor directory
+therefore holds **every supported ABI at once**: `base.cpython-313-aarch64-linux-gnu.so` and
+`base.cpython-314-aarch64-linux-gnu.so` sit side by side and each interpreter picks its own. The
+wheels' pure-Python files and their `pygame_ce.libs` payload are byte-identical across ABIs of the
+same release, so only the extra `.so` files add to the installer.
 
 The vendored payload is **not** checked in (see `.gitignore`). Populate it before building:
 
 ```bash
-# from a cp313 aarch64 manylinux pygame wheel
-cd linux/rocknix/vendor
-unzip pygame-2.6.1-cp313-cp313-manylinux_2_17_aarch64.manylinux2014_aarch64.whl
-# leaves vendor/pygame and vendor/pygame.libs in place
+./linux/rocknix/fetch_vendor.sh
 ```
 
-> Note: the vendored `.so` files are cp313-specific. If ROCKNIX moves to a different Python
-> minor version, re-vendor a matching wheel.
+That downloads the prebuilt cp313 and cp314 wheels (no build toolchain needed) and merges them
+into `vendor/pygame` + `vendor/pygame_ce.libs`. To support a further Python version, add it to
+`PY_VERSIONS` in `fetch_vendor.sh` and `REQUIRED_PY_VERSIONS` in `build_bundle.sh`; the build
+refuses to run if a required ABI is missing from the vendor directory.
+
+> Note: the `pygame_ce.libs` directory name is baked into each `.so`'s RPATH
+> (`$ORIGIN/../pygame_ce.libs`), so don't rename it.
 
 ## Build
 
-From repo root (requires `vendor/pygame` + `vendor/pygame.libs`, see above):
+From repo root (requires `vendor/pygame` + `vendor/pygame_ce.libs`, see above):
 
 ```bash
 ./linux/rocknix/build_bundle.sh

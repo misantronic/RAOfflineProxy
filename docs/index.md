@@ -53,12 +53,20 @@ features:
           <span>PPSSPP</span>
         </div>
         <div class="supported-platforms__item">
+          <img class="supported-platforms__logo--rounded" src="/armsx1.png" alt="ARMSX1 logo">
+          <span>ARMSX1</span>
+        </div>
+        <div class="supported-platforms__item">
           <img class="supported-platforms__logo--rounded" src="/armsx2.webp" alt="ARMSX2 logo">
           <span>ARMSX2</span>
         </div>
         <div class="supported-platforms__item">
-          <img src="/melonds.png" alt="MelonDualDS logo">
-          <span>MelonDualDS</span>
+          <img src="/melonds.png" alt="WatermelonDS logo">
+          <span>WatermelonDS</span>
+        </div>
+        <div class="supported-platforms__item">
+          <img class="supported-platforms__logo--rounded" src="/flycast.png" alt="Flycast logo">
+          <span>Flycast</span>
         </div>
         <div class="supported-platforms__item">
           <img src="/mupen64plus-ae.png" alt="Mupen64Plus logo">
@@ -92,6 +100,15 @@ features:
         <div class="supported-platforms__item">
           <img class="supported-platforms__logo--rounded" src="/rocknix.png" alt="ROCKNIX logo">
           <span>ROCKNIX</span>
+        </div>
+        <div class="supported-platforms__item">
+          <img class="supported-platforms__logo--rounded" src="/spruce.png" alt="spruce logo">
+          <span>spruce</span>
+          <em class="supported-platforms__tag">experimental</em>
+        </div>
+        <div class="supported-platforms__item">
+          <span>Allium</span>
+          <em class="supported-platforms__tag">experimental</em>
         </div>
         <div class="supported-platforms__item">
           <img class="supported-platforms__logo--rounded" src="/darkos.png" alt="dArkOS logo">

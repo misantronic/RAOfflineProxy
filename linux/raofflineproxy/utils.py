@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import hashlib
+import re
 from urllib.parse import parse_qsl, quote_plus, unquote_plus, urlencode, urlsplit
 
-from .config import PROXY_UA_TAG
+from .config import FALLBACK_USER_AGENT, PROXY_UA_TAG
 
 
 def sha256_hex(value: str) -> str:
@@ -70,6 +71,18 @@ def proxy_user_agent(original: str) -> str:
     return f"{original} {PROXY_UA_TAG}"
 
 
+def self_user_agent() -> str:
+    """User-Agent for requests the proxy makes on its own behalf.
+
+    Never reuse a cached client User-Agent here. RetroAchievements reads the
+    first token as the client identity and rejects blocked clients with 403 on
+    every endpoint, so borrowing an emulator's identity makes our own lookups
+    fail whenever that emulator is blocked. Only forwarded requests should
+    carry a client's User-Agent.
+    """
+    return proxy_user_agent(FALLBACK_USER_AGENT)
+
+
 def canonical_reason_phrase(code: int) -> str:
     phrases = {
         200: "OK",
@@ -86,26 +99,21 @@ def canonical_reason_phrase(code: int) -> str:
     return phrases.get(code, "Response")
 
 
-def _redact_query_key(value: str, key: str) -> str:
-    marker = f"{key}="
-    parts = value.split(marker)
-    if len(parts) < 2:
-        return value
-
-    rebuilt = [parts[0]]
-    for segment in parts[1:]:
-        token_tail = segment.split("&", 1)
-        if len(token_tail) == 1:
-            rebuilt.append("<token>")
-        else:
-            rebuilt.append(f"<token>&{token_tail[1]}")
-    return marker.join(rebuilt)
+# Only a t=/p= that actually starts a query parameter, hence the leading delimiter: a bare
+# substring match also fires on the "t=" inside host=, port= and checked_at=, and with no
+# "&" left on the line to stop at it swallows everything after it. That silently shredded
+# whole support logs, which are redacted line by line before upload.
+#
+# The delimiter class is deliberately wider than "?&": these run over free-text log lines,
+# where a secret can also follow a quote or a comma. Letters are what must not qualify, so
+# host=/port=/checked_at= stay readable.
+_QUERY_SECRET_PATTERN = re.compile(r"""(^|[?&,;\s"'\[({])([tp])=([^&\s"'\])}]*)""")
 
 
 def redact_query_tokens(value: str) -> str:
-    for key in ("t", "p"):
-        value = _redact_query_key(value, key)
-    return value
+    return _QUERY_SECRET_PATTERN.sub(
+        lambda match: f"{match.group(1)}{match.group(2)}=<token>", value
+    )
 
 
 def redact_form_tokens(value: str) -> str:

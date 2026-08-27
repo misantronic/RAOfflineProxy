@@ -62,6 +62,30 @@ class RocknixConfigPathTests(unittest.TestCase):
         finally:
             config.DEFAULT_MUOS_RETROARCH_CFG = original_muos
 
+    def test_detect_retroarch_cfg_uses_storage_layout_when_name_check_fails(self) -> None:
+        """running_on_rocknix() returns False on an unreadable /etc/os-release."""
+        original_muos = config.DEFAULT_MUOS_RETROARCH_CFG
+        original_exists = Path.exists
+        try:
+            with tempfile.TemporaryDirectory() as temp_dir:
+                config.DEFAULT_MUOS_RETROARCH_CFG = Path(temp_dir) / "missing-muos.cfg"
+
+                def fake_exists(path: Path) -> bool:
+                    if str(path) == "/storage":
+                        return True
+                    if str(path) in ("/userdata", "/mnt/SDCARD"):
+                        return False
+                    return original_exists(path)
+
+                with patch.object(Path, "exists", fake_exists):
+                    with patch.object(config, "running_on_rocknix", return_value=False):
+                        self.assertEqual(
+                            config.detect_retroarch_cfg(),
+                            str(config.DEFAULT_ROCKNIX_RETROARCH_CFG),
+                        )
+        finally:
+            config.DEFAULT_MUOS_RETROARCH_CFG = original_muos
+
     def test_resolve_config_dir_uses_rocknix_dir(self) -> None:
         import os
 

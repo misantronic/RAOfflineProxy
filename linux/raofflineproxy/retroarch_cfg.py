@@ -4,7 +4,13 @@ import re
 from pathlib import Path
 from typing import Optional
 
-from .config import proxy_value
+from .config import (
+    detect_batocera_conf,
+    detect_rocknix_append_cfg,
+    proxy_value,
+    running_on_spruce,
+    spruce_setting,
+)
 from .state import clear_patch_state, load_patch_state, save_patch_state
 
 HOST_KEY = "cheevos_custom_host"
@@ -80,9 +86,26 @@ def detect_hardcore_enabled(content: str) -> bool:
     return _extract_config_value(content, HARDCORE_KEY) == "true"
 
 
+def load_spruce_credentials() -> dict | None:
+    """spruce's own settings, which hold the credentials before any game launch has
+    copied them into the RetroArch config. Password-only — spruce stores no token."""
+    if not running_on_spruce():
+        return None
+
+    user = spruce_setting("username")
+    password = spruce_setting("password")
+    if not user or not password:
+        return None
+
+    return {"user": user, "password": password}
+
+
 def load_retroarch_credentials(cfg_path: str | None) -> dict | None:
-    # Try main cfg first, then the cheevos appendconfig (muOS stores credentials there)
+    # Try main cfg first, then the cheevos appendconfig (muOS stores credentials
+    # there), then ROCKNIX's appendconfig (it strips the cheevos keys out of
+    # retroarch.cfg on every game launch and writes them only into that file).
     cheevos_cfg = str(cheevos_append_cfg_path(cfg_path)) if cfg_path else None
+    rocknix_cfg = detect_rocknix_append_cfg()
 
     token_credentials = load_retroarch_token_credentials(cfg_path)
     if token_credentials is not None:
@@ -92,14 +115,28 @@ def load_retroarch_credentials(cfg_path: str | None) -> dict | None:
     if token_credentials is not None:
         return token_credentials
 
+    token_credentials = load_retroarch_token_credentials(rocknix_cfg, last_wins=True)
+    if token_credentials is not None:
+        return token_credentials
+
     password_credentials = load_retroarch_password_credentials(cfg_path)
     if password_credentials is not None:
         return password_credentials
 
-    return load_retroarch_password_credentials(cheevos_cfg)
+    password_credentials = load_retroarch_password_credentials(cheevos_cfg)
+    if password_credentials is not None:
+        return password_credentials
+
+    password_credentials = load_retroarch_password_credentials(rocknix_cfg, last_wins=True)
+    if password_credentials is not None:
+        return password_credentials
+
+    return load_spruce_credentials()
 
 
-def load_retroarch_token_credentials(cfg_path: str | None) -> dict | None:
+def load_retroarch_token_credentials(
+    cfg_path: str | None, last_wins: bool = False
+) -> dict | None:
     if not cfg_path:
         return None
 
@@ -108,14 +145,16 @@ def load_retroarch_token_credentials(cfg_path: str | None) -> dict | None:
         return None
 
     content = target.read_text(encoding="utf-8", errors="replace")
-    user = _extract_config_value(content, USERNAME_KEY)
-    token = _extract_config_value(content, TOKEN_KEY)
+    user = _extract_config_value(content, USERNAME_KEY, last_wins)
+    token = _extract_config_value(content, TOKEN_KEY, last_wins)
     if not user or not token:
         return None
     return {"user": user, "token": token}
 
 
-def load_retroarch_password_credentials(cfg_path: str | None) -> dict | None:
+def load_retroarch_password_credentials(
+    cfg_path: str | None, last_wins: bool = False
+) -> dict | None:
     if not cfg_path:
         return None
 
@@ -124,8 +163,8 @@ def load_retroarch_password_credentials(cfg_path: str | None) -> dict | None:
         return None
 
     content = target.read_text(encoding="utf-8", errors="replace")
-    user = _extract_config_value(content, USERNAME_KEY)
-    password = _extract_config_value(content, PASSWORD_KEY)
+    user = _extract_config_value(content, USERNAME_KEY, last_wins)
+    password = _extract_config_value(content, PASSWORD_KEY, last_wins)
     if not user or not password:
         return None
     return {"user": user, "password": password}
@@ -209,10 +248,33 @@ def build_reverted_content(
     return _upsert_config_value(with_enable, HARDCORE_KEY, "true")
 
 
+def conf_fallback_available(config_data: dict) -> bool:
+    """Whether batocera.conf/knulli.conf can carry the host override on its own.
+
+    Knulli generates retroarchcustom.cfg at the first libretro launch, so it is
+    legitimately absent on a freshly flashed device. Its configgen rebuilds that
+    file from the conf on every launch anyway, making the conf the authoritative
+    patch target there and the missing cfg a no-op rather than a failure.
+    """
+    conf_path = detect_batocera_conf(config_data)
+    return bool(conf_path) and Path(conf_path).exists()
+
+
 def patch_retroarch_cfg(cfg_path: str, config_data: dict) -> dict:
     target = Path(cfg_path)
     if not target.exists():
-        raise FileNotFoundError(f"RetroArch config not found: {target}")
+        if not conf_fallback_available(config_data):
+            raise FileNotFoundError(f"RetroArch config not found: {target}")
+        return {
+            "cfg_path": str(target),
+            "exists": False,
+            "hardcore_was_enabled": False,
+            "previous_enable": None,
+            "previous_host": None,
+            "proxy_host": proxy_value(config_data),
+            "changed": False,
+            "already_patched": False,
+        }
 
     existing_patch_state = load_patch_state() or {}
     original = target.read_text(encoding="utf-8", errors="replace")
@@ -261,6 +323,7 @@ def patch_retroarch_cfg(cfg_path: str, config_data: dict) -> dict:
 
     return {
         "cfg_path": str(target),
+        "exists": True,
         "hardcore_was_enabled": hardcore_was_enabled,
         "previous_enable": previous_enable,
         "previous_host": previous_host,
@@ -271,7 +334,9 @@ def patch_retroarch_cfg(cfg_path: str, config_data: dict) -> dict:
 
 
 def revert_retroarch_cfg(
-    cfg_path: Optional[str] = None, patch_state_override: Optional[dict] = None
+    cfg_path: Optional[str] = None,
+    patch_state_override: Optional[dict] = None,
+    config_data: Optional[dict] = None,
 ) -> dict:
     patch_state = patch_state_override if patch_state_override is not None else load_patch_state()
     target_path = cfg_path or (patch_state or {}).get("cfg_path")
@@ -280,7 +345,23 @@ def revert_retroarch_cfg(
 
     target = Path(target_path)
     if not target.exists():
-        raise FileNotFoundError(f"RetroArch config not found: {target}")
+        # Only a cfg the conf can regenerate is legitimately absent. Anything else is
+        # a cfg that went missing after being patched, and dropping the saved state
+        # there would strand the proxy host in it with nothing left to restore from.
+        if not conf_fallback_available(config_data or {}):
+            raise FileNotFoundError(f"RetroArch config not found: {target}")
+
+        revert_cheevos_append_cfg((patch_state or {}).get("cheevos_append_cfg"))
+        if patch_state_override is None and patch_state is not None:
+            clear_patch_state()
+        return {
+            "cfg_path": str(target),
+            "exists": False,
+            "changed": False,
+            "restored_hardcore": False,
+            "previous_host": "",
+            "used_saved_state": patch_state is not None,
+        }
 
     current = target.read_text(encoding="utf-8", errors="replace")
     previous_host = patch_state.get("previous_host") if patch_state else ""
@@ -312,6 +393,7 @@ def revert_retroarch_cfg(
         clear_patch_state()
     return {
         "cfg_path": str(target),
+        "exists": True,
         "changed": transformed != current,
         "restored_hardcore": restore_hardcore,
         "previous_host": previous_host,
@@ -359,8 +441,14 @@ def enforce_patched_cfg(cfg_path: str, config_data: dict) -> bool:
     return True
 
 
-def _extract_config_value(content: str, key: str) -> str | None:
+def _extract_config_value(content: str, key: str, last: bool = False) -> str | None:
+    """Reads a key. With last=True the final occurrence wins, matching RetroArch.
+
+    ROCKNIX appends to its --appendconfig file without truncating it between game
+    launches, so the same key can appear several times with stale values first.
+    """
     key_pattern = re.compile(rf"^\s*{re.escape(key)}\s*=\s*(.*?)\s*$")
+    found: str | None = None
     for raw_line in content.splitlines():
         match = key_pattern.match(raw_line)
         if match is None:
@@ -368,11 +456,14 @@ def _extract_config_value(content: str, key: str) -> str | None:
 
         value = match.group(1).strip()
         if len(value) >= 2 and value[0] == '"' and value[-1] == '"':
-            return value[1:-1]
-        if value.startswith('"'):
-            return value[1:].strip()
-        return value
-    return None
+            value = value[1:-1]
+        elif value.startswith('"'):
+            value = value[1:].strip()
+
+        if not last:
+            return value
+        found = value
+    return found
 
 
 def _upsert_config_value(content: str, key: str, value: str) -> str:

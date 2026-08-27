@@ -33,9 +33,10 @@ object PrefsConstants {
     const val KEY_ENABLE_PPSSPP = "enable_ppsspp"
     const val KEY_ENABLE_ARMSX2 = "enable_armsx2"
     const val KEY_ENABLE_FLYCAST = "enable_flycast"
-    const val KEY_ENABLE_MELONDUALDS = "enable_melondualds"
+    const val KEY_ENABLE_WATERMELONDS = "enable_melondualds"
     const val KEY_ENABLE_MUPEN64 = "enable_mupen64"
     const val KEY_ENABLE_EMUCOREX = "enable_emucorex"
+    const val KEY_ENABLE_ARMSX1 = "enable_armsx1"
     const val KEY_RETROARCH_HARDCORE_WAS_ENABLED = "retroarch_hardcore_was_enabled"
     const val KEY_DOLPHIN_HARDCORE_WAS_ENABLED = "dolphin_hardcore_was_enabled"
     const val KEY_PPSSPP_HARDCORE_WAS_ENABLED = "ppsspp_hardcore_was_enabled"
@@ -47,14 +48,16 @@ object PrefsConstants {
     const val KEY_PPSSPP_PATCHED_THIS_RUN = "ppsspp_patched_this_run"
     const val KEY_ARMSX2_PATCHED_THIS_RUN = "armsx2_patched_this_run"
     const val KEY_FLYCAST_PATCHED_THIS_RUN = "flycast_patched_this_run"
-    const val KEY_MELONDUALDS_PATCHED_THIS_RUN = "melondualds_patched_this_run"
+    const val KEY_WATERMELONDS_PATCHED_THIS_RUN = "melondualds_patched_this_run"
     const val KEY_MUPEN64_PATCHED_THIS_RUN = "mupen64_patched_this_run"
     const val KEY_EMUCOREX_PATCHED_THIS_RUN = "emucorex_patched_this_run"
+    const val KEY_ARMSX1_PATCHED_THIS_RUN = "armsx1_patched_this_run"
     const val KEY_PROXY_PORT = "proxy_port"
     const val KEY_APP_UPDATE_CHECK_ENABLED = "app_update_check_enabled"
     const val KEY_APP_UPDATE_LAST_CHECKED_AT = "app_update_last_checked_at"
     const val KEY_APP_UPDATE_LAST_PROMPTED_AT = "app_update_last_prompted_at"
     const val KEY_HIDE_SUPPORT_BUTTON = "hide_support_button"
+    const val KEY_SHOW_LOCKED_ACHIEVEMENTS = "show_locked_achievements"
     private const val KEY_LAST_SEEN_VERSION_CODE = "last_seen_version_code"
     private const val KEY_AVAILABLE_APP_UPDATE = "available_app_update"
 
@@ -321,6 +324,15 @@ object PrefsConstants {
     fun saveHideSupportButtonEnabled(context: Context, enabled: Boolean) {
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .edit { putBoolean(KEY_HIDE_SUPPORT_BUTTON, enabled) }
+    }
+
+    fun loadShowLockedAchievementsEnabled(context: Context): Boolean =
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getBoolean(KEY_SHOW_LOCKED_ACHIEVEMENTS, false)
+
+    fun saveShowLockedAchievementsEnabled(context: Context, enabled: Boolean) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit { putBoolean(KEY_SHOW_LOCKED_ACHIEVEMENTS, enabled) }
     }
 
     fun resetHideSupportButtonOnAppUpdate(context: Context, currentVersionCode: Long) {
