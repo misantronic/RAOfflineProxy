@@ -124,7 +124,16 @@ for offline NDS/DSi achievements on ROCKNIX today.
 Confirmed on-device (ROCKNIX `next`, `OS_NAME="ROCKNIX"` in `/etc/os-release`):
 
 - `retroarch.cfg` lives at `/storage/.config/retroarch/retroarch.cfg`
-- There is no `batocera.conf`/`knulli.conf` equivalent — only `retroarch.cfg` is patched
+- `/storage/.config/system/configs/system.cfg` is ROCKNIX's `batocera.conf`/`knulli.conf`
+  equivalent: EmulationStation writes the same `global.retroachievements[.hardcore|.username|
+  .password|.token]` keys there, and `setsettings.sh` feeds them into RetroArch through the
+  `--appendconfig` file at every game launch. It is patched by the same `batocera_conf` module
+  Knulli uses, and it is the **only** source for two things, because ROCKNIX strips the cheevos
+  keys out of `retroarch.cfg` on every launch:
+  - **credentials** — `retroarch.cfg` is blanked and `/tmp/.retroarch.cfg` only exists after a
+    game has been launched, so before that nothing else has them
+  - **hardcore** — left on, RetroArch rejects every unlock the proxy forwards with
+    `hardcore_not_supported`, which silently breaks offline achievements entirely
 - Add-on apps install under `/storage/.local/share/` (Heroic, Steam, m8c, and this app)
 - The **Tools** system runs `.sh` scripts from `/storage/.config/modules/` inside a `foot`
   terminal via `/usr/bin/foot %ROM%`. The launcher `source`s `/etc/profile`, calls

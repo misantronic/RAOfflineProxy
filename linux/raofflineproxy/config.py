@@ -312,6 +312,15 @@ def detect_batocera_conf(config_data: dict) -> str | None:
     if Path("/opt/muos/script/archive").exists():
         return None
 
+    # ROCKNIX has no batocera.conf/knulli.conf, but its system.cfg is the same thing
+    # under a different name: EmulationStation writes the identical
+    # global.retroachievements[.hardcore] keys there, and setsettings.sh feeds them
+    # into RetroArch. Without this, hardcore stays on and every unlock the proxy
+    # forwards is rejected with hardcore_not_supported.
+    rocknix_system_cfg = detect_rocknix_system_cfg(config_data)
+    if rocknix_system_cfg:
+        return rocknix_system_cfg
+
     if DEFAULT_KNULLI_CONF.exists():
         return str(DEFAULT_KNULLI_CONF)
 

@@ -131,3 +131,57 @@ class RevertNeverDisablesRetroachievementsTests(unittest.TestCase):
         result = batocera_conf.build_reverted_batocera_conf(content, previous)
         self.assertIn("global.retroachievements=1\n", result)
         self.assertNotIn("global.retroachievements=0", result)
+
+
+class LinuxRocknixSystemConfAsBatoceraConfTests(unittest.TestCase):
+    """ROCKNIX has no batocera.conf/knulli.conf, but its system.cfg carries the same
+    global.retroachievements keys. Without routing it through this module hardcore
+    stays on and RetroArch rejects every unlock with hardcore_not_supported."""
+
+    def test_detect_batocera_conf_returns_rocknix_system_cfg(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            system_cfg = Path(temp_dir) / "system.cfg"
+            system_cfg.write_text(
+                "global.retroachievements=1\nglobal.retroachievements.hardcore=1\n",
+                encoding="utf-8",
+            )
+
+            self.assertEqual(
+                config.detect_batocera_conf({"rocknix_system_cfg": str(system_cfg)}),
+                str(system_cfg),
+            )
+
+    def test_patch_disables_hardcore_and_revert_restores_it(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            system_cfg = Path(temp_dir) / "system.cfg"
+            system_cfg.write_text(
+                "global.retroachievements=1\nglobal.retroachievements.hardcore=1\n",
+                encoding="utf-8",
+            )
+            config_data = {"rocknix_system_cfg": str(system_cfg)}
+
+            patched = batocera_conf.patch_batocera_conf(config_data)
+            self.assertTrue(patched["exists"])
+            self.assertIn(
+                "global.retroachievements.hardcore=0",
+                system_cfg.read_text(encoding="utf-8"),
+            )
+
+            batocera_conf.revert_batocera_conf(config_data, patched["previous"])
+            self.assertIn(
+                "global.retroachievements.hardcore=1",
+                system_cfg.read_text(encoding="utf-8"),
+            )
+
+    def test_revert_never_disables_the_master_toggle(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            system_cfg = Path(temp_dir) / "system.cfg"
+            system_cfg.write_text("global.retroachievements.hardcore=1\n", encoding="utf-8")
+            config_data = {"rocknix_system_cfg": str(system_cfg)}
+
+            patched = batocera_conf.patch_batocera_conf(config_data)
+            batocera_conf.revert_batocera_conf(config_data, patched["previous"])
+
+            self.assertIn(
+                "global.retroachievements=1", system_cfg.read_text(encoding="utf-8")
+            )
