@@ -6,7 +6,7 @@ from typing import Optional
 
 from .config import (
     detect_batocera_conf,
-    detect_rocknix_append_cfg,
+    detect_rocknix_system_cfg,
     proxy_value,
     running_on_spruce,
     spruce_setting,
@@ -19,6 +19,9 @@ HARDCORE_KEY = "cheevos_hardcore_mode_enable"
 USERNAME_KEY = "cheevos_username"
 TOKEN_KEY = "cheevos_token"
 PASSWORD_KEY = "cheevos_password"
+ROCKNIX_SYSTEM_USERNAME_KEY = "global.retroachievements.username"
+ROCKNIX_SYSTEM_TOKEN_KEY = "global.retroachievements.token"
+ROCKNIX_SYSTEM_PASSWORD_KEY = "global.retroachievements.password"
 
 
 def cheevos_append_cfg_path(cfg_path: str | None) -> Path | None:
@@ -100,12 +103,52 @@ def load_spruce_credentials() -> dict | None:
     return {"user": user, "password": password}
 
 
+def load_rocknix_system_token_credentials(cfg_path: str | None = None) -> dict | None:
+    """ROCKNIX's EmulationStation settings, the only source before a game has launched."""
+    content = _read_rocknix_system_cfg(cfg_path)
+    if content is None:
+        return None
+
+    user = _extract_config_value(content, ROCKNIX_SYSTEM_USERNAME_KEY)
+    token = _extract_config_value(content, ROCKNIX_SYSTEM_TOKEN_KEY)
+    if not user or not token:
+        return None
+
+    return {"user": user, "token": token}
+
+
+def load_rocknix_system_password_credentials(
+    cfg_path: str | None = None,
+) -> dict | None:
+    content = _read_rocknix_system_cfg(cfg_path)
+    if content is None:
+        return None
+
+    user = _extract_config_value(content, ROCKNIX_SYSTEM_USERNAME_KEY)
+    password = _extract_config_value(content, ROCKNIX_SYSTEM_PASSWORD_KEY)
+    if not user or not password:
+        return None
+
+    return {"user": user, "password": password}
+
+
+def _read_rocknix_system_cfg(cfg_path: str | None) -> str | None:
+    path = cfg_path or detect_rocknix_system_cfg()
+    if not path:
+        return None
+
+    target = Path(path)
+    if not target.exists():
+        return None
+
+    return target.read_text(encoding="utf-8", errors="replace")
+
+
 def load_retroarch_credentials(cfg_path: str | None) -> dict | None:
     # Try main cfg first, then the cheevos appendconfig (muOS stores credentials
-    # there), then ROCKNIX's appendconfig (it strips the cheevos keys out of
-    # retroarch.cfg on every game launch and writes them only into that file).
+    # there), then ROCKNIX's EmulationStation settings (it strips the cheevos keys
+    # out of retroarch.cfg on every game launch, leaving that file the only source).
     cheevos_cfg = str(cheevos_append_cfg_path(cfg_path)) if cfg_path else None
-    rocknix_cfg = detect_rocknix_append_cfg()
 
     token_credentials = load_retroarch_token_credentials(cfg_path)
     if token_credentials is not None:
@@ -115,7 +158,7 @@ def load_retroarch_credentials(cfg_path: str | None) -> dict | None:
     if token_credentials is not None:
         return token_credentials
 
-    token_credentials = load_retroarch_token_credentials(rocknix_cfg, last_wins=True)
+    token_credentials = load_rocknix_system_token_credentials()
     if token_credentials is not None:
         return token_credentials
 
@@ -127,16 +170,14 @@ def load_retroarch_credentials(cfg_path: str | None) -> dict | None:
     if password_credentials is not None:
         return password_credentials
 
-    password_credentials = load_retroarch_password_credentials(rocknix_cfg, last_wins=True)
+    password_credentials = load_rocknix_system_password_credentials()
     if password_credentials is not None:
         return password_credentials
 
     return load_spruce_credentials()
 
 
-def load_retroarch_token_credentials(
-    cfg_path: str | None, last_wins: bool = False
-) -> dict | None:
+def load_retroarch_token_credentials(cfg_path: str | None) -> dict | None:
     if not cfg_path:
         return None
 
@@ -145,16 +186,14 @@ def load_retroarch_token_credentials(
         return None
 
     content = target.read_text(encoding="utf-8", errors="replace")
-    user = _extract_config_value(content, USERNAME_KEY, last_wins)
-    token = _extract_config_value(content, TOKEN_KEY, last_wins)
+    user = _extract_config_value(content, USERNAME_KEY)
+    token = _extract_config_value(content, TOKEN_KEY)
     if not user or not token:
         return None
     return {"user": user, "token": token}
 
 
-def load_retroarch_password_credentials(
-    cfg_path: str | None, last_wins: bool = False
-) -> dict | None:
+def load_retroarch_password_credentials(cfg_path: str | None) -> dict | None:
     if not cfg_path:
         return None
 
@@ -163,8 +202,8 @@ def load_retroarch_password_credentials(
         return None
 
     content = target.read_text(encoding="utf-8", errors="replace")
-    user = _extract_config_value(content, USERNAME_KEY, last_wins)
-    password = _extract_config_value(content, PASSWORD_KEY, last_wins)
+    user = _extract_config_value(content, USERNAME_KEY)
+    password = _extract_config_value(content, PASSWORD_KEY)
     if not user or not password:
         return None
     return {"user": user, "password": password}
@@ -441,14 +480,8 @@ def enforce_patched_cfg(cfg_path: str, config_data: dict) -> bool:
     return True
 
 
-def _extract_config_value(content: str, key: str, last: bool = False) -> str | None:
-    """Reads a key. With last=True the final occurrence wins, matching RetroArch.
-
-    ROCKNIX appends to its --appendconfig file without truncating it between game
-    launches, so the same key can appear several times with stale values first.
-    """
+def _extract_config_value(content: str, key: str) -> str | None:
     key_pattern = re.compile(rf"^\s*{re.escape(key)}\s*=\s*(.*?)\s*$")
-    found: str | None = None
     for raw_line in content.splitlines():
         match = key_pattern.match(raw_line)
         if match is None:
@@ -460,10 +493,8 @@ def _extract_config_value(content: str, key: str, last: bool = False) -> str | N
         elif value.startswith('"'):
             value = value[1:].strip()
 
-        if not last:
-            return value
-        found = value
-    return found
+        return value
+    return None
 
 
 def _upsert_config_value(content: str, key: str, value: str) -> str:

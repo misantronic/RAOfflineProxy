@@ -243,86 +243,97 @@ class LinuxAuthTests(unittest.TestCase):
                 store.close()
 
 
-class LinuxRocknixAppendConfigCredentialTests(unittest.TestCase):
-    """ROCKNIX strips credentials out of retroarch.cfg on every game launch and
-    writes them only into its --appendconfig file, so that file has to be read."""
+class LinuxRocknixSystemConfigCredentialTests(unittest.TestCase):
+    """EmulationStation's own settings, the only source before a game has launched."""
 
-    def test_resolves_password_credentials_from_rocknix_append_config(self) -> None:
+    def _write_system_cfg(self, path: Path, **values: str) -> None:
+        lines = [f"global.retroachievements.{key}={value}" for key, value in values.items()]
+        path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    def test_token_read_when_retroarch_cfg_is_stripped(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             cfg = root / "retroarch.cfg"
-            append_cfg = root / ".retroarch.cfg"
-            # What ROCKNIX leaves behind: the cheevos keys seded out of retroarch.cfg.
-            cfg.write_text('cheevos_enable = "true"\n', encoding="utf-8")
-            append_cfg.write_text(
-                'cheevos_username = "misantronic"\ncheevos_password = "hunter2"\n',
-                encoding="utf-8",
+            system_cfg = root / "system.cfg"
+            # ROCKNIX blanks these on every launch, and /tmp/.retroarch.cfg does not
+            # exist until a game has been started.
+            cfg.write_text(
+                'cheevos_username = ""\ncheevos_token = ""\n', encoding="utf-8"
             )
-            store = storage.Storage(database_path=root / "test.sqlite3")
-            original_login = auth.login_and_cache_token
-            try:
-                auth.login_and_cache_token = (
-                    lambda _store, _cfg, credentials, _ua: {
-                        "user": credentials["user"],
-                        "token": "issued",
-                    }
-                )
-
-                resolved = auth.resolve_credentials(
-                    store,
-                    {"retroarch_cfg": str(cfg), "rocknix_append_cfg": str(append_cfg)},
-                )
-
-                self.assertEqual(resolved, {"user": "misantronic", "token": "issued"})
-            finally:
-                auth.login_and_cache_token = original_login
-                store.close()
-
-    def test_last_occurrence_wins_across_appended_launches(self) -> None:
-        with tempfile.TemporaryDirectory() as temp_dir:
-            root = Path(temp_dir)
-            cfg = root / "retroarch.cfg"
-            append_cfg = root / ".retroarch.cfg"
-            cfg.write_text("", encoding="utf-8")
-            # ROCKNIX appends without truncating, so stale values sit above current ones.
-            append_cfg.write_text(
-                'cheevos_username = "olduser"\ncheevos_token = "oldtoken"\n'
-                'cheevos_username = "misantronic"\ncheevos_token = "newtoken"\n',
-                encoding="utf-8",
+            self._write_system_cfg(
+                system_cfg, username="misantronic", token="systemtoken"
             )
             store = storage.Storage(database_path=root / "test.sqlite3")
             try:
                 resolved = auth.resolve_credentials(
                     store,
-                    {"retroarch_cfg": str(cfg), "rocknix_append_cfg": str(append_cfg)},
+                    {
+                        "retroarch_cfg": str(cfg),
+                        "rocknix_system_cfg": str(system_cfg),
+                    },
                 )
 
-                self.assertEqual(resolved, {"user": "misantronic", "token": "newtoken"})
+                self.assertEqual(
+                    resolved, {"user": "misantronic", "token": "systemtoken"}
+                )
             finally:
                 store.close()
 
-    def test_retroarch_cfg_still_takes_precedence(self) -> None:
+    def test_retroarch_cfg_takes_precedence_over_system_cfg(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             cfg = root / "retroarch.cfg"
-            append_cfg = root / ".retroarch.cfg"
+            system_cfg = root / "system.cfg"
             cfg.write_text(
                 'cheevos_username = "fromcfg"\ncheevos_token = "cfgtoken"\n',
                 encoding="utf-8",
             )
-            append_cfg.write_text(
-                'cheevos_username = "fromappend"\ncheevos_token = "appendtoken"\n',
-                encoding="utf-8",
+            self._write_system_cfg(
+                system_cfg, username="fromsystem", token="systemtoken"
             )
             store = storage.Storage(database_path=root / "test.sqlite3")
             try:
                 resolved = auth.resolve_credentials(
                     store,
-                    {"retroarch_cfg": str(cfg), "rocknix_append_cfg": str(append_cfg)},
+                    {
+                        "retroarch_cfg": str(cfg),
+                        "rocknix_system_cfg": str(system_cfg),
+                    },
                 )
 
                 self.assertEqual(resolved, {"user": "fromcfg", "token": "cfgtoken"})
             finally:
+                store.close()
+
+    def test_password_only_system_cfg_triggers_login(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            cfg = root / "retroarch.cfg"
+            system_cfg = root / "system.cfg"
+            cfg.write_text("", encoding="utf-8")
+            self._write_system_cfg(system_cfg, username="misantronic", password="secret")
+            store = storage.Storage(database_path=root / "test.sqlite3")
+            original_login = auth.login_and_cache_token
+            try:
+                seen: dict = {}
+
+                def fake_login(storage_arg, config_data, credentials, user_agent):
+                    seen.update(credentials)
+                    return {"user": credentials["user"], "token": "issued"}
+
+                auth.login_and_cache_token = fake_login
+                resolved = auth.resolve_credentials(
+                    store,
+                    {
+                        "retroarch_cfg": str(cfg),
+                        "rocknix_system_cfg": str(system_cfg),
+                    },
+                )
+
+                self.assertEqual(seen, {"user": "misantronic", "password": "secret"})
+                self.assertEqual(resolved, {"user": "misantronic", "token": "issued"})
+            finally:
+                auth.login_and_cache_token = original_login
                 store.close()
 
 

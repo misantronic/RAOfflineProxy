@@ -225,24 +225,25 @@ class UpsertEmptyValueRegressionTests(unittest.TestCase):
 class LinuxRocknixMenuCredentialTests(unittest.TestCase):
     """The menu's status line reads credentials through load_retroarch_credentials,
     a separate path from auth.resolve_credentials. Both have to know about
-    ROCKNIX's appendconfig or the menu reports LOGIN REQUIRED while the service
-    is perfectly able to log in."""
+    ROCKNIX's EmulationStation settings or the menu reports LOGIN REQUIRED while
+    the service is perfectly able to log in."""
 
-    def test_falls_back_to_rocknix_append_config(self) -> None:
+    def test_falls_back_to_rocknix_system_config(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             cfg = root / "retroarch.cfg"
-            append_cfg = root / ".retroarch.cfg"
+            system_cfg = root / "system.cfg"
             # What a real ROCKNIX device looks like: a token with no username in
-            # retroarch.cfg (unusable on its own), credentials in the appendconfig.
+            # retroarch.cfg (unusable on its own), credentials in the ES settings.
             cfg.write_text('cheevos_token = "orphan"\n', encoding="utf-8")
-            append_cfg.write_text(
-                'cheevos_username = "misantronic"\ncheevos_password = "hunter2"\n',
+            system_cfg.write_text(
+                "global.retroachievements.username=misantronic\n"
+                "global.retroachievements.password=hunter2\n",
                 encoding="utf-8",
             )
 
             with mock.patch.object(
-                retroarch_cfg, "detect_rocknix_append_cfg", return_value=str(append_cfg)
+                retroarch_cfg, "detect_rocknix_system_cfg", return_value=str(system_cfg)
             ):
                 credentials = retroarch_cfg.load_retroarch_credentials(str(cfg))
 
@@ -255,6 +256,6 @@ class LinuxRocknixMenuCredentialTests(unittest.TestCase):
             cfg.write_text('cheevos_token = "orphan"\n', encoding="utf-8")
 
             with mock.patch.object(
-                retroarch_cfg, "detect_rocknix_append_cfg", return_value=None
+                retroarch_cfg, "detect_rocknix_system_cfg", return_value=None
             ):
                 self.assertIsNone(retroarch_cfg.load_retroarch_credentials(str(cfg)))

@@ -52,10 +52,10 @@ DEFAULT_ROCKNIX_RETROARCH_CFG = Path("/storage/.config/retroarch/retroarch.cfg")
 DEFAULT_ROCKNIX_CONFIG_DIR = Path("/storage/.config/raofflineproxy")
 DEFAULT_ROCKNIX_PPSSPP_INI = Path("/storage/.config/ppsspp/PSP/SYSTEM/ppsspp.ini")
 DEFAULT_ROCKNIX_DOLPHIN_CONFIG_DIR = Path("/storage/.config/dolphin-emu")
-# ROCKNIX launches RetroArch with --appendconfig pointing here, and its setsettings.sh
-# strips cheevos_username/cheevos_password out of retroarch.cfg on every launch, writing
-# the live values into this file instead. It is the only place those credentials exist.
-DEFAULT_ROCKNIX_APPEND_CFG = Path("/tmp/.retroarch.cfg")
+# ROCKNIX's setsettings.sh strips cheevos_username/cheevos_password out of retroarch.cfg
+# on every game launch, so this is where the credentials the user entered actually live,
+# in Batocera's key format (global.retroachievements.username/password/token).
+DEFAULT_ROCKNIX_SYSTEM_CFG = Path("/storage/.config/system/configs/system.cfg")
 OS_RELEASE_PATH = Path("/etc/os-release")
 
 
@@ -365,17 +365,17 @@ def detect_retroarch_cfg() -> str:
     return str(Path.home() / ".config" / "retroarch" / "retroarch.cfg")
 
 
-def detect_rocknix_append_cfg(config_data: dict | None = None) -> str | None:
-    configured = (config_data or {}).get("rocknix_append_cfg")
+def detect_rocknix_system_cfg(config_data: dict | None = None) -> str | None:
+    configured = (config_data or {}).get("rocknix_system_cfg")
     if configured:
         return str(configured)
 
-    env_override = os.environ.get("RAOFFLINEPROXY_ROCKNIX_APPEND_CFG")
+    env_override = os.environ.get("RAOFFLINEPROXY_ROCKNIX_SYSTEM_CFG")
     if env_override:
         return env_override
 
-    if running_on_rocknix() and DEFAULT_ROCKNIX_APPEND_CFG.exists():
-        return str(DEFAULT_ROCKNIX_APPEND_CFG)
+    if running_on_rocknix() and DEFAULT_ROCKNIX_SYSTEM_CFG.exists():
+        return str(DEFAULT_ROCKNIX_SYSTEM_CFG)
 
     return None
 
