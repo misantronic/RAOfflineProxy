@@ -429,6 +429,7 @@ def runtime_config() -> tuple[dict, str]:
 
 
 def start_proxy_inline(darkos: bool = False) -> None:
+    """Starts the proxy. Returns True when RetroArch's cfg was missing and skipped."""
     config_data, cfg_path = runtime_config()
     remove_stale_hook()
     patch_result = patch_retroarch_cfg(cfg_path, config_data)
@@ -447,6 +448,7 @@ def start_proxy_inline(darkos: bool = False) -> None:
         darkos_start_service()
     else:
         start_service_process(config_data)
+    return not patch_result.get("exists", True)
 
 
 def stop_proxy_inline(darkos: bool = False) -> None:
