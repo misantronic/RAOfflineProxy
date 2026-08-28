@@ -164,7 +164,10 @@ class DeviceSession:
         except Exception:
             return None
 
-    def wait_for_online(self, expected: bool, timeout: float = 60.0) -> bool:
+    # ConnectivityMonitor polls every 15s and each probe is itself emulated, so
+    # this needs headroom on a slow runner. It returns as soon as the state
+    # flips, so a generous ceiling costs nothing on the passing path.
+    def wait_for_online(self, expected: bool, timeout: float = 150.0) -> bool:
         deadline = time.time() + timeout
         while time.time() < deadline:
             if self.online_state() is expected:
@@ -172,7 +175,7 @@ class DeviceSession:
             time.sleep(1.0)
         return False
 
-    def wait_for_pending(self, expected: int, timeout: float = 60.0) -> bool:
+    def wait_for_pending(self, expected: int, timeout: float = 150.0) -> bool:
         deadline = time.time() + timeout
         while time.time() < deadline:
             if self.cli.pending_award_count() == expected:

@@ -64,13 +64,13 @@ chmod +x "${APP_DIR}/checkoff-template.sh"
 mkdir -p "${DIST_DIR}"
 rm -f "${DIST_DIR}/${ZIP_NAME}"
 
-python3 - <<'PY'
-from pathlib import Path
+BUILD_DIR="${BUILD_DIR}" ZIP_PATH="${DIST_DIR}/${ZIP_NAME}" python3 - <<'PY'
+import os
 import zipfile
+from pathlib import Path
 
-dist_dir = Path(r"/Users/dschkalee/src/RAOfflineProxy/linux/onion/dist")
-build_dir = dist_dir / "raofflineproxy-onion-app"
-zip_path = dist_dir / "RAOfflineProxy-Onion-v1.12.0-alpha1.zip"
+build_dir = Path(os.environ["BUILD_DIR"])
+zip_path = Path(os.environ["ZIP_PATH"])
 
 with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
     for path in sorted(build_dir.rglob("*")):
