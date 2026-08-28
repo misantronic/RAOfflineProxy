@@ -132,13 +132,40 @@ jobs:
         if: matrix.device == 'onion' || matrix.device == 'spruce' || matrix.device == 'allium'
         run: sudo apt-get update && sudo apt-get install -y imagemagick
 
-      - name: Fetch vendored pygame
+      # Keyed on the fetch script, which is where the asset versions are
+      # pinned, so bumping a version invalidates the cache on its own.
+      - name: Cache vendored pygame
         if: matrix.device == 'rocknix' || matrix.device == 'muos'
+        id: vendor-cache
+        uses: actions/cache@v4
+        with:
+          path: linux/${{ matrix.device }}/vendor
+          key: ${{ matrix.device }}-vendor-${{ hashFiles(format('linux/{0}/fetch_vendor.sh', matrix.device)) }}
+
+      # fetch_vendor.sh has no "already present" guard, so a cache hit has to
+      # skip the step rather than rely on the script no-opping.
+      - name: Fetch vendored pygame
+        if: >-
+          (matrix.device == 'rocknix' || matrix.device == 'muos') &&
+          steps.vendor-cache.outputs.cache-hit != 'true'
         run: bash linux/${{ matrix.device }}/fetch_vendor.sh
 
-      # spruce and Allium reuse Onion's cached armv7 CPython and pygame.
-      - name: Fetch Onion runtime and pygame
+      # spruce and Allium reuse Onion's armv7 CPython and pygame, so all three
+      # share one cache entry.
+      - name: Cache Onion runtime and pygame
         if: matrix.device == 'onion' || matrix.device == 'spruce' || matrix.device == 'allium'
+        id: onion-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            linux/onion/runtime-cache
+            linux/onion/vendor
+          key: onion-runtime-${{ hashFiles('linux/onion/fetch_runtime.sh', 'linux/onion/fetch_vendor.sh') }}
+
+      - name: Fetch Onion runtime and pygame
+        if: >-
+          (matrix.device == 'onion' || matrix.device == 'spruce' || matrix.device == 'allium') &&
+          steps.onion-cache.outputs.cache-hit != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
