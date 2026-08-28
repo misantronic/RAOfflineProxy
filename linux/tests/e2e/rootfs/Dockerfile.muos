@@ -1,0 +1,46 @@
+FROM arm64v8/debian:bookworm-slim
+
+# muOS ships CPython 3.11 and the bundle vendors cpython-311/312 pygame
+# extension modules, so bookworm is the matching Debian release. Its launcher
+# calls /usr/bin/python, which Debian does not provide.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        bash busybox python3 procps curl iproute2 unzip util-linux ca-certificates \
+    && rm -rf /var/lib/apt/lists/* \
+    && ln -sf /usr/bin/python3 /usr/bin/python
+
+RUN mkdir -p /opt/busybox-bin \
+    && for applet in base64 tar awk sed grep cut tr head tail wc find xargs; do \
+         ln -sf /bin/busybox /opt/busybox-bin/$applet; \
+       done
+
+RUN printf '%s\n' \
+    'NAME="muOS"' \
+    'ID=muos' \
+    'VERSION="2405.1 GOOSE"' \
+    'PRETTY_NAME="muOS 2405.1 GOOSE"' \
+    > /etc/os-release
+
+# /opt/muos/script/archive is the marker the app gates muOS behaviour on: it
+# selects the init/ boot hook and suppresses batocera.conf patching, which muOS
+# does not have.
+RUN mkdir -p \
+        /opt/muos/script/mux \
+        /opt/muos/script/var \
+        /opt/muos/config/settings/advanced \
+        /opt/muos/share/info/config \
+        /opt/muos/frontend/lib \
+        /run/muos/storage/application \
+        /run/muos/storage/init \
+        /run/muos/storage/theme/default/glyph/muxapp \
+        /mnt/mmc/ROMS/snes \
+        /mnt/mmc/ARCHIVE \
+    && touch /opt/muos/script/archive \
+    && printf '#!/bin/sh\nexit 0\n' > /opt/muos/script/mux/frontend.sh \
+    && printf '#!/bin/sh\nSETUP_APP() { :; }\nSETUP_STAGE_OVERLAY() { :; }\nFRONTEND() { :; }\n' \
+       > /opt/muos/script/var/func.sh \
+    && chmod +x /opt/muos/script/mux/frontend.sh
+
+COPY rootfs/muos/retroarch.cfg /opt/muos/share/info/config/retroarch.cfg
+
+ENV HOME=/root
+ENV PATH=/opt/busybox-bin:/usr/local/bin:/usr/bin:/bin

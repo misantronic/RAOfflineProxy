@@ -1,0 +1,14 @@
+{
+  "testuser": {
+    "password": "testpass",
+    "token": "tok-testuser-000000000001",
+    "score": 0,
+    "avatar": "https://media.retroachievements.org/UserPic/testuser.png"
+  },
+  "seconduser": {
+    "password": "secondpass",
+    "token": "tok-seconduser-00000000001",
+    "score": 0,
+    "avatar": "https://media.retroachievements.org/UserPic/seconduser.png"
+  }
+}

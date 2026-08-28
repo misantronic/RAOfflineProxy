@@ -1,0 +1,42 @@
+FROM arm64v8/debian:trixie-slim
+
+# ROCKNIX ships CPython 3.13/3.14 and the bundle vendors pygame extension
+# modules per ABI tag, so the base image's Python minor version is load-bearing
+# here in a way it is not on the other devices. trixie is the Debian release
+# that carries 3.13.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        bash busybox python3 procps curl iproute2 ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN mkdir -p /opt/busybox-bin \
+    && for applet in base64 tar awk sed grep cut tr head tail wc find xargs; do \
+         ln -sf /bin/busybox /opt/busybox-bin/$applet; \
+       done
+
+RUN printf '%s\n' \
+    'NAME="ROCKNIX"' \
+    'ID=rocknix' \
+    'VERSION="20260701"' \
+    'OS_NAME="ROCKNIX"' \
+    'OS_VERSION="20260701"' \
+    'PRETTY_NAME="ROCKNIX 20260701"' \
+    > /etc/os-release
+
+RUN mkdir -p \
+        /storage/.config/retroarch \
+        /storage/.config/system/configs \
+        /storage/.config/ppsspp/PSP/SYSTEM \
+        /storage/.config/dolphin-emu \
+        /storage/.config/modules \
+        /storage/.config/autostart \
+        /storage/.local/share \
+        /storage/roms/snes
+
+COPY rootfs/rocknix/retroarch.cfg /storage/.config/retroarch/retroarch.cfg
+COPY rootfs/rocknix/system.cfg /storage/.config/system/configs/system.cfg
+COPY rootfs/rocknix/ppsspp.ini /storage/.config/ppsspp/PSP/SYSTEM/ppsspp.ini
+COPY rootfs/rocknix/RetroAchievements.ini /storage/.config/dolphin-emu/RetroAchievements.ini
+
+ENV HOME=/storage
+ENV XDG_CONFIG_HOME=/storage/.config
+ENV PATH=/opt/busybox-bin:/usr/local/bin:/usr/bin:/bin

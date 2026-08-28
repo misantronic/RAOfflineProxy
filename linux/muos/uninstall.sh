@@ -15,8 +15,9 @@ fi
 # Remove autostart init script (boot hook)
 rm -f "$INIT_SCRIPT"
 
-# Remove icon from all theme dirs
-find /run/muos/storage/theme -name "raofflineproxy.png" -delete 2>/dev/null || true
+# Remove icon from all theme dirs. BusyBox find has no -delete, so the icons
+# would survive uninstall on device with the error swallowed by the redirect.
+find /run/muos/storage/theme -name "raofflineproxy.png" -exec rm -f {} + 2>/dev/null || true
 
 # Remove the app directory (includes this script, but it's already in memory)
 rm -rf "$APP_DIR"

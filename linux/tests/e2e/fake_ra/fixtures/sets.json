@@ -1,0 +1,92 @@
+{
+  "1447": {
+    "Title": "Metal Slug",
+    "ConsoleID": 27,
+    "ImageIcon": "https://media.retroachievements.org/Images/001447.png",
+    "RichPresencePatch": "Display:\nTesting",
+    "Achievements": [
+      {
+        "ID": 22001,
+        "Title": "First Blood",
+        "Description": "Defeat the first enemy",
+        "Points": 5,
+        "BadgeName": "22001",
+        "BadgeURL": "https://media.retroachievements.org/Badge/22001.png",
+        "BadgeLockedURL": "https://media.retroachievements.org/Badge/22001_lock.png",
+        "Flags": 3,
+        "MemAddr": "0xH0000=1"
+      },
+      {
+        "ID": 22002,
+        "Title": "Mission One",
+        "Description": "Complete mission one",
+        "Points": 10,
+        "BadgeName": "22002",
+        "BadgeURL": "https://media.retroachievements.org/Badge/22002.png",
+        "BadgeLockedURL": "https://media.retroachievements.org/Badge/22002_lock.png",
+        "Flags": 3,
+        "MemAddr": "0xH0001=1"
+      },
+      {
+        "ID": 22003,
+        "Title": "No Continues",
+        "Description": "Finish without continuing",
+        "Points": 25,
+        "BadgeName": "22003",
+        "BadgeURL": "https://media.retroachievements.org/Badge/22003.png",
+        "BadgeLockedURL": "https://media.retroachievements.org/Badge/22003_lock.png",
+        "Flags": 3,
+        "MemAddr": "0xH0002=1"
+      }
+    ]
+  },
+  "515": {
+    "Title": "Pokemon Red Version",
+    "ConsoleID": 4,
+    "ImageIcon": "https://media.retroachievements.org/Images/000515.png",
+    "RichPresencePatch": "Display:\nTesting",
+    "Achievements": [
+      {
+        "ID": 31001,
+        "Title": "Choose Your Starter",
+        "Description": "Pick a starter Pokemon",
+        "Points": 5,
+        "BadgeName": "31001",
+        "BadgeURL": "https://media.retroachievements.org/Badge/31001.png",
+        "BadgeLockedURL": "https://media.retroachievements.org/Badge/31001_lock.png",
+        "Flags": 3,
+        "MemAddr": "0xH1000=1"
+      },
+      {
+        "ID": 31002,
+        "Title": "Boulder Badge",
+        "Description": "Defeat Brock",
+        "Points": 10,
+        "BadgeName": "31002",
+        "BadgeURL": "https://media.retroachievements.org/Badge/31002.png",
+        "BadgeLockedURL": "https://media.retroachievements.org/Badge/31002_lock.png",
+        "Flags": 3,
+        "MemAddr": "0xH1001=1"
+      }
+    ]
+  },
+  "1448": {
+    "Title": "Bundle Test Game",
+    "ConsoleID": 27,
+    "ImageIcon": "https://media.retroachievements.org/Images/001448.png",
+    "RichPresencePatch": "Display:\nTesting",
+    "Achievements": [
+      {
+        "ID": 41001,
+        "Title": "Bundled Up",
+        "Description": "Launch the bundled ROM",
+        "Points": 5,
+        "BadgeName": "41001",
+        "BadgeURL": "https://media.retroachievements.org/Badge/41001.png",
+        "BadgeLockedURL": "https://media.retroachievements.org/Badge/41001_lock.png",
+        "Flags": 3,
+        "MemAddr": "0xH2000=1"
+      }
+    ]
+  }
+}

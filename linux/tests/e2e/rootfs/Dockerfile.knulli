@@ -1,0 +1,37 @@
+FROM arm64v8/debian:bookworm-slim
+
+# Knulli is Buildroot-based and routes most coreutils through BusyBox. The
+# installer's base64/tar/awk path is exactly where a device-only bug has bitten
+# before, so the busybox applets are put ahead of GNU coreutils on PATH for
+# anything the installer touches.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        bash busybox-static python3 procps curl iproute2 ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN mkdir -p /opt/busybox-bin \
+    && for applet in base64 tar awk sed grep cut tr head tail wc find xargs; do \
+         ln -sf /bin/busybox /opt/busybox-bin/$applet; \
+       done
+
+RUN printf '%s\n' \
+    'NAME="KNULLI"' \
+    'ID=knulli' \
+    'VERSION="knulli-40"' \
+    'OS_NAME="KNULLI"' \
+    'OS_VERSION="knulli-40"' \
+    'PRETTY_NAME="KNULLI knulli-40"' \
+    > /etc/os-release
+
+RUN mkdir -p \
+        /userdata/system/configs/retroarch \
+        /userdata/system/.config \
+        /userdata/roms/tools \
+        /userdata/roms/snes \
+        /userdata/roms/pygame \
+        /userdata/saves
+
+COPY rootfs/knulli/retroarch.cfg /userdata/system/configs/retroarch/retroarchcustom.cfg
+COPY rootfs/knulli/batocera.conf /userdata/system/batocera.conf
+
+ENV HOME=/userdata/system
+ENV PATH=/opt/busybox-bin:/usr/local/bin:/usr/bin:/bin:/userdata/system/bin

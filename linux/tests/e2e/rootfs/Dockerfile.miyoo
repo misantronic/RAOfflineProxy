@@ -1,0 +1,56 @@
+FROM arm32v7/debian:bullseye-slim
+
+# Onion, spruce and Allium are the same Miyoo Mini hardware sharing one SD card
+# layout; only a handful of marker files tell the three firmwares apart. One
+# image with a FIRMWARE build-arg keeps that relationship explicit.
+ARG FIRMWARE=onion
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        bash busybox python3 procps curl iproute2 unzip ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN mkdir -p /opt/busybox-bin \
+    && for applet in base64 tar awk sed grep cut tr head tail wc find xargs cmp; do \
+         ln -sf /bin/busybox /opt/busybox-bin/$applet; \
+       done
+
+RUN mkdir -p \
+        /mnt/SDCARD/App \
+        /mnt/SDCARD/Apps \
+        /mnt/SDCARD/Roms/SFC \
+        /mnt/SDCARD/RetroArch/.retroarch \
+        /mnt/SDCARD/RetroArch/platform \
+        /mnt/SDCARD/Saves/spruce \
+        /mnt/SDCARD/.tmp_update/config \
+        /mnt/SDCARD/.tmp_update/startup \
+        /mnt/SDCARD/.tmp_update/checkoff \
+        /mnt/SDCARD/.tmp_update/bin
+
+COPY rootfs/miyoo/retroarch.cfg /mnt/SDCARD/RetroArch/.retroarch/retroarch.cfg
+COPY rootfs/miyoo/retroarch.cfg /mnt/SDCARD/RetroArch/platform/retroarch-MiyooMini.cfg
+COPY rootfs/miyoo/spruce-config.json /mnt/SDCARD/Saves/spruce/spruce-config.json
+
+# The firmware markers config.py disambiguates on:
+#   spruce  = /mnt/SDCARD/spruce/spruce present, onionVersion absent
+#   onion   = /mnt/SDCARD/App present, spruce absent
+#   allium  = /mnt/SDCARD/.allium is a directory
+RUN set -eu; \
+    case "$FIRMWARE" in \
+      onion) \
+        mkdir -p /mnt/SDCARD/.tmp_update/onionVersion; \
+        echo "v4.4.0-beta-20260120" > /mnt/SDCARD/.tmp_update/onionVersion/version.txt; \
+        ;; \
+      spruce) \
+        mkdir -p /mnt/SDCARD/spruce; \
+        echo "4.0.0" > /mnt/SDCARD/spruce/spruce; \
+        printf '#!/bin/sh\nexit 0\n' > /mnt/SDCARD/.tmp_update/updater; \
+        chmod +x /mnt/SDCARD/.tmp_update/updater; \
+        ;; \
+      allium) \
+        mkdir -p /mnt/SDCARD/.allium/state; \
+        printf '#!/bin/sh\nexit 0\n' > /mnt/SDCARD/.tmp_update/updater; \
+        chmod +x /mnt/SDCARD/.tmp_update/updater; \
+        ;; \
+    esac
+
+ENV PATH=/opt/busybox-bin:/usr/local/bin:/usr/bin:/bin
