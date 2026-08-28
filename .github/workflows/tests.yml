@@ -3,10 +3,14 @@ name: Tests
 on:
   pull_request:
     branches: ["**"]
+  schedule:
+    # Nightly, so the emulated device suites run without gating every PR.
+    - cron: "0 3 * * *"
+  workflow_dispatch:
 
 jobs:
   linux-tests:
-    if: github.event.pull_request.draft == false
+    if: github.event_name == 'pull_request' && github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     steps:
       # rcheevos and libchdr are submodules; the native hasher is built from them.
@@ -44,7 +48,7 @@ jobs:
         run: python3 -m pytest linux/tests/
 
   android-tests:
-    if: github.event.pull_request.draft == false
+    if: github.event_name == 'pull_request' && github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -80,3 +84,68 @@ jobs:
       - name: Run android unit tests
         if: steps.changes.outputs.android == 'true'
         run: ./gradlew testDebugUnitTest
+
+  # Container E2E: installs the real device bundle into a device-shaped rootfs
+  # on the target architecture and drives a full lifecycle against the fake RA
+  # server. See linux/tests/e2e/README.md.
+  #
+  # Every architecture is emulated on the x86_64 runners, so this is far slower
+  # than the unit suites. It runs nightly and on demand, and on a pull request
+  # only when that PR carries the "e2e" label.
+  linux-e2e:
+    name: e2e (${{ matrix.device }})
+    if: >-
+      github.event_name != 'pull_request' ||
+      contains(github.event.pull_request.labels.*.name, 'e2e')
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        device: [knulli, rocknix, muos, onion, spruce, allium]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.14"
+
+      - name: Install test dependencies
+        run: pip install pytest
+
+      # binfmt handlers so the aarch64 device images can run here.
+      - uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64,arm
+
+      # build_rchash.sh cross-compiles the native hasher with zig; without
+      # ZIG_BIN it looks for a Homebrew path that does not exist on the runner.
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: "0.16.0"
+
+      # Onion, spruce and Allium resize their launcher icon at build time;
+      # resize_icon.sh falls back to ImageMagick when sips is absent.
+      - name: Install image tooling
+        if: matrix.device == 'onion' || matrix.device == 'spruce' || matrix.device == 'allium'
+        run: sudo apt-get update && sudo apt-get install -y imagemagick
+
+      - name: Fetch vendored pygame
+        if: matrix.device == 'rocknix' || matrix.device == 'muos'
+        run: bash linux/${{ matrix.device }}/fetch_vendor.sh
+
+      # spruce and Allium reuse Onion's cached armv7 CPython and pygame.
+      - name: Fetch Onion runtime and pygame
+        if: matrix.device == 'onion' || matrix.device == 'spruce' || matrix.device == 'allium'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          bash linux/onion/fetch_runtime.sh
+          bash linux/onion/fetch_vendor.sh
+
+      - name: Run ${{ matrix.device }} E2E scenarios
+        env:
+          ZIG_BIN: zig
+        run: python3 -m pytest linux/tests/e2e -q --e2e-device ${{ matrix.device }}

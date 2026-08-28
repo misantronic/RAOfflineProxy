@@ -30,7 +30,7 @@ cp -R "${LINUX_DIR}/raofflineproxy" "${APP_DIR}/app/raofflineproxy"
 cp "${LINUX_DIR}/../docs/public/logo-320.png" "${APP_DIR}/app/raofflineproxy/logo-320.png"
 cp "${SCRIPT_DIR}/native/libraproxy_rchash.so" "${LIB_DIR}/libraproxy_rchash.so"
 cp "${LINUX_DIR}/requirements.txt" "${APP_DIR}/app/requirements.txt"
-sips -z 74 74 "${LINUX_DIR}/../docs/public/logo.png" --out "${APP_DIR}/icon.png" >/dev/null
+"${LINUX_DIR}/resize_icon.sh" "${LINUX_DIR}/../docs/public/logo.png" "${APP_DIR}/icon.png" 74
 mkdir -p "${APP_DIR}/data"
 
 if [ -f "${RUNTIME_ARCHIVE_PATH}" ]; then
