@@ -9,8 +9,28 @@ on:
   workflow_dispatch:
 
 jobs:
-  linux-tests:
+  # Both linux jobs gate on this, so the definition of "a linux change" lives in
+  # one place. Pull requests only: the other events run everything unconditionally.
+  changes:
     if: github.event_name == 'pull_request' && github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    outputs:
+      linux: ${{ steps.filter.outputs.linux }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: dorny/paths-filter@v4
+        id: filter
+        with:
+          filters: |
+            linux:
+              - 'linux/**'
+              - 'third_party/**'
+              - '.github/workflows/tests.yml'
+
+  linux-tests:
+    needs: changes
+    if: needs.changes.outputs.linux == 'true'
     runs-on: ubuntu-latest
     steps:
       # rcheevos and libchdr are submodules; the native hasher is built from them.
@@ -18,31 +38,19 @@ jobs:
         with:
           submodules: recursive
 
-      - uses: dorny/paths-filter@v4
-        id: changes
-        with:
-          filters: |
-            linux:
-              - 'linux/**'
-              - 'third_party/**'
-
       - uses: actions/setup-python@v7
-        if: steps.changes.outputs.linux == 'true'
         with:
           python-version: "3.14"
 
       - name: Install test dependencies
-        if: steps.changes.outputs.linux == 'true'
         run: pip install pytest
 
       # Without a loadable libraproxy_rchash the hashing tests skip themselves,
       # so the suite would stay green while every ROM format goes untested.
       - name: Build native hasher
-        if: steps.changes.outputs.linux == 'true'
         run: TARGET=host OUT_DIR="${{ runner.temp }}/rchash" bash linux/build_rchash.sh
 
       - name: Run linux tests
-        if: steps.changes.outputs.linux == 'true'
         env:
           RAOFFLINEPROXY_RCHASH_LIB: ${{ runner.temp }}/rchash/libraproxy_rchash.so
         run: python3 -m pytest linux/tests/
@@ -90,13 +98,21 @@ jobs:
   # server. See linux/tests/e2e/README.md.
   #
   # Every architecture is emulated on the x86_64 runners, so this is far slower
-  # than the unit suites. It runs nightly and on demand, and on a pull request
-  # only when that PR carries the "e2e" label.
+  # than the unit suites. It runs nightly, on demand, and on any pull request
+  # that touches linux/ — the "e2e" label forces it on a PR that does not.
+  #
+  # !cancelled() is what lets the nightly and dispatch runs through: "changes" is
+  # skipped there, and a skipped dependency would otherwise skip this job whatever
+  # the condition below says.
   linux-e2e:
     name: e2e (${{ matrix.device }})
+    needs: changes
     if: >-
-      github.event_name != 'pull_request' ||
-      contains(github.event.pull_request.labels.*.name, 'e2e')
+      !cancelled() && (
+        github.event_name != 'pull_request' ||
+        needs.changes.outputs.linux == 'true' ||
+        contains(github.event.pull_request.labels.*.name, 'e2e')
+      )
     runs-on: ubuntu-latest
     timeout-minutes: 120
     strategy:
