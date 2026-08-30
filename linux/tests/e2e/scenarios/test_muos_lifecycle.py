@@ -9,6 +9,7 @@ MSLUG_GAME_ID = 1447
 
 HARDCORE_KEY = "cheevos_hardcore_mode_enable"
 CUSTOM_HOST_KEY = "cheevos_custom_host"
+CHEEVOS_CFG = "/opt/muos/share/info/config/retroarch.cheevos.cfg"
 USER_INIT = "/opt/muos/config/settings/advanced/user_init"
 THEME_ICON = "/run/muos/storage/theme/default/glyph/muxapp/raofflineproxy.png"
 
@@ -121,6 +122,50 @@ class TestProxyLifecycle:
         installed.cli.run("stop-proxy", check=True)
         cfg = installed.container.read_file(installed.device.retroarch_cfg)
         assert cfg_value(cfg, HARDCORE_KEY) == "false"
+
+
+class TestCheevosAppendConfig:
+    """muOS passes retroarch.cheevos.cfg to RetroArch as --appendconfig, so a proxy
+    host left behind there outranks the reverted retroarch.cfg (issue #132)."""
+
+    def test_start_patches_the_appendconfig(self, installed):
+        installed.cli.run("start-proxy", check=True)
+        cfg = installed.container.read_file(CHEEVOS_CFG)
+        assert cfg_value(cfg, CUSTOM_HOST_KEY) == installed.device.proxy_value
+        assert cfg_value(cfg, HARDCORE_KEY) == "false"
+
+    def test_stop_clears_the_appendconfig(self, installed):
+        installed.cli.run("start-proxy", check=True)
+        installed.cli.run("stop-proxy", check=True)
+        cfg = installed.container.read_file(CHEEVOS_CFG)
+        assert cfg_value(cfg, CUSTOM_HOST_KEY) == ""
+        assert cfg_value(cfg, HARDCORE_KEY) == "true"
+
+    def test_stop_clears_the_appendconfig_without_patch_state(self, installed):
+        """What a crash or an app swiped away leaves behind: the saved state is gone,
+        so the revert has to recognise its own host in the file."""
+        installed.cli.run("start-proxy", check=True)
+        installed.container.exec(
+            "rm -f %s/retroarch_patch_state.json" % installed.device.config_dir,
+            check=True,
+        )
+        installed.cli.run("stop-proxy", check=True)
+        cfg = installed.container.read_file(CHEEVOS_CFG)
+        assert cfg_value(cfg, CUSTOM_HOST_KEY) == ""
+
+    def test_appendconfig_created_after_the_patch_is_still_cleared(self, installed):
+        installed.container.exec("mv %s /tmp/cheevos.cfg" % CHEEVOS_CFG, check=True)
+        installed.cli.run("start-proxy", check=True)
+        installed.container.exec("mv /tmp/cheevos.cfg %s" % CHEEVOS_CFG, check=True)
+        installed.cli.run("start-proxy", check=True)
+        assert (
+            cfg_value(installed.container.read_file(CHEEVOS_CFG), CUSTOM_HOST_KEY)
+            == installed.device.proxy_value
+        )
+
+        installed.cli.run("stop-proxy", check=True)
+        cfg = installed.container.read_file(CHEEVOS_CFG)
+        assert cfg_value(cfg, CUSTOM_HOST_KEY) == ""
 
 
 class TestAutostart:
@@ -240,6 +285,9 @@ class TestUninstall:
         cfg = installed.container.read_file(installed.device.retroarch_cfg)
         assert cfg_value(cfg, HARDCORE_KEY) == "true"
         assert cfg_value(cfg, CUSTOM_HOST_KEY) == ""
+
+        cheevos_cfg = installed.container.read_file(CHEEVOS_CFG)
+        assert cfg_value(cheevos_cfg, CUSTOM_HOST_KEY) == ""
 
     def test_uninstall_removes_the_theme_icon(self, installed):
         """Regression: uninstall.sh used `find -delete`, which BusyBox find does
