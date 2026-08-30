@@ -47,12 +47,38 @@ def patch_cheevos_append_cfg(cfg_path: str | None, config_data: dict) -> dict | 
     if transformed != original:
         target.write_text(transformed, encoding="utf-8")
 
+    if _is_proxy_host(previous_host, config_data):
+        previous_host = ""
+
     return {
         "cfg_path": str(target),
         "hardcore_was_enabled": hardcore_was_enabled,
         "previous_enable": previous_enable,
         "previous_host": previous_host,
         "changed": transformed != original,
+    }
+
+
+def clear_cheevos_append_host(cfg_path: str | None, config_data: dict | None) -> dict | None:
+    """Blind cleanup of the appendconfig, for when the saved patch state cannot
+    describe it: the state was lost (crash, manual edit), or muOS created the file
+    after the patch ran. Only a host pointing at our own proxy is cleared, so a
+    genuinely custom host survives."""
+    target = cheevos_append_cfg_path(cfg_path)
+    if target is None or not target.exists():
+        return None
+
+    current = target.read_text(encoding="utf-8", errors="replace")
+    if not _is_proxy_host(_extract_config_value(current, HOST_KEY), config_data or {}):
+        return None
+
+    transformed = _upsert_config_value(current, HOST_KEY, "")
+    if transformed != current:
+        target.write_text(transformed, encoding="utf-8")
+
+    return {
+        "cfg_path": str(target),
+        "changed": transformed != current,
     }
 
 
@@ -344,9 +370,13 @@ def patch_retroarch_cfg(cfg_path: str, config_data: dict) -> dict:
         hardcore_was_enabled = bool(
             existing_patch_state.get("hardcore_was_enabled", hardcore_was_enabled)
         )
-        cheevos_append_state = existing_patch_state.get(
-            "cheevos_append_cfg", cheevos_append_state
-        )
+        # Only the saved state knows what the appendconfig looked like before the
+        # first patch. Keep the fresh one when nothing was saved for that file,
+        # which is the case when muOS created it after the patch ran.
+        saved_append_state = existing_patch_state.get("cheevos_append_cfg")
+        append_path = str(cheevos_append_cfg_path(str(target)))
+        if saved_append_state and saved_append_state.get("cfg_path") == append_path:
+            cheevos_append_state = saved_append_state
 
     save_patch_state(
         {
@@ -391,6 +421,7 @@ def revert_retroarch_cfg(
             raise FileNotFoundError(f"RetroArch config not found: {target}")
 
         revert_cheevos_append_cfg((patch_state or {}).get("cheevos_append_cfg"))
+        clear_cheevos_append_host(str(target), config_data)
         if patch_state_override is None and patch_state is not None:
             clear_patch_state()
         return {
@@ -427,6 +458,7 @@ def revert_retroarch_cfg(
         target.write_text(transformed, encoding="utf-8")
 
     revert_cheevos_append_cfg((patch_state or {}).get("cheevos_append_cfg"))
+    clear_cheevos_append_host(str(target), config_data)
 
     if patch_state_override is None and patch_state is not None:
         clear_patch_state()
@@ -478,6 +510,30 @@ def enforce_patched_cfg(cfg_path: str, config_data: dict) -> bool:
 
     target.write_text(transformed, encoding="utf-8")
     return True
+
+
+LOOPBACK_HOSTS = ("127.0.0.1", "localhost", "::1")
+
+
+def _is_proxy_host(value: str | None, config_data: dict) -> bool:
+    """Whether a cheevos_custom_host value is one of ours. The port is ignored on
+    loopback so a host left behind by an earlier run (or a since-changed proxy port)
+    is still recognised."""
+    if not value:
+        return False
+
+    address = value.strip()
+    if address == proxy_value(config_data):
+        return True
+
+    for scheme in ("http://", "https://"):
+        if address.startswith(scheme):
+            address = address[len(scheme) :]
+            break
+
+    address = address.rstrip("/")
+    host = address.rsplit(":", 1)[0] if ":" in address else address
+    return host.strip("[]") in LOOPBACK_HOSTS
 
 
 def _extract_config_value(content: str, key: str) -> str | None:

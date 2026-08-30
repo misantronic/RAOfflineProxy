@@ -112,7 +112,7 @@ offline award queue-and-flush cycle, and offline reads from cache.
 | --- | --- | --- | --- |
 | knulli | aarch64 | self-extracting `.sh` | 19 |
 | rocknix | aarch64 | self-extracting `.sh` | 20 |
-| muos | aarch64 | `.muxapp` zip | 22 |
+| muos | aarch64 | `.muxapp` zip | 26 |
 | onion | armv7 | SD-card zip | 21 |
 | spruce | armv7 | SD-card zip | 23 |
 | allium | armv7 | SD-card zip | 21 |
@@ -129,8 +129,10 @@ tag matching the interpreter.
 `launch.sh` exporting `RAOFFLINEPROXY_CONFIG_DIR` and `..._RETROARCH_CFG` itself
 (the one place the harness does not fight an env override, because the shipping
 product sets it); `detect_batocera_conf()` returning `None`; autostart writing
-both `init/raofflineproxy.sh` and the `advanced/user_init` flag; and theme
-icons actually being removed by the uninstaller (see below).
+both `init/raofflineproxy.sh` and the `advanced/user_init` flag; the
+`retroarch.cheevos.cfg` appendconfig being patched *and* cleared on stop, including
+when the saved patch state is gone or the file only appeared after the patch ran
+(issue #132); and theme icons actually being removed by the uninstaller (see below).
 
 **Miyoo family** (`_miyoo_common.py`, subclassed per device) — the bundled armv7
 CPython 3.9 being the interpreter `resolve_python_bin` actually selects rather

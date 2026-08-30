@@ -41,6 +41,9 @@ RUN mkdir -p \
     && chmod +x /opt/muos/script/mux/frontend.sh
 
 COPY rootfs/muos/retroarch.cfg /opt/muos/share/info/config/retroarch.cfg
+# muOS launches RetroArch with this file as --appendconfig, so it outranks
+# retroarch.cfg for every cheevos key.
+COPY rootfs/muos/retroarch.cheevos.cfg /opt/muos/share/info/config/retroarch.cheevos.cfg
 
 ENV HOME=/root
 ENV PATH=/opt/busybox-bin:/usr/local/bin:/usr/bin:/bin

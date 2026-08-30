@@ -259,3 +259,105 @@ class LinuxRocknixMenuCredentialTests(unittest.TestCase):
                 retroarch_cfg, "detect_rocknix_system_cfg", return_value=None
             ):
                 self.assertIsNone(retroarch_cfg.load_retroarch_credentials(str(cfg)))
+
+
+class CheevosAppendCfgRevertTests(unittest.TestCase):
+    """muOS launches RetroArch with retroarch.cheevos.cfg as an --appendconfig, so a
+    proxy host left behind there outranks the reverted retroarch.cfg (issue #132)."""
+
+    CFG = 'cheevos_custom_host = "%s"\ncheevos_enable = "true"\n'
+
+    def _device(self, temp_dir: str, append_host: str):
+        cfg_path = Path(temp_dir) / "retroarch.cfg"
+        append_path = Path(temp_dir) / "retroarch.cheevos.cfg"
+        cfg_path.write_text(self.CFG % "127.0.0.1:8080", encoding="utf-8")
+        append_path.write_text(self.CFG % append_host, encoding="utf-8")
+        return cfg_path, append_path
+
+    def test_revert_without_patch_state_clears_the_appendconfig(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            cfg_path, append_path = self._device(temp_dir, "127.0.0.1:8080")
+            state_path = Path(temp_dir) / "retroarch_patch_state.json"
+
+            original_state_file = state.STATE_FILE
+            try:
+                state.STATE_FILE = state_path
+                retroarch_cfg.revert_retroarch_cfg(str(cfg_path))
+            finally:
+                state.STATE_FILE = original_state_file
+
+            self.assertIn(
+                'cheevos_custom_host = ""',
+                append_path.read_text(encoding="utf-8"),
+            )
+
+    def test_revert_keeps_a_host_that_is_not_ours(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            cfg_path, append_path = self._device(temp_dir, "cheevos.example.org")
+            state_path = Path(temp_dir) / "retroarch_patch_state.json"
+
+            original_state_file = state.STATE_FILE
+            try:
+                state.STATE_FILE = state_path
+                retroarch_cfg.revert_retroarch_cfg(str(cfg_path))
+            finally:
+                state.STATE_FILE = original_state_file
+
+            self.assertIn(
+                'cheevos_custom_host = "cheevos.example.org"',
+                append_path.read_text(encoding="utf-8"),
+            )
+
+    def test_revert_clears_a_host_left_by_a_different_proxy_port(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            cfg_path, append_path = self._device(temp_dir, "http://127.0.0.1:8099")
+            state_path = Path(temp_dir) / "retroarch_patch_state.json"
+
+            original_state_file = state.STATE_FILE
+            try:
+                state.STATE_FILE = state_path
+                retroarch_cfg.revert_retroarch_cfg(str(cfg_path))
+            finally:
+                state.STATE_FILE = original_state_file
+
+            self.assertIn(
+                'cheevos_custom_host = ""',
+                append_path.read_text(encoding="utf-8"),
+            )
+
+    def test_appendconfig_created_after_the_first_patch_is_reverted(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            cfg_path = Path(temp_dir) / "retroarch.cfg"
+            append_path = Path(temp_dir) / "retroarch.cheevos.cfg"
+            state_path = Path(temp_dir) / "retroarch_patch_state.json"
+            cfg_path.write_text(self.CFG % "", encoding="utf-8")
+
+            original_state_file = state.STATE_FILE
+            try:
+                state.STATE_FILE = state_path
+                retroarch_cfg.patch_retroarch_cfg(str(cfg_path), {})
+                self.assertIsNone(state.load_patch_state()["cheevos_append_cfg"])
+
+                append_path.write_text(self.CFG % "", encoding="utf-8")
+                retroarch_cfg.patch_retroarch_cfg(str(cfg_path), {})
+                saved = state.load_patch_state()["cheevos_append_cfg"]
+                self.assertEqual(saved["cfg_path"], str(append_path))
+
+                retroarch_cfg.revert_retroarch_cfg(str(cfg_path))
+            finally:
+                state.STATE_FILE = original_state_file
+
+            self.assertIn(
+                'cheevos_custom_host = ""',
+                append_path.read_text(encoding="utf-8"),
+            )
+
+    def test_patch_of_an_already_patched_appendconfig_forgets_the_proxy_host(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            cfg_path, _ = self._device(temp_dir, "127.0.0.1:8080")
+
+            patched = retroarch_cfg.patch_cheevos_append_cfg(str(cfg_path), {})
+
+            self.assertEqual(patched["previous_host"], "")
