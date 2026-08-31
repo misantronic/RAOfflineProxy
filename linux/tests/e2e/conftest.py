@@ -223,19 +223,44 @@ def _start_fake_ra(container, control) -> None:
     )
 
 
+def _probe_systemd(device, tag: str) -> None:
+    """Boot one throwaway container to prove PID 1 comes up.
+
+    The session fixture builds a container per test, so without this a systemd
+    that never settles costs every test its full timeout and the run looks like
+    a silent hang. Failing here reports it once, with diagnostics.
+    """
+    probe = Container(
+        image=tag,
+        platform=device.platform,
+        privileged=True,
+        tmpfs=("/run", "/run/lock"),
+        mounts={"/sys/fs/cgroup": "/sys/fs/cgroup:rw"},
+        command=("/sbin/init",),
+    )
+    probe.start()
+    try:
+        probe.wait_for_systemd()
+    finally:
+        probe.stop()
+
+
 def _image_fixture(device_name: str):
     @pytest.fixture(scope="session")
     def _image() -> str:
         if not docker_available():
             pytest.skip("docker is not available")
         device = DEVICES[device_name]
-        return build_image(
+        tag = build_image(
             device.dockerfile,
             E2E_DIR,
             device.image_tag,
             device.platform,
             device.build_args,
         )
+        if device.needs_systemd:
+            _probe_systemd(device, tag)
+        return tag
 
     return _image
 

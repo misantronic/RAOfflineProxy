@@ -109,21 +109,30 @@ class Container:
         self.container_id = run_docker(args).stdout.strip()
         self._wait_running()
 
-    def wait_for_systemd(self, timeout: float = 240.0) -> None:
+    def wait_for_systemd(self, timeout: float = 120.0) -> None:
         """Block until PID 1 finishes booting.
 
         `degraded` is accepted: a container image has units that cannot start
         (no real hardware), and that is not a reason to fail the run.
         """
         deadline = time.time() + timeout
+        state = "unknown"
         while time.time() < deadline:
-            state = self.exec("systemctl is-system-running").stdout.strip()
+            state = self.exec("systemctl is-system-running", timeout=30).stdout.strip()
             if state in ("running", "degraded"):
                 return
             time.sleep(0.5)
+
+        failed = self.exec(
+            "systemctl list-units --failed --no-legend --no-pager", timeout=30
+        ).stdout.strip()
+        pending = self.exec(
+            "systemctl list-jobs --no-legend --no-pager", timeout=30
+        ).stdout.strip()
         raise RuntimeError(
-            "systemd did not finish booting in %s: %s"
-            % (self.name, self.exec("systemctl is-system-running").stdout.strip())
+            "systemd did not finish booting in %s after %ss (state=%r)\n"
+            "failed units:\n%s\npending jobs:\n%s"
+            % (self.name, timeout, state, failed or "(none)", pending or "(none)")
         )
 
     def _wait_running(self, timeout: float = 30.0) -> None:
