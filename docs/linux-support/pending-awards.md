@@ -11,7 +11,7 @@ From the user side, this means offline unlocks still register locally right away
 
 Queued awards are sent oldest first. Duplicate pending awards are discarded. Authentication failures require refreshed login state. Network failures keep awards queued for later retry.
 
-On KNULLI, muOS, and dArkOS, pending awards can be reviewed directly from the on-device menu. Onion does not currently include a dedicated pending-awards browser yet.
+Pending awards can be reviewed directly from the on-device menu on every supported target.
 
 ## Anti-Tamper
 
