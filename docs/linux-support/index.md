@@ -21,7 +21,7 @@ Use the `KNULLI`, `Onion`, `muOS`, `ROCKNIX`, `spruce`, `Allium`, and `dArkOS` t
 - ROCKNIX
 - spruce (experimental)
 - Allium (experimental)
-- dArkOS (community-contributed, unverified by the developer)
+- dArkOS (experimental)
 
 ## Specifics
 
