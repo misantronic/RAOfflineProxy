@@ -11,9 +11,16 @@ from .config import (
     MUOS_USER_INIT_CONFIG,
     detect_retroarch_cfg,
     running_on_allium,
+    running_on_darkos,
     running_on_rocknix,
     running_on_spruce,
     save_config,
+)
+from .darkos_service import (
+    systemd_enable_service,
+    systemd_disable_service,
+    systemd_service_enabled,
+    systemd_remove_service,
 )
 
 DEFAULT_KNULLI_ROMS_ROOT = Path("/userdata/roms")
@@ -40,8 +47,6 @@ ROCKNIX_MODULES_DIR = Path("/storage/.config/modules")
 ROCKNIX_MODULES_LAUNCHER = ROCKNIX_MODULES_DIR / "RAOfflineProxy.sh"
 ROCKNIX_TOOL_SOURCE = Path("/storage/.local/share/raofflineproxy/RAOfflineProxy.sh")
 DEFAULT_DARKOS_AUTOSTART_UNIT = Path("/etc/systemd/system/raofflineproxy.service")
-DARKOS_SERVICE_NAME = "raofflineproxy.service"
-DARKOS_APP_DIR = DEFAULT_DARKOS_HOME.joinpath('raofflineproxy', 'app')
 ROM_DIRECTORY_KEYS = [
     "content_directory",
 ]
@@ -106,6 +111,8 @@ def autostart_supported(config_data: dict) -> bool:
 
 
 def is_autostart_enabled(config_data: dict) -> bool:
+    if running_on_darkos():
+        systemd_service_enabled()
     if AUTOSTART_CONFIG_KEY in config_data:
         return bool(config_data[AUTOSTART_CONFIG_KEY])
     return _legacy_autostart_present(config_data)
@@ -147,10 +154,10 @@ def enable_autostart(config_data: dict) -> None:
 
 def disable_autostart(config_data: dict) -> None:
     startup_script = resolve_startup_script_path(config_data)
-    if startup_script == DEFAULT_DARKOS_AUTOSTART_UNIT:
-        darkos_disable_service()
     config_data[AUTOSTART_CONFIG_KEY] = False
     save_config(config_data)
+    if running_on_darkos():
+        systemd_disable_service()
 
 
 def ensure_boot_hook(config_data: dict) -> None:
@@ -188,8 +195,8 @@ def ensure_boot_hook(config_data: dict) -> None:
         startup_script.chmod(0o755)
         return
 
-    if startup_script == DEFAULT_DARKOS_AUTOSTART_UNIT:
-        _install_darkos_autostart_unit(config_data)
+    if startup_script == DEFAULT_DARKOS_AUTOSTART_UNIT and running_on_darkos():
+        systemd_enable_service()
         return
 
     startup_script.parent.mkdir(parents=True, exist_ok=True)
@@ -217,8 +224,8 @@ def remove_boot_hook(config_data: dict) -> None:
         startup_script.unlink()
         return
 
-    if startup_script == DEFAULT_DARKOS_AUTOSTART_UNIT:
-        _remove_darkos_autostart_unit(startup_script)
+    if startup_script == DEFAULT_DARKOS_AUTOSTART_UNIT and running_on_darkos():
+        systemd_remove_service()
         return
 
     existing = startup_script.read_text(encoding="utf-8", errors="replace")
@@ -297,14 +304,6 @@ def autostart_command(config_data: dict) -> tuple[str]:
             str(
                 config_data.get("autostart_launcher")
                 or "/storage/.local/share/raofflineproxy/bin/raofflineproxy"
-            ),
-        )
-
-    if startup_script == DEFAULT_DARKOS_AUTOSTART_UNIT:
-        return (
-            str(
-                config_data.get("autostart_launcher")
-                or "/home/ark/raofflineproxy/bin/raofflineproxy"
             ),
         )
 
@@ -467,106 +466,3 @@ def rocknix_boot_hook_script(config_data: dict) -> str:
             "",
         ]
     )
-
-
-def darkos_boot_hook_script(config_data: dict) -> str:
-    return "\n".join(
-        [
-            "[Unit]",
-            "Description=RAOfflineProxy server",
-            "After=emulationstation.service network.target",
-            "",
-            "[Service]",
-            "Type=simple",
-            f"WorkingDirectory={DARKOS_APP_DIR}",
-            f"ExecStart=/usr/bin/python3 -m raofflineproxy.main run-service",
-            "Restart=always",
-            "RestartSec=1",
-            "",
-            "[Install]",
-            "WantedBy=multi-user.target",
-            "",
-        ]
-    )
-
-
-def darkos_service_status() -> bool:
-    # Active: active => True
-    # Active: inactive => False
-    return _run_privileged(["systemctl", "is-active", "--quiet", DARKOS_SERVICE_NAME])
-
-
-def darkos_disable_service() -> bool:
-    return _run_privileged(["systemctl", "disable", DARKOS_SERVICE_NAME])
-
-
-def darkos_start_service() -> bool:
-    return _run_privileged(["systemctl", "start", DARKOS_SERVICE_NAME])
-
-
-def darkos_stop_service() -> bool:
-   return _run_privileged(["systemctl", "stop", DARKOS_SERVICE_NAME])
-
-
-def _run_privileged(args: list[str]) -> bool:
-    # dArkOS's own ES Tools scripts (e.g. "Enable Remote Services.sh") call
-    # `sudo systemctl ...` non-interactively from the same unprivileged Tools
-    # context RAOfflineProxy runs in, which only works with passwordless sudo
-    # configured for the device user. -n makes sudo fail fast instead of
-    # hanging on a password prompt if that assumption turns out to be wrong.
-    candidates = [["sudo", "-n", *args]]
-    if os.geteuid() == 0:
-        candidates.append(list(args))
-
-    for candidate in candidates:
-        try:
-            result = subprocess.run(candidate, capture_output=True, timeout=10)
-        except OSError:
-            continue
-        if result.returncode == 0:
-            return True
-    return False
-
-
-def _write_privileged(path: Path, content: str) -> bool:
-    try:
-        path.write_text(content, encoding="utf-8")
-        return True
-    except OSError:
-        pass
-
-    try:
-        result = subprocess.run(
-            ["sudo", "-n", "tee", str(path)],
-            input=content,
-            text=True,
-            capture_output=True,
-            timeout=10,
-        )
-        return result.returncode == 0
-    except OSError:
-        return False
-
-
-def _install_darkos_autostart_unit(config_data: dict) -> None:
-    # boot-reconcile decides at runtime whether to apply/revert based on the
-    # config flag, so this unit is installed once and left permanently
-    # enabled — toggling autostart never needs to touch systemctl again.
-    # Called both from install.sh and unprivileged from the SDL menu, so any
-    # failure here (e.g. no sudo access) is swallowed rather than raised.
-    if not _write_privileged(
-        DEFAULT_DARKOS_AUTOSTART_UNIT, darkos_boot_hook_script(config_data)
-    ):
-        return
-    _run_privileged(["systemctl", "daemon-reload"])
-    _run_privileged(["systemctl", "enable", DARKOS_SERVICE_NAME])
-
-
-def _remove_darkos_autostart_unit(startup_script: Path) -> None:
-    _run_privileged(["systemctl", "disable", "--now", DARKOS_SERVICE_NAME])
-    if not _run_privileged(["rm", "-f", str(startup_script)]):
-        try:
-            startup_script.unlink(missing_ok=True)
-        except OSError:
-            pass
-    _run_privileged(["systemctl", "daemon-reload"])

@@ -16,6 +16,12 @@ from .config import (
     configure_logging,
     proxy_host,
     proxy_port,
+    running_on_darkos,
+)
+from .darkos_service import (
+    darkos_service_start,
+    darkos_service_status,
+    darkos_service_stop,
 )
 from .proxy_service import run_proxy_service
 from .state import (
@@ -226,6 +232,9 @@ def port_is_available(config_data: dict) -> bool:
 
 
 def start_service_process(config_data: dict) -> dict:
+    if running_on_darkos():
+        return darkos_service_start()
+
     discovered_pids = discover_service_pids()
     healthy_pids = [pid for pid in discovered_pids if not process_is_orphaned(pid)]
     if healthy_pids:
@@ -274,6 +283,9 @@ def start_service_process(config_data: dict) -> dict:
 
 
 def stop_service_process(timeout_seconds: int = 10) -> dict:
+    if running_on_darkos():
+        return darkos_service_stop()
+
     pids = discover_service_pids()
     tracked_pid = load_pid()
     if tracked_pid is not None and tracked_pid not in pids:
@@ -324,6 +336,9 @@ def stop_service_process(timeout_seconds: int = 10) -> dict:
 
 
 def service_status() -> dict:
+    if running_on_darkos():
+        return darkos_service_status()
+
     pid = tracked_or_discovered_service_pid()
     status = load_service_status() or {}
     running = pid is not None and process_is_running(pid)

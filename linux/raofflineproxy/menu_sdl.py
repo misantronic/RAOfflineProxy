@@ -40,6 +40,7 @@ from .config import (
     running_on_shared_miyoo_stack,
     running_on_rocknix,
     running_on_spruce,
+    running_on_darkos,
     save_config,
 )
 from .platform import (
@@ -49,9 +50,6 @@ from .platform import (
     is_autostart_enabled,
     resolve_retroarch_cfg,
     resolve_rom_root,
-    darkos_start_service,
-    darkos_stop_service,
-    darkos_service_status
 )
 from .pending_awards import delete_pending_award, list_pending_awards
 from .network import online_check
@@ -428,7 +426,7 @@ def runtime_config() -> tuple[dict, str]:
     return config_data, cfg_path
 
 
-def start_proxy_inline(darkos: bool = False) -> None:
+def start_proxy_inline() -> None:
     """Starts the proxy. Returns True when RetroArch's cfg was missing and skipped."""
     config_data, cfg_path = runtime_config()
     remove_stale_hook()
@@ -444,25 +442,16 @@ def start_proxy_inline(darkos: bool = False) -> None:
     store_dolphin_previous(patch_state, dolphin)
     store_spruce_previous(patch_state, spruce)
     save_patch_state(patch_state)
-    if darkos:
-        darkos_start_service()
-    else:
-        start_service_process(config_data)
+    start_service_process(config_data)
     return not patch_result.get("exists", True)
 
 
-def stop_proxy_inline(darkos: bool = False) -> None:
+def stop_proxy_inline() -> None:
     config_data, cfg_path = runtime_config()
     remove_stale_hook()
     patch_state = load_patch_state() or {}
     revert_cfg_path = patch_state.get("cfg_path") or cfg_path
-    if darkos:
-        service = {}
-        _exit_zero = darkos_stop_service()
-        if _exit_zero:
-            service = {"stopped": True, "already_stopped": False}
-    else:
-        service = stop_service_process()
+    service = stop_service_process()
     previous_batocera = patch_state.get("batocera_previous", {})
     revert_batocera_conf(config_data, previous_batocera)
     revert_ppsspp_ini(config_data, patch_state.get("ppsspp_previous", {}))
@@ -802,7 +791,7 @@ class MenuSdlSession:
                 else "Enable autostart"
             )
         if (
-            ((self.is_knulli_platform() or self.is_darkos_platform()) and not service_mode)
+            ((self.is_knulli_platform() or running_on_darkos()) and not service_mode)
             or running_on_muos()
             or running_on_rocknix()
         ):
@@ -1399,9 +1388,6 @@ class MenuSdlSession:
     def is_knulli_platform(self) -> bool:
         return Path("/userdata/system").exists()
 
-    def is_darkos_platform(self) -> bool:
-        return DEFAULT_DARKOS_HOME.exists()
-
     def update_platform(self) -> str | None:
         """The release channel to check for updates, or None where there is none.
 
@@ -1419,7 +1405,7 @@ class MenuSdlSession:
             return "allium"
         if running_on_rocknix():
             return "rocknix"
-        if self.is_darkos_platform():
+        if running_on_darkos():
             return "darkos"
         return "knulli"
 
@@ -2709,8 +2695,6 @@ class MenuSdlSession:
     def read_proxy_running(self) -> bool:
         try:
             service = service_status() or {}
-            if self.is_darkos_platform():
-                service['running'] = darkos_service_status()
         except Exception:
             return False
         return bool(service.get("running"))
@@ -2728,8 +2712,7 @@ class MenuSdlSession:
             if service_mode_active():
                 start_service()
             else:
-                _darkos = self.is_darkos_platform()
-                cfg_skipped = start_proxy_inline(darkos=_darkos)
+                cfg_skipped = start_proxy_inline()
             self.refresh_main_menu_state(force=True)
             self.maybe_offer_smart_cache()
             if cfg_skipped:
@@ -2752,8 +2735,7 @@ class MenuSdlSession:
                 stop_service()
                 stop_service_process()
             else:
-                _darkos = self.is_darkos_platform()
-                stop_proxy_inline(darkos=_darkos)
+                stop_proxy_inline()
             self.refresh_main_menu_state(force=True)
             self.message = ("Proxy stopped", time.monotonic() + 1.2)
         except Exception as exc:
@@ -2897,7 +2879,7 @@ class MenuSdlSession:
     def uninstall(self) -> None:
         if running_on_muos():
             launcher = "/run/muos/storage/application/RAOfflineProxy/uninstall.sh"
-        elif self.is_darkos_platform():
+        elif running_on_darkos():
             launcher = "/home/ark/raofflineproxy/bin/raofflineproxy-uninstall"
         elif self.is_knulli_platform():
             launcher = "/userdata/system/raofflineproxy/bin/raofflineproxy-uninstall"
