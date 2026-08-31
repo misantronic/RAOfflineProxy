@@ -130,7 +130,7 @@ class Container:
 
         raise RuntimeError(
             "systemd did not finish booting in %s after %ss\n"
-            "  container running: %s\n"
+            "  container running: %s (exit code %s)\n"
             "  systemctl stdout: %r\n"
             "  systemctl stderr: %r\n"
             "  failed units: %s\n"
@@ -139,6 +139,7 @@ class Container:
                 self.name,
                 timeout,
                 self.is_running(),
+                self.exit_code(),
                 probe.stdout.strip(),
                 probe.stderr.strip(),
                 self.exec(
@@ -157,14 +158,28 @@ class Container:
             )
             if state.ok and state.stdout.strip() == "true":
                 return
+            # An image whose entrypoint exits at once (a systemd that cannot
+            # come up, say) never shows as running, so report why rather than
+            # just that it did not.
+            if state.ok and self.exit_code() not in ("0", "unknown"):
+                break
             time.sleep(0.2)
-        raise RuntimeError("container %s did not start" % self.name)
+        raise RuntimeError(
+            "container %s did not start (exit code %s)\nPID 1 output:\n%s"
+            % (self.name, self.exit_code(), self.logs() or "(no output)")
+        )
 
     def is_running(self) -> bool:
         state = run_docker(
             ["inspect", "-f", "{{.State.Running}}", self.name], check=False
         )
         return state.ok and state.stdout.strip() == "true"
+
+    def exit_code(self) -> str:
+        state = run_docker(
+            ["inspect", "-f", "{{.State.ExitCode}}", self.name], check=False
+        )
+        return state.stdout.strip() if state.ok else "unknown"
 
     def logs(self, tail: int = 40) -> str:
         result = run_docker(

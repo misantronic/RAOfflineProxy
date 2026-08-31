@@ -235,7 +235,6 @@ def _probe_systemd(device, tag: str) -> None:
         platform=device.platform,
         privileged=True,
         tmpfs=("/run", "/run/lock"),
-        mounts={"/sys/fs/cgroup": "/sys/fs/cgroup:rw"},
         command=("/sbin/init",),
     )
     probe.start()
@@ -279,13 +278,10 @@ def _session_fixture(device_name: str, image_fixture: str, installer_fixture: st
         device = DEVICES[device_name]
         image = request.getfixturevalue(image_fixture)
         installer = request.getfixturevalue(installer_fixture)
-        mounts = {str(REPO_ROOT): "/repo:ro"}
-        if device.needs_systemd:
-            mounts["/sys/fs/cgroup"] = "/sys/fs/cgroup:rw"
         container = Container(
             image=image,
             platform=device.platform,
-            mounts=mounts,
+            mounts={str(REPO_ROOT): "/repo:ro"},
             cap_add=("NET_ADMIN",),
             privileged=device.needs_systemd,
             tmpfs=("/run", "/run/lock") if device.needs_systemd else (),
