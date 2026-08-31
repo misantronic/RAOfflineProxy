@@ -43,10 +43,20 @@ RUN mkdir -p /roms/tools /roms/snes /opt/system/Tools /home/ark/.config/retroarc
 COPY rootfs/darkos/retroarch.cfg /home/ark/.config/retroarch/retroarch.cfg
 RUN chown ark:ark /home/ark/.config/retroarch/retroarch.cfg
 
-# Stops systemd's own units from fighting the test for the network interface the
-# offline scenarios toggle.
-RUN systemctl mask systemd-networkd.service systemd-resolved.service \
-        systemd-networkd-wait-online.service >/dev/null 2>&1 || true
+# Boot as little as possible. The scenarios only need systemctl to reach PID 1,
+# and every masked unit is one less process to fork — which is what dominates
+# once a runner emulates aarch64. networkd/resolved are masked for a second
+# reason: they would fight the offline scenarios over the interface they toggle.
+RUN systemctl mask \
+        systemd-networkd.service systemd-resolved.service \
+        systemd-networkd-wait-online.service \
+        systemd-udevd.service systemd-udev-trigger.service \
+        systemd-journald.service systemd-journal-flush.service \
+        systemd-logind.service systemd-timesyncd.service \
+        getty.target getty-static.service console-getty.service \
+        e2scrub_reap.service apt-daily.timer apt-daily-upgrade.timer \
+        dev-hugepages.mount sys-kernel-debug.mount sys-kernel-tracing.mount \
+        >/dev/null 2>&1 || true
 
 ENV HOME=/home/ark
 

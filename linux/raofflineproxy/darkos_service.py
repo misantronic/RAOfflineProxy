@@ -207,12 +207,43 @@ def darkos_service_stop() -> dict:
     }
 
 
+def _systemd_show(properties: list[str]) -> dict[str, str]:
+    """Read several unit properties in one call.
+
+    Every `_run_privileged` is a sudo + systemctl spawn, and the menu polls
+    status on each refresh, so asking once for everything keeps that cheap on
+    hardware that is slow to fork.
+    """
+    values: dict[str, str] = {}
+    output = _run_privileged(
+        ["systemctl", "show", "--property", ",".join(properties), DARKOS_SERVICE_NAME]
+    )[1]
+    for line in output.splitlines():
+        if "=" in line:
+            key, value = line.split("=", 1)
+            values[key] = value
+    return values
+
+
 def darkos_service_status() -> dict:
     config_data = load_config()
+    props = _systemd_show(["ActiveState", "MainPID", "ActiveEnterTimestamp"])
+
+    running = props.get("ActiveState") == "active"
+    try:
+        pid = int(props.get("MainPID") or 0) or None
+    except ValueError:
+        pid = None
+    started_at = (
+        _systemd_timestamp_to_unix(props.get("ActiveEnterTimestamp", ""))
+        if running
+        else None
+    )
+
     return {
-        "running": systemd_service_status(),
-        "pid": systemd_service_pid(),
-        "startedAt": systemd_service_start_time(),
+        "running": running,
+        "pid": pid,
+        "startedAt": started_at or int(time.time()),
         "proxyHost": proxy_host(config_data),
         "proxyPort": proxy_port(config_data),
     }
