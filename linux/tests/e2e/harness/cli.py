@@ -10,7 +10,10 @@ class AppCli:
 
     def run(self, command: str, check: bool = False, timeout: int = 180):
         return self.container.exec(
-            self._invocation(command), check=check, timeout=timeout
+            self._invocation(command),
+            check=check,
+            timeout=timeout,
+            user=self.device.run_as,
         )
 
     def _invocation(self, command: str) -> str:

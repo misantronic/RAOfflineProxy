@@ -75,6 +75,9 @@ class Container:
         mounts: dict | None = None,
         cap_add: tuple = (),
         name: str | None = None,
+        privileged: bool = False,
+        tmpfs: tuple = (),
+        command: tuple = ("sleep", "infinity"),
     ) -> None:
         self.image = image
         self.platform = platform
@@ -82,19 +85,46 @@ class Container:
         self.mounts = dict(mounts or {})
         self.cap_add = tuple(cap_add)
         self.name = name or "raop-e2e-" + uuid.uuid4().hex[:10]
+        # dArkOS manages the proxy through systemd, so its container boots a real
+        # PID 1 instead of parking on `sleep infinity`. That needs --privileged,
+        # a writable cgroup mount and tmpfs for /run.
+        self.privileged = privileged
+        self.tmpfs = tuple(tmpfs)
+        self.command = tuple(command)
         self.container_id: str | None = None
 
     def start(self) -> None:
         args = ["run", "-d", "--platform", self.platform, "--name", self.name]
+        if self.privileged:
+            args += ["--privileged"]
+        for path in self.tmpfs:
+            args += ["--tmpfs", path]
         for capability in self.cap_add:
             args += ["--cap-add", capability]
         for container_port, host_port in self.publish.items():
             args += ["-p", "127.0.0.1:%s:%d" % (host_port or "", container_port)]
         for host_path, container_path in self.mounts.items():
             args += ["-v", "%s:%s" % (host_path, container_path)]
-        args += [self.image, "sleep", "infinity"]
+        args += [self.image] + list(self.command)
         self.container_id = run_docker(args).stdout.strip()
         self._wait_running()
+
+    def wait_for_systemd(self, timeout: float = 240.0) -> None:
+        """Block until PID 1 finishes booting.
+
+        `degraded` is accepted: a container image has units that cannot start
+        (no real hardware), and that is not a reason to fail the run.
+        """
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            state = self.exec("systemctl is-system-running").stdout.strip()
+            if state in ("running", "degraded"):
+                return
+            time.sleep(0.5)
+        raise RuntimeError(
+            "systemd did not finish booting in %s: %s"
+            % (self.name, self.exec("systemctl is-system-running").stdout.strip())
+        )
 
     def _wait_running(self, timeout: float = 30.0) -> None:
         deadline = time.time() + timeout
@@ -119,8 +149,11 @@ class Container:
         check: bool = False,
         timeout: int = 300,
         shell: str = "/bin/sh",
+        user: str | None = None,
     ) -> ExecResult:
         args = ["exec"]
+        if user:
+            args += ["-u", user]
         if workdir:
             args += ["-w", workdir]
         for key, value in (env or {}).items():
