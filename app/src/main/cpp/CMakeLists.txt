@@ -42,6 +42,7 @@ add_library(raproxy_rchash SHARED
     ${LIBCHDR_ROOT}/src/libchdr_bitstream.c
     ${LIBCHDR_ROOT}/src/libchdr_cdrom.c
     ${LIBCHDR_ROOT}/src/libchdr_chd.c
+    ${LIBCHDR_ROOT}/src/libchdr_codec_avhuff.c
     ${LIBCHDR_ROOT}/src/libchdr_codec_cdfl.c
     ${LIBCHDR_ROOT}/src/libchdr_codec_cdlz.c
     ${LIBCHDR_ROOT}/src/libchdr_codec_cdzl.c
@@ -53,8 +54,8 @@ add_library(raproxy_rchash SHARED
     ${LIBCHDR_ROOT}/src/libchdr_codec_zstd.c
     ${LIBCHDR_ROOT}/src/libchdr_flac.c
     ${LIBCHDR_ROOT}/src/libchdr_huffman.c
-    ${LIBCHDR_ROOT}/deps/miniz-3.1.1/miniz.c
-    ${LIBCHDR_ROOT}/deps/lzma-25.01/src/LzmaDec.c
+    ${LIBCHDR_ROOT}/deps/miniz-3.1.2/miniz.c
+    ${LIBCHDR_ROOT}/deps/lzma-26.02/src/LzmaDec.c
     ${LIBCHDR_ROOT}/deps/zstd-1.5.7/zstddeclib.c
 )
 
@@ -66,8 +67,8 @@ target_include_directories(raproxy_rchash PRIVATE
     ${RCHASH_GLUE_ROOT}/shim
     ${LIBCHDR_ROOT}/include
     ${LIBCHDR_ROOT}/src
-    ${LIBCHDR_ROOT}/deps/miniz-3.1.1
-    ${LIBCHDR_ROOT}/deps/lzma-25.01/include
+    ${LIBCHDR_ROOT}/deps/miniz-3.1.2
+    ${LIBCHDR_ROOT}/deps/lzma-26.02/include
     ${LIBCHDR_ROOT}/deps/zstd-1.5.7
     ${LZMA_SDK_ROOT}
 )

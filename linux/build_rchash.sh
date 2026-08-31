@@ -49,8 +49,8 @@ mkdir -p "${OUT_DIR}"
   -I"${GLUE}/shim" \
   -I"${CHDR}/include" \
   -I"${CHDR}/src" \
-  -I"${CHDR}/deps/miniz-3.1.1" \
-  -I"${CHDR}/deps/lzma-25.01/include" \
+  -I"${CHDR}/deps/miniz-3.1.2" \
+  -I"${CHDR}/deps/lzma-26.02/include" \
   -I"${CHDR}/deps/zstd-1.5.7" \
   -I"${LZMA_SDK}" \
   -o "${OUT_PATH}" \
@@ -70,6 +70,7 @@ mkdir -p "${OUT_DIR}"
   "${CHDR}/src/libchdr_bitstream.c" \
   "${CHDR}/src/libchdr_cdrom.c" \
   "${CHDR}/src/libchdr_chd.c" \
+  "${CHDR}/src/libchdr_codec_avhuff.c" \
   "${CHDR}/src/libchdr_codec_cdfl.c" \
   "${CHDR}/src/libchdr_codec_cdlz.c" \
   "${CHDR}/src/libchdr_codec_cdzl.c" \
@@ -81,8 +82,8 @@ mkdir -p "${OUT_DIR}"
   "${CHDR}/src/libchdr_codec_zstd.c" \
   "${CHDR}/src/libchdr_flac.c" \
   "${CHDR}/src/libchdr_huffman.c" \
-  "${CHDR}/deps/miniz-3.1.1/miniz.c" \
-  "${CHDR}/deps/lzma-25.01/src/LzmaDec.c" \
+  "${CHDR}/deps/miniz-3.1.2/miniz.c" \
+  "${CHDR}/deps/lzma-26.02/src/LzmaDec.c" \
   "${CHDR}/deps/zstd-1.5.7/zstddeclib.c" \
   "${LZMA_SDK}"/*.c
 
