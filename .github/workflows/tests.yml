@@ -132,7 +132,7 @@ jobs:
         run: pip install pytest
 
       # binfmt handlers so the aarch64 device images can run here.
-      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-qemu-action@v4
         with:
           platforms: arm64,arm
 
