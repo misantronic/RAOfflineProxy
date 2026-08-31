@@ -116,23 +116,37 @@ class Container:
         (no real hardware), and that is not a reason to fail the run.
         """
         deadline = time.time() + timeout
-        state = "unknown"
+        probe = self.exec("systemctl is-system-running", timeout=30)
         while time.time() < deadline:
-            state = self.exec("systemctl is-system-running", timeout=30).stdout.strip()
-            if state in ("running", "degraded"):
+            if probe.stdout.strip() in ("running", "degraded"):
                 return
+            # A dead PID 1 stops the container, and then every exec fails with an
+            # empty stdout — indistinguishable from "still booting" unless the
+            # container state is checked separately.
+            if not self.is_running():
+                break
             time.sleep(0.5)
+            probe = self.exec("systemctl is-system-running", timeout=30)
 
-        failed = self.exec(
-            "systemctl list-units --failed --no-legend --no-pager", timeout=30
-        ).stdout.strip()
-        pending = self.exec(
-            "systemctl list-jobs --no-legend --no-pager", timeout=30
-        ).stdout.strip()
         raise RuntimeError(
-            "systemd did not finish booting in %s after %ss (state=%r)\n"
-            "failed units:\n%s\npending jobs:\n%s"
-            % (self.name, timeout, state, failed or "(none)", pending or "(none)")
+            "systemd did not finish booting in %s after %ss\n"
+            "  container running: %s\n"
+            "  systemctl stdout: %r\n"
+            "  systemctl stderr: %r\n"
+            "  failed units: %s\n"
+            "  PID 1 output:\n%s"
+            % (
+                self.name,
+                timeout,
+                self.is_running(),
+                probe.stdout.strip(),
+                probe.stderr.strip(),
+                self.exec(
+                    "systemctl list-units --failed --no-legend --no-pager", timeout=30
+                ).stdout.strip()
+                or "(none)",
+                self.logs() or "(no output)",
+            )
         )
 
     def _wait_running(self, timeout: float = 30.0) -> None:
@@ -145,6 +159,18 @@ class Container:
                 return
             time.sleep(0.2)
         raise RuntimeError("container %s did not start" % self.name)
+
+    def is_running(self) -> bool:
+        state = run_docker(
+            ["inspect", "-f", "{{.State.Running}}", self.name], check=False
+        )
+        return state.ok and state.stdout.strip() == "true"
+
+    def logs(self, tail: int = 40) -> str:
+        result = run_docker(
+            ["logs", "--tail", str(tail), self.name], check=False, timeout=60
+        )
+        return (result.stdout + result.stderr).strip()
 
     def host_port(self, container_port: int) -> int:
         result = run_docker(["port", self.name, str(container_port)])
