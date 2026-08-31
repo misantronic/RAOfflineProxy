@@ -8,6 +8,7 @@ Devices confirmed working by either the developer or user reports.
 | <span style="white-space: nowrap;">Anbernic RG40XX H / RG35XX H</span> | <span style="white-space: nowrap;">✅ Working</span> | Dev tested  |
 | <span style="white-space: nowrap;">TrimUI Smart Pro</span>             | <span style="white-space: nowrap;">✅ Working</span> | User tested |
 | <span style="white-space: nowrap;">TrimUI Brick</span>                 | <span style="white-space: nowrap;">✅ Working</span> | User tested |
+| <span style="white-space: nowrap;">Anbernic RGB30</span>               | <span style="white-space: nowrap;">✅ Working</span> | User tested, dArkOS |
 
 ## Submit your device
 
