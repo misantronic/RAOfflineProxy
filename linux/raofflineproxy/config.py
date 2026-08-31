@@ -97,6 +97,10 @@ def running_on_shared_miyoo_stack() -> bool:
     return running_on_onion() or running_on_spruce() or running_on_allium()
 
 
+def running_on_darkos() -> bool:
+    return DEFAULT_DARKOS_HOME.exists()
+
+
 # Mirrors spruce's own device detection (spruce/scripts/helperFunctions.sh). The Anbernic
 # 0xd03 branch is collapsed to one label because all its variants share a single RetroArch
 # config file.

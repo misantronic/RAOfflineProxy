@@ -10,7 +10,7 @@ TOOLS_DIR="/roms/tools"
 INSTALL_SCRIPT="${TOOLS_DIR}/RAOfflineProxy Install.sh"
 OLD_BIN="${BASE_DIR}/bin/raofflineproxy"
 UPDATE_STATUS_FILE="/home/ark/.config/raofflineproxy/update_status.json"
-AUTOSTART_UNIT="/etc/systemd/system/raofflineproxy-autostart.service"
+AUTOSTART_UNIT="/etc/systemd/system/raofflineproxy.service"
 FB_WIDTH=0
 FB_HEIGHT=0
 WAS_RUNNING=0
@@ -49,7 +49,8 @@ chmod +x "${BIN_DIR}/raofflineproxy-uninstall"
 # `sudo systemctl ...` non-interactively). `sudo -n` fails fast instead of
 # hanging on a password prompt if that assumption doesn't hold here.
 if ! /usr/bin/python3 -c "import pygame" >/dev/null 2>&1; then
-  if command -v apt >/dev/null 2>&1 && sudo -n apt install -y python3-pygame >/dev/null 2>&1; then
+  echo "RAOfflineProxy will try to refresh the Debian package list and install python3-pygame; it might take a few minutes."
+  if command -v apt >/dev/null 2>&1 && sudo -n apt update >/dev/null 2>&1 && sudo -n apt install -y python3-pygame >/dev/null 2>&1; then
     echo "python3-pygame installed."
   else
     echo "pygame is not installed for python3 -- the RAOfflineProxy menu needs it."
@@ -57,9 +58,23 @@ if ! /usr/bin/python3 -c "import pygame" >/dev/null 2>&1; then
   fi
 fi
 
-# Installs and enables the systemd boot-reconcile unit once; toggling
-# autostart afterwards only flips a config flag (no sudo needed at runtime).
-"${BIN_DIR}/raofflineproxy" ensure-boot-hook >/dev/null 2>&1 || true
+# Installs a systemd unit
+cat << 'EOF' | sudo tee "${AUTOSTART_UNIT}" > /dev/null
+[Unit]
+Description=RAOfflineProxy server
+After=emulationstation.service network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/ark/raofflineproxy/app
+ExecStart=/usr/bin/python3 -m raofflineproxy.main run-service
+Restart=always
+RestartSec=1
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
 if [ -f "${AUTOSTART_UNIT}" ]; then
   echo "Autostart unit installed (${AUTOSTART_UNIT})."
 else

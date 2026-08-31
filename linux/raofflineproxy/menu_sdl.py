@@ -40,6 +40,7 @@ from .config import (
     running_on_shared_miyoo_stack,
     running_on_rocknix,
     running_on_spruce,
+    running_on_darkos,
     save_config,
 )
 from .platform import (
@@ -425,7 +426,7 @@ def runtime_config() -> tuple[dict, str]:
     return config_data, cfg_path
 
 
-def start_proxy_inline() -> bool:
+def start_proxy_inline() -> None:
     """Starts the proxy. Returns True when RetroArch's cfg was missing and skipped."""
     config_data, cfg_path = runtime_config()
     remove_stale_hook()
@@ -790,7 +791,7 @@ class MenuSdlSession:
                 else "Enable autostart"
             )
         if (
-            ((self.is_knulli_platform() or self.is_darkos_platform()) and not service_mode)
+            ((self.is_knulli_platform() or running_on_darkos()) and not service_mode)
             or running_on_muos()
             or running_on_rocknix()
         ):
@@ -1387,9 +1388,6 @@ class MenuSdlSession:
     def is_knulli_platform(self) -> bool:
         return Path("/userdata/system").exists()
 
-    def is_darkos_platform(self) -> bool:
-        return DEFAULT_DARKOS_HOME.exists()
-
     def update_platform(self) -> str | None:
         """The release channel to check for updates, or None where there is none.
 
@@ -1407,7 +1405,7 @@ class MenuSdlSession:
             return "allium"
         if running_on_rocknix():
             return "rocknix"
-        if self.is_darkos_platform():
+        if running_on_darkos():
             return "darkos"
         return "knulli"
 
@@ -2881,7 +2879,7 @@ class MenuSdlSession:
     def uninstall(self) -> None:
         if running_on_muos():
             launcher = "/run/muos/storage/application/RAOfflineProxy/uninstall.sh"
-        elif self.is_darkos_platform():
+        elif running_on_darkos():
             launcher = "/home/ark/raofflineproxy/bin/raofflineproxy-uninstall"
         elif self.is_knulli_platform():
             launcher = "/userdata/system/raofflineproxy/bin/raofflineproxy-uninstall"

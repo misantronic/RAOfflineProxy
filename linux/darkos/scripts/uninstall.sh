@@ -5,7 +5,7 @@ BASE_DIR="/home/ark/raofflineproxy"
 TOOLS_DIR="/roms/tools"
 BUNDLE_DIR="/home/ark/raofflineproxy-darkos-bundle"
 CONFIG_DIR="/home/ark/.config/raofflineproxy"
-AUTOSTART_UNIT="/etc/systemd/system/raofflineproxy-autostart.service"
+AUTOSTART_UNIT="/etc/systemd/system/raofflineproxy.service"
 FB_WIDTH=0
 FB_HEIGHT=0
 
@@ -22,7 +22,7 @@ if [ -x "${BASE_DIR}/bin/raofflineproxy" ]; then
   "${BASE_DIR}/bin/raofflineproxy" remove-boot-hook || true
 fi
 
-sudo -n systemctl disable --now raofflineproxy-autostart.service >/dev/null 2>&1 || true
+sudo -n systemctl disable --now $(basename "${AUTOSTART_UNIT}") >/dev/null 2>&1 || true
 sudo -n rm -f "${AUTOSTART_UNIT}" >/dev/null 2>&1 || rm -f "${AUTOSTART_UNIT}" >/dev/null 2>&1 || true
 sudo -n systemctl daemon-reload >/dev/null 2>&1 || true
 

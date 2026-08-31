@@ -231,7 +231,7 @@ class LinuxAutostartTests(unittest.TestCase):
 
     def test_autostart_command_uses_darkos_launcher(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
-            unit_path = Path(temp_dir) / "raofflineproxy-autostart.service"
+            unit_path = Path(temp_dir) / "raofflineproxy.service"
             config_data = {"startup_script": str(unit_path)}
 
             original_unit = platform.DEFAULT_DARKOS_AUTOSTART_UNIT
@@ -246,7 +246,7 @@ class LinuxAutostartTests(unittest.TestCase):
 
     def test_darkos_ensure_boot_hook_writes_unit_file(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
-            unit_path = Path(temp_dir) / "raofflineproxy-autostart.service"
+            unit_path = Path(temp_dir) / "raofflineproxy.service"
             config_data = {"startup_script": str(unit_path)}
 
             original_unit = platform.DEFAULT_DARKOS_AUTOSTART_UNIT
@@ -258,7 +258,7 @@ class LinuxAutostartTests(unittest.TestCase):
                 content = unit_path.read_text(encoding="utf-8")
                 self.assertIn("[Unit]", content)
                 self.assertIn(
-                    "ExecStart=/home/ark/raofflineproxy/bin/raofflineproxy boot-reconcile",
+                    "ExecStart=/usr/bin/python3 -m raofflineproxy.main run-service",
                     content,
                 )
                 self.assertIn("WantedBy=multi-user.target", content)
@@ -268,7 +268,7 @@ class LinuxAutostartTests(unittest.TestCase):
 
     def test_darkos_ensure_boot_hook_survives_missing_systemctl(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
-            unit_path = Path(temp_dir) / "raofflineproxy-autostart.service"
+            unit_path = Path(temp_dir) / "raofflineproxy.service"
             config_data = {"startup_script": str(unit_path)}
 
             original_unit = platform.DEFAULT_DARKOS_AUTOSTART_UNIT
@@ -282,7 +282,7 @@ class LinuxAutostartTests(unittest.TestCase):
                 platform.DEFAULT_DARKOS_AUTOSTART_UNIT = original_unit
 
     def test_darkos_ensure_boot_hook_survives_permission_error(self) -> None:
-        unit_path = Path("/nonexistent-dir/raofflineproxy-autostart.service")
+        unit_path = Path("/nonexistent-dir/raofflineproxy.service")
         config_data = {"startup_script": str(unit_path)}
 
         original_unit = platform.DEFAULT_DARKOS_AUTOSTART_UNIT
@@ -296,7 +296,7 @@ class LinuxAutostartTests(unittest.TestCase):
 
     def test_darkos_disable_autostart_keeps_unit_file(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
-            unit_path = Path(temp_dir) / "raofflineproxy-autostart.service"
+            unit_path = Path(temp_dir) / "raofflineproxy.service"
             config_data = {"startup_script": str(unit_path)}
 
             original_unit = platform.DEFAULT_DARKOS_AUTOSTART_UNIT
@@ -315,7 +315,7 @@ class LinuxAutostartTests(unittest.TestCase):
         # /etc/systemd/system not writable), so it must fall back to
         # `sudo -n tee`. dArkOS's own ES Tools scripts rely on the same
         # passwordless-sudo assumption for the device user.
-        unit_path = Path("/nonexistent-dir/raofflineproxy-autostart.service")
+        unit_path = Path("/nonexistent-dir/raofflineproxy.service")
         config_data = {"startup_script": str(unit_path)}
         written: dict[str, str] = {}
 
@@ -339,7 +339,7 @@ class LinuxAutostartTests(unittest.TestCase):
             platform.DEFAULT_DARKOS_AUTOSTART_UNIT = original_unit
 
     def test_darkos_ensure_boot_hook_survives_sudo_denied(self) -> None:
-        unit_path = Path("/nonexistent-dir/raofflineproxy-autostart.service")
+        unit_path = Path("/nonexistent-dir/raofflineproxy.service")
         config_data = {"startup_script": str(unit_path)}
 
         def fake_run(args, **kwargs):
@@ -361,7 +361,7 @@ class LinuxAutostartTests(unittest.TestCase):
 
     def test_darkos_remove_boot_hook_deletes_unit_file(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
-            unit_path = Path(temp_dir) / "raofflineproxy-autostart.service"
+            unit_path = Path(temp_dir) / "raofflineproxy.service"
             config_data = {"startup_script": str(unit_path)}
 
             original_unit = platform.DEFAULT_DARKOS_AUTOSTART_UNIT
