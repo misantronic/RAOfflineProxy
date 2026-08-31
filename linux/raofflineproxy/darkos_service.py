@@ -6,11 +6,16 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-from .config import DEFAULT_DARKOS_HOME
+from .config import DEFAULT_DARKOS_HOME, load_config, proxy_host, proxy_port
 
-DEFAULT_DARKOS_AUTOSTART_UNIT = Path("/etc/systemd/system/raofflineproxy.service")
+DEFAULT_DARKOS_SERVICE_UNIT = Path("/etc/systemd/system/raofflineproxy.service")
 DARKOS_SERVICE_NAME = "raofflineproxy.service"
-DARKOS_APP_DIR = DEFAULT_DARKOS_HOME.joinpath('raofflineproxy', 'app')
+# The launcher already exports HOME, XDG_CONFIG_HOME, PYTHONPATH and
+# LD_LIBRARY_PATH, so the unit runs it rather than restating that environment.
+DARKOS_LAUNCHER = DEFAULT_DARKOS_HOME / "raofflineproxy" / "bin" / "raofflineproxy"
+# dArkOS's own user. The menu runs as this account, so the service must too:
+# anything it creates in the config dir as root would be unwritable from the menu.
+DARKOS_USER = "ark"
 
 
 def _run_privileged(args: list[str]) -> tuple[bool, str]:
@@ -54,12 +59,19 @@ def _write_privileged(path: Path, content: str) -> bool:
         return False
 
 
-def _systemd_timestamp_to_unix(ts: str) -> int:
-    # "Mon 2026-08-31 20:02:52 EES" → ["Mon", "2026-08-31", "20:02:52", "EES"]
+def _systemd_timestamp_to_unix(ts: str) -> int | None:
+    # `systemctl show --value --property=ActiveEnterTimestamp` prints a local-time
+    # stamp like "Mon 2026-08-31 20:02:52 EEST". It is empty for a unit that has
+    # never started, and the property is dropped entirely on some systemd builds,
+    # so anything unparseable returns None rather than raising into the caller.
     parts = ts.split()
-    date_and_time = f"{parts[1]} {parts[2]}"  # "2026-08-31 20:02:52"
+    if len(parts) < 3:
+        return None
 
-    dt = datetime.strptime(date_and_time, "%Y-%m-%d %H:%M:%S")
+    try:
+        dt = datetime.strptime(f"{parts[1]} {parts[2]}", "%Y-%m-%d %H:%M:%S")
+    except ValueError:
+        return None
     return int(time.mktime(dt.timetuple()))
 
 
@@ -72,8 +84,14 @@ def darkos_systemd_unit() -> str:
             "",
             "[Service]",
             "Type=simple",
-            f"WorkingDirectory={DARKOS_APP_DIR}",
-            f"ExecStart=/usr/bin/python3 -m raofflineproxy.main run-service",
+            f"User={DARKOS_USER}",
+            f"Group={DARKOS_USER}",
+            # Autostart has to repoint the emulators at the proxy the same way the
+            # menu's start does; without this the proxy comes up after a reboot but
+            # nothing routes through it. Prefixed with '-' so a failed patch (e.g. a
+            # missing retroarch.cfg) never blocks the proxy itself from starting.
+            f"ExecStartPre=-{DARKOS_LAUNCHER} apply-emulator-config",
+            f"ExecStart={DARKOS_LAUNCHER} run-service",
             "Restart=always",
             "RestartSec=1",
             "",
@@ -85,18 +103,16 @@ def darkos_systemd_unit() -> str:
 
 
 def systemd_install_service() -> None:
-    if not _write_privileged(
-        DEFAULT_DARKOS_AUTOSTART_UNIT, darkos_systemd_unit()
-    ):
+    if not _write_privileged(DEFAULT_DARKOS_SERVICE_UNIT, darkos_systemd_unit()):
         return
     _run_privileged(["systemctl", "daemon-reload"])
 
 
 def systemd_remove_service() -> None:
     _run_privileged(["systemctl", "disable", "--now", DARKOS_SERVICE_NAME])
-    if not _run_privileged(["rm", "-f", str(DEFAULT_DARKOS_AUTOSTART_UNIT)])[0]:
+    if not _run_privileged(["rm", "-f", str(DEFAULT_DARKOS_SERVICE_UNIT)])[0]:
         try:
-            DEFAULT_DARKOS_AUTOSTART_UNIT.unlink(missing_ok=True)
+            DEFAULT_DARKOS_SERVICE_UNIT.unlink(missing_ok=True)
         except OSError:
             pass
     _run_privileged(["systemctl", "daemon-reload"])
@@ -115,24 +131,40 @@ def systemd_service_enabled() -> bool:
 
 
 def systemd_service_pid() -> int | None:
-    # the following command returns "0" for inactive or non-existing services
-    _pid = _run_privileged(["systemctl", "show", "--property", "MainPID", "--value", DARKOS_SERVICE_NAME])[1]
-    if _pid != "0":
-        return int(_pid)
-    return
+    # "0" is what systemd reports for an inactive or unknown unit.
+    pid = _run_privileged(
+        ["systemctl", "show", "--property", "MainPID", "--value", DARKOS_SERVICE_NAME]
+    )[1]
+    try:
+        return int(pid) or None
+    except ValueError:
+        return None
 
 
 def systemd_service_start_time() -> int:
-    if systemd_service_status():
-        ts = _run_privileged(["systemctl", "show", DARKOS_SERVICE_NAME, "--property", "ActiveEnterTimestamp"])[1]
-        return _systemd_timestamp_to_unix(ts)
-    else:
+    if not systemd_service_status():
         return int(time.time())
+
+    ts = _run_privileged(
+        [
+            "systemctl",
+            "show",
+            "--property",
+            "ActiveEnterTimestamp",
+            "--value",
+            DARKOS_SERVICE_NAME,
+        ]
+    )[1]
+    return _systemd_timestamp_to_unix(ts) or int(time.time())
+
+
+def _ensure_unit_installed() -> None:
+    if not DEFAULT_DARKOS_SERVICE_UNIT.exists():
+        systemd_install_service()
 
 
 def systemd_enable_service() -> bool:
-    if not DEFAULT_DARKOS_AUTOSTART_UNIT.exists():
-        systemd_install_service()
+    _ensure_unit_installed()
     return _run_privileged(["systemctl", "enable", DARKOS_SERVICE_NAME])[0]
 
 
@@ -145,47 +177,42 @@ def systemd_start_service() -> bool:
 
 
 def systemd_stop_service() -> bool:
-   return _run_privileged(["systemctl", "stop", DARKOS_SERVICE_NAME])[0]
+    return _run_privileged(["systemctl", "stop", DARKOS_SERVICE_NAME])[0]
 
 
 def darkos_service_start() -> dict:
-    _status: dict[str, bool | int | None] = {
-        "started": False,
-        "already_running": False,
-        "_pid": None
+    # `systemctl start` fails outright on a missing unit, so repair it first:
+    # covers an install whose unit write was denied, or one removed by hand.
+    _ensure_unit_installed()
+    already_running = systemd_service_status()
+    started = systemd_start_service()
+    return {
+        "started": started,
+        "already_running": already_running,
+        "pid": systemd_service_pid(),
     }
-    if systemd_service_status():
-        _status["already_running"] = True
-
-    if systemd_start_service():
-        _status["started"] = True
-    _status["pid"] = systemd_service_pid()
-    return _status
 
 
 def darkos_service_stop() -> dict:
-    _status: dict[str, bool | int | None] = {
-        "stopped": False,
-        "already_stopped": False,
-        "pid": None,
-        "forced": False
+    was_running = systemd_service_status()
+    pid = systemd_service_pid() if was_running else None
+    stopped = systemd_stop_service()
+    return {
+        "stopped": stopped,
+        "already_stopped": not was_running,
+        "pid": pid,
+        # systemd escalates to SIGKILL on its own, so there is no separate forced
+        # path to report the way the bare-process stop has.
+        "forced": False,
     }
-    if systemd_service_status():
-        _status["pid"] = systemd_service_pid()
-    else:
-        _status["already_stopped"] = True
-
-    if systemd_stop_service():
-        _status["started"] = True
-    _status["pid"] = systemd_service_pid()
-    return _status
 
 
 def darkos_service_status() -> dict:
+    config_data = load_config()
     return {
         "running": systemd_service_status(),
         "pid": systemd_service_pid(),
         "startedAt": systemd_service_start_time(),
-        "proxyHost": "127.0.0.1",
-        "proxyPort": 8080
+        "proxyHost": proxy_host(config_data),
+        "proxyPort": proxy_port(config_data),
     }

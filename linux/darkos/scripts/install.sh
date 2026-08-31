@@ -58,28 +58,16 @@ if ! /usr/bin/python3 -c "import pygame" >/dev/null 2>&1; then
   fi
 fi
 
-# Installs a systemd unit
-cat << 'EOF' | sudo tee "${AUTOSTART_UNIT}" > /dev/null
-[Unit]
-Description=RAOfflineProxy server
-After=emulationstation.service network.target
-
-[Service]
-Type=simple
-WorkingDirectory=/home/ark/raofflineproxy/app
-ExecStart=/usr/bin/python3 -m raofflineproxy.main run-service
-Restart=always
-RestartSec=1
-
-[Install]
-WantedBy=multi-user.target
-EOF
+# Written from the app's own template (darkos_service.darkos_systemd_unit) so
+# there is exactly one definition of the unit, and an upgrade refreshes a unit
+# an older installer wrote.
+"${BIN_DIR}/raofflineproxy" install-service-unit >/dev/null 2>&1 || true
 
 if [ -f "${AUTOSTART_UNIT}" ]; then
-  echo "Autostart unit installed (${AUTOSTART_UNIT})."
+  echo "Service unit installed (${AUTOSTART_UNIT})."
 else
-  echo "Could not install the autostart unit -- needs passwordless sudo for $(whoami)."
-  echo "Enable autostart from the menu once sudo access is available."
+  echo "Could not install the service unit -- needs passwordless sudo for $(whoami)."
+  echo "Start the proxy from the menu once sudo access is available."
 fi
 
 if [ "${WAS_RUNNING}" -eq 1 ]; then

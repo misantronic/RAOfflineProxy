@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import os
-import subprocess
 from pathlib import Path
 
 from .config import (
@@ -17,10 +15,11 @@ from .config import (
     save_config,
 )
 from .darkos_service import (
-    systemd_enable_service,
+    DEFAULT_DARKOS_SERVICE_UNIT,
     systemd_disable_service,
-    systemd_service_enabled,
+    systemd_enable_service,
     systemd_remove_service,
+    systemd_service_enabled,
 )
 
 DEFAULT_KNULLI_ROMS_ROOT = Path("/userdata/roms")
@@ -46,7 +45,6 @@ ALLIUM_OTA_ARCHIVE = Path("/mnt/SDCARD/allium-ota.zip")
 ROCKNIX_MODULES_DIR = Path("/storage/.config/modules")
 ROCKNIX_MODULES_LAUNCHER = ROCKNIX_MODULES_DIR / "RAOfflineProxy.sh"
 ROCKNIX_TOOL_SOURCE = Path("/storage/.local/share/raofflineproxy/RAOfflineProxy.sh")
-DEFAULT_DARKOS_AUTOSTART_UNIT = Path("/etc/systemd/system/raofflineproxy.service")
 ROM_DIRECTORY_KEYS = [
     "content_directory",
 ]
@@ -111,8 +109,10 @@ def autostart_supported(config_data: dict) -> bool:
 
 
 def is_autostart_enabled(config_data: dict) -> bool:
+    # systemd owns this on dArkOS: the unit's enabled state is the truth, not the
+    # config flag, so that toggling it outside the app is still reflected here.
     if running_on_darkos():
-        systemd_service_enabled()
+        return systemd_service_enabled()
     if AUTOSTART_CONFIG_KEY in config_data:
         return bool(config_data[AUTOSTART_CONFIG_KEY])
     return _legacy_autostart_present(config_data)
@@ -153,7 +153,6 @@ def enable_autostart(config_data: dict) -> None:
 
 
 def disable_autostart(config_data: dict) -> None:
-    startup_script = resolve_startup_script_path(config_data)
     config_data[AUTOSTART_CONFIG_KEY] = False
     save_config(config_data)
     if running_on_darkos():
@@ -195,7 +194,7 @@ def ensure_boot_hook(config_data: dict) -> None:
         startup_script.chmod(0o755)
         return
 
-    if startup_script == DEFAULT_DARKOS_AUTOSTART_UNIT and running_on_darkos():
+    if startup_script == DEFAULT_DARKOS_SERVICE_UNIT and running_on_darkos():
         systemd_enable_service()
         return
 
@@ -224,7 +223,7 @@ def remove_boot_hook(config_data: dict) -> None:
         startup_script.unlink()
         return
 
-    if startup_script == DEFAULT_DARKOS_AUTOSTART_UNIT and running_on_darkos():
+    if startup_script == DEFAULT_DARKOS_SERVICE_UNIT and running_on_darkos():
         systemd_remove_service()
         return
 
@@ -256,7 +255,7 @@ def resolve_startup_script_path(config_data: dict) -> Path | None:
         return DEFAULT_MUOS_STARTUP_SCRIPT
 
     if DEFAULT_DARKOS_HOME.exists():
-        return DEFAULT_DARKOS_AUTOSTART_UNIT
+        return DEFAULT_DARKOS_SERVICE_UNIT
 
     if Path("/userdata/system").exists():
         return DEFAULT_KNULLI_STARTUP_SCRIPT

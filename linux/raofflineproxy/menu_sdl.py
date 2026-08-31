@@ -426,7 +426,7 @@ def runtime_config() -> tuple[dict, str]:
     return config_data, cfg_path
 
 
-def start_proxy_inline() -> None:
+def start_proxy_inline() -> bool:
     """Starts the proxy. Returns True when RetroArch's cfg was missing and skipped."""
     config_data, cfg_path = runtime_config()
     remove_stale_hook()
