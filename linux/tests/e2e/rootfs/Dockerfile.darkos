@@ -4,9 +4,20 @@ FROM arm64v8/debian:bookworm-slim
 # than the other device rootfs are: same base distro, same apt, same systemd.
 # The proxy is managed as a systemd unit, so PID 1 here is a real init.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        bash systemd systemd-sysv sudo python3 python3-pygame \
+        bash systemd systemd-sysv sudo python3 \
         procps curl iproute2 unzip ca-certificates \
     && rm -rf /var/lib/apt/lists/*
+
+# install.sh installs python3-pygame when `import pygame` fails. The scenarios
+# drive the CLI and never open the SDL menu (menu_sdl imports pygame lazily), so
+# the real package would only buy a mid-test `apt install` over the network —
+# and it triples the image build, which is minutes once the runner emulates
+# aarch64. A stub satisfies the installer's presence check instead.
+RUN mkdir -p /usr/lib/python3/dist-packages/pygame \
+    && printf '%s\n' \
+        '"""Stub for the E2E image: see Dockerfile.darkos."""' \
+        '__version__ = "0.0.0-e2e-stub"' \
+        > /usr/lib/python3/dist-packages/pygame/__init__.py
 
 # Mirrors setup_ark_user() in dArkOS's bootstrap_rootfs.sh: the device account is
 # `ark` with passwordless sudo baked into every image. The installer and the app
