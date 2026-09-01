@@ -11,6 +11,7 @@ RUNTIME_ARCHIVE_NAME="cpython-3.11.10+20241016-x86_64-unknown-linux-gnu-install_
 RUNTIME_ARCHIVE_PATH="${RUNTIME_CACHE_DIR}/${RUNTIME_ARCHIVE_NAME}"
 PAYLOAD_ZIP="${SCRIPT_DIR}/component/tmp_assets/raofflineproxy-retrodeck-payload.zip"
 COMPONENT_TARBALL="${DIST_DIR}/raofflineproxy.tar.gz"
+VERSION="${RAOFFLINEPROXY_APP_VERSION:-1.13.0-alpha1}"
 
 if [ ! -f "${RUNTIME_ARCHIVE_PATH}" ]; then
   echo "Missing cached runtime at ${RUNTIME_ARCHIVE_PATH} — run ./linux/retrodeck/fetch_runtime.sh first" >&2
@@ -60,6 +61,6 @@ find "${BUILD_DIR}" -name ".DS_Store" -delete
 rm -f "${COMPONENT_TARBALL}"
 (cd "${BUILD_DIR}" && tar -czf "${COMPONENT_TARBALL}" .)
 
-echo "Created ${BUILD_DIR}"
+echo "Created ${BUILD_DIR} (v${VERSION})"
 echo "Created ${PAYLOAD_ZIP}"
 echo "Created ${COMPONENT_TARBALL}"
