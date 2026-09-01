@@ -3,20 +3,30 @@ from __future__ import annotations
 from pathlib import Path
 
 from .config import (
+    DEFAULT_DARKOS_HOME,
     DEFAULT_MUOS_INIT_DIR,
     DEFAULT_ONION_STARTUP_SCRIPT,
     MUOS_USER_INIT_CONFIG,
     detect_retroarch_cfg,
     running_on_allium,
+    running_on_darkos,
     running_on_rocknix,
     running_on_spruce,
     save_config,
+)
+from .darkos_service import (
+    DEFAULT_DARKOS_SERVICE_UNIT,
+    systemd_disable_service,
+    systemd_enable_service,
+    systemd_remove_service,
+    systemd_service_enabled,
 )
 
 DEFAULT_KNULLI_ROMS_ROOT = Path("/userdata/roms")
 DEFAULT_MUOS_ROMS_ROOT = Path("/mnt/mmc/ROMS")
 DEFAULT_ONION_ROMS_ROOT = Path("/mnt/SDCARD/Roms")
 DEFAULT_ROCKNIX_ROMS_ROOT = Path("/storage/roms")
+DEFAULT_DARKOS_ROMS_ROOT = Path("/roms")
 DEFAULT_KNULLI_STARTUP_SCRIPT = Path("/userdata/system/custom.sh")
 DEFAULT_MUOS_STARTUP_SCRIPT = DEFAULT_MUOS_INIT_DIR / "raofflineproxy.sh"
 DEFAULT_ROCKNIX_STARTUP_SCRIPT = Path("/storage/.config/autostart/raofflineproxy.sh")
@@ -74,6 +84,9 @@ def resolve_rom_root(config_data: dict) -> Path:
     if DEFAULT_ROCKNIX_ROMS_ROOT.exists() and DEFAULT_ROCKNIX_ROMS_ROOT.is_dir():
         return DEFAULT_ROCKNIX_ROMS_ROOT
 
+    if DEFAULT_DARKOS_ROMS_ROOT.exists() and DEFAULT_DARKOS_ROMS_ROOT.is_dir():
+        return DEFAULT_DARKOS_ROMS_ROOT
+
     return cfg_path.parent
 
 
@@ -96,6 +109,10 @@ def autostart_supported(config_data: dict) -> bool:
 
 
 def is_autostart_enabled(config_data: dict) -> bool:
+    # systemd owns this on dArkOS: the unit's enabled state is the truth, not the
+    # config flag, so that toggling it outside the app is still reflected here.
+    if running_on_darkos():
+        return systemd_service_enabled()
     if AUTOSTART_CONFIG_KEY in config_data:
         return bool(config_data[AUTOSTART_CONFIG_KEY])
     return _legacy_autostart_present(config_data)
@@ -138,6 +155,8 @@ def enable_autostart(config_data: dict) -> None:
 def disable_autostart(config_data: dict) -> None:
     config_data[AUTOSTART_CONFIG_KEY] = False
     save_config(config_data)
+    if running_on_darkos():
+        systemd_disable_service()
 
 
 def ensure_boot_hook(config_data: dict) -> None:
@@ -175,6 +194,10 @@ def ensure_boot_hook(config_data: dict) -> None:
         startup_script.chmod(0o755)
         return
 
+    if startup_script == DEFAULT_DARKOS_SERVICE_UNIT and running_on_darkos():
+        systemd_enable_service()
+        return
+
     startup_script.parent.mkdir(parents=True, exist_ok=True)
     existing = (
         startup_script.read_text(encoding="utf-8", errors="replace")
@@ -198,6 +221,10 @@ def remove_boot_hook(config_data: dict) -> None:
         DEFAULT_ROCKNIX_STARTUP_SCRIPT,
     ):
         startup_script.unlink()
+        return
+
+    if startup_script == DEFAULT_DARKOS_SERVICE_UNIT and running_on_darkos():
+        systemd_remove_service()
         return
 
     existing = startup_script.read_text(encoding="utf-8", errors="replace")
@@ -226,6 +253,9 @@ def resolve_startup_script_path(config_data: dict) -> Path | None:
 
     if Path("/opt/muos/script/archive").exists():
         return DEFAULT_MUOS_STARTUP_SCRIPT
+
+    if DEFAULT_DARKOS_HOME.exists():
+        return DEFAULT_DARKOS_SERVICE_UNIT
 
     if Path("/userdata/system").exists():
         return DEFAULT_KNULLI_STARTUP_SCRIPT

@@ -104,6 +104,18 @@ It is also skipped entirely while an Allium firmware update is pending, so the p
 An Allium update rewrites `/.tmp_update` and removes the block. The app reinstalls it every time you open RAOfflineProxy, so autostart repairs itself after an Allium update.
 :::
 
+== dArkOS
+
+dArkOS is systemd-native and has no `custom.sh`-style startup hook, so autostart works differently than on the other targets.
+
+If you enable it, RAOfflineProxy installs (and permanently enables) a systemd unit:
+
+```text
+/etc/systemd/system/raofflineproxy-autostart.service
+```
+
+That unit always runs the proxy's boot-reconcile step on boot; enabling/disabling autostart from the menu just flips a config flag that boot-reconcile checks, so toggling it doesn't need `sudo` once the unit is installed. Installing the unit itself is done automatically during install using passwordless `sudo` for the device user (the same mechanism dArkOS's own Tools scripts use). If that's not available on your setup, the installer prints an on-screen message instead of failing.
+
 :::
 
 ## Start / Stop Behavior

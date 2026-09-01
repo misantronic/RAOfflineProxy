@@ -46,6 +46,11 @@ Before using `RAOfflineProxy` on Linux:
 - Make sure the system clock is correct so award timestamps are accurate<br>
   > Settings -> Wi-Fi -> enable NTP
 
+== dArkOS
+
+- Enter your RetroAchievements account details in RetroArch
+- The installer installs `python3-pygame` via `apt` automatically using passwordless `sudo`; if that's not available on your setup, install it manually: `sudo apt install -y python3-pygame`
+
 :::
 
 ::: warning Emulator configs are patched automatically
@@ -167,6 +172,26 @@ RAOfflineProxy patches the emulator configs it needs in order to redirect RetroA
 3. Launch **RAOfflineProxy** from Allium's Apps section
 4. Start the proxy while online
 5. Launch a game once so its data is cached
+
+== dArkOS
+
+> dArkOS support is currently experimental.
+>
+> Community-contributed, tested on a Powkiddy RGB30 running [dArkOS 07282026](https://github.com/christianhaitian/dArkOS/releases) and a Miniloong Pocket 1 running dArkOS 08062026.
+
+1. Download the latest `RAOfflineProxy-DarkOS-*-Install.sh` from [GitHub Releases](https://github.com/misantronic/RAOfflineProxy/releases)
+2. Copy it into:
+
+```text
+/roms/tools
+```
+
+3. Refresh or update gamelists so **RAOfflineProxy Install** appears in the **Tools** menu
+4. Launch **RAOfflineProxy Install** from **Tools** — no SSH or root needed; it uses passwordless `sudo` for the few steps that need it (same as dArkOS's own Tools scripts)
+5. Refresh or update gamelists again so the main **RAOfflineProxy** entry appears
+6. Launch **RAOfflineProxy** from the **Tools** menu
+7. Start the proxy while online
+8. Cache games either from **Cached Games** then **Add ROM** or by launching them once in RetroArch
 
 :::
 

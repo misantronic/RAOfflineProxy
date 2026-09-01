@@ -222,6 +222,62 @@ class LinuxAutostartTests(unittest.TestCase):
                 platform.DEFAULT_MUOS_STARTUP_SCRIPT = original_muos_startup
                 platform.MUOS_USER_INIT_CONFIG = original_user_init_config
 
+    def test_darkos_autostart_state_comes_from_systemd(self) -> None:
+        # The unit's enabled state is the truth, so a stale config flag written
+        # before the systemd switch must not shadow it.
+        config_data = {platform.AUTOSTART_CONFIG_KEY: False}
+
+        with patch.object(platform, "running_on_darkos", lambda: True), patch.object(
+            platform, "systemd_service_enabled", lambda: True
+        ):
+            self.assertTrue(platform.is_autostart_enabled(config_data))
+
+    def test_darkos_enable_autostart_enables_the_unit(self) -> None:
+        config_data = {"startup_script": str(platform.DEFAULT_DARKOS_SERVICE_UNIT)}
+        calls: list[str] = []
+
+        with patch.object(platform, "running_on_darkos", lambda: True), patch.object(
+            platform, "systemd_service_enabled", lambda: True
+        ), patch.object(
+            platform, "systemd_enable_service", lambda: calls.append("enable")
+        ):
+            platform.enable_autostart(config_data)
+
+        self.assertEqual(calls, ["enable"])
+
+    def test_darkos_disable_autostart_disables_the_unit(self) -> None:
+        config_data = {"startup_script": str(platform.DEFAULT_DARKOS_SERVICE_UNIT)}
+        calls: list[str] = []
+
+        with patch.object(platform, "running_on_darkos", lambda: True), patch.object(
+            platform, "systemd_disable_service", lambda: calls.append("disable")
+        ):
+            platform.disable_autostart(config_data)
+
+        self.assertEqual(calls, ["disable"])
+        self.assertFalse(config_data[platform.AUTOSTART_CONFIG_KEY])
+
+    def test_darkos_remove_boot_hook_removes_the_unit(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            unit_path = Path(temp_dir) / "raofflineproxy.service"
+            unit_path.write_text("[Unit]\n", encoding="utf-8")
+            config_data = {"startup_script": str(unit_path)}
+            calls: list[str] = []
+
+            original_unit = platform.DEFAULT_DARKOS_SERVICE_UNIT
+            try:
+                platform.DEFAULT_DARKOS_SERVICE_UNIT = unit_path
+                with patch.object(
+                    platform, "running_on_darkos", lambda: True
+                ), patch.object(
+                    platform, "systemd_remove_service", lambda: calls.append("remove")
+                ):
+                    platform.remove_boot_hook(config_data)
+            finally:
+                platform.DEFAULT_DARKOS_SERVICE_UNIT = original_unit
+
+            self.assertEqual(calls, ["remove"])
+
 
 if __name__ == "__main__":
     unittest.main()

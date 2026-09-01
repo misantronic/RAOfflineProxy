@@ -14,8 +14,10 @@ from .config import (
     detect_retroarch_cfg,
     load_config,
     proxy_value,
+    running_on_darkos,
     running_on_onion,
 )
+from .darkos_service import systemd_install_service
 from .log_uploader import onion_os_version, onion_version_supported
 from .platform import (
     disable_autostart,
@@ -100,22 +102,17 @@ def remove_stale_hook() -> None:
         STALE_HOOK_PATH.unlink()
 
 
-def _apply_proxy(config_data: dict, cfg_path: str) -> list[str]:
-    if running_on_onion() and not onion_version_supported():
-        detected = onion_os_version() or "unknown"
-        raise RuntimeError(
-            f"Unsupported OnionOS build ({detected}). RAOfflineProxy requires Onion "
-            "v4.4.0-beta-20260120 or newer."
-        )
+def _patch_emulator_configs(config_data: dict, cfg_path: str) -> list[str]:
+    """Point every supported emulator at the proxy. Does not touch the service.
 
+    Split out of `_apply_proxy` so the boot path can patch without starting the
+    service: on dArkOS systemd owns the process, and the unit patches from
+    `ExecStartPre` rather than going through `_apply_proxy` (which would recurse
+    back into `systemctl start`).
+    """
     output: list[str] = []
 
     remove_stale_hook()
-    # Spawn the service first so its interpreter starts up (and binds the proxy
-    # port) while the config patching below runs. At boot on devices that resume
-    # content automatically, the emulator's achievement login can arrive within
-    # seconds of this hook being scheduled.
-    service = start_service_process(config_data)
     result = patch_retroarch_cfg(cfg_path, config_data)
     enforce_patched_cfg(cfg_path, config_data)
     batocera = patch_batocera_conf(config_data)
@@ -146,6 +143,26 @@ def _apply_proxy(config_data: dict, cfg_path: str) -> list[str]:
 
     if dolphin.get("exists"):
         output.append(f"Patched RetroAchievements.ini at {dolphin['path']}")
+
+    return output
+
+
+def _apply_proxy(config_data: dict, cfg_path: str) -> list[str]:
+    if running_on_onion() and not onion_version_supported():
+        detected = onion_os_version() or "unknown"
+        raise RuntimeError(
+            f"Unsupported OnionOS build ({detected}). RAOfflineProxy requires Onion "
+            "v4.4.0-beta-20260120 or newer."
+        )
+
+    output: list[str] = []
+
+    # Spawn the service first so its interpreter starts up (and binds the proxy
+    # port) while the config patching below runs. At boot on devices that resume
+    # content automatically, the emulator's achievement login can arrive within
+    # seconds of this hook being scheduled.
+    service = start_service_process(config_data)
+    output.extend(_patch_emulator_configs(config_data, cfg_path))
 
     if service["already_running"]:
         output.append(f"Service already running (pid {service['pid']})")
@@ -219,6 +236,8 @@ def main() -> None:
             "start-proxy",
             "stop-proxy",
             "boot-reconcile",
+            "apply-emulator-config",
+            "install-service-unit",
             "ensure-boot-hook",
             "remove-boot-hook",
             "enable-autostart",
@@ -368,6 +387,22 @@ def main() -> None:
             else:
                 for line in _revert_proxy_config(config_data, args.retroarch_cfg or cfg_path):
                     print(line)
+            return
+
+        if args.command == "install-service-unit":
+            # Keeps the unit definition in one place: the installer calls this
+            # rather than writing its own copy, so an upgrade always lands the
+            # current template instead of whatever the old installer shipped.
+            if running_on_darkos():
+                systemd_install_service()
+                print("Service unit installed")
+            else:
+                print("No service unit to install on this platform")
+            return
+
+        if args.command == "apply-emulator-config":
+            for line in _patch_emulator_configs(config_data, cfg_path):
+                print(line)
             return
 
         if args.command == "ensure-boot-hook":

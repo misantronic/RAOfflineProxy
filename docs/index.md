@@ -110,6 +110,10 @@ features:
           <span>Allium</span>
           <em class="supported-platforms__tag">experimental</em>
         </div>
+        <div class="supported-platforms__item">
+          <img class="supported-platforms__logo--rounded" src="/darkos.png" alt="dArkOS logo">
+          <span>dArkOS</span>
+        </div>
       </div>
     </div>
   </div>

@@ -32,6 +32,7 @@ from .config import (
     APP_VERSION,
     CONFIG_DIR,
     DEFAULT_ALLIUM_APP_DIR,
+    DEFAULT_DARKOS_HOME,
     DEFAULT_ONION_APP_DIR,
     load_config,
     running_on_allium,
@@ -39,6 +40,7 @@ from .config import (
     running_on_shared_miyoo_stack,
     running_on_rocknix,
     running_on_spruce,
+    running_on_darkos,
     save_config,
 )
 from .platform import (
@@ -57,6 +59,7 @@ from .retroarch_cfg import (
     patch_retroarch_cfg,
     revert_retroarch_cfg,
 )
+from .image_cache import shutdown_image_downloads
 from .rom_browser import (
     MAX_CACHED_GAMES,
     add_rom_to_cache,
@@ -363,6 +366,9 @@ def run_menu_sdl(command_runner: str) -> None:
         log_menu_sdl(traceback.format_exc().rstrip())
         raise
     finally:
+        # Before pygame.quit(), so the window is not still up while queued badge
+        # downloads are cancelled.
+        shutdown_image_downloads()
         restart_muos_frontend()
         if pygame is not None:
             pygame.quit()
@@ -788,7 +794,11 @@ class MenuSdlSession:
                 if self.main_autostart_enabled
                 else "Enable autostart"
             )
-        if (self.is_knulli_platform() and not service_mode) or running_on_muos() or running_on_rocknix():
+        if (
+            ((self.is_knulli_platform() or running_on_darkos()) and not service_mode)
+            or running_on_muos()
+            or running_on_rocknix()
+        ):
             labels.append("Uninstall")
         labels.append("Support me")
         labels.append("Send Logs")
@@ -1399,6 +1409,8 @@ class MenuSdlSession:
             return "allium"
         if running_on_rocknix():
             return "rocknix"
+        if running_on_darkos():
+            return "darkos"
         return "knulli"
 
     def calibration_complete(self) -> bool:
@@ -2871,6 +2883,8 @@ class MenuSdlSession:
     def uninstall(self) -> None:
         if running_on_muos():
             launcher = "/run/muos/storage/application/RAOfflineProxy/uninstall.sh"
+        elif running_on_darkos():
+            launcher = "/home/ark/raofflineproxy/bin/raofflineproxy-uninstall"
         elif self.is_knulli_platform():
             launcher = "/userdata/system/raofflineproxy/bin/raofflineproxy-uninstall"
         elif running_on_rocknix():

@@ -64,6 +64,12 @@ Allium launches stock RetroArch directly, so the usual config is the one that ge
 
 Allium has no RetroAchievements settings of its own, so nothing rewrites these keys behind the proxy: RetroArch's own achievements login is the single source of your account details.
 
+== dArkOS
+
+```text
+/home/ark/.config/retroarch/retroarch.cfg
+```
+
 :::
 
 ## What Gets Patched

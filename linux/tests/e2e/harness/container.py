@@ -75,6 +75,9 @@ class Container:
         mounts: dict | None = None,
         cap_add: tuple = (),
         name: str | None = None,
+        privileged: bool = False,
+        tmpfs: tuple = (),
+        command: tuple = ("sleep", "infinity"),
     ) -> None:
         self.image = image
         self.platform = platform
@@ -82,19 +85,70 @@ class Container:
         self.mounts = dict(mounts or {})
         self.cap_add = tuple(cap_add)
         self.name = name or "raop-e2e-" + uuid.uuid4().hex[:10]
+        # dArkOS manages the proxy through systemd, so its container boots a real
+        # PID 1 instead of parking on `sleep infinity`. That needs --privileged,
+        # a writable cgroup mount and tmpfs for /run.
+        self.privileged = privileged
+        self.tmpfs = tuple(tmpfs)
+        self.command = tuple(command)
         self.container_id: str | None = None
 
     def start(self) -> None:
         args = ["run", "-d", "--platform", self.platform, "--name", self.name]
+        if self.privileged:
+            args += ["--privileged"]
+        for path in self.tmpfs:
+            args += ["--tmpfs", path]
         for capability in self.cap_add:
             args += ["--cap-add", capability]
         for container_port, host_port in self.publish.items():
             args += ["-p", "127.0.0.1:%s:%d" % (host_port or "", container_port)]
         for host_path, container_path in self.mounts.items():
             args += ["-v", "%s:%s" % (host_path, container_path)]
-        args += [self.image, "sleep", "infinity"]
+        args += [self.image] + list(self.command)
         self.container_id = run_docker(args).stdout.strip()
         self._wait_running()
+
+    def wait_for_systemd(self, timeout: float = 120.0) -> None:
+        """Block until PID 1 finishes booting.
+
+        `degraded` is accepted: a container image has units that cannot start
+        (no real hardware), and that is not a reason to fail the run.
+        """
+        deadline = time.time() + timeout
+        probe = self.exec("systemctl is-system-running", timeout=30)
+        while time.time() < deadline:
+            if probe.stdout.strip() in ("running", "degraded"):
+                return
+            # A dead PID 1 stops the container, and then every exec fails with an
+            # empty stdout — indistinguishable from "still booting" unless the
+            # container state is checked separately.
+            if not self.is_running():
+                break
+            time.sleep(0.5)
+            probe = self.exec("systemctl is-system-running", timeout=30)
+
+        raise RuntimeError(
+            "systemd did not finish booting in %s after %ss\n"
+            "  container running: %s (exit code %s)\n"
+            "  systemctl stdout: %r\n"
+            "  systemctl stderr: %r\n"
+            "  failed units: %s\n"
+            "  PID 1 output:\n%s"
+            % (
+                self.name,
+                timeout,
+                self.is_running(),
+                self.exit_code(),
+                probe.stdout.strip(),
+                probe.stderr.strip(),
+                self.exec(
+                    "systemctl list-units --failed --no-legend --no-pager", timeout=30
+                ).stdout.strip()
+                or "(none)",
+                self.logs() or "(no output)",
+            )
+        )
 
     def _wait_running(self, timeout: float = 30.0) -> None:
         deadline = time.time() + timeout
@@ -104,8 +158,34 @@ class Container:
             )
             if state.ok and state.stdout.strip() == "true":
                 return
+            # An image whose entrypoint exits at once (a systemd that cannot
+            # come up, say) never shows as running, so report why rather than
+            # just that it did not.
+            if state.ok and self.exit_code() not in ("0", "unknown"):
+                break
             time.sleep(0.2)
-        raise RuntimeError("container %s did not start" % self.name)
+        raise RuntimeError(
+            "container %s did not start (exit code %s)\nPID 1 output:\n%s"
+            % (self.name, self.exit_code(), self.logs() or "(no output)")
+        )
+
+    def is_running(self) -> bool:
+        state = run_docker(
+            ["inspect", "-f", "{{.State.Running}}", self.name], check=False
+        )
+        return state.ok and state.stdout.strip() == "true"
+
+    def exit_code(self) -> str:
+        state = run_docker(
+            ["inspect", "-f", "{{.State.ExitCode}}", self.name], check=False
+        )
+        return state.stdout.strip() if state.ok else "unknown"
+
+    def logs(self, tail: int = 40) -> str:
+        result = run_docker(
+            ["logs", "--tail", str(tail), self.name], check=False, timeout=60
+        )
+        return (result.stdout + result.stderr).strip()
 
     def host_port(self, container_port: int) -> int:
         result = run_docker(["port", self.name, str(container_port)])
@@ -119,8 +199,11 @@ class Container:
         check: bool = False,
         timeout: int = 300,
         shell: str = "/bin/sh",
+        user: str | None = None,
     ) -> ExecResult:
         args = ["exec"]
+        if user:
+            args += ["-u", user]
         if workdir:
             args += ["-w", workdir]
         for key, value in (env or {}).items():

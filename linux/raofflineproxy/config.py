@@ -57,6 +57,7 @@ DEFAULT_ROCKNIX_DOLPHIN_CONFIG_DIR = Path("/storage/.config/dolphin-emu")
 # in Batocera's key format (global.retroachievements.username/password/token).
 DEFAULT_ROCKNIX_SYSTEM_CFG = Path("/storage/.config/system/configs/system.cfg")
 OS_RELEASE_PATH = Path("/etc/os-release")
+DEFAULT_DARKOS_HOME = Path("/home/ark")
 
 
 def running_on_rocknix() -> bool:
@@ -94,6 +95,10 @@ def running_on_shared_miyoo_stack() -> bool:
     bundled stack for all three: the "Mini" SDL2 video driver, no fontconfig, and
     gpio-keys-polled raw evdev input."""
     return running_on_onion() or running_on_spruce() or running_on_allium()
+
+
+def running_on_darkos() -> bool:
+    return DEFAULT_DARKOS_HOME.exists()
 
 
 # Mirrors spruce's own device detection (spruce/scripts/helperFunctions.sh). The Anbernic
@@ -181,6 +186,9 @@ def resolve_config_dir() -> Path:
 
     if DEFAULT_MUOS_APPLICATION_DIR.exists():
         return DEFAULT_MUOS_APPLICATION_DIR / "data"
+
+    if DEFAULT_DARKOS_HOME.exists():
+        return DEFAULT_DARKOS_HOME / ".config" / "raofflineproxy"
 
     if Path("/userdata/system").exists():
         return Path("/userdata/system/.config/raofflineproxy")

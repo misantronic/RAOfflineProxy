@@ -20,9 +20,16 @@ Requires Docker with binfmt for the target arch. On a fresh Linux host:
 docker run --privileged --rm tonistiigi/binfmt --install arm64,arm
 ```
 
-Six devices are wired up: `knulli`, `rocknix`, `muos` (aarch64) and `onion`,
-`spruce`, `allium` (armv7). The armv7 three are fully emulated and take
-roughly 5-6 minutes each; the aarch64 three take about 2.
+Seven devices are wired up: `knulli`, `rocknix`, `muos`, `darkos` (aarch64) and
+`onion`, `spruce`, `allium` (armv7). The armv7 three are fully emulated and take
+roughly 5-6 minutes each; the aarch64 four take about 2.
+
+`darkos` is the one target whose container boots a real init: the proxy is a
+systemd unit there, so the image runs `/sbin/init` under `--privileged` with a
+writable cgroup mount instead of parking on `sleep infinity`. It is also the only
+one installed and driven as a non-root account (`ark`), because dArkOS launches
+Tools entries unprivileged and installing as root would hide the file-ownership
+bugs that model causes.
 
 `RAOP_E2E_INSTALLER=/path/to/installer.sh` skips the bundle build and tests a
 prebuilt artifact instead.
@@ -55,7 +62,9 @@ resize their launcher icon.
 
 Adding a device is one `Device(...)` entry plus a Dockerfile. Devices that
 share hardware share an image: `_miyoo()` in `devices.py` builds all three
-Miyoo entries from one factory.
+Miyoo entries from one factory. Two `Device` flags cover targets that do not fit
+the default shape: `needs_systemd=True` boots `/sbin/init` in the container, and
+`run_as="ark"` installs and drives the app as that account rather than root.
 
 ## Design notes
 

@@ -1,0 +1,64 @@
+FROM arm64v8/debian:bookworm-slim
+
+# dArkOS is Debian, not Buildroot, so this image is closer to the real thing
+# than the other device rootfs are: same base distro, same apt, same systemd.
+# The proxy is managed as a systemd unit, so PID 1 here is a real init.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        bash systemd systemd-sysv sudo python3 \
+        procps curl iproute2 unzip ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# install.sh installs python3-pygame when `import pygame` fails. The scenarios
+# drive the CLI and never open the SDL menu (menu_sdl imports pygame lazily), so
+# the real package would only buy a mid-test `apt install` over the network —
+# and it triples the image build, which is minutes once the runner emulates
+# aarch64. A stub satisfies the installer's presence check instead.
+RUN mkdir -p /usr/lib/python3/dist-packages/pygame \
+    && printf '%s\n' \
+        '"""Stub for the E2E image: see Dockerfile.darkos."""' \
+        '__version__ = "0.0.0-e2e-stub"' \
+        > /usr/lib/python3/dist-packages/pygame/__init__.py
+
+# Mirrors setup_ark_user() in dArkOS's bootstrap_rootfs.sh: the device account is
+# `ark` with passwordless sudo baked into every image. The installer and the app
+# both rely on that to reach systemctl from the unprivileged Tools menu.
+RUN useradd --create-home --home-dir /home/ark --shell /bin/bash ark \
+    && echo "ark     ALL= NOPASSWD: ALL" > /etc/sudoers.d/ark-no-sudo-password \
+    && echo "Defaults        !secure_path" > /etc/sudoers.d/ark-no-secure-path \
+    && chmod 0440 /etc/sudoers.d/ark-no-sudo-password /etc/sudoers.d/ark-no-secure-path
+
+RUN printf '%s\n' \
+    'NAME="dArkOS"' \
+    'ID=darkos' \
+    'VERSION="07282026"' \
+    'OS_NAME="dArkOS"' \
+    'PRETTY_NAME="dArkOS 07282026"' \
+    > /etc/os-release
+
+# /roms is its own exfat partition on hardware, with /roms/tools bind-mounted to
+# /opt/system/Tools so EmulationStation lists it. Only the paths matter here.
+RUN mkdir -p /roms/tools /roms/snes /opt/system/Tools /home/ark/.config/retroarch \
+    && chown -R ark:ark /roms /home/ark
+
+COPY rootfs/darkos/retroarch.cfg /home/ark/.config/retroarch/retroarch.cfg
+RUN chown ark:ark /home/ark/.config/retroarch/retroarch.cfg
+
+# Boot as little as possible. The scenarios only need systemctl to reach PID 1,
+# and every masked unit is one less process to fork — which is what dominates
+# once a runner emulates aarch64. networkd/resolved are masked for a second
+# reason: they would fight the offline scenarios over the interface they toggle.
+RUN systemctl mask \
+        systemd-networkd.service systemd-resolved.service \
+        systemd-networkd-wait-online.service \
+        systemd-udevd.service systemd-udev-trigger.service \
+        systemd-journald.service systemd-journal-flush.service \
+        systemd-logind.service systemd-timesyncd.service \
+        getty.target getty-static.service console-getty.service \
+        e2scrub_reap.service apt-daily.timer apt-daily-upgrade.timer \
+        dev-hugepages.mount sys-kernel-debug.mount sys-kernel-tracing.mount \
+        >/dev/null 2>&1 || true
+
+ENV HOME=/home/ark
+
+STOPSIGNAL SIGRTMIN+3
+CMD ["/sbin/init"]

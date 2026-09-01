@@ -32,6 +32,9 @@ class Device:
         cli_style: str = "launcher",
         proxy_port: int = 8080,
         residue_paths: tuple = (),
+        needs_systemd: bool = False,
+        service_unit: str | None = None,
+        run_as: str | None = None,
     ) -> None:
         self.name = name
         self.platform = platform
@@ -56,6 +59,14 @@ class Device:
         self.cli_style = cli_style
         self.proxy_port = proxy_port
         self.residue_paths = residue_paths
+        # dArkOS is the only target where an init system owns the proxy process,
+        # so its container has to boot one rather than idle on `sleep infinity`.
+        self.needs_systemd = needs_systemd
+        self.service_unit = service_unit
+        # The account the app is installed and driven as. dArkOS launches Tools
+        # entries unprivileged, so installing as root here would hide exactly the
+        # ownership bugs that model causes.
+        self.run_as = run_as
 
     @property
     def proxy_value(self) -> str:
@@ -218,7 +229,41 @@ ALLIUM = _miyoo(
     "/mnt/SDCARD/.tmp_update/updater",
 )
 
+DARKOS = Device(
+    name="darkos",
+    platform="linux/arm64",
+    dockerfile="rootfs/Dockerfile.darkos",
+    bundle_script="linux/darkos/build_bundle.sh",
+    installer_glob="linux/darkos/dist/RAOfflineProxy-DarkOS-v*-Install.sh",
+    install_mode="self-extracting",
+    base_dir="/home/ark/raofflineproxy",
+    bin_path="/home/ark/raofflineproxy/bin/raofflineproxy",
+    uninstall_path="/home/ark/raofflineproxy/bin/raofflineproxy-uninstall",
+    config_dir="/home/ark/.config/raofflineproxy",
+    retroarch_cfg="/home/ark/.config/retroarch/retroarch.cfg",
+    # Debian-based ArkOS ships no batocera.conf or any ES-side achievements
+    # store, so RetroArch's own config is the only thing patched.
+    batocera_conf=None,
+    ppsspp_ini=None,
+    dolphin_ini=None,
+    # systemd owns autostart here: there is no custom.sh-style boot script, and
+    # "enabled" means the unit is enabled rather than a sentinel in a file.
+    boot_hook="/etc/systemd/system/raofflineproxy.service",
+    tools_entry="/roms/tools/RAOfflineProxy.sh",
+    rom_dir="/roms/snes",
+    needs_systemd=True,
+    service_unit="raofflineproxy.service",
+    run_as="ark",
+    residue_paths=(
+        "/home/ark/raofflineproxy",
+        "/home/ark/raofflineproxy-darkos-bundle",
+        "/home/ark/.config/raofflineproxy",
+        "/roms/tools/RAOfflineProxy.sh",
+        "/etc/systemd/system/raofflineproxy.service",
+    ),
+)
+
 DEVICES = {
     device.name: device
-    for device in (KNULLI, ROCKNIX, MUOS, ONION, SPRUCE, ALLIUM)
+    for device in (KNULLI, ROCKNIX, MUOS, ONION, SPRUCE, ALLIUM, DARKOS)
 }

@@ -97,7 +97,10 @@ class DeviceSession:
             )
         else:
             result = self.container.exec(
-                "bash /tmp/RAOfflineProxy-Install.sh", check=True, timeout=300
+                "bash /tmp/RAOfflineProxy-Install.sh",
+                check=True,
+                timeout=300,
+                user=self.device.run_as,
             )
         from linux.tests.e2e.harness.cli import AppCli
 
@@ -106,7 +109,9 @@ class DeviceSession:
         return result
 
     def uninstall(self):
-        result = self.container.exec(self.device.uninstall_path, timeout=300)
+        result = self.container.exec(
+            self.device.uninstall_path, timeout=300, user=self.device.run_as
+        )
         # Some uninstallers detach the final rm -rf so they can delete the tree
         # they are running from; wait for that to land before asserting.
         self.container.exec("sleep 5")
@@ -114,7 +119,11 @@ class DeviceSession:
 
     def point_at_fake_ra(self) -> None:
         config_path = self.device.config_dir + "/config.json"
-        self.container.exec("mkdir -p %s" % self.device.config_dir, check=True)
+        self.container.exec(
+            "mkdir -p %s" % self.device.config_dir,
+            check=True,
+            user=self.device.run_as,
+        )
         existing = "{}"
         if self.container.exists(config_path):
             existing = self.container.read_file(config_path)
@@ -126,13 +135,18 @@ class DeviceSession:
             "open(%r, 'w').write(json.dumps(data))\n"
             "RAOP_PY" % (existing, FAKE_RA_PORT, config_path),
             check=True,
+            user=self.device.run_as,
         )
 
     def stage_rom(self, fixture: str) -> str:
         target = "%s/%s" % (self.device.rom_dir, fixture)
-        self.container.exec("mkdir -p %s" % self.device.rom_dir, check=True)
         self.container.exec(
-            "cp /repo/linux/tests/fixtures/%s %s" % (fixture, target), check=True
+            "mkdir -p %s" % self.device.rom_dir, check=True, user=self.device.run_as
+        )
+        self.container.exec(
+            "cp /repo/linux/tests/fixtures/%s %s" % (fixture, target),
+            check=True,
+            user=self.device.run_as,
         )
         return target
 
@@ -146,6 +160,7 @@ class DeviceSession:
                 _quote(snippet),
             ),
             check=check,
+            user=self.device.run_as,
         )
 
     def go_offline(self) -> None:
@@ -208,19 +223,43 @@ def _start_fake_ra(container, control) -> None:
     )
 
 
+def _probe_systemd(device, tag: str) -> None:
+    """Boot one throwaway container to prove PID 1 comes up.
+
+    The session fixture builds a container per test, so without this a systemd
+    that never settles costs every test its full timeout and the run looks like
+    a silent hang. Failing here reports it once, with diagnostics.
+    """
+    probe = Container(
+        image=tag,
+        platform=device.platform,
+        privileged=True,
+        tmpfs=("/run", "/run/lock"),
+        command=("/sbin/init",),
+    )
+    probe.start()
+    try:
+        probe.wait_for_systemd()
+    finally:
+        probe.stop()
+
+
 def _image_fixture(device_name: str):
     @pytest.fixture(scope="session")
     def _image() -> str:
         if not docker_available():
             pytest.skip("docker is not available")
         device = DEVICES[device_name]
-        return build_image(
+        tag = build_image(
             device.dockerfile,
             E2E_DIR,
             device.image_tag,
             device.platform,
             device.build_args,
         )
+        if device.needs_systemd:
+            _probe_systemd(device, tag)
+        return tag
 
     return _image
 
@@ -244,9 +283,14 @@ def _session_fixture(device_name: str, image_fixture: str, installer_fixture: st
             platform=device.platform,
             mounts={str(REPO_ROOT): "/repo:ro"},
             cap_add=("NET_ADMIN",),
+            privileged=device.needs_systemd,
+            tmpfs=("/run", "/run/lock") if device.needs_systemd else (),
+            command=("/sbin/init",) if device.needs_systemd else ("sleep", "infinity"),
         )
         container.start()
         try:
+            if device.needs_systemd:
+                container.wait_for_systemd()
             control = FakeRaControl(container)
             control.install()
             emulator = Emulator(container, port=device.proxy_port)
@@ -254,6 +298,14 @@ def _session_fixture(device_name: str, image_fixture: str, installer_fixture: st
             _start_fake_ra(container, control)
             container.put(installer, "/tmp/RAOfflineProxy-Install.sh")
             container.exec("chmod +x /tmp/RAOfflineProxy-Install.sh", check=True)
+            if device.run_as:
+                # docker cp lands the file as root, and /tmp is sticky, so the
+                # device account could not delete the installer the way it does
+                # on hardware (where it sits in its own ROMs partition).
+                container.exec(
+                    "chown %s /tmp/RAOfflineProxy-Install.sh" % device.run_as,
+                    check=True,
+                )
             yield DeviceSession(container, device, control, emulator)
         finally:
             container.stop()
@@ -284,3 +336,7 @@ spruce = _session_fixture("spruce", "spruce_image", "spruce_installer")
 allium_image = _image_fixture("allium")
 allium_installer = _installer_fixture("allium")
 allium = _session_fixture("allium", "allium_image", "allium_installer")
+
+darkos_image = _image_fixture("darkos")
+darkos_installer = _installer_fixture("darkos")
+darkos = _session_fixture("darkos", "darkos_image", "darkos_installer")

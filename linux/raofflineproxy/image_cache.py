@@ -196,6 +196,22 @@ def schedule_image_download(
     _image_download_executor.submit(download_static_image, url, image_path, user_agent, game_id)
 
 
+def shutdown_image_downloads() -> None:
+    """Drop queued image downloads so they cannot hold up process exit.
+
+    ThreadPoolExecutor workers are not daemon threads, and concurrent.futures
+    joins them during interpreter shutdown — before atexit handlers run, so this
+    has to be called explicitly. A first run that caches a game queues a badge
+    per achievement, and without this the menu stays alive after its window
+    closes until every one of them has been fetched.
+
+    Images are best-effort and re-requested on the next launch, so cancelling
+    what has not started yet costs nothing. Downloads already in flight still
+    finish, but each carries its own timeout.
+    """
+    _image_download_executor.shutdown(wait=False, cancel_futures=True)
+
+
 def resolve_cached_static_asset(path: str) -> Path | None:
     """Returns the cached static image file for path, or None if not yet downloaded."""
     clean_path = path.lstrip("/").split("?", 1)[0]

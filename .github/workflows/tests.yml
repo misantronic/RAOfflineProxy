@@ -118,7 +118,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        device: [knulli, rocknix, muos, onion, spruce, allium]
+        device: [knulli, rocknix, muos, onion, spruce, allium, darkos]
     steps:
       - uses: actions/checkout@v7
         with:
