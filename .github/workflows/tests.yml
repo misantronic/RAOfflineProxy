@@ -3,9 +3,6 @@ name: Tests
 on:
   pull_request:
     branches: ["**"]
-  schedule:
-    # Nightly, so the emulated device suites run without gating every PR.
-    - cron: "0 3 * * *"
   workflow_dispatch:
 
 jobs:
@@ -98,10 +95,10 @@ jobs:
   # server. See linux/tests/e2e/README.md.
   #
   # Every architecture is emulated on the x86_64 runners, so this is far slower
-  # than the unit suites. It runs nightly, on demand, and on any pull request
-  # that touches linux/ — the "e2e" label forces it on a PR that does not.
+  # than the unit suites. It runs on any pull request that touches linux/ — the
+  # "e2e" label forces it on a PR that does not — and on demand.
   #
-  # !cancelled() is what lets the nightly and dispatch runs through: "changes" is
+  # !cancelled() is what lets a workflow_dispatch run through: "changes" is
   # skipped there, and a skipped dependency would otherwise skip this job whatever
   # the condition below says.
   linux-e2e:

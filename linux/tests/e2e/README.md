@@ -37,10 +37,10 @@ prebuilt artifact instead.
 ## CI
 
 The `linux-e2e` job in `.github/workflows/tests.yml` runs one matrix leg per
-device. It fires nightly, on `workflow_dispatch`, and on a pull request only
-when that PR carries the `e2e` label — the GitHub runners are x86_64, so every
-device architecture is emulated there and the suites are much slower than on an
-arm64 developer machine.
+device. It runs on any pull request that touches `linux/` or `third_party/`,
+on demand via `workflow_dispatch`, and the `e2e` label forces it on a PR that
+touches neither. The GitHub runners are x86_64, so every device architecture is
+emulated there — expect 7-10 minutes per leg, all six in parallel.
 
 The job builds each bundle from source, so it needs the same prerequisites the
 build scripts do: zig for the cross-compiled hasher (`ZIG_BIN=zig`), the fetched
