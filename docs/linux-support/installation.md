@@ -175,7 +175,9 @@ RAOfflineProxy patches the emulator configs it needs in order to redirect RetroA
 
 == dArkOS
 
-> dArkOS support is community-contributed and not yet verified by the developer on real hardware.
+> dArkOS support is currently experimental.
+>
+> Community-contributed, tested on a Powkiddy RGB30 running [dArkOS 07282026](https://github.com/christianhaitian/dArkOS/releases) and a Miniloong Pocket 1 running dArkOS 08062026.
 
 1. Download the latest `RAOfflineProxy-DarkOS-*-Install.sh` from [GitHub Releases](https://github.com/misantronic/RAOfflineProxy/releases)
 2. Copy it into:

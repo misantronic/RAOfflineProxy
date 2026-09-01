@@ -4,7 +4,9 @@ Portable bundle for [dArkOS](https://github.com/christianhaitian/dArkOS) ("Debia
 
 ## Status
 
-Community-contributed: a dArkOS user got RAOfflineProxy running by hand-patching the KNULLI bundle's install/uninstall/launcher scripts (`/userdata/roms` → `/roms`, `/userdata/system` → `/home/ark`). This directory formalizes that into a proper installer, and the shared `raofflineproxy/` Python source now recognizes `/home/ark` as an alternate platform root. **Not yet verified against real hardware by the maintainer** — please report issues.
+Community-contributed: a dArkOS user got RAOfflineProxy running by hand-patching the KNULLI bundle's install/uninstall/launcher scripts (`/userdata/roms` → `/roms`, `/userdata/system` → `/home/ark`). This directory formalizes that into a proper installer, and the shared `raofflineproxy/` Python source now recognizes `/home/ark` as an alternate platform root.
+
+Verified on hardware by contributors — install and uninstall, proxy start/stop, autostart on/off, and the proxy itself online and offline — on a Powkiddy RGB30 (dArkOS 07282026) and a Miniloong Pocket 1 (dArkOS 08062026). The maintainer has no dArkOS device, so reports from other models are still welcome.
 
 ## Differences from the KNULLI bundle
 

@@ -65,7 +65,7 @@ Allium is a Miyoo-only launcher, so this target covers exactly the devices Alliu
 
 == dArkOS
 
-Community-contributed target for [dArkOS](https://github.com/christianhaitian/dArkOS) ("Debian based ArkOS"). Not yet verified against real hardware by the developer — please report issues.
+Community-contributed target for [dArkOS](https://github.com/christianhaitian/dArkOS) ("Debian based ArkOS"), tested on a Powkiddy RGB30 (dArkOS 07282026) and a Miniloong Pocket 1 (dArkOS 08062026). Reports from other dArkOS devices are welcome.
 
 Current rough edges:
 
