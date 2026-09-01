@@ -9,7 +9,7 @@ import urllib.request
 from linux.tests.e2e.fake_ra.server import build_servers
 from linux.tests.e2e.fake_ra.state import RaState, compute_validation_hash
 
-CLIENT_UA = "RetroArch/1.21.0 (Linux) RAOfflineProxy/Linux/1.12.0-alpha1"
+CLIENT_UA = "RetroArch/1.21.0 (Linux) RAOfflineProxy/Linux/1.13.0-alpha1"
 MSLUG_HASH = "b43c8b4ec999588c04dad79bb8bcc745"
 TOKEN = "tok-testuser-000000000001"
 
@@ -173,7 +173,7 @@ class FakeRaTests(unittest.TestCase):
     def test_proxy_self_user_agent_is_accepted(self) -> None:
         status, _payload = self.dorequest(
             "r=gameid&m=" + MSLUG_HASH,
-            user_agent="RetroArch/1.21.0 (Linux) RAOfflineProxy/Linux/1.12.0-alpha1",
+            user_agent="RetroArch/1.21.0 (Linux) RAOfflineProxy/Linux/1.13.0-alpha1",
         )
         self.assertEqual(status, 200)
 

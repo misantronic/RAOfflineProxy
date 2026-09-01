@@ -335,7 +335,7 @@ class AlliumUpdateInstallTests(unittest.TestCase):
     runs against an archive shaped exactly like the one build_bundle.sh produces.
     """
 
-    def _archive(self, root: Path, version: str = "v1.12.0-alpha1") -> Path:
+    def _archive(self, root: Path, version: str = "v1.13.0-alpha1") -> Path:
         archive_path = root / "update.zip"
         pak = "Apps/RAOfflineProxy.pak"
         with zipfile.ZipFile(archive_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:

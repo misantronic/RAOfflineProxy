@@ -17,7 +17,7 @@ RUNTIME_CACHE_DIR="${ONION_DIR}/runtime-cache"
 RUNTIME_ARCHIVE_NAME="cpython-3.9.20+20241016-armv7-unknown-linux-gnueabihf-install_only_stripped.tar.gz"
 RUNTIME_ARCHIVE_PATH="${RUNTIME_CACHE_DIR}/${RUNTIME_ARCHIVE_NAME}"
 VENDOR_DIR="${ONION_DIR}/vendor"
-APP_VERSION="${RAOFFLINEPROXY_APP_VERSION:-1.12.0-alpha1}"
+APP_VERSION="${RAOFFLINEPROXY_APP_VERSION:-1.13.0-alpha1}"
 ZIP_NAME="RAOfflineProxy-Allium-v${APP_VERSION}.zip"
 
 TARGET="arm-linux-gnueabihf.2.17" OUT_DIR="${SCRIPT_DIR}/native" \

@@ -11,7 +11,7 @@ RUNTIME_CACHE_DIR="${SCRIPT_DIR}/runtime-cache"
 RUNTIME_ARCHIVE_NAME="cpython-3.9.20+20241016-armv7-unknown-linux-gnueabihf-install_only_stripped.tar.gz"
 RUNTIME_ARCHIVE_PATH="${RUNTIME_CACHE_DIR}/${RUNTIME_ARCHIVE_NAME}"
 VENDOR_DIR="${SCRIPT_DIR}/vendor"
-ZIP_NAME="RAOfflineProxy-Onion-v1.12.0-alpha1.zip"
+ZIP_NAME="RAOfflineProxy-Onion-v1.13.0-alpha1.zip"
 
 TARGET="arm-linux-gnueabihf.2.17" OUT_DIR="${SCRIPT_DIR}/native" \
   "${LINUX_DIR}/build_rchash.sh"
