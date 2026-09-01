@@ -9,6 +9,7 @@ import android.os.Bundle
 import android.provider.Settings
 import android.provider.DocumentsContract
 import android.util.Log
+import com.raofflineproxy.proxy.ARMSX_CONSENT_ACTION_SUFFIX
 import android.view.Menu
 import android.view.MenuItem
 import android.view.LayoutInflater
@@ -70,6 +71,33 @@ class MainActivity : AppCompatActivity() {
             SnackbarManager.showError(getString(R.string.manual_patching_shizuku_permission_denied_message))
         }
     }
+
+    // Emulator packages still to ask for library-sharing consent, one prompt at a time: each
+    // emulator owns its own grant, and stacking dialogs from several apps at once is hostile.
+    private val pendingConsentPackages = mutableListOf<String>()
+
+    // Which package the in-flight prompt belongs to: the result callback has no other way to
+    // know whose answer it is carrying.
+    private var lastConsentRequestPackage: String? = null
+
+    // StartActivityForResult, NOT a plain startActivity: the consent screen identifies us with
+    // getCallingPackage(), which is only populated for a for-result launch. Started any other way
+    // it cannot tell who is asking and refuses outright.
+    private val companionConsentLauncher =
+        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+            // The emulator records the outcome itself; nothing to persist on this side.
+            Log.i(
+                "RAProxy/SmartCache",
+                "companion library consent ${if (result.resultCode == RESULT_OK) "granted" else "declined"} for $lastConsentRequestPackage"
+            )
+            if (pendingConsentPackages.isNotEmpty()) {
+                launchNextCompanionConsent()
+            } else {
+                // Not user-initiated: keeps the already-asked set, so a Deny resumes the run
+                // without the prompt instead of re-opening it forever.
+                viewModel.startSmartCache(userInitiated = false)
+            }
+        }
 
     private val safLauncher = registerForActivityResult(OpenAndroidDataTree()) { uri ->
         if (uri == null) {
@@ -279,6 +307,8 @@ class MainActivity : AppCompatActivity() {
                     MainUiEvent.OpenShizukuGuide -> openUrl(getString(R.string.manual_patching_shizuku_guide_url))
                     MainUiEvent.RequestShizukuPermission -> Shizuku.requestPermission(SHIZUKU_PERMISSION_REQUEST_CODE)
                     is MainUiEvent.ShowAppUpdate -> showAppUpdateDialog(event.update)
+                    is MainUiEvent.RequestCompanionLibraryConsent ->
+                        requestCompanionLibraryConsent(event.packages)
                 }
             }
         }
@@ -736,6 +766,27 @@ class MainActivity : AppCompatActivity() {
                 enqueueError(getString(R.string.app_update_download_failed))
                 openUrl(apkUrl)
             }
+        }
+    }
+
+    private fun requestCompanionLibraryConsent(packages: List<String>) {
+        pendingConsentPackages.clear()
+        pendingConsentPackages.addAll(packages)
+        launchNextCompanionConsent()
+    }
+
+    private fun launchNextCompanionConsent() {
+        if (pendingConsentPackages.isEmpty()) return
+        val target = pendingConsentPackages.removeAt(0)
+        lastConsentRequestPackage = target
+        val intent = Intent(target + ARMSX_CONSENT_ACTION_SUFFIX)
+        intent.setPackage(target)
+        val launched = runCatching { companionConsentLauncher.launch(intent) }.isSuccess
+        if (!launched) {
+            // Older build without the consent screen. Nothing to ask, so carry on rather than
+            // stalling the whole smart-cache run on one emulator.
+            Log.i("RAProxy/SmartCache", "no consent activity for $target")
+            if (pendingConsentPackages.isNotEmpty()) launchNextCompanionConsent() else viewModel.startSmartCache(userInitiated = false)
         }
     }
 

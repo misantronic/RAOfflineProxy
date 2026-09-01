@@ -33,6 +33,12 @@ private const val RETROARCH_RECENT_WINDOW_MS = 60L * 24 * 60 * 60 * 1000
 private const val WATERMELONDS_RECENT_WINDOW_MS = 60L * 24 * 60 * 60 * 1000
 private const val ARMSX_RECENT_WINDOW_MS = 60L * 24 * 60 * 60 * 1000
 
+// Cursor extra ARMSX sets when the caller has no grant. Must match
+// RecentGamesContentProvider.EXTRA_ACCESS_DENIED upstream.
+private const val ARMSX_EXTRA_ACCESS_DENIED = "com.armsx2.extra.RECENT_GAMES_ACCESS_DENIED"
+private const val ARMSX_EXTRA_CONSENT_DECLINED = "com.armsx2.extra.RECENT_GAMES_CONSENT_DECLINED"
+internal const val ARMSX_CONSENT_ACTION_SUFFIX = ".action.REQUEST_RECENT_GAMES_ACCESS"
+
 private val WATERMELONDS_ROM_LIBRARY_AUTHORITIES by lazy {
     Emulator.WatermelonDs.packageCandidates.map { packageName -> "$packageName.romlibrary" }
 }
@@ -180,7 +186,11 @@ internal data class SmartCacheCandidate(
 internal data class SmartCacheStrategyResult(
     val candidates: List<SmartCacheCandidate> = emptyList(),
     val message: String? = null,
-    val needsSafGrant: Boolean = false
+    val needsSafGrant: Boolean = false,
+    /** Packages whose library provider answered "you may not read this". Distinct from an empty
+     *  result: the emulator has games, it just has not been allowed to share them yet, so the
+     *  fix is to ask the user rather than to report that nothing was played. */
+    val consentPackages: List<String> = emptyList()
 )
 
 internal data class SmartCacheRunResult(
@@ -191,7 +201,11 @@ internal data class SmartCacheRunResult(
     val needsSafGrant: Boolean = false,
     val message: String? = null,
     val requiredRomGrantPaths: List<String> = emptyList(),
-    val requiredSafGrantTargets: List<SmartCacheEmulator> = emptyList()
+    val requiredSafGrantTargets: List<SmartCacheEmulator> = emptyList(),
+    /** Emulator packages that have a library provider but have not allowed us to read it. The
+     *  UI turns these into a consent request, which is the only way the user finds out that a
+     *  supported emulator is sitting there contributing nothing. */
+    val requiredConsentPackages: List<String> = emptyList()
 )
 
 private data class ResolvedSmartCacheCandidate(
@@ -581,14 +595,30 @@ private object Armsx2SmartCacheStrategy : SmartCacheStrategy {
 
 private fun discoverArmsxCandidates(context: Context, emulator: SmartCacheEmulator, authorities: List<String>): SmartCacheStrategyResult {
     val cutoff = System.currentTimeMillis() - ARMSX_RECENT_WINDOW_MS
-    val candidates = authorities.firstNotNullOfOrNull { authority ->
+    val reachable = authorities.firstNotNullOfOrNull { authority ->
         queryArmsxRomLibrary(context, authority, emulator, cutoff)
     }
 
-    if (candidates == null) {
+    if (reachable == null) {
         Log.i(TAG, "$emulator strategy did not find a readable rom library provider")
         return SmartCacheStrategyResult(message = "no_recent_games")
     }
+    if (reachable.accessDenied) {
+        // The emulator tracks whether this user already refused us, and forgets that the moment
+        // they touch its sharing switch. Trusting it beats remembering the refusal here, which
+        // would go stale the first time they change their mind without us running in between.
+        if (reachable.consentDeclined) {
+            Log.i(TAG, "$emulator strategy sharing declined by the user; not asking again")
+            return SmartCacheStrategyResult(message = "no_recent_games")
+        }
+        Log.i(TAG, "$emulator strategy needs sharing consent from ${reachable.packageName}")
+        return SmartCacheStrategyResult(
+            message = "needs_companion_consent",
+            consentPackages = listOf(reachable.packageName)
+        )
+    }
+
+    val candidates = reachable.candidates
     if (candidates.isEmpty()) {
         Log.i(TAG, "$emulator strategy found no recently played games within the last ${ARMSX_RECENT_WINDOW_MS / (24L * 60 * 60 * 1000)} days")
         return SmartCacheStrategyResult(message = "no_recent_games")
@@ -598,20 +628,38 @@ private fun discoverArmsxCandidates(context: Context, emulator: SmartCacheEmulat
     return SmartCacheStrategyResult(candidates = candidates)
 }
 
-private fun queryArmsxRomLibrary(context: Context, authority: String, emulator: SmartCacheEmulator, cutoff: Long): List<SmartCacheCandidate>? {
+private data class ArmsxRomLibraryResult(
+    val packageName: String,
+    val candidates: List<SmartCacheCandidate> = emptyList(),
+    val accessDenied: Boolean = false,
+    val consentDeclined: Boolean = false
+)
+
+private fun queryArmsxRomLibrary(context: Context, authority: String, emulator: SmartCacheEmulator, cutoff: Long): ArmsxRomLibraryResult? {
     val uri = Uri.Builder()
         .scheme("content")
         .authority(authority)
         .appendPath("games")
         .build()
+    val packageName = authority.removeSuffix(".romlibrary")
 
     return runCatching {
         context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+            // Sharing off and "nothing played" are both an empty cursor; only this extra tells
+            // them apart, so an older build without it just looks like an empty library.
+            if (cursor.extras.getBoolean(ARMSX_EXTRA_ACCESS_DENIED, false)) {
+                return@use ArmsxRomLibraryResult(
+                    packageName = packageName,
+                    accessDenied = true,
+                    consentDeclined = cursor.extras.getBoolean(ARMSX_EXTRA_CONSENT_DECLINED, false)
+                )
+            }
+
             val titleIndex = cursor.getColumnIndex("title")
             val uriIndex = cursor.getColumnIndex("uri")
             val lastPlayedIndex = cursor.getColumnIndex("lastPlayed")
 
-            buildList {
+            val candidates = buildList {
                 while (cursor.moveToNext()) {
                     val lastPlayed = if (lastPlayedIndex >= 0 && !cursor.isNull(lastPlayedIndex)) {
                         cursor.getLong(lastPlayedIndex)
@@ -636,6 +684,7 @@ private fun queryArmsxRomLibrary(context: Context, authority: String, emulator: 
                     )
                 }
             }
+            ArmsxRomLibraryResult(packageName = packageName, candidates = candidates)
         }
     }.onFailure { error ->
         Log.i(TAG, "$emulator strategy could not query authority=$authority", error)
@@ -652,6 +701,10 @@ internal suspend fun runSmartCache(
     dolphinTreeUri: Uri?,
     ppssppTreeUri: Uri?,
     romTreeUris: List<Uri>,
+    /** Companion packages we have already prompted for this round. Asking again would loop
+     *  forever the moment someone taps Deny, so a package that has been put to the user once
+     *  is treated as answered and the run proceeds without it. */
+    consentAlreadyRequested: Set<String> = emptySet(),
     onProgress: (current: Int, total: Int, label: String) -> Unit
 ): SmartCacheRunResult {
     Log.i(
@@ -685,6 +738,7 @@ internal suspend fun runSmartCache(
     }
 
     val requiredSafGrantTargets = mutableSetOf<SmartCacheEmulator>()
+    val requiredConsentPackages = linkedSetOf<String>()
 
     val discoveredCandidates = linkedMapOf<String, SmartCacheCandidate>()
     var needsSafGrant = false
@@ -710,9 +764,26 @@ internal suspend fun runSmartCache(
         if (strategyMessage == null && !result.message.isNullOrBlank()) {
             strategyMessage = result.message
         }
+        requiredConsentPackages += result.consentPackages
         result.candidates.forEach { candidate ->
             discoveredCandidates.putIfAbsent(candidate.path, candidate)
         }
+    }
+
+    val unaskedConsentPackages = requiredConsentPackages - consentAlreadyRequested
+    if (unaskedConsentPackages.isNotEmpty()) {
+        // Stop before caching, exactly as the SAF path does. Caching first and asking afterwards
+        // means the user answers a prompt about data the run has already finished without, and
+        // then sits through a second full pass to actually use it.
+        Log.i(TAG, "runSmartCache stopping before caching to request companion consent=$unaskedConsentPackages")
+        return SmartCacheRunResult(
+            matched = 0,
+            total = 0,
+            skipped = 0,
+            limitReached = false,
+            message = "needs_companion_consent",
+            requiredConsentPackages = unaskedConsentPackages.toList()
+        )
     }
 
     if (needsSafGrant) {
