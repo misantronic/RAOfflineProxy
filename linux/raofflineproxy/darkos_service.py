@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import socket
 import subprocess
 import time
 from datetime import datetime
@@ -180,12 +181,34 @@ def systemd_stop_service() -> bool:
     return _run_privileged(["systemctl", "stop", DARKOS_SERVICE_NAME])[0]
 
 
+def wait_until_listening(timeout: float = 60.0) -> bool:
+    """Block until the proxy accepts connections.
+
+    The unit is Type=simple, so `systemctl start` returns once ExecStart has
+    forked — not once the proxy has bound its port. Without this, start-proxy
+    reports success while the very next emulator request is still refused,
+    which is easy to hit on hardware slow to start an interpreter.
+    """
+    config_data = load_config()
+    address = (proxy_host(config_data), proxy_port(config_data))
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        with socket.socket() as probe:
+            probe.settimeout(1.0)
+            if probe.connect_ex(address) == 0:
+                return True
+        time.sleep(0.2)
+    return False
+
+
 def darkos_service_start() -> dict:
     # `systemctl start` fails outright on a missing unit, so repair it first:
     # covers an install whose unit write was denied, or one removed by hand.
     _ensure_unit_installed()
     already_running = systemd_service_status()
     started = systemd_start_service()
+    if started:
+        wait_until_listening()
     return {
         "started": started,
         "already_running": already_running,

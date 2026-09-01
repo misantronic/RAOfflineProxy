@@ -57,11 +57,56 @@ class DarkosServiceControlTests(unittest.TestCase):
             darkos_service, "systemd_service_status", lambda: True
         ), patch.object(
             darkos_service, "systemd_service_pid", lambda: 7
-        ), patch.object(darkos_service, "systemd_start_service", lambda: True):
+        ), patch.object(
+            darkos_service, "systemd_start_service", lambda: True
+        ), patch.object(darkos_service, "wait_until_listening", lambda *_a, **_k: True):
             result = darkos_service.darkos_service_start()
 
         self.assertTrue(result["already_running"])
         self.assertEqual(result["pid"], 7)
+
+    def test_start_waits_for_the_proxy_to_accept_connections(self) -> None:
+        # Type=simple means systemctl returns once ExecStart forks, so without
+        # this wait start-proxy reports success while requests are still refused.
+        waited: list[bool] = []
+
+        with patch.object(
+            darkos_service, "_ensure_unit_installed", lambda: None
+        ), patch.object(
+            darkos_service, "systemd_service_status", lambda: False
+        ), patch.object(
+            darkos_service, "systemd_service_pid", lambda: 5
+        ), patch.object(
+            darkos_service, "systemd_start_service", lambda: True
+        ), patch.object(
+            darkos_service,
+            "wait_until_listening",
+            lambda *_a, **_k: waited.append(True) or True,
+        ):
+            darkos_service.darkos_service_start()
+
+        self.assertEqual(waited, [True])
+
+    def test_start_does_not_wait_when_the_unit_failed_to_start(self) -> None:
+        waited: list[bool] = []
+
+        with patch.object(
+            darkos_service, "_ensure_unit_installed", lambda: None
+        ), patch.object(
+            darkos_service, "systemd_service_status", lambda: False
+        ), patch.object(
+            darkos_service, "systemd_service_pid", lambda: None
+        ), patch.object(
+            darkos_service, "systemd_start_service", lambda: False
+        ), patch.object(
+            darkos_service,
+            "wait_until_listening",
+            lambda *_a, **_k: waited.append(True) or True,
+        ):
+            result = darkos_service.darkos_service_start()
+
+        self.assertFalse(result["started"])
+        self.assertEqual(waited, [])
 
     def test_status_reports_the_configured_proxy_port(self) -> None:
         with patch.object(
