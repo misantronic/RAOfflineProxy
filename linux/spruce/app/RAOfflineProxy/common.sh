@@ -8,7 +8,7 @@ APP_RUNTIME_DIR="$APP_DIR/runtime"
 APP_PACKAGE_DIR="$APP_DIR/app"
 APP_LIB_DIR="$APP_DIR/lib"
 APP_RETROARCH_CFG=
-APP_CERT_FILE="$APP_RUNTIME_DIR/lib/python3.9/site-packages/pip/_vendor/certifi/cacert.pem"
+APP_CERT_FILE=
 APP_SPRUCE_PLATFORM=
 APP_SPRUCE_ZONEINFO_DIR=/mnt/SDCARD/spruce/zoneinfo
 # Every spruce device stores its settings in /mnt/SDCARD/Saves/<device>-system.json.
@@ -42,6 +42,21 @@ detect_spruce_platform() {
             fi
             ;;
     esac
+}
+
+# The armv7 bundle ships CPython 3.9 and the arm64 one 3.11, so the runtime's own
+# site-packages path is resolved rather than hardcoded.
+resolve_cert_file() {
+    runtime_root="$1"
+
+    for candidate in "$runtime_root"/lib/python3.*/site-packages/pip/_vendor/certifi/cacert.pem; do
+        if [ -f "$candidate" ]; then
+            printf '%s\n' "$candidate"
+            return 0
+        fi
+    done
+
+    return 1
 }
 
 resolve_spruce_timezone() {
@@ -110,7 +125,7 @@ prepare_env() {
         unset SDL_VIDEODRIVER
     fi
 
-    if [ -f "$APP_CERT_FILE" ]; then
+    if APP_CERT_FILE="$(resolve_cert_file "$APP_RUNTIME_DIR")"; then
         export SSL_CERT_FILE="$APP_CERT_FILE"
         export RAOFFLINEPROXY_CA_FILE="$APP_CERT_FILE"
     fi
@@ -123,9 +138,9 @@ activate_runtime_env() {
     export PYTHONHOME="$runtime_root"
     export LD_LIBRARY_PATH="$APP_LIB_DIR:$runtime_root/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
     export PATH="$runtime_root/bin${PATH:+:$PATH}"
-    if [ -f "$runtime_root/lib/python3.9/site-packages/pip/_vendor/certifi/cacert.pem" ]; then
-        export SSL_CERT_FILE="$runtime_root/lib/python3.9/site-packages/pip/_vendor/certifi/cacert.pem"
-        export RAOFFLINEPROXY_CA_FILE="$runtime_root/lib/python3.9/site-packages/pip/_vendor/certifi/cacert.pem"
+    if cert_file="$(resolve_cert_file "$runtime_root")"; then
+        export SSL_CERT_FILE="$cert_file"
+        export RAOFFLINEPROXY_CA_FILE="$cert_file"
     fi
 }
 
@@ -134,7 +149,7 @@ python_supports_backend() {
     runtime_root="${2:-}"
 
     if [ -n "$runtime_root" ]; then
-        PYTHONHOME="$runtime_root" LD_LIBRARY_PATH="$runtime_root/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" "$candidate" -c 'import sys; raise SystemExit(0 if sys.version_info[0] >= 3 else 1)' >/dev/null 2>"$RUNTIME_DETECT_LOG"
+        PYTHONHOME="$runtime_root" LD_LIBRARY_PATH="$APP_LIB_DIR:$runtime_root/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" "$candidate" -c 'import sys; raise SystemExit(0 if sys.version_info[0] >= 3 else 1)' >/dev/null 2>"$RUNTIME_DETECT_LOG"
         return $?
     fi
 

@@ -15,7 +15,33 @@ if resolve_python_bin; then
     # Reinstall the boot hook on every launch: a spruce update wipes .tmp_update, and the
     # app directory survives it, so this is the only thing that repairs autostart.
     run_backend "$PYTHON_BIN" ensure-boot-hook >/dev/null 2>&1 || true
-    exec "$PYTHON_BIN" -m raofflineproxy.main menu-sdl
+    if "$PYTHON_BIN" -m raofflineproxy.main menu-sdl; then
+        exit 0
+    fi
+
+    # The menu failed to come up. On a device we have not tested, the usual cause is SDL
+    # finding no usable video driver, so record which ones this device actually offers
+    # instead of leaving only a traceback.
+    APP_SPRUCE_PLATFORM="$APP_SPRUCE_PLATFORM" "$PYTHON_BIN" - >>"$APP_DATA_DIR/menu-sdl.log" 2>&1 <<'SDL_PROBE'
+import os, sys
+
+print("--- SDL video driver probe ---")
+print("device:", os.environ.get("APP_SPRUCE_PLATFORM", "unknown"))
+print("python:", sys.version.split()[0])
+for driver in ("kmsdrm", "fbcon", "directfb", "x11", "wayland", "offscreen", "dummy"):
+    os.environ["SDL_VIDEODRIVER"] = driver
+    try:
+        import pygame
+        pygame.display.quit()
+        pygame.display.init()
+        sizes = pygame.display.get_desktop_sizes()
+        print(f"  {driver:10s} OK  {sizes}")
+        pygame.display.quit()
+    except Exception as exc:
+        print(f"  {driver:10s} --  {exc}")
+SDL_PROBE
+
+    exit 1
 fi
 
 {
