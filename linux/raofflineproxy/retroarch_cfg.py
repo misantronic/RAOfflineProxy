@@ -6,6 +6,7 @@ from typing import Optional
 
 from .config import (
     detect_batocera_conf,
+    detect_darkos_retroarch32_cfg,
     detect_rocknix_system_cfg,
     proxy_value,
     running_on_spruce,
@@ -173,8 +174,12 @@ def _read_rocknix_system_cfg(cfg_path: str | None) -> str | None:
 def load_retroarch_credentials(cfg_path: str | None) -> dict | None:
     # Try main cfg first, then the cheevos appendconfig (muOS stores credentials
     # there), then ROCKNIX's EmulationStation settings (it strips the cheevos keys
-    # out of retroarch.cfg on every game launch, leaving that file the only source).
+    # out of retroarch.cfg on every game launch, leaving that file the only source),
+    # then dArkOS's second (32-bit) RetroArch build, which keeps a separate config
+    # tree — a user who set achievements up under a 32-bit core has credentials
+    # only there, and reading just the main cfg reports them as logged out.
     cheevos_cfg = str(cheevos_append_cfg_path(cfg_path)) if cfg_path else None
+    darkos32_cfg = detect_darkos_retroarch32_cfg()
 
     token_credentials = load_retroarch_token_credentials(cfg_path)
     if token_credentials is not None:
@@ -188,6 +193,10 @@ def load_retroarch_credentials(cfg_path: str | None) -> dict | None:
     if token_credentials is not None:
         return token_credentials
 
+    token_credentials = load_retroarch_token_credentials(darkos32_cfg)
+    if token_credentials is not None:
+        return token_credentials
+
     password_credentials = load_retroarch_password_credentials(cfg_path)
     if password_credentials is not None:
         return password_credentials
@@ -197,6 +206,10 @@ def load_retroarch_credentials(cfg_path: str | None) -> dict | None:
         return password_credentials
 
     password_credentials = load_rocknix_system_password_credentials()
+    if password_credentials is not None:
+        return password_credentials
+
+    password_credentials = load_retroarch_password_credentials(darkos32_cfg)
     if password_credentials is not None:
         return password_credentials
 
@@ -311,6 +324,134 @@ def build_reverted_content(
         return with_enable
 
     return _upsert_config_value(with_enable, HARDCORE_KEY, "true")
+
+
+def secondary_retroarch_cfgs(config_data: dict | None = None) -> list[str]:
+    """Extra retroarch.cfg files that need the same patch as the primary one.
+
+    dArkOS ships a second, 32-bit RetroArch build with its own config tree, and
+    EmulationStation dispatches part of the library to it. Patching only the
+    primary cfg leaves every 32-bit core talking to retroachievements.org
+    directly, bypassing the proxy entirely. Empty on every other platform.
+    """
+    darkos32 = detect_darkos_retroarch32_cfg(config_data)
+    return [darkos32] if darkos32 else []
+
+
+def patch_secondary_retroarch_cfgs(
+    config_data: dict, saved_entries: list[dict] | None = None
+) -> dict:
+    """Patch the secondary cfgs, capturing each one's pre-patch values.
+
+    Kept out of patch_retroarch_cfg() on purpose: that function owns the single
+    top-level cfg_path/previous_host/previous_enable slots in the patch state, so
+    calling it per file would have each cfg overwrite the previous one's saved
+    values and break revert for all but the last.
+
+    `saved_entries` are the previously recorded ones. They have to be passed in
+    rather than read here: save_patch_state() rewrites the whole file, so by the
+    time this runs the primary patch has already dropped them from disk.
+    """
+    proxy_address = proxy_value(config_data)
+    previously_saved = {
+        entry.get("cfg_path"): entry
+        for entry in (saved_entries or [])
+        if entry.get("cfg_path")
+    }
+    entries: list[dict] = []
+
+    for cfg_path in secondary_retroarch_cfgs(config_data):
+        target = Path(cfg_path)
+        if not target.exists():
+            continue
+
+        original = target.read_text(encoding="utf-8", errors="replace")
+        previous_host = _extract_config_value(original, HOST_KEY)
+        previous_enable = _extract_config_value(original, ENABLE_KEY)
+        hardcore_was_enabled = detect_hardcore_enabled(original)
+        transformed = build_patched_content(original, proxy_address)
+        already_patched = transformed == original and is_patched_content(
+            original, proxy_address
+        )
+
+        if transformed != original:
+            target.write_text(transformed, encoding="utf-8")
+
+        # Re-patching an already-patched cfg would otherwise capture the proxy's
+        # own host as "previous" and revert to it. Keep the first-captured set.
+        saved = previously_saved.get(str(target))
+        if already_patched and saved is not None:
+            previous_host = saved.get("previous_host")
+            previous_enable = saved.get("previous_enable")
+            hardcore_was_enabled = bool(saved.get("hardcore_was_enabled", False))
+
+        entries.append(
+            {
+                "cfg_path": str(target),
+                "previous_host": previous_host,
+                "previous_enable": previous_enable,
+                "hardcore_was_enabled": hardcore_was_enabled,
+                "already_patched": already_patched,
+                "changed": transformed != original,
+            }
+        )
+
+    return {"entries": entries}
+
+
+def store_secondary_retroarch_previous(patch_state: dict, secondary: dict) -> None:
+    patch_state["secondary_cfgs"] = [
+        {
+            "cfg_path": entry.get("cfg_path"),
+            "previous_host": entry.get("previous_host"),
+            "previous_enable": entry.get("previous_enable"),
+            "hardcore_was_enabled": entry.get("hardcore_was_enabled", False),
+        }
+        for entry in secondary.get("entries", [])
+    ]
+
+
+def revert_secondary_retroarch_cfgs(
+    config_data: dict, previous: list[dict] | None = None
+) -> dict:
+    """Restore each secondary cfg from its own saved values.
+
+    A cfg with no saved entry is still reverted, from an empty baseline: that is
+    the upgrade case, where the file was patched by a build that did not record
+    secondary state, and leaving the proxy host behind would break achievements
+    once the proxy is stopped.
+    """
+    saved = {
+        entry.get("cfg_path"): entry for entry in (previous or []) if entry.get("cfg_path")
+    }
+    reverted: list[str] = []
+
+    for cfg_path in secondary_retroarch_cfgs(config_data):
+        target = Path(cfg_path)
+        if not target.exists():
+            continue
+
+        entry = saved.get(str(target), {})
+        current = target.read_text(encoding="utf-8", errors="replace")
+        transformed = build_reverted_content(
+            current,
+            entry.get("previous_host"),
+            entry.get("previous_enable"),
+            bool(entry.get("hardcore_was_enabled", False)),
+        )
+        if transformed != current:
+            target.write_text(transformed, encoding="utf-8")
+            reverted.append(str(target))
+
+    return {"reverted": reverted}
+
+
+def enforce_secondary_retroarch_cfgs(config_data: dict) -> bool:
+    changed = False
+    for cfg_path in secondary_retroarch_cfgs(config_data):
+        if enforce_patched_cfg(cfg_path, config_data):
+            changed = True
+    return changed
 
 
 def conf_fallback_available(config_data: dict) -> bool:
