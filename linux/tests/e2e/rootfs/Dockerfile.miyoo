@@ -1,8 +1,15 @@
-FROM arm32v7/debian:bullseye-slim
+FROM arm32v7/debian:bookworm-slim
 
 # Onion, spruce and Allium are the same Miyoo Mini hardware sharing one SD card
 # layout; only a handful of marker files tell the three firmwares apart. One
 # image with a FIRMWARE build-arg keeps that relationship explicit.
+#
+# The base is bookworm, not bullseye: the Miyoo firmwares ship their own
+# CPython 3.9 inside the bundle (see README.md), so the system python only
+# needs to be something resolve_python_bin must not pick, not a version
+# match. bullseye's security pool stopped serving the pinned package files
+# apt-get update's index referenced once bullseye went EOL, breaking the
+# build; bookworm is what darkos/muos/knulli already use.
 ARG FIRMWARE=onion
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
