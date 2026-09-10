@@ -2,11 +2,31 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+resolve_tools_dir() {
+  # ArkOS's "Switch to SD2 for Roms" rebinds /opt/system/Tools from the second
+  # card and rewrites everything to /roms2, but leaves /roms mounted -- so the
+  # existence of /roms/tools says nothing about which one EmulationStation
+  # actually shows. The bind source does, and it is the same inode.
+  local mount_id
+  local candidate
+  mount_id="$(stat -c '%d:%i' /opt/system/Tools 2>/dev/null || true)"
+  if [ -n "${mount_id}" ]; then
+    for candidate in /roms2/tools /roms/tools; do
+      if [ "$(stat -c '%d:%i' "${candidate}" 2>/dev/null || true)" = "${mount_id}" ]; then
+        printf '%s\n' "${candidate}"
+        return
+      fi
+    done
+  fi
+  printf '%s\n' "/roms/tools"
+}
+
 BASE_DIR="/home/ark/raofflineproxy"
 APP_DIR="${BASE_DIR}/app"
 BIN_DIR="${BASE_DIR}/bin"
 LIB_DIR="${BASE_DIR}/lib"
-TOOLS_DIR="/roms/tools"
+TOOLS_DIR="$(resolve_tools_dir)"
 INSTALL_SCRIPT="${TOOLS_DIR}/RAOfflineProxy Install.sh"
 OLD_BIN="${BASE_DIR}/bin/raofflineproxy"
 UPDATE_STATUS_FILE="/home/ark/.config/raofflineproxy/update_status.json"

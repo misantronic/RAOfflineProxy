@@ -58,6 +58,13 @@ DEFAULT_ROCKNIX_DOLPHIN_CONFIG_DIR = Path("/storage/.config/dolphin-emu")
 DEFAULT_ROCKNIX_SYSTEM_CFG = Path("/storage/.config/system/configs/system.cfg")
 OS_RELEASE_PATH = Path("/etc/os-release")
 DEFAULT_DARKOS_HOME = Path("/home/ark")
+# ArkOS-family images ship a second, 32-bit RetroArch build with its own config tree.
+# EmulationStation dispatches part of the library to it (es_systems.cfg carries both
+# <emulator name="retroarch"> and <emulator name="retroarch32"> entries), so it holds
+# its own achievements credentials and needs its own proxy patch.
+DEFAULT_DARKOS_RETROARCH32_CFG = (
+    DEFAULT_DARKOS_HOME / ".config" / "retroarch32" / "retroarch.cfg"
+)
 
 
 def running_on_rocknix() -> bool:
@@ -393,6 +400,21 @@ def detect_rocknix_system_cfg(config_data: dict | None = None) -> str | None:
 
     if running_on_rocknix() and DEFAULT_ROCKNIX_SYSTEM_CFG.exists():
         return str(DEFAULT_ROCKNIX_SYSTEM_CFG)
+
+    return None
+
+
+def detect_darkos_retroarch32_cfg(config_data: dict | None = None) -> str | None:
+    configured = (config_data or {}).get("darkos_retroarch32_cfg")
+    if configured:
+        return str(configured)
+
+    env_override = os.environ.get("RAOFFLINEPROXY_DARKOS_RETROARCH32_CFG")
+    if env_override:
+        return env_override
+
+    if running_on_darkos() and DEFAULT_DARKOS_RETROARCH32_CFG.exists():
+        return str(DEFAULT_DARKOS_RETROARCH32_CFG)
 
     return None
 

@@ -167,8 +167,19 @@ class LinuxLogUploaderTests(unittest.TestCase):
         with ExitStack() as stack:
             stack.enter_context(mock.patch.object(log_uploader.config, "running_on_onion", return_value=False))
             stack.enter_context(mock.patch.object(log_uploader.config, "running_on_rocknix", return_value=False))
+            stack.enter_context(mock.patch.object(log_uploader.config, "running_on_darkos", return_value=False))
             stack.enter_context(mock.patch.object(log_uploader, "MUOS_MARKER_PATH", Path("/nonexistent")))
             self.assertEqual(log_uploader._platform_label(), "Knulli")
+
+    def test_platform_label_detects_darkos(self) -> None:
+        # Without its own branch a dArkOS device falls through to the Knulli
+        # default, and every support ticket from one is filed against Knulli.
+        with ExitStack() as stack:
+            stack.enter_context(mock.patch.object(log_uploader.config, "running_on_onion", return_value=False))
+            stack.enter_context(mock.patch.object(log_uploader.config, "running_on_rocknix", return_value=False))
+            stack.enter_context(mock.patch.object(log_uploader.config, "running_on_darkos", return_value=True))
+            stack.enter_context(mock.patch.object(log_uploader, "MUOS_MARKER_PATH", Path("/nonexistent")))
+            self.assertEqual(log_uploader._platform_label(), "dArkOS")
 
     def test_platform_label_detects_onion_first(self) -> None:
         with ExitStack() as stack:

@@ -1,8 +1,27 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+resolve_tools_dir() {
+  # ArkOS's "Switch to SD2 for Roms" rebinds /opt/system/Tools from the second
+  # card and rewrites everything to /roms2, but leaves /roms mounted -- so the
+  # existence of /roms/tools says nothing about which one EmulationStation
+  # actually shows. The bind source does, and it is the same inode.
+  local mount_id
+  local candidate
+  mount_id="$(stat -c '%d:%i' /opt/system/Tools 2>/dev/null || true)"
+  if [ -n "${mount_id}" ]; then
+    for candidate in /roms2/tools /roms/tools; do
+      if [ "$(stat -c '%d:%i' "${candidate}" 2>/dev/null || true)" = "${mount_id}" ]; then
+        printf '%s\n' "${candidate}"
+        return
+      fi
+    done
+  fi
+  printf '%s\n' "/roms/tools"
+}
+
 BASE_DIR="/home/ark/raofflineproxy"
-TOOLS_DIR="/roms/tools"
+TOOLS_DIR="$(resolve_tools_dir)"
 BUNDLE_DIR="/home/ark/raofflineproxy-darkos-bundle"
 CONFIG_DIR="/home/ark/.config/raofflineproxy"
 AUTOSTART_UNIT="/etc/systemd/system/raofflineproxy.service"
@@ -49,7 +68,9 @@ if [ -x "${BASE_DIR}/bin/raofflineproxy" ]; then
   fi
 fi
 
-rm -f "${TOOLS_DIR}/RAOfflineProxy.sh"
+# Both roots: a user who hand-copied the entry to the other card before we
+# resolved the bind mount would otherwise be left with a dead Tools item.
+rm -f "${TOOLS_DIR}/RAOfflineProxy.sh" /roms/tools/RAOfflineProxy.sh /roms2/tools/RAOfflineProxy.sh
 
 nohup /bin/sh -c '
   sleep 2

@@ -108,5 +108,87 @@ class BootReconcileDispatchTests(unittest.TestCase):
         apply_proxy.assert_not_called()
 
 
+
+class SecondaryRetroarchCfgWiringTests(unittest.TestCase):
+    """The dArkOS 32-bit cfg is only patched because _patch_emulator_configs calls
+    into it; nothing else in the suite notices if that call goes away."""
+
+    def test_patch_reads_prior_state_before_the_primary_patch_drops_it(self) -> None:
+        # save_patch_state() rewrites the whole file, so the primary patch below
+        # wipes secondary_cfgs from disk. Reading it later would lose the
+        # pre-patch values and make revert restore the proxy's own host.
+        saved = [{"cfg_path": "/home/ark/.config/retroarch32/retroarch.cfg"}]
+        with (
+            mock.patch.object(main, "remove_stale_hook"),
+            mock.patch.object(
+                main,
+                "patch_retroarch_cfg",
+                return_value={"already_patched": False, "changed": True},
+            ),
+            mock.patch.object(main, "enforce_patched_cfg"),
+            mock.patch.object(
+                main,
+                "patch_batocera_conf",
+                return_value={"previous": {}, "path": None, "exists": False},
+            ),
+            mock.patch.object(
+                main, "load_patch_state", side_effect=[{"secondary_cfgs": saved}, {}]
+            ),
+            mock.patch.object(main, "save_patch_state"),
+            mock.patch.object(main, "enforce_secondary_retroarch_cfgs"),
+            mock.patch.object(
+                main, "patch_secondary_retroarch_cfgs", return_value={"entries": []}
+            ) as patch_secondary,
+        ):
+            main._patch_emulator_configs({}, "/runtime/retroarch.cfg")
+
+        patch_secondary.assert_called_once_with({}, saved)
+
+    def test_patch_reports_each_changed_secondary_cfg(self) -> None:
+        entries = {"entries": [{"cfg_path": "/ark/retroarch32.cfg", "changed": True}]}
+        with (
+            mock.patch.object(main, "remove_stale_hook"),
+            mock.patch.object(
+                main,
+                "patch_retroarch_cfg",
+                return_value={"already_patched": False, "changed": True},
+            ),
+            mock.patch.object(main, "enforce_patched_cfg"),
+            mock.patch.object(
+                main,
+                "patch_batocera_conf",
+                return_value={"previous": {}, "path": None, "exists": False},
+            ),
+            mock.patch.object(main, "load_patch_state", return_value={}),
+            mock.patch.object(main, "save_patch_state"),
+            mock.patch.object(main, "enforce_secondary_retroarch_cfgs"),
+            mock.patch.object(
+                main, "patch_secondary_retroarch_cfgs", return_value=entries
+            ),
+        ):
+            output = main._patch_emulator_configs({}, "/runtime/retroarch.cfg")
+
+        self.assertIn("Patched retroarch.cfg at /ark/retroarch32.cfg", output)
+
+    def test_revert_passes_the_saved_entries_through(self) -> None:
+        saved = [{"cfg_path": "/ark/retroarch32.cfg", "previous_host": ""}]
+        state = {"cfg_path": "/saved/retroarch.cfg", "secondary_cfgs": saved}
+        with (
+            mock.patch.object(main, "remove_stale_hook"),
+            mock.patch.object(main, "load_patch_state", return_value=state),
+            mock.patch.object(main, "revert_batocera_conf", return_value={"exists": False}),
+            mock.patch.object(main, "revert_retroarch_cfg", return_value={"changed": True}),
+            mock.patch.object(
+                main,
+                "revert_secondary_retroarch_cfgs",
+                return_value={"reverted": ["/ark/retroarch32.cfg"]},
+            ) as revert_secondary,
+        ):
+            output = main._revert_proxy_config({}, "/runtime/retroarch.cfg")
+
+        revert_secondary.assert_called_once_with({}, saved)
+        self.assertIn("Reverted retroarch.cfg at /ark/retroarch32.cfg", output)
+
+
 if __name__ == "__main__":
     unittest.main()
