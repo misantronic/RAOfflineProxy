@@ -199,6 +199,33 @@ def resolve_config_dir() -> Path:
     return Path.home() / ".config" / "raofflineproxy"
 
 
+def resolve_cache_dir() -> Path:
+    configured = os.environ.get("RAOFFLINEPROXY_CACHE_DIR")
+    if configured:
+        return Path(configured).expanduser()
+
+    xdg_cache_home = os.environ.get("XDG_CACHE_HOME")
+    if xdg_cache_home:
+        return Path(xdg_cache_home).expanduser() / "raofflineproxy"
+
+    # Devices below don't distinguish config vs. cache storage (no separate
+    # backup/restore concern), so the API response cache lives alongside
+    # config there rather than under a distro-specific cache convention.
+    if DEFAULT_ONION_APP_DIR.exists():
+        return DEFAULT_ONION_APP_DIR / "data"
+
+    if DEFAULT_MUOS_APPLICATION_DIR.exists():
+        return DEFAULT_MUOS_APPLICATION_DIR / "data"
+
+    if Path("/userdata/system").exists():
+        return Path("/userdata/system/.config/raofflineproxy")
+
+    if running_on_rocknix():
+        return DEFAULT_ROCKNIX_CONFIG_DIR
+
+    return Path.home() / ".cache" / "raofflineproxy"
+
+
 RA_HOST = "https://retroachievements.org"
 RA_MEDIA_HOST = "https://media.retroachievements.org"
 APP_VERSION = os.environ.get("RAOFFLINEPROXY_APP_VERSION") or "1.13.0-alpha1"
@@ -223,10 +250,18 @@ ONLINE_STATE_FILE = CONFIG_DIR / "online_state.json"
 AWARD_SECRET_FILE = CONFIG_DIR / "award_secret.key"
 UPDATE_STATUS_FILE = CONFIG_DIR / "update_status.json"
 
+CACHE_DIR = resolve_cache_dir()
+CACHE_DATABASE_FILE = CACHE_DIR / "cache.sqlite3"
+
 
 def ensure_config_dir() -> Path:
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
     return CONFIG_DIR
+
+
+def ensure_cache_dir() -> Path:
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    return CACHE_DIR
 
 
 def configure_logging() -> None:
@@ -348,6 +383,14 @@ def _retroarch_cfg_lookup() -> tuple[tuple[Callable[[], bool], tuple[Path, ...]]
     fallback, which is what a device that has not generated its cfg yet gets.
     """
     return (
+        (
+            lambda: os.environ.get("FLATPAK_ID") == "net.retrodeck.retrodeck",
+            (
+                (Path(os.environ["XDG_CONFIG_HOME"]) / "retroarch" / "retroarch.cfg",)
+                if os.environ.get("XDG_CONFIG_HOME")
+                else ()
+            ),
+        ),
         (lambda: DEFAULT_MUOS_RETROARCH_CFG.exists(), (DEFAULT_MUOS_RETROARCH_CFG,)),
         (lambda: Path("/userdata").exists(), tuple(KNULLI_RETROARCH_CFG_CANDIDATES)),
         (
@@ -406,6 +449,13 @@ def detect_ppsspp_ini(config_data: dict) -> str | None:
     if env_override:
         return env_override
 
+    if os.environ.get("FLATPAK_ID") == "net.retrodeck.retrodeck":
+        xdg_config_home = os.environ.get("XDG_CONFIG_HOME")
+        if xdg_config_home:
+            return str(
+                Path(xdg_config_home) / "ppsspp" / "PSP" / "SYSTEM" / "ppsspp.ini"
+            )
+
     if DEFAULT_ROCKNIX_PPSSPP_INI.exists():
         return str(DEFAULT_ROCKNIX_PPSSPP_INI)
 
@@ -420,6 +470,11 @@ def detect_dolphin_config_dir(config_data: dict) -> str | None:
     env_override = os.environ.get("RAOFFLINEPROXY_DOLPHIN_CONFIG_DIR")
     if env_override:
         return env_override
+
+    if os.environ.get("FLATPAK_ID") == "net.retrodeck.retrodeck":
+        xdg_config_home = os.environ.get("XDG_CONFIG_HOME")
+        if xdg_config_home:
+            return str(Path(xdg_config_home) / "dolphin-emu")
 
     if DEFAULT_ROCKNIX_DOLPHIN_CONFIG_DIR.exists():
         return str(DEFAULT_ROCKNIX_DOLPHIN_CONFIG_DIR)

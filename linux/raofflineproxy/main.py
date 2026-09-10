@@ -102,17 +102,29 @@ def remove_stale_hook() -> None:
         STALE_HOOK_PATH.unlink()
 
 
-def _patch_emulator_configs(config_data: dict, cfg_path: str) -> list[str]:
+def _patch_emulator_configs(
+    config_data: dict, cfg_path: str, patch_configs: bool = True
+) -> list[str]:
     """Point every supported emulator at the proxy. Does not touch the service.
 
     Split out of `_apply_proxy` so the boot path can patch without starting the
     service: on dArkOS systemd owns the process, and the unit patches from
     `ExecStartPre` rather than going through `_apply_proxy` (which would recurse
     back into `systemctl start`).
+
+    `patch_configs=False` (--no-patching) skips all of the above, for isolating
+    whether an issue is caused by the config patching itself.
     """
     output: list[str] = []
 
     remove_stale_hook()
+
+    if not patch_configs:
+        output.append(
+            "Skipped config patching (--no-patching): no emulator config files were touched"
+        )
+        return output
+
     result = patch_retroarch_cfg(cfg_path, config_data)
     enforce_patched_cfg(cfg_path, config_data)
     batocera = patch_batocera_conf(config_data)
@@ -147,7 +159,9 @@ def _patch_emulator_configs(config_data: dict, cfg_path: str) -> list[str]:
     return output
 
 
-def _apply_proxy(config_data: dict, cfg_path: str) -> list[str]:
+def _apply_proxy(
+    config_data: dict, cfg_path: str, patch_configs: bool = True
+) -> list[str]:
     if running_on_onion() and not onion_version_supported():
         detected = onion_os_version() or "unknown"
         raise RuntimeError(
@@ -162,7 +176,7 @@ def _apply_proxy(config_data: dict, cfg_path: str) -> list[str]:
     # content automatically, the emulator's achievement login can arrive within
     # seconds of this hook being scheduled.
     service = start_service_process(config_data)
-    output.extend(_patch_emulator_configs(config_data, cfg_path))
+    output.extend(_patch_emulator_configs(config_data, cfg_path, patch_configs))
 
     if service["already_running"]:
         output.append(f"Service already running (pid {service['pid']})")
@@ -278,6 +292,16 @@ def main() -> None:
         help="Override RetroArch config path",
     )
     parser.add_argument(
+        "--no-patching",
+        dest="no_patching",
+        action="store_true",
+        help=(
+            "start-proxy/boot-reconcile: start the proxy service without "
+            "touching any emulator config files, for isolating whether an "
+            "issue is caused by the config patching itself"
+        ),
+    )
+    parser.add_argument(
         "--path",
         dest="path",
         help="Filesystem path for browser and cache commands",
@@ -376,13 +400,13 @@ def main() -> None:
             return
 
         if args.command == "start-proxy":
-            for line in _apply_proxy(config_data, cfg_path):
+            for line in _apply_proxy(config_data, cfg_path, patch_configs=not args.no_patching):
                 print(line)
             return
 
         if args.command == "boot-reconcile":
             if is_autostart_enabled(config_data):
-                for line in _apply_proxy(config_data, cfg_path):
+                for line in _apply_proxy(config_data, cfg_path, patch_configs=not args.no_patching):
                     print(line)
             else:
                 for line in _revert_proxy_config(config_data, args.retroarch_cfg or cfg_path):
