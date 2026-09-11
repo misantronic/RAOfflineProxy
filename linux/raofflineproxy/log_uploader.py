@@ -167,6 +167,8 @@ def _platform_label() -> str:
         return "muOS"
     if config.running_on_rocknix():
         return "ROCKNIX"
+    if config.running_on_darkos():
+        return "dArkOS"
     return "Knulli"
 
 

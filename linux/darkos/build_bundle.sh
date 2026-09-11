@@ -48,6 +48,7 @@ SCRIPT_PATH="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"
 PAYLOAD_MARKER="__RAOFFLINEPROXY_PAYLOAD_BELOW__"
 TARGET_DIR="/home/ark/raofflineproxy-darkos-bundle"
 TOOLS_INSTALL_SCRIPT="/roms/tools/RAOfflineProxy Install.sh"
+TOOLS_INSTALL_SCRIPT_SD2="/roms2/tools/RAOfflineProxy Install.sh"
 
 marker_line="$(awk -v marker="${PAYLOAD_MARKER}" '$0 == marker { print NR; exit }' "${SCRIPT_PATH}")"
 if [ -z "${marker_line}" ]; then
@@ -73,7 +74,7 @@ fi
 
 cd "${TARGET_DIR}"
 ./install.sh
-rm -f "${TOOLS_INSTALL_SCRIPT}" "${SCRIPT_PATH}"
+rm -f "${TOOLS_INSTALL_SCRIPT}" "${TOOLS_INSTALL_SCRIPT_SD2}" "${SCRIPT_PATH}"
 echo "RAOfflineProxy installed."
 exit 0
 __RAOFFLINEPROXY_PAYLOAD_BELOW__

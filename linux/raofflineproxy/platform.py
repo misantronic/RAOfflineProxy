@@ -27,6 +27,8 @@ DEFAULT_MUOS_ROMS_ROOT = Path("/mnt/mmc/ROMS")
 DEFAULT_ONION_ROMS_ROOT = Path("/mnt/SDCARD/Roms")
 DEFAULT_ROCKNIX_ROMS_ROOT = Path("/storage/roms")
 DEFAULT_DARKOS_ROMS_ROOT = Path("/roms")
+DARKOS_SD2_ROMS_ROOT = Path("/roms2")
+DARKOS_TOOLS_MOUNT = Path("/opt/system/Tools")
 DEFAULT_KNULLI_STARTUP_SCRIPT = Path("/userdata/system/custom.sh")
 DEFAULT_MUOS_STARTUP_SCRIPT = DEFAULT_MUOS_INIT_DIR / "raofflineproxy.sh"
 DEFAULT_ROCKNIX_STARTUP_SCRIPT = Path("/storage/.config/autostart/raofflineproxy.sh")
@@ -57,6 +59,26 @@ def resolve_retroarch_cfg(config_data: dict) -> str:
     return str(config_data.get("retroarch_cfg") or detect_retroarch_cfg())
 
 
+def _same_directory(left: Path, right: Path) -> bool:
+    try:
+        return left.samefile(right)
+    except OSError:
+        return False
+
+
+def darkos_roms_root() -> Path | None:
+    # ArkOS's "Switch to SD2 for Roms" rebinds /opt/system/Tools from the second
+    # card and rewrites every path to /roms2, but leaves /roms mounted, so its
+    # existence alone does not identify the library EmulationStation is showing.
+    # The Tools bind source does, and it is the same inode as the roms root it
+    # came from.
+    if _same_directory(DARKOS_TOOLS_MOUNT, DARKOS_SD2_ROMS_ROOT / "tools"):
+        return DARKOS_SD2_ROMS_ROOT
+    if DEFAULT_DARKOS_ROMS_ROOT.exists() and DEFAULT_DARKOS_ROMS_ROOT.is_dir():
+        return DEFAULT_DARKOS_ROMS_ROOT
+    return None
+
+
 def resolve_rom_root(config_data: dict) -> Path:
     if DEFAULT_MUOS_ROMS_ROOT.exists() and DEFAULT_MUOS_ROMS_ROOT.is_dir():
         return DEFAULT_MUOS_ROMS_ROOT
@@ -84,8 +106,9 @@ def resolve_rom_root(config_data: dict) -> Path:
     if DEFAULT_ROCKNIX_ROMS_ROOT.exists() and DEFAULT_ROCKNIX_ROMS_ROOT.is_dir():
         return DEFAULT_ROCKNIX_ROMS_ROOT
 
-    if DEFAULT_DARKOS_ROMS_ROOT.exists() and DEFAULT_DARKOS_ROMS_ROOT.is_dir():
-        return DEFAULT_DARKOS_ROMS_ROOT
+    darkos_roms = darkos_roms_root()
+    if darkos_roms is not None:
+        return darkos_roms
 
     return cfg_path.parent
 
