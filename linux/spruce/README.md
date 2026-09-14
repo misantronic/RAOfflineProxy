@@ -2,9 +2,10 @@
 
 spruceOS bundle, derived from the Onion one. Support is **experimental**.
 
-Both firmwares use the same `/mnt/SDCARD/App/<name>/` layout and run on the same 32-bit
-ARM hardware, so this package reuses Onion's CPython runtime, its pygame + `Mini` SDL2
-vendor libraries and its armv7 `libraproxy_rchash.so`.
+Both firmwares use the same `/mnt/SDCARD/App/<name>/` layout, so the armv7 bundle reuses
+Onion's CPython runtime, its pygame + `Mini` SDL2 vendor libraries and its armv7
+`libraproxy_rchash.so`. spruce also runs on aarch64 hardware, which Onion does not, so a
+second bundle pairs its own CPython 3.11 with muOS's cp311 pygame and SDL2.
 
 ## What differs from Onion
 
@@ -48,21 +49,43 @@ v4.3.1-1 shipped an older RetroArch.
 ./linux/spruce/build_bundle.sh
 ```
 
-Produces `linux/spruce/dist/RAOfflineProxy-Spruce-v<VER>.zip`, extracted over the SD card
-root so the app lands in `/mnt/SDCARD/App/RAOfflineProxy`.
+`build_bundle.sh` takes an architecture and defaults to `armv7`:
+
+```sh
+./linux/spruce/fetch_runtime_arm64.sh      # once, for the arm64 target
+./linux/spruce/build_bundle.sh armv7
+./linux/spruce/build_bundle.sh arm64
+```
+
+Produces `linux/spruce/dist/RAOfflineProxy-Spruce-v<VER>.zip` and
+`RAOfflineProxy-Spruce-arm64-v<VER>.zip`, extracted over the SD card root so the app lands
+in `/mnt/SDCARD/App/RAOfflineProxy`.
 
 ## Hardware coverage
 
-The bundled runtime, native lib and SDL2 are armv7 builds, so this bundle covers spruce's
-two 32-bit targets: `MiyooMini` (Mini, Mini Plus, Mini Flip) and `A30`. Everything else
-spruce supports — `Brick`, `BrickPro`, `SmartPro`, `SmartProS`, `Flip`, `Pixel2`,
-`Zero28` and the Anbernic targets — is aarch64 and would need an aarch64 runtime.
+Each bundle carries its own runtime, native lib and SDL2, so the two are not
+interchangeable. `detect_spruce_platform()` in `common.sh` is the authoritative list:
+
+| Bundle | spruce targets |
+| --- | --- |
+| `armv7` | `MiyooMini` (Mini, Mini Plus, Mini Flip), `A30` |
+| `arm64` | `Brick`, `BrickPro`, `SmartPro`, `SmartProS`, `Flip`, `Pixel2`, `Zero28`, `AnbernicRG_XX-universal` |
 
 Only `MiyooMini` is verified (tested on a Mini Plus). The A30 shares the architecture so
 the runtime should load, but the vendored SDL2 is steward-fu's Miyoo Mini build: its
 `Mini` video driver does not exist there, so `common.sh` leaves `SDL_VIDEODRIVER` unset
 and `menu_sdl` falls back to a plain fullscreen surface. Whether that build works on A30
 hardware is untested.
+
+On `arm64` the proxy is confirmed working on a `Brick`; the menu is not, because the
+vendored manylinux SDL2 has not been matched to that panel. When the menu fails,
+`launch.sh` probes the available SDL video drivers into `data/menu-sdl.log`.
+
+A runtime that does not match the hardware is not silently ignored: `resolve_python_bin`
+records why each candidate was rejected in `data/runtime-detect.log`, including the
+device's `uname -m`. Without that, a wrong-architecture bundle falls through to spruce's
+system `python3`, which has no vendored pygame, and the only visible symptom is a
+`ModuleNotFoundError` far from the cause.
 
 ## Timezone
 

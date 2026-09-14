@@ -143,9 +143,16 @@ RAOfflineProxy patches the emulator configs it needs in order to redirect RetroA
 
 > spruce support is currently experimental.
 >
-> Tested on a Miyoo Mini Plus running [spruce 4.3.4](https://github.com/spruceUI/spruceOS/releases). The bundled runtime is a 32-bit ARM build, so it covers the Miyoo Mini family and the A30; spruce's 64-bit devices are not supported by this bundle.
+> Tested on a Miyoo Mini Plus running [spruce 4.3.4](https://github.com/spruceUI/spruceOS/releases).
 
-1. Download the latest `RAOfflineProxy-Spruce-*.zip` from [GitHub Releases](https://github.com/misantronic/RAOfflineProxy/releases)
+spruce runs on both 32-bit and 64-bit devices, and each has its own download. Pick the one that matches your handheld:
+
+| Download                             | Devices                                                                                       |
+| ------------------------------------ | --------------------------------------------------------------------------------------------- |
+| `RAOfflineProxy-Spruce-v*.zip`       | Miyoo Mini, Mini Plus, Mini Flip, A30                                                         |
+| `RAOfflineProxy-Spruce-arm64-v*.zip` | Miyoo Flip, TrimUI Brick, Brick Pro, Smart Pro, Smart Pro S, Pixel 2, Zero 28, Anbernic RG-XX |
+
+1. Download the matching `RAOfflineProxy-Spruce-*.zip` from [GitHub Releases](https://github.com/misantronic/RAOfflineProxy/releases)
 2. Extract it over the root of your SD card so the app lands in:
 
 ```text
