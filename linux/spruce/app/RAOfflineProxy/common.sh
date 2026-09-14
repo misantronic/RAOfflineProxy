@@ -18,6 +18,7 @@ APP_ACTIVE_RUNTIME_ROOT=
 RESOLVED_PYTHON_BIN=
 RUNTIME_FAILURE_REASON=
 RUNTIME_DETECT_LOG="$APP_DATA_DIR/runtime-detect.log"
+RUNTIME_PROBE_ERR="$APP_DATA_DIR/.runtime-probe.err"
 
 # Mirrors spruce's own device detection (spruce/scripts/helperFunctions.sh). The Anbernic
 # 0xd03 branch is collapsed to one label because all its variants share a single RetroArch
@@ -90,6 +91,10 @@ resolve_spruce_timezone() {
     return 0
 }
 
+log_runtime_detect() {
+    printf '%s %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" >> "$RUNTIME_DETECT_LOG"
+}
+
 normalize_display_paths() {
     sed 's#/mnt/SDCARD/#/#g'
 }
@@ -97,6 +102,7 @@ normalize_display_paths() {
 prepare_env() {
     mkdir -p "$APP_DATA_DIR"
     : > "$RUNTIME_DETECT_LOG"
+    : > "$RUNTIME_PROBE_ERR"
 
     detect_spruce_platform
     resolve_spruce_timezone
@@ -125,6 +131,8 @@ prepare_env() {
         unset SDL_VIDEODRIVER
     fi
 
+    log_runtime_detect "device=$APP_SPRUCE_PLATFORM machine=$(uname -m 2>/dev/null) version=$APP_VERSION"
+
     if APP_CERT_FILE="$(resolve_cert_file "$APP_RUNTIME_DIR")"; then
         export SSL_CERT_FILE="$APP_CERT_FILE"
         export RAOFFLINEPROXY_CA_FILE="$APP_CERT_FILE"
@@ -149,21 +157,21 @@ python_supports_backend() {
     runtime_root="${2:-}"
 
     if [ -n "$runtime_root" ]; then
-        PYTHONHOME="$runtime_root" LD_LIBRARY_PATH="$APP_LIB_DIR:$runtime_root/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" "$candidate" -c 'import sys; raise SystemExit(0 if sys.version_info[0] >= 3 else 1)' >/dev/null 2>"$RUNTIME_DETECT_LOG"
+        PYTHONHOME="$runtime_root" LD_LIBRARY_PATH="$APP_LIB_DIR:$runtime_root/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" "$candidate" -c 'import sys; raise SystemExit(0 if sys.version_info[0] >= 3 else 1)' >/dev/null 2>"$RUNTIME_PROBE_ERR"
         return $?
     fi
 
-    "$candidate" -c 'import sys; raise SystemExit(0 if sys.version_info[0] >= 3 else 1)' >/dev/null 2>"$RUNTIME_DETECT_LOG"
+    "$candidate" -c 'import sys; raise SystemExit(0 if sys.version_info[0] >= 3 else 1)' >/dev/null 2>"$RUNTIME_PROBE_ERR"
     return $?
 }
 
 capture_runtime_failure_reason() {
-    if [ ! -s "$RUNTIME_DETECT_LOG" ]; then
+    if [ ! -s "$RUNTIME_PROBE_ERR" ]; then
         RUNTIME_FAILURE_REASON=
         return 0
     fi
 
-    if IFS= read -r first_line < "$RUNTIME_DETECT_LOG"; then
+    if IFS= read -r first_line < "$RUNTIME_PROBE_ERR"; then
         RUNTIME_FAILURE_REASON="$first_line"
         return 0
     fi
@@ -171,37 +179,67 @@ capture_runtime_failure_reason() {
     RUNTIME_FAILURE_REASON=
 }
 
-resolve_python_bin() {
-    if [ -x "$APP_RUNTIME_DIR/bin/python3" ]; then
-        if python_supports_backend "$APP_RUNTIME_DIR/bin/python3" "$APP_RUNTIME_DIR"; then
-            activate_runtime_env "$APP_RUNTIME_DIR"
-            RESOLVED_PYTHON_BIN="$APP_RUNTIME_DIR/bin/python3"
-            RUNTIME_FAILURE_REASON=
-            return 0
-        fi
-        capture_runtime_failure_reason
+reject_runtime_candidate() {
+    candidate="$1"
+
+    if [ ! -e "$candidate" ]; then
+        log_runtime_detect "rejected $candidate: not present"
+        return 0
     fi
 
-    if [ -x "$APP_RUNTIME_DIR/python/bin/python3" ]; then
-        if python_supports_backend "$APP_RUNTIME_DIR/python/bin/python3" "$APP_RUNTIME_DIR/python"; then
-            activate_runtime_env "$APP_RUNTIME_DIR/python"
-            RESOLVED_PYTHON_BIN="$APP_RUNTIME_DIR/python/bin/python3"
-            RUNTIME_FAILURE_REASON=
-            return 0
-        fi
-        capture_runtime_failure_reason
+    if [ ! -x "$candidate" ]; then
+        log_runtime_detect "rejected $candidate: not executable"
+        return 0
     fi
+
+    capture_runtime_failure_reason
+    log_runtime_detect "rejected $candidate: ${RUNTIME_FAILURE_REASON:-exited non-zero with no output}"
+}
+
+resolve_python_bin() {
+    # A rejected bundle runtime is the interesting event even when a later candidate
+    # works: falling through to the system python3 yields an interpreter without our
+    # vendored pygame, so the menu fails far from the real cause.
+    bundled_rejected=0
+
+    if [ -x "$APP_RUNTIME_DIR/bin/python3" ] &&
+        python_supports_backend "$APP_RUNTIME_DIR/bin/python3" "$APP_RUNTIME_DIR"; then
+        activate_runtime_env "$APP_RUNTIME_DIR"
+        RESOLVED_PYTHON_BIN="$APP_RUNTIME_DIR/bin/python3"
+        RUNTIME_FAILURE_REASON=
+        log_runtime_detect "selected $RESOLVED_PYTHON_BIN (bundled)"
+        return 0
+    fi
+    reject_runtime_candidate "$APP_RUNTIME_DIR/bin/python3"
+    bundled_rejected=1
+
+    if [ -x "$APP_RUNTIME_DIR/python/bin/python3" ] &&
+        python_supports_backend "$APP_RUNTIME_DIR/python/bin/python3" "$APP_RUNTIME_DIR/python"; then
+        activate_runtime_env "$APP_RUNTIME_DIR/python"
+        RESOLVED_PYTHON_BIN="$APP_RUNTIME_DIR/python/bin/python3"
+        RUNTIME_FAILURE_REASON=
+        log_runtime_detect "selected $RESOLVED_PYTHON_BIN (bundled)"
+        return 0
+    fi
+    reject_runtime_candidate "$APP_RUNTIME_DIR/python/bin/python3"
 
     if command -v python3 >/dev/null 2>&1; then
         candidate="$(command -v python3)"
         if python_supports_backend "$candidate"; then
             RESOLVED_PYTHON_BIN="$candidate"
+            capture_runtime_failure_reason
+            if [ "$bundled_rejected" -eq 1 ]; then
+                log_runtime_detect "selected $candidate (system fallback; bundled runtime unusable, pygame will be missing)"
+            else
+                log_runtime_detect "selected $candidate (system fallback)"
+            fi
             RUNTIME_FAILURE_REASON=
             return 0
         fi
-        capture_runtime_failure_reason
+        reject_runtime_candidate "$candidate"
     fi
 
+    log_runtime_detect "no usable python found"
     RESOLVED_PYTHON_BIN=
     return 1
 }

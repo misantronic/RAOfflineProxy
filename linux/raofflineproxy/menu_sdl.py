@@ -326,7 +326,9 @@ def _init_onion_display(pygame):
 
 def run_menu_sdl(command_runner: str) -> None:
     pygame = None
-    log_menu_sdl(f"run_menu_sdl start python={sys.version.split()[0]}")
+    log_menu_sdl(
+        f"run_menu_sdl start python={sys.version.split()[0]} executable={sys.executable}"
+    )
     try:
         import pygame
 
