@@ -1,0 +1,12 @@
+{
+  "raofflineproxy": {
+    "name": "raofflineproxy",
+    "url_rdwiki": "",
+    "url_webpage": "https://raofflineproxy.com/",
+    "url_donation_purchase": "",
+    "url_source": "https://github.com/misantronic/RAOfflineProxy",
+    "description": "Local RetroAchievements offline proxy: caches game/achievement data and queues casual achievement awards while offline, syncing back to retroachievements.org when connectivity returns.",
+    "component_type": "System",
+    "system_friendly_name": "RAOfflineProxy"
+  }
+}
