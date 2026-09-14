@@ -97,6 +97,7 @@ App/
     checkoff-template.sh
     common.sh
     config.json
+    full_resolution
     icon.png
     launch.sh
     onion-menu.sh
@@ -104,6 +105,16 @@ App/
 ```
 
 The shared Python package is copied into `App/RAOfflineProxy/app/raofflineproxy` during the bundle build.
+
+## Full Resolution Marker
+
+`App/RAOfflineProxy/full_resolution` is Onion's opt-in for the native panel mode. It must exist and must stay empty: Onion's `runtime.sh` derives the path from the App launch command and only tests for its existence, the same way stock Onion does for DraStic.
+
+Without it, Onion launches the app in MainUI's 640x480 framebuffer mode on 752x560-capable devices such as the Miyoo Mini V4 and the Miyoo Flip, while `/tmp/screen_resolution` already reports the detected panel. The menu then sizes itself for a framebuffer it does not get.
+
+Devices without a 560p panel are unaffected. Onion only consults the marker when `/tmp/new_res_available` exists, and it restores 640x480 after the app exits.
+
+Because the file cannot carry a comment, `linux/tests/test_linux_onion_full_resolution.py` guards it against being cleaned up as stray cruft.
 
 ## Menu
 

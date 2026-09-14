@@ -291,12 +291,21 @@ def _init_onion_display(pygame):
     try:
         texture = Texture(renderer, panel_size, streaming=True)
         texture_surface = draw_surface
-    except RuntimeError:
+        log_menu_sdl(f"onion display texture native size={panel_size[0]}x{panel_size[1]}")
+    except RuntimeError as exc:
         # The vendored "Mini" SDL2 driver's swiftshader renderer caps
         # streaming textures at 640x480 regardless of the actual panel
         # (e.g. the Miyoo Mini Flip's 750x560 screen exceeds it). Present
         # through a capped-size texture and let SDL_RenderCopy scale it
-        # back up to the real panel size.
+        # back up to the real panel size. The renderer is sized from the
+        # live framebuffer at init, so this also trips when the panel is
+        # 560p but Onion launched the app in MainUI's 640x480 mode (i.e.
+        # the App/RAOfflineProxy/full_resolution marker is missing).
+        log_menu_sdl(
+            f"onion display texture {panel_size[0]}x{panel_size[1]} rejected "
+            f"({exc}), scaling through "
+            f"{ONION_DEFAULT_PANEL_SIZE[0]}x{ONION_DEFAULT_PANEL_SIZE[1]}"
+        )
         texture_surface = pygame.Surface(ONION_DEFAULT_PANEL_SIZE, depth=16)
         texture = Texture(renderer, ONION_DEFAULT_PANEL_SIZE, streaming=True)
 
