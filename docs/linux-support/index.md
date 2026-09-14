@@ -11,8 +11,6 @@ The Linux version is for handheld Linux devices where you want the same basic of
 - Keep earning casual achievements while offline
 - Let queued awards sync later when you reconnect
 
-Use the `KNULLI`, `Onion`, `muOS`, `ROCKNIX`, `spruce`, `Allium`, and `dArkOS` tabs throughout the Linux section to switch target-specific instructions.
-
 ## Supported Targets
 
 - KNULLI
@@ -55,7 +53,14 @@ Both RetroArch and standalone PPSSPP are supported on ROCKNIX. Starting the prox
 
 spruce support is experimental. It is currently compatible with [spruce 4.3.x](https://github.com/spruceUI/spruceOS/releases), tested on a Miyoo Mini Plus running spruce 4.3.4.
 
-The bundled Python runtime and SDL libraries are 32-bit ARM builds, which covers spruce's 32-bit devices: the Miyoo Mini family and the A30. spruce's other devices (TrimUI, Anbernic, Miyoo Flip, GKD Pixel 2, MagicX Zero 28) are 64-bit and would need an aarch64 build, which this bundle does not ship.
+There are two builds, one per architecture. They are not interchangeable:
+
+| Build | Devices |
+| --- | --- |
+| `RAOfflineProxy-Spruce-v*.zip` | Miyoo Mini, Mini Plus, Mini Flip, A30 |
+| `RAOfflineProxy-Spruce-arm64-v*.zip` | Miyoo Flip, TrimUI Brick, Brick Pro, Smart Pro, Smart Pro S, Pixel 2, Zero 28, Anbernic RG-XX |
+
+On 64-bit devices the proxy works, but the on-device menu does not yet.
 
 == Allium
 
