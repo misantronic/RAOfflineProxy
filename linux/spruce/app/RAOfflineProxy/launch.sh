@@ -15,27 +15,70 @@ if resolve_python_bin; then
     # Reinstall the boot hook on every launch: a spruce update wipes .tmp_update, and the
     # app directory survives it, so this is the only thing that repairs autostart.
     run_backend "$PYTHON_BIN" ensure-boot-hook >/dev/null 2>&1 || true
-    if "$PYTHON_BIN" -m raofflineproxy.main menu-sdl; then
+    if LD_PRELOAD="$SPRUCE_SDL_PRELOAD" "$PYTHON_BIN" -m raofflineproxy.main menu-sdl; then
         exit 0
     fi
 
     # The menu failed to come up. On a device we have not tested, the usual cause is SDL
     # finding no usable video driver, so record which ones this device actually offers
     # instead of leaving only a traceback.
-    APP_SPRUCE_PLATFORM="$APP_SPRUCE_PLATFORM" "$PYTHON_BIN" - >>"$APP_DATA_DIR/menu-sdl.log" 2>&1 <<'SDL_PROBE'
-import os, sys
+    APP_SPRUCE_PLATFORM="$APP_SPRUCE_PLATFORM" LD_PRELOAD="$SPRUCE_SDL_PRELOAD" \
+        "$PYTHON_BIN" - >>"$APP_DATA_DIR/menu-sdl.log" 2>&1 <<'SDL_PROBE'
+import ctypes, os, sys
 
 print("--- SDL video driver probe ---")
 print("device:", os.environ.get("APP_SPRUCE_PLATFORM", "unknown"))
 print("python:", sys.version.split()[0])
-for driver in ("kmsdrm", "fbcon", "directfb", "x11", "wayland", "offscreen", "dummy"):
+print("preload:", os.environ.get("LD_PRELOAD") or "<none>")
+
+os.environ.pop("SDL_VIDEODRIVER", None)
+import pygame
+
+print("sdl:", ".".join(str(part) for part in pygame.get_sdl_version()))
+
+# Ask the SDL that pygame actually loaded which drivers it was built with, rather than
+# guessing from a fixed list: a device whose only usable backend is a vendor one (the
+# H700's "mali", the Miyoo Mini's "Mini") would otherwise report nothing but failures
+# and hide the fact that the bundled SDL2 is the wrong build for the board.
+def loaded_sdl():
+    # A preloaded SDL2 is the one whose symbols pygame actually resolved, but the bundled
+    # copy is still mapped and comes first in /proc/self/maps, so ask the preload first or
+    # the report names the wrong build and omits the only driver that works.
+    for entry in os.environ.get("LD_PRELOAD", "").split(":"):
+        if "libSDL2-2" in entry:
+            return ctypes.CDLL(entry), entry
+
+    # Otherwise pygame dlopened its SDL2 privately, so the process-global namespace does
+    # not necessarily carry the symbols. Reopen the mapped file by path instead.
+    try:
+        with open("/proc/self/maps", encoding="utf-8") as handle:
+            for line in handle:
+                path = line.rsplit(" ", 1)[-1].strip()
+                if "libSDL2-2" in path:
+                    return ctypes.CDLL(path), path
+    except OSError:
+        pass
+    return ctypes.CDLL(None), "<global>"
+
+
+drivers = []
+try:
+    sdl, sdl_path = loaded_sdl()
+    print("sdl lib:", sdl_path)
+    sdl.SDL_GetVideoDriver.restype = ctypes.c_char_p
+    drivers = [
+        sdl.SDL_GetVideoDriver(i).decode() for i in range(sdl.SDL_GetNumVideoDrivers())
+    ]
+    print("compiled-in drivers:", ", ".join(drivers) or "<none>")
+except (OSError, AttributeError) as exc:
+    print("could not enumerate drivers:", exc)
+
+for driver in drivers:
     os.environ["SDL_VIDEODRIVER"] = driver
     try:
-        import pygame
         pygame.display.quit()
         pygame.display.init()
-        sizes = pygame.display.get_desktop_sizes()
-        print(f"  {driver:10s} OK  {sizes}")
+        print(f"  {driver:10s} OK  {pygame.display.get_desktop_sizes()}")
         pygame.display.quit()
     except Exception as exc:
         print(f"  {driver:10s} --  {exc}")

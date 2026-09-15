@@ -54,6 +54,21 @@ class SpruceDetectionTests(unittest.TestCase):
                 with patch.object(config, "ONION_VERSION_FILE", Path(temp_dir) / "absent"):
                     self.assertTrue(config.running_on_spruce())
 
+    def test_mini_sdl_stack_follows_the_selected_driver_not_the_firmware(self) -> None:
+        # The aarch64 spruce bundle ships a stock SDL2 with no "Mini" driver, so keying
+        # the Renderer display path on "is this spruce" sent it down a path that cannot
+        # work and crashed the menu on every 64-bit device.
+        with patch.dict(os.environ, {"SDL_VIDEODRIVER": "Mini"}, clear=False):
+            self.assertTrue(config.running_on_mini_sdl_stack())
+
+        with patch.dict(os.environ, {"SDL_VIDEODRIVER": "mali"}, clear=False):
+            self.assertFalse(config.running_on_mini_sdl_stack())
+
+        environ = dict(os.environ)
+        environ.pop("SDL_VIDEODRIVER", None)
+        with patch.dict(os.environ, environ, clear=True):
+            self.assertFalse(config.running_on_mini_sdl_stack())
+
     def _platform_for(self, cpuinfo: str, baseos: str = "", os_release: str = "") -> str:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
