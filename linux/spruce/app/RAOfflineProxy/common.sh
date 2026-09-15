@@ -8,8 +8,9 @@ APP_RUNTIME_DIR="$APP_DIR/runtime"
 APP_PACKAGE_DIR="$APP_DIR/app"
 APP_LIB_DIR="$APP_DIR/lib"
 APP_RETROARCH_CFG=
-APP_CERT_FILE="$APP_RUNTIME_DIR/lib/python3.9/site-packages/pip/_vendor/certifi/cacert.pem"
+APP_CERT_FILE=
 APP_SPRUCE_PLATFORM=
+APP_SPRUCE_BASEOS=
 APP_SPRUCE_ZONEINFO_DIR=/mnt/SDCARD/spruce/zoneinfo
 # Every spruce device stores its settings in /mnt/SDCARD/Saves/<device>-system.json.
 # Globbed rather than mapped per device so this stays device-agnostic.
@@ -18,10 +19,36 @@ APP_ACTIVE_RUNTIME_ROOT=
 RESOLVED_PYTHON_BIN=
 RUNTIME_FAILURE_REASON=
 RUNTIME_DETECT_LOG="$APP_DATA_DIR/runtime-detect.log"
+RUNTIME_PROBE_ERR="$APP_DATA_DIR/.runtime-probe.err"
 
-# Mirrors spruce's own device detection (spruce/scripts/helperFunctions.sh). The Anbernic
-# 0xd03 branch is collapsed to one label because all its variants share a single RetroArch
-# config file.
+# Mirrors spruce's own device detection (spruce/scripts/helperFunctions.sh). The name has
+# to match exactly: it selects RetroArch/platform/retroarch-<name>.cfg, and spruce ships
+# one config per panel and pad layout rather than one per SoC.
+detect_h700_platform() {
+    APP_SPRUCE_BASEOS=1
+
+    case "$(sed -n 's/^BASEOS_TARGET=//p' /etc/baseos-release 2>/dev/null)" in
+        rg28xx) APP_SPRUCE_PLATFORM=AnbernicRG28XX ;;
+        rgcubexx) APP_SPRUCE_PLATFORM=AnbernicRGCubeXX ;;
+        rg34xxsp) APP_SPRUCE_PLATFORM=AnbernicXX720480 ;;
+        rg34xx|rgsp) APP_SPRUCE_PLATFORM=AnbernicXX720480NoStick ;;
+        rg35xxplus|rg35xxsp) APP_SPRUCE_PLATFORM=AnbernicXX640480NoStick ;;
+        rg40xxv) APP_SPRUCE_PLATFORM=AnbernicXX640480OneStick ;;
+        *) APP_SPRUCE_PLATFORM=AnbernicXX640480 ;;
+    esac
+}
+
+# The RK3566 boards share a Cortex-A55 part id, so cpuinfo alone cannot separate them.
+detect_rk3566_platform() {
+    if grep -q '^OS_NAME="DARKMOSS"' /etc/os-release 2>/dev/null; then
+        APP_SPRUCE_PLATFORM=RGB30
+    elif [ -x /loong/loong_daemon ]; then
+        APP_SPRUCE_PLATFORM=Miniloong
+    else
+        APP_SPRUCE_PLATFORM=Flip
+    fi
+}
+
 detect_spruce_platform() {
     info="$(cat /proc/cpuinfo 2>/dev/null)"
 
@@ -31,9 +58,9 @@ detect_spruce_platform() {
         *TG3040*) APP_SPRUCE_PLATFORM=Brick ;;
         *TG5050*) APP_SPRUCE_PLATFORM=SmartProS ;;
         *TG4040*) APP_SPRUCE_PLATFORM=BrickPro ;;
-        *0xd05*) APP_SPRUCE_PLATFORM=Flip ;;
+        *0xd05*) detect_rk3566_platform ;;
         *0xd04*) APP_SPRUCE_PLATFORM=Pixel2 ;;
-        *0xd03*) APP_SPRUCE_PLATFORM=AnbernicRG_XX-universal ;;
+        *0xd03*) detect_h700_platform ;;
         *)
             if [ -e /usr/magicx ]; then
                 APP_SPRUCE_PLATFORM=Zero28
@@ -42,6 +69,21 @@ detect_spruce_platform() {
             fi
             ;;
     esac
+}
+
+# The armv7 bundle ships CPython 3.9 and the arm64 one 3.11, so the runtime's own
+# site-packages path is resolved rather than hardcoded.
+resolve_cert_file() {
+    runtime_root="$1"
+
+    for candidate in "$runtime_root"/lib/python3.*/site-packages/pip/_vendor/certifi/cacert.pem; do
+        if [ -f "$candidate" ]; then
+            printf '%s\n' "$candidate"
+            return 0
+        fi
+    done
+
+    return 1
 }
 
 resolve_spruce_timezone() {
@@ -75,13 +117,56 @@ resolve_spruce_timezone() {
     return 0
 }
 
+log_runtime_detect() {
+    printf '%s %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" >> "$RUNTIME_DETECT_LOG"
+}
+
 normalize_display_paths() {
     sed 's#/mnt/SDCARD/#/#g'
+}
+
+# spruce stages a mali-fbdev SDL2 next to PyUI on the Anbernic H700 line, because the
+# stock build it ships elsewhere speaks only KMSDRM and wayland and those boards have
+# neither libdrm/libgbm nor a compositor (see App/PyUI/launch.sh and
+# App/PyUI/dll-mali/PROVENANCE.md). Our arm64 bundle carries the same stock SDL2 and so
+# has the same problem: without this it initialises the dummy driver and renders nowhere.
+# Both are 2.28.x, so the vendored pygame links against it unchanged.
+SPRUCE_MALI_SDL2=/mnt/SDCARD/App/PyUI/dll-mali/libSDL2-2.0.so.0
+SPRUCE_SDL_PRELOAD=
+
+select_sdl_video_driver() {
+    # The bundled SDL2 is the same build the Onion package ships; its "Mini" video driver
+    # only exists on the hardware it was built for.
+    if [ "$APP_SPRUCE_PLATFORM" = "MiyooMini" ]; then
+        export SDL_VIDEODRIVER=Mini
+        return 0
+    fi
+
+    unset SDL_VIDEODRIVER
+
+    [ "$APP_SPRUCE_BASEOS" = "1" ] || return 0
+
+    if [ ! -f "$SPRUCE_MALI_SDL2" ]; then
+        log_runtime_detect "mali sdl2 not found at $SPRUCE_MALI_SDL2, leaving driver unset"
+        return 0
+    fi
+
+    # The mangled soname of the bundled manylinux SDL2 means LD_LIBRARY_PATH cannot
+    # shadow it; preloading spruce's build resolves pygame's SDL symbols to it instead.
+    # Left unexported so only the menu gets it: the proxy has no use for SDL, and a stray
+    # preload would follow every emulator this app launches.
+    SPRUCE_SDL_PRELOAD="$SPRUCE_MALI_SDL2"
+    export SDL_VIDEODRIVER=mali
+    # BaseOS runs neither udev nor mdev, and SDL's joystick layer blocks waiting for udev
+    # during SDL_Init. spruce sets the same variable for this device family.
+    export SDL_JOYSTICK_DISABLE_UDEV=1
+    log_runtime_detect "using spruce mali sdl2 $SPRUCE_MALI_SDL2 driver=mali"
 }
 
 prepare_env() {
     mkdir -p "$APP_DATA_DIR"
     : > "$RUNTIME_DETECT_LOG"
+    : > "$RUNTIME_PROBE_ERR"
 
     detect_spruce_platform
     resolve_spruce_timezone
@@ -101,16 +186,11 @@ prepare_env() {
     export MALLOC_ARENA_MAX=2
     export LD_LIBRARY_PATH="$APP_LIB_DIR:/config/lib:/customer/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 
-    # The bundled SDL2 is the same build the Onion package ships; its "Mini" video driver
-    # only exists on the hardware it was built for. Elsewhere leave the driver unset so
-    # SDL picks its own and menu_sdl falls back to a plain fullscreen surface.
-    if [ "$APP_SPRUCE_PLATFORM" = "MiyooMini" ]; then
-        export SDL_VIDEODRIVER=Mini
-    else
-        unset SDL_VIDEODRIVER
-    fi
+    log_runtime_detect "device=$APP_SPRUCE_PLATFORM machine=$(uname -m 2>/dev/null) version=$APP_VERSION"
 
-    if [ -f "$APP_CERT_FILE" ]; then
+    select_sdl_video_driver
+
+    if APP_CERT_FILE="$(resolve_cert_file "$APP_RUNTIME_DIR")"; then
         export SSL_CERT_FILE="$APP_CERT_FILE"
         export RAOFFLINEPROXY_CA_FILE="$APP_CERT_FILE"
     fi
@@ -123,9 +203,9 @@ activate_runtime_env() {
     export PYTHONHOME="$runtime_root"
     export LD_LIBRARY_PATH="$APP_LIB_DIR:$runtime_root/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
     export PATH="$runtime_root/bin${PATH:+:$PATH}"
-    if [ -f "$runtime_root/lib/python3.9/site-packages/pip/_vendor/certifi/cacert.pem" ]; then
-        export SSL_CERT_FILE="$runtime_root/lib/python3.9/site-packages/pip/_vendor/certifi/cacert.pem"
-        export RAOFFLINEPROXY_CA_FILE="$runtime_root/lib/python3.9/site-packages/pip/_vendor/certifi/cacert.pem"
+    if cert_file="$(resolve_cert_file "$runtime_root")"; then
+        export SSL_CERT_FILE="$cert_file"
+        export RAOFFLINEPROXY_CA_FILE="$cert_file"
     fi
 }
 
@@ -134,21 +214,21 @@ python_supports_backend() {
     runtime_root="${2:-}"
 
     if [ -n "$runtime_root" ]; then
-        PYTHONHOME="$runtime_root" LD_LIBRARY_PATH="$runtime_root/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" "$candidate" -c 'import sys; raise SystemExit(0 if sys.version_info[0] >= 3 else 1)' >/dev/null 2>"$RUNTIME_DETECT_LOG"
+        PYTHONHOME="$runtime_root" LD_LIBRARY_PATH="$APP_LIB_DIR:$runtime_root/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" "$candidate" -c 'import sys; raise SystemExit(0 if sys.version_info[0] >= 3 else 1)' >/dev/null 2>"$RUNTIME_PROBE_ERR"
         return $?
     fi
 
-    "$candidate" -c 'import sys; raise SystemExit(0 if sys.version_info[0] >= 3 else 1)' >/dev/null 2>"$RUNTIME_DETECT_LOG"
+    "$candidate" -c 'import sys; raise SystemExit(0 if sys.version_info[0] >= 3 else 1)' >/dev/null 2>"$RUNTIME_PROBE_ERR"
     return $?
 }
 
 capture_runtime_failure_reason() {
-    if [ ! -s "$RUNTIME_DETECT_LOG" ]; then
+    if [ ! -s "$RUNTIME_PROBE_ERR" ]; then
         RUNTIME_FAILURE_REASON=
         return 0
     fi
 
-    if IFS= read -r first_line < "$RUNTIME_DETECT_LOG"; then
+    if IFS= read -r first_line < "$RUNTIME_PROBE_ERR"; then
         RUNTIME_FAILURE_REASON="$first_line"
         return 0
     fi
@@ -156,37 +236,67 @@ capture_runtime_failure_reason() {
     RUNTIME_FAILURE_REASON=
 }
 
-resolve_python_bin() {
-    if [ -x "$APP_RUNTIME_DIR/bin/python3" ]; then
-        if python_supports_backend "$APP_RUNTIME_DIR/bin/python3" "$APP_RUNTIME_DIR"; then
-            activate_runtime_env "$APP_RUNTIME_DIR"
-            RESOLVED_PYTHON_BIN="$APP_RUNTIME_DIR/bin/python3"
-            RUNTIME_FAILURE_REASON=
-            return 0
-        fi
-        capture_runtime_failure_reason
+reject_runtime_candidate() {
+    candidate="$1"
+
+    if [ ! -e "$candidate" ]; then
+        log_runtime_detect "rejected $candidate: not present"
+        return 0
     fi
 
-    if [ -x "$APP_RUNTIME_DIR/python/bin/python3" ]; then
-        if python_supports_backend "$APP_RUNTIME_DIR/python/bin/python3" "$APP_RUNTIME_DIR/python"; then
-            activate_runtime_env "$APP_RUNTIME_DIR/python"
-            RESOLVED_PYTHON_BIN="$APP_RUNTIME_DIR/python/bin/python3"
-            RUNTIME_FAILURE_REASON=
-            return 0
-        fi
-        capture_runtime_failure_reason
+    if [ ! -x "$candidate" ]; then
+        log_runtime_detect "rejected $candidate: not executable"
+        return 0
     fi
+
+    capture_runtime_failure_reason
+    log_runtime_detect "rejected $candidate: ${RUNTIME_FAILURE_REASON:-exited non-zero with no output}"
+}
+
+resolve_python_bin() {
+    # A rejected bundle runtime is the interesting event even when a later candidate
+    # works: falling through to the system python3 yields an interpreter without our
+    # vendored pygame, so the menu fails far from the real cause.
+    bundled_rejected=0
+
+    if [ -x "$APP_RUNTIME_DIR/bin/python3" ] &&
+        python_supports_backend "$APP_RUNTIME_DIR/bin/python3" "$APP_RUNTIME_DIR"; then
+        activate_runtime_env "$APP_RUNTIME_DIR"
+        RESOLVED_PYTHON_BIN="$APP_RUNTIME_DIR/bin/python3"
+        RUNTIME_FAILURE_REASON=
+        log_runtime_detect "selected $RESOLVED_PYTHON_BIN (bundled)"
+        return 0
+    fi
+    reject_runtime_candidate "$APP_RUNTIME_DIR/bin/python3"
+    bundled_rejected=1
+
+    if [ -x "$APP_RUNTIME_DIR/python/bin/python3" ] &&
+        python_supports_backend "$APP_RUNTIME_DIR/python/bin/python3" "$APP_RUNTIME_DIR/python"; then
+        activate_runtime_env "$APP_RUNTIME_DIR/python"
+        RESOLVED_PYTHON_BIN="$APP_RUNTIME_DIR/python/bin/python3"
+        RUNTIME_FAILURE_REASON=
+        log_runtime_detect "selected $RESOLVED_PYTHON_BIN (bundled)"
+        return 0
+    fi
+    reject_runtime_candidate "$APP_RUNTIME_DIR/python/bin/python3"
 
     if command -v python3 >/dev/null 2>&1; then
         candidate="$(command -v python3)"
         if python_supports_backend "$candidate"; then
             RESOLVED_PYTHON_BIN="$candidate"
+            capture_runtime_failure_reason
+            if [ "$bundled_rejected" -eq 1 ]; then
+                log_runtime_detect "selected $candidate (system fallback; bundled runtime unusable, pygame will be missing)"
+            else
+                log_runtime_detect "selected $candidate (system fallback)"
+            fi
             RUNTIME_FAILURE_REASON=
             return 0
         fi
-        capture_runtime_failure_reason
+        reject_runtime_candidate "$candidate"
     fi
 
+    log_runtime_detect "no usable python found"
     RESOLVED_PYTHON_BIN=
     return 1
 }

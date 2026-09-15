@@ -2,9 +2,10 @@
 
 spruceOS bundle, derived from the Onion one. Support is **experimental**.
 
-Both firmwares use the same `/mnt/SDCARD/App/<name>/` layout and run on the same 32-bit
-ARM hardware, so this package reuses Onion's CPython runtime, its pygame + `Mini` SDL2
-vendor libraries and its armv7 `libraproxy_rchash.so`.
+Both firmwares use the same `/mnt/SDCARD/App/<name>/` layout, so the armv7 bundle reuses
+Onion's CPython runtime, its pygame + `Mini` SDL2 vendor libraries and its armv7
+`libraproxy_rchash.so`. spruce also runs on aarch64 hardware, which Onion does not, so a
+second bundle pairs its own CPython 3.11 with muOS's cp311 pygame and SDL2.
 
 ## What differs from Onion
 
@@ -23,11 +24,20 @@ and exports the matching path as `RAOFFLINEPROXY_RETROARCH_CFG`.
 
 ## Autostart
 
-spruce has no drop-in boot directory: `.tmp_update/updater` is the entire boot entry
-point, and it ends by dispatching into a per-device startup script that never returns.
-`install_spruce_boot_hook()` therefore prepends a sentinel-guarded block straight after
-the shebang — not appended, and deliberately not anchored on any device-specific line, so
-it holds on every spruce device. The block backgrounds `autostart-launch.sh` and is
+spruce has no drop-in boot directory: one script is the entire boot entry point, and it
+ends by dispatching into a per-device startup script that never returns.
+
+Which script that is depends on what boots the board, and `spruce_startup_script()` picks
+it. Most hardware comes up through `.tmp_update/updater`. The Anbernic H700 line runs under
+BaseOS, which execs `.system/h700/paks/MinUI.pak/launch.sh` and reaches
+`.tmp_update/anbernic.sh`; the RGB30 comes up under MossySpruce through
+`.tmp_update/rgb30.sh`. Neither of those reads `updater` at all, so a hook placed there is
+installed, reported as enabled, and never runs. Installing also strips the block from the
+entry points the device does not boot through, so a card upgraded from an earlier build
+does not keep a dead copy.
+`install_spruce_boot_hook()` prepends a sentinel-guarded block straight after the
+shebang — not appended, and deliberately not anchored on any device-specific line, so it
+holds whichever of those three files it lands in. The block backgrounds `autostart-launch.sh` and is
 wrapped in `[ -x ]`, because this file is the only path to a bootable device.
 
 The updater is destroyed by every spruce update (it is on the updater's own delete list,
@@ -48,21 +58,68 @@ v4.3.1-1 shipped an older RetroArch.
 ./linux/spruce/build_bundle.sh
 ```
 
-Produces `linux/spruce/dist/RAOfflineProxy-Spruce-v<VER>.zip`, extracted over the SD card
-root so the app lands in `/mnt/SDCARD/App/RAOfflineProxy`.
+`build_bundle.sh` takes an architecture and defaults to `armv7`:
+
+```sh
+./linux/spruce/fetch_runtime_arm64.sh      # once, for the arm64 target
+./linux/spruce/build_bundle.sh armv7
+./linux/spruce/build_bundle.sh arm64
+```
+
+Produces `linux/spruce/dist/RAOfflineProxy-Spruce-v<VER>.zip` and
+`RAOfflineProxy-Spruce-arm64-v<VER>.zip`, extracted over the SD card root so the app lands
+in `/mnt/SDCARD/App/RAOfflineProxy`.
 
 ## Hardware coverage
 
-The bundled runtime, native lib and SDL2 are armv7 builds, so this bundle covers spruce's
-two 32-bit targets: `MiyooMini` (Mini, Mini Plus, Mini Flip) and `A30`. Everything else
-spruce supports — `Brick`, `BrickPro`, `SmartPro`, `SmartProS`, `Flip`, `Pixel2`,
-`Zero28` and the Anbernic targets — is aarch64 and would need an aarch64 runtime.
+Each bundle carries its own runtime, native lib and SDL2, so the two are not
+interchangeable. `detect_spruce_platform()` in `common.sh` is the authoritative list:
+
+| Bundle | spruce targets |
+| --- | --- |
+| `armv7` | `MiyooMini` (Mini, Mini Plus, Mini Flip), `A30` |
+| `arm64` | `Brick`, `BrickPro`, `SmartPro`, `SmartProS`, `Flip`, `Miniloong`, `RGB30`, `Pixel2`, `Zero28`, and the H700 Anbernic line (`AnbernicXX640480`, `AnbernicXX640480NoStick`, `AnbernicXX640480OneStick`, `AnbernicXX720480`, `AnbernicXX720480NoStick`, `AnbernicRG28XX`, `AnbernicRGCubeXX`) |
+
+The platform name is not cosmetic: it selects `RetroArch/platform/retroarch-<name>.cfg`,
+and spruce ships one config per panel and pad layout rather than one per SoC. The H700
+line therefore cannot be collapsed to a single label, and its variant comes from
+`BASEOS_TARGET` in `/etc/baseos-release`, exactly as `helperFunctions.sh` reads it. The
+RK3566 boards need the same care in the other direction: `Flip`, `Miniloong` and `RGB30`
+share a Cortex-A55 part id, so `/etc/os-release` and `/loong/loong_daemon` break the tie.
 
 Only `MiyooMini` is verified (tested on a Mini Plus). The A30 shares the architecture so
 the runtime should load, but the vendored SDL2 is steward-fu's Miyoo Mini build: its
 `Mini` video driver does not exist there, so `common.sh` leaves `SDL_VIDEODRIVER` unset
 and `menu_sdl` falls back to a plain fullscreen surface. Whether that build works on A30
 hardware is untested.
+
+On `arm64` the bundled SDL2 is the stock manylinux build, which speaks only x11, wayland,
+offscreen and dummy. Boards with a framebuffer and no compositor therefore have no usable
+video driver at all, and the menu renders to nothing while the proxy itself runs fine.
+
+spruce solves this for the Anbernic H700 line by staging a mali-fbdev SDL2 next to PyUI
+(`App/PyUI/dll-mali`, documented in that directory's `PROVENANCE.md`). Both it and the
+bundled build are SDL 2.28.x, so `select_sdl_video_driver()` preloads spruce's copy for the
+menu process and selects `SDL_VIDEODRIVER=mali`. The preload is deliberately not exported:
+the proxy has no use for SDL, and it would otherwise follow every emulator the app
+launches. `SDL_JOYSTICK_DISABLE_UDEV=1` goes with it, because these boards run neither
+udev nor mdev and SDL's joystick layer blocks on udev during `SDL_Init`.
+
+Verified on an RG40XX-H: `mali` yields a real 640x480 fullscreen surface.
+
+The `Brick` is still open. The proxy is confirmed working there, the menu is not, and the
+same shape of fix probably applies with `spruce/brick/sdl2` in place of `dll-mali`. When
+the menu fails, `launch.sh` writes an SDL report to `data/menu-sdl.log`: it asks the SDL
+that pygame actually loaded which drivers it was built with, then tries each one. A
+hardcoded guess list was there before and reported every driver as unavailable on the
+RG40XX-H, which hid the fact that the bundled SDL2 was simply the wrong build for the
+board.
+
+A runtime that does not match the hardware is not silently ignored: `resolve_python_bin`
+records why each candidate was rejected in `data/runtime-detect.log`, including the
+device's `uname -m`. Without that, a wrong-architecture bundle falls through to spruce's
+system `python3`, which has no vendored pygame, and the only visible symptom is a
+`ModuleNotFoundError` far from the cause.
 
 ## Timezone
 
