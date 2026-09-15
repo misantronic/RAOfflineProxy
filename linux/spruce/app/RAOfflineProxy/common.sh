@@ -10,6 +10,7 @@ APP_LIB_DIR="$APP_DIR/lib"
 APP_RETROARCH_CFG=
 APP_CERT_FILE=
 APP_SPRUCE_PLATFORM=
+APP_SPRUCE_BASEOS=
 APP_SPRUCE_ZONEINFO_DIR=/mnt/SDCARD/spruce/zoneinfo
 # Every spruce device stores its settings in /mnt/SDCARD/Saves/<device>-system.json.
 # Globbed rather than mapped per device so this stays device-agnostic.
@@ -20,9 +21,34 @@ RUNTIME_FAILURE_REASON=
 RUNTIME_DETECT_LOG="$APP_DATA_DIR/runtime-detect.log"
 RUNTIME_PROBE_ERR="$APP_DATA_DIR/.runtime-probe.err"
 
-# Mirrors spruce's own device detection (spruce/scripts/helperFunctions.sh). The Anbernic
-# 0xd03 branch is collapsed to one label because all its variants share a single RetroArch
-# config file.
+# Mirrors spruce's own device detection (spruce/scripts/helperFunctions.sh). The name has
+# to match exactly: it selects RetroArch/platform/retroarch-<name>.cfg, and spruce ships
+# one config per panel and pad layout rather than one per SoC.
+detect_h700_platform() {
+    APP_SPRUCE_BASEOS=1
+
+    case "$(sed -n 's/^BASEOS_TARGET=//p' /etc/baseos-release 2>/dev/null)" in
+        rg28xx) APP_SPRUCE_PLATFORM=AnbernicRG28XX ;;
+        rgcubexx) APP_SPRUCE_PLATFORM=AnbernicRGCubeXX ;;
+        rg34xxsp) APP_SPRUCE_PLATFORM=AnbernicXX720480 ;;
+        rg34xx|rgsp) APP_SPRUCE_PLATFORM=AnbernicXX720480NoStick ;;
+        rg35xxplus|rg35xxsp) APP_SPRUCE_PLATFORM=AnbernicXX640480NoStick ;;
+        rg40xxv) APP_SPRUCE_PLATFORM=AnbernicXX640480OneStick ;;
+        *) APP_SPRUCE_PLATFORM=AnbernicXX640480 ;;
+    esac
+}
+
+# The RK3566 boards share a Cortex-A55 part id, so cpuinfo alone cannot separate them.
+detect_rk3566_platform() {
+    if grep -q '^OS_NAME="DARKMOSS"' /etc/os-release 2>/dev/null; then
+        APP_SPRUCE_PLATFORM=RGB30
+    elif [ -x /loong/loong_daemon ]; then
+        APP_SPRUCE_PLATFORM=Miniloong
+    else
+        APP_SPRUCE_PLATFORM=Flip
+    fi
+}
+
 detect_spruce_platform() {
     info="$(cat /proc/cpuinfo 2>/dev/null)"
 
@@ -32,9 +58,9 @@ detect_spruce_platform() {
         *TG3040*) APP_SPRUCE_PLATFORM=Brick ;;
         *TG5050*) APP_SPRUCE_PLATFORM=SmartProS ;;
         *TG4040*) APP_SPRUCE_PLATFORM=BrickPro ;;
-        *0xd05*) APP_SPRUCE_PLATFORM=Flip ;;
+        *0xd05*) detect_rk3566_platform ;;
         *0xd04*) APP_SPRUCE_PLATFORM=Pixel2 ;;
-        *0xd03*) APP_SPRUCE_PLATFORM=AnbernicRG_XX-universal ;;
+        *0xd03*) detect_h700_platform ;;
         *)
             if [ -e /usr/magicx ]; then
                 APP_SPRUCE_PLATFORM=Zero28

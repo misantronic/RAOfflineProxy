@@ -29,6 +29,8 @@ SPRUCE_CONFIG_JSON = Path("/mnt/SDCARD/Saves/spruce/spruce-config.json")
 SPRUCE_SETTINGS_MENU = "RetroAchievements Settings"
 CPUINFO_PATH = Path("/proc/cpuinfo")
 MAGICX_MARKER = Path("/usr/magicx")
+BASEOS_RELEASE_PATH = Path("/etc/baseos-release")
+LOONG_DAEMON = Path("/loong/loong_daemon")
 SDCARD_RETROARCH_CFG_CANDIDATES = (
     Path("/mnt/SDCARD/RetroArch/.retroarch/retroarch.cfg"),
 )
@@ -108,19 +110,60 @@ def running_on_darkos() -> bool:
     return DEFAULT_DARKOS_HOME.exists()
 
 
-# Mirrors spruce's own device detection (spruce/scripts/helperFunctions.sh). The Anbernic
-# 0xd03 branch is collapsed to one label because all its variants share a single RetroArch
-# config file.
+# Mirrors spruce's own device detection (spruce/scripts/helperFunctions.sh). The name has
+# to match exactly: it selects RetroArch/platform/retroarch-<name>.cfg, and spruce ships
+# one config per panel and pad layout rather than one per SoC.
 _SPRUCE_CPUINFO_PLATFORMS = (
     ("sun8i", "A30"),
     ("TG5040", "SmartPro"),
     ("TG3040", "Brick"),
     ("TG5050", "SmartProS"),
     ("TG4040", "BrickPro"),
-    ("0xd05", "Flip"),
     ("0xd04", "Pixel2"),
-    ("0xd03", "AnbernicRG_XX-universal"),
 )
+
+# BASEOS_TARGET -> spruce platform for the Allwinner H700 (0xd03) Anbernic line.
+_SPRUCE_H700_PLATFORMS = {
+    "rg28xx": "AnbernicRG28XX",
+    "rgcubexx": "AnbernicRGCubeXX",
+    "rg34xxsp": "AnbernicXX720480",
+    "rg34xx": "AnbernicXX720480NoStick",
+    "rgsp": "AnbernicXX720480NoStick",
+    "rg35xxplus": "AnbernicXX640480NoStick",
+    "rg35xxsp": "AnbernicXX640480NoStick",
+    "rg40xxv": "AnbernicXX640480OneStick",
+}
+_SPRUCE_H700_DEFAULT = "AnbernicXX640480"
+
+
+def _baseos_target() -> str:
+    try:
+        content = BASEOS_RELEASE_PATH.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return ""
+
+    for line in content.splitlines():
+        if line.startswith("BASEOS_TARGET="):
+            return line.split("=", 1)[1].strip()
+
+    return ""
+
+
+def _spruce_rk3566_platform() -> str:
+    """The RK3566 boards share a Cortex-A55 part id, so cpuinfo alone cannot separate
+    them."""
+    try:
+        os_release = OS_RELEASE_PATH.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        os_release = ""
+
+    if 'OS_NAME="DARKMOSS"' in os_release:
+        return "RGB30"
+
+    if LOONG_DAEMON.exists():
+        return "Miniloong"
+
+    return "Flip"
 
 
 def spruce_platform() -> str:
@@ -132,6 +175,12 @@ def spruce_platform() -> str:
     for token, name in _SPRUCE_CPUINFO_PLATFORMS:
         if token in info:
             return name
+
+    if "0xd05" in info:
+        return _spruce_rk3566_platform()
+
+    if "0xd03" in info:
+        return _SPRUCE_H700_PLATFORMS.get(_baseos_target(), _SPRUCE_H700_DEFAULT)
 
     if MAGICX_MARKER.exists():
         return "Zero28"
