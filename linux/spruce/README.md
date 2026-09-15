@@ -69,7 +69,14 @@ interchangeable. `detect_spruce_platform()` in `common.sh` is the authoritative 
 | Bundle | spruce targets |
 | --- | --- |
 | `armv7` | `MiyooMini` (Mini, Mini Plus, Mini Flip), `A30` |
-| `arm64` | `Brick`, `BrickPro`, `SmartPro`, `SmartProS`, `Flip`, `Pixel2`, `Zero28`, `AnbernicRG_XX-universal` |
+| `arm64` | `Brick`, `BrickPro`, `SmartPro`, `SmartProS`, `Flip`, `Miniloong`, `RGB30`, `Pixel2`, `Zero28`, and the H700 Anbernic line (`AnbernicXX640480`, `AnbernicXX640480NoStick`, `AnbernicXX640480OneStick`, `AnbernicXX720480`, `AnbernicXX720480NoStick`, `AnbernicRG28XX`, `AnbernicRGCubeXX`) |
+
+The platform name is not cosmetic: it selects `RetroArch/platform/retroarch-<name>.cfg`,
+and spruce ships one config per panel and pad layout rather than one per SoC. The H700
+line therefore cannot be collapsed to a single label, and its variant comes from
+`BASEOS_TARGET` in `/etc/baseos-release`, exactly as `helperFunctions.sh` reads it. The
+RK3566 boards need the same care in the other direction: `Flip`, `Miniloong` and `RGB30`
+share a Cortex-A55 part id, so `/etc/os-release` and `/loong/loong_daemon` break the tie.
 
 Only `MiyooMini` is verified (tested on a Mini Plus). The A30 shares the architecture so
 the runtime should load, but the vendored SDL2 is steward-fu's Miyoo Mini build: its
