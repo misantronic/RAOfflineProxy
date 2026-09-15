@@ -84,9 +84,27 @@ the runtime should load, but the vendored SDL2 is steward-fu's Miyoo Mini build:
 and `menu_sdl` falls back to a plain fullscreen surface. Whether that build works on A30
 hardware is untested.
 
-On `arm64` the proxy is confirmed working on a `Brick`; the menu is not, because the
-vendored manylinux SDL2 has not been matched to that panel. When the menu fails,
-`launch.sh` probes the available SDL video drivers into `data/menu-sdl.log`.
+On `arm64` the bundled SDL2 is the stock manylinux build, which speaks only x11, wayland,
+offscreen and dummy. Boards with a framebuffer and no compositor therefore have no usable
+video driver at all, and the menu renders to nothing while the proxy itself runs fine.
+
+spruce solves this for the Anbernic H700 line by staging a mali-fbdev SDL2 next to PyUI
+(`App/PyUI/dll-mali`, documented in that directory's `PROVENANCE.md`). Both it and the
+bundled build are SDL 2.28.x, so `select_sdl_video_driver()` preloads spruce's copy for the
+menu process and selects `SDL_VIDEODRIVER=mali`. The preload is deliberately not exported:
+the proxy has no use for SDL, and it would otherwise follow every emulator the app
+launches. `SDL_JOYSTICK_DISABLE_UDEV=1` goes with it, because these boards run neither
+udev nor mdev and SDL's joystick layer blocks on udev during `SDL_Init`.
+
+Verified on an RG40XX-H: `mali` yields a real 640x480 fullscreen surface.
+
+The `Brick` is still open. The proxy is confirmed working there, the menu is not, and the
+same shape of fix probably applies with `spruce/brick/sdl2` in place of `dll-mali`. When
+the menu fails, `launch.sh` writes an SDL report to `data/menu-sdl.log`: it asks the SDL
+that pygame actually loaded which drivers it was built with, then tries each one. A
+hardcoded guess list was there before and reported every driver as unavailable on the
+RG40XX-H, which hid the fact that the bundled SDL2 was simply the wrong build for the
+board.
 
 A runtime that does not match the hardware is not silently ignored: `resolve_python_bin`
 records why each candidate was rejected in `data/runtime-detect.log`, including the

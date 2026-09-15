@@ -125,6 +125,44 @@ normalize_display_paths() {
     sed 's#/mnt/SDCARD/#/#g'
 }
 
+# spruce stages a mali-fbdev SDL2 next to PyUI on the Anbernic H700 line, because the
+# stock build it ships elsewhere speaks only KMSDRM and wayland and those boards have
+# neither libdrm/libgbm nor a compositor (see App/PyUI/launch.sh and
+# App/PyUI/dll-mali/PROVENANCE.md). Our arm64 bundle carries the same stock SDL2 and so
+# has the same problem: without this it initialises the dummy driver and renders nowhere.
+# Both are 2.28.x, so the vendored pygame links against it unchanged.
+SPRUCE_MALI_SDL2=/mnt/SDCARD/App/PyUI/dll-mali/libSDL2-2.0.so.0
+SPRUCE_SDL_PRELOAD=
+
+select_sdl_video_driver() {
+    # The bundled SDL2 is the same build the Onion package ships; its "Mini" video driver
+    # only exists on the hardware it was built for.
+    if [ "$APP_SPRUCE_PLATFORM" = "MiyooMini" ]; then
+        export SDL_VIDEODRIVER=Mini
+        return 0
+    fi
+
+    unset SDL_VIDEODRIVER
+
+    [ "$APP_SPRUCE_BASEOS" = "1" ] || return 0
+
+    if [ ! -f "$SPRUCE_MALI_SDL2" ]; then
+        log_runtime_detect "mali sdl2 not found at $SPRUCE_MALI_SDL2, leaving driver unset"
+        return 0
+    fi
+
+    # The mangled soname of the bundled manylinux SDL2 means LD_LIBRARY_PATH cannot
+    # shadow it; preloading spruce's build resolves pygame's SDL symbols to it instead.
+    # Left unexported so only the menu gets it: the proxy has no use for SDL, and a stray
+    # preload would follow every emulator this app launches.
+    SPRUCE_SDL_PRELOAD="$SPRUCE_MALI_SDL2"
+    export SDL_VIDEODRIVER=mali
+    # BaseOS runs neither udev nor mdev, and SDL's joystick layer blocks waiting for udev
+    # during SDL_Init. spruce sets the same variable for this device family.
+    export SDL_JOYSTICK_DISABLE_UDEV=1
+    log_runtime_detect "using spruce mali sdl2 $SPRUCE_MALI_SDL2 driver=mali"
+}
+
 prepare_env() {
     mkdir -p "$APP_DATA_DIR"
     : > "$RUNTIME_DETECT_LOG"
@@ -148,16 +186,9 @@ prepare_env() {
     export MALLOC_ARENA_MAX=2
     export LD_LIBRARY_PATH="$APP_LIB_DIR:/config/lib:/customer/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 
-    # The bundled SDL2 is the same build the Onion package ships; its "Mini" video driver
-    # only exists on the hardware it was built for. Elsewhere leave the driver unset so
-    # SDL picks its own and menu_sdl falls back to a plain fullscreen surface.
-    if [ "$APP_SPRUCE_PLATFORM" = "MiyooMini" ]; then
-        export SDL_VIDEODRIVER=Mini
-    else
-        unset SDL_VIDEODRIVER
-    fi
-
     log_runtime_detect "device=$APP_SPRUCE_PLATFORM machine=$(uname -m 2>/dev/null) version=$APP_VERSION"
+
+    select_sdl_video_driver
 
     if APP_CERT_FILE="$(resolve_cert_file "$APP_RUNTIME_DIR")"; then
         export SSL_CERT_FILE="$APP_CERT_FILE"

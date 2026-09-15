@@ -38,6 +38,7 @@ from .config import (
     running_on_allium,
     running_on_onion,
     running_on_shared_miyoo_stack,
+    running_on_mini_sdl_stack,
     running_on_rocknix,
     running_on_spruce,
     running_on_darkos,
@@ -335,13 +336,13 @@ def run_menu_sdl(command_runner: str) -> None:
         pygame.init()
         pygame.font.init()
 
-        if running_on_shared_miyoo_stack():
+        if running_on_mini_sdl_stack():
             try:
                 surface = _init_onion_display(pygame)
-            except pygame.error as exc:
-                # The vendored "Mini" SDL2 driver this path needs only exists on the
-                # hardware it was built for. spruce also runs on boards outside that set,
-                # so fall back to a plain fullscreen surface rather than failing to start.
+            except RuntimeError as exc:
+                # pygame._sdl2.video raises pygame._sdl2.sdl2.error, which is a sibling of
+                # pygame.error under RuntimeError rather than a subclass of it, so an
+                # "except pygame.error" here never fires. RuntimeError covers both.
                 log_menu_sdl(f"mini display init failed, falling back: {exc}")
                 os.environ.pop("SDL_VIDEODRIVER", None)
                 pygame.display.quit()
@@ -362,14 +363,16 @@ def run_menu_sdl(command_runner: str) -> None:
                     surface = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
                 else:
                     raise
-            try:
-                log_menu_sdl(
-                    f"display probe driver={pygame.display.get_driver()} "
-                    f"num_displays={pygame.display.get_num_displays()} "
-                    f"desktop_sizes={pygame.display.get_desktop_sizes()}"
-                )
-            except pygame.error as exc:
-                log_menu_sdl(f"display probe failed: {exc}")
+
+        try:
+            log_menu_sdl(
+                f"display probe driver={pygame.display.get_driver()} "
+                f"num_displays={pygame.display.get_num_displays()} "
+                f"desktop_sizes={pygame.display.get_desktop_sizes()}"
+            )
+        except pygame.error as exc:
+            log_menu_sdl(f"display probe failed: {exc}")
+
         width, height = surface.get_size()
         log_menu_sdl(f"display set_mode surface_size={width}x{height}")
         session = MenuSdlSession(command_runner, surface, width, height, pygame)
@@ -1061,12 +1064,15 @@ class MenuSdlSession:
         # on Onion specifically (verified with a dual-logging capture that
         # showed both a "RAW" and an "SDL KEYDOWN" line ~20ms apart for one
         # tap) — it is NOT known to happen on muOS/Knulli/ROCKNIX, so the
-        # skip is scoped to Onion rather than applied whenever raw input
-        # happens to be available, to avoid silently disabling their
-        # existing KEYDOWN path on unverified assumptions. Keep draining the
+        # skip is scoped to that hardware rather than applied whenever raw
+        # input happens to be available, to avoid silently disabling their
+        # existing KEYDOWN path on unverified assumptions. The Miyoo gpio-keys
+        # boards are exactly the ones running the Mini SDL2 driver; spruce's
+        # aarch64 boards are not, and their button codes are unverified, so
+        # leaving KEYDOWN live there is the safer default. Keep draining the
         # event queue regardless (QUIT still matters, and an undrained SDL
         # event queue can back up).
-        skip_keydown = running_on_shared_miyoo_stack() and bool(getattr(self, "input_handles", None))
+        skip_keydown = running_on_mini_sdl_stack() and bool(getattr(self, "input_handles", None))
         for event in self.pygame.event.get():
             if event.type == self.pygame.QUIT:
                 self.running = False
