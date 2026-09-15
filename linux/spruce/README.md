@@ -24,11 +24,20 @@ and exports the matching path as `RAOFFLINEPROXY_RETROARCH_CFG`.
 
 ## Autostart
 
-spruce has no drop-in boot directory: `.tmp_update/updater` is the entire boot entry
-point, and it ends by dispatching into a per-device startup script that never returns.
-`install_spruce_boot_hook()` therefore prepends a sentinel-guarded block straight after
-the shebang — not appended, and deliberately not anchored on any device-specific line, so
-it holds on every spruce device. The block backgrounds `autostart-launch.sh` and is
+spruce has no drop-in boot directory: one script is the entire boot entry point, and it
+ends by dispatching into a per-device startup script that never returns.
+
+Which script that is depends on what boots the board, and `spruce_startup_script()` picks
+it. Most hardware comes up through `.tmp_update/updater`. The Anbernic H700 line runs under
+BaseOS, which execs `.system/h700/paks/MinUI.pak/launch.sh` and reaches
+`.tmp_update/anbernic.sh`; the RGB30 comes up under MossySpruce through
+`.tmp_update/rgb30.sh`. Neither of those reads `updater` at all, so a hook placed there is
+installed, reported as enabled, and never runs. Installing also strips the block from the
+entry points the device does not boot through, so a card upgraded from an earlier build
+does not keep a dead copy.
+`install_spruce_boot_hook()` prepends a sentinel-guarded block straight after the
+shebang — not appended, and deliberately not anchored on any device-specific line, so it
+holds whichever of those three files it lands in. The block backgrounds `autostart-launch.sh` and is
 wrapped in `[ -x ]`, because this file is the only path to a bootable device.
 
 The updater is destroyed by every spruce update (it is on the updater's own delete list,
