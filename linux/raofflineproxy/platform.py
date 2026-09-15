@@ -13,6 +13,7 @@ from .config import (
     running_on_rocknix,
     running_on_spruce,
     save_config,
+    spruce_platform,
 )
 from .darkos_service import (
     DEFAULT_DARKOS_SERVICE_UNIT,
@@ -30,10 +31,23 @@ DEFAULT_DARKOS_ROMS_ROOT = Path("/roms")
 DEFAULT_KNULLI_STARTUP_SCRIPT = Path("/userdata/system/custom.sh")
 DEFAULT_MUOS_STARTUP_SCRIPT = DEFAULT_MUOS_INIT_DIR / "raofflineproxy.sh"
 DEFAULT_ROCKNIX_STARTUP_SCRIPT = Path("/storage/.config/autostart/raofflineproxy.sh")
-# spruce has no drop-in boot directory: .tmp_update/updater is its whole boot entry point,
-# and it dispatches straight into the per-device startup script without returning. So the
-# hook is inserted into that file, above the dispatch, rather than appended.
+# spruce has no drop-in boot directory: its boot entry point is one script that dispatches
+# straight into the per-device startup path without returning. So the hook is inserted into
+# that file, above the dispatch, rather than appended.
+#
+# Which file that is depends on what boots the device. Most spruce hardware comes up
+# through .tmp_update/updater, but the Anbernic H700 line runs under BaseOS, which execs
+# .system/h700/paks/MinUI.pak/launch.sh and reaches .tmp_update/anbernic.sh, and the RGB30
+# comes up under MossySpruce via .tmp_update/rgb30.sh. Neither of those ever reads
+# "updater", so a hook placed there is installed, reported as enabled, and never runs.
 DEFAULT_SPRUCE_STARTUP_SCRIPT = Path("/mnt/SDCARD/.tmp_update/updater")
+SPRUCE_H700_STARTUP_SCRIPT = Path("/mnt/SDCARD/.tmp_update/anbernic.sh")
+SPRUCE_RGB30_STARTUP_SCRIPT = Path("/mnt/SDCARD/.tmp_update/rgb30.sh")
+SPRUCE_STARTUP_SCRIPTS = (
+    DEFAULT_SPRUCE_STARTUP_SCRIPT,
+    SPRUCE_H700_STARTUP_SCRIPT,
+    SPRUCE_RGB30_STARTUP_SCRIPT,
+)
 SPRUCE_AUTOSTART_LAUNCHER = Path("/mnt/SDCARD/App/RAOfflineProxy/autostart-launch.sh")
 # Allium's alliumd is exec'd from the same .tmp_update/updater file spruce uses (both are
 # Miyoo Mini firmwares built on the same base), so the boot hook is installed the same way.
@@ -177,7 +191,7 @@ def ensure_boot_hook(config_data: dict) -> None:
         install_allium_boot_hook(startup_script)
         return
 
-    if startup_script == DEFAULT_SPRUCE_STARTUP_SCRIPT:
+    if startup_script in SPRUCE_STARTUP_SCRIPTS:
         install_spruce_boot_hook(startup_script)
         return
 
@@ -232,6 +246,20 @@ def remove_boot_hook(config_data: dict) -> None:
     startup_script.write_text(f"{cleaned}\n" if cleaned else "", encoding="utf-8")
 
 
+def spruce_startup_script() -> Path:
+    """spruce names the Anbernic H700 family "Anbernic*" in its own device table
+    (helperFunctions.sh), so the prefix is spruce's own idiom rather than ours."""
+    platform_name = spruce_platform()
+
+    if platform_name.startswith("Anbernic"):
+        return SPRUCE_H700_STARTUP_SCRIPT
+
+    if platform_name == "RGB30":
+        return SPRUCE_RGB30_STARTUP_SCRIPT
+
+    return DEFAULT_SPRUCE_STARTUP_SCRIPT
+
+
 def resolve_startup_script_path(config_data: dict) -> Path | None:
     configured = config_data.get("startup_script")
     if configured:
@@ -246,7 +274,7 @@ def resolve_startup_script_path(config_data: dict) -> Path | None:
     # Checked before Onion: spruce ships a /mnt/SDCARD/.tmp_update of its own, but never
     # sources the startup/ directory Onion uses, so an Onion hook there would never fire.
     if running_on_spruce():
-        return DEFAULT_SPRUCE_STARTUP_SCRIPT
+        return spruce_startup_script()
 
     if Path("/mnt/SDCARD/.tmp_update").exists():
         return DEFAULT_ONION_STARTUP_SCRIPT
@@ -287,7 +315,7 @@ def autostart_command(config_data: dict) -> tuple[str]:
     if startup_script == DEFAULT_ALLIUM_STARTUP_SCRIPT and running_on_allium():
         return (str(ALLIUM_AUTOSTART_LAUNCHER),)
 
-    if startup_script == DEFAULT_SPRUCE_STARTUP_SCRIPT:
+    if startup_script in SPRUCE_STARTUP_SCRIPTS:
         return (str(SPRUCE_AUTOSTART_LAUNCHER),)
 
     if startup_script == DEFAULT_MUOS_STARTUP_SCRIPT:
@@ -365,6 +393,31 @@ def install_spruce_boot_hook(startup_script: Path) -> None:
     updated = f"{shebang}\n\n{spruce_boot_hook_block()}\n\n{remainder.lstrip(chr(10))}"
     if updated != existing:
         startup_script.write_text(updated, encoding="utf-8")
+
+    _strip_stale_spruce_boot_hooks(startup_script)
+
+
+def _strip_stale_spruce_boot_hooks(installed: Path) -> None:
+    """Earlier builds put the hook in .tmp_update/updater on every spruce device. On the
+    boards that never read that file the block is inert, but it is still ours and would sit
+    there forever, so remove it from the entry points this device does not boot through."""
+    for candidate in SPRUCE_STARTUP_SCRIPTS:
+        if candidate == installed or not candidate.exists():
+            continue
+
+        try:
+            existing = candidate.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+
+        cleaned = strip_autostart_block(existing)
+        if cleaned == existing:
+            continue
+
+        try:
+            candidate.write_text(cleaned.replace("\n\n\n", "\n\n"), encoding="utf-8")
+        except OSError:
+            continue
 
 
 def allium_boot_hook_block() -> str:

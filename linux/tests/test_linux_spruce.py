@@ -133,6 +133,28 @@ class SpruceDetectionTests(unittest.TestCase):
                 with patch.object(config, "MAGICX_MARKER", Path(temp_dir) / "absent"):
                     self.assertEqual(config.spruce_platform(), "MiyooMini")
 
+    def test_boot_hook_follows_the_devices_real_entry_point(self) -> None:
+        # The H700 boards boot through BaseOS, which execs MinUI.pak/launch.sh into
+        # .tmp_update/anbernic.sh and never reads "updater". A hook in "updater" installs
+        # cleanly, reports itself as enabled, and then never runs at boot.
+        cases = {
+            "AnbernicXX640480": platform.SPRUCE_H700_STARTUP_SCRIPT,
+            "AnbernicRG28XX": platform.SPRUCE_H700_STARTUP_SCRIPT,
+            "RGB30": platform.SPRUCE_RGB30_STARTUP_SCRIPT,
+            "MiyooMini": platform.DEFAULT_SPRUCE_STARTUP_SCRIPT,
+            "Brick": platform.DEFAULT_SPRUCE_STARTUP_SCRIPT,
+            "Flip": platform.DEFAULT_SPRUCE_STARTUP_SCRIPT,
+        }
+        for platform_name, expected in cases.items():
+            with patch.object(platform, "spruce_platform", return_value=platform_name):
+                self.assertEqual(platform.spruce_startup_script(), expected)
+
+                with patch.object(platform, "running_on_spruce", return_value=True):
+                    with patch.object(platform, "running_on_allium", return_value=False):
+                        self.assertEqual(
+                            platform.resolve_startup_script_path({}), expected
+                        )
+
     def test_spruce_retroarch_cfg_points_at_platform_file(self) -> None:
         with patch.object(config, "spruce_platform", return_value="MiyooMini"):
             self.assertEqual(
