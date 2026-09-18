@@ -1173,6 +1173,47 @@ class MenuLayoutTests(unittest.TestCase):
 
         self.assertIs(menu_sdl.MenuSdlSession.preview_target_game(session), games[1])
 
+    def test_proxy_running_outside_main_reads_service_status_at_most_once_per_interval(self) -> None:
+        session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
+        session.view = "cached_games"
+        reads = []
+        session.read_proxy_running = lambda: reads.append(1) or True
+
+        with patch.object(menu_sdl.time, "monotonic", return_value=100.0):
+            for _ in range(60):
+                self.assertTrue(menu_sdl.MenuSdlSession.proxy_running(session))
+        self.assertEqual(len(reads), 1)
+
+        with patch.object(
+            menu_sdl.time,
+            "monotonic",
+            return_value=100.0 + menu_sdl.MAIN_MENU_STATE_REFRESH_SECONDS,
+        ):
+            menu_sdl.MenuSdlSession.proxy_running(session)
+        self.assertEqual(len(reads), 2)
+
+    def test_render_game_preview_does_not_retry_a_missing_image_every_frame(self) -> None:
+        session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
+        game = type("Game", (), {"title": "Tetris", "game_id": 7})()
+        session.preview_target_game = lambda: game
+        session.preview_surface = None
+        session.preview_game_id = None
+        loads = []
+        session.load_game_preview_surface = lambda g: loads.append(g.game_id)
+
+        with patch.object(menu_sdl.time, "monotonic", return_value=100.0):
+            for _ in range(60):
+                menu_sdl.MenuSdlSession.render_game_preview(session)
+        self.assertEqual(loads, [7])
+
+        with patch.object(
+            menu_sdl.time,
+            "monotonic",
+            return_value=100.0 + menu_sdl.PREVIEW_RETRY_SECONDS,
+        ):
+            menu_sdl.MenuSdlSession.render_game_preview(session)
+        self.assertEqual(loads, [7, 7])
+
     def test_activate_cached_games_selected_starts_smart_cache_from_second_item(self) -> None:
         session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
         session.view = "cached_games"

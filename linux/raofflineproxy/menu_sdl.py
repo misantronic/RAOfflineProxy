@@ -149,6 +149,7 @@ FPS = 60
 LEFT_MARGIN = 32
 GROUP_GAP = 14
 MAIN_MENU_STATE_REFRESH_SECONDS = 1.0
+PREVIEW_RETRY_SECONDS = 2.0
 KNULLI_FONT_CANDIDATES = [
     "DejaVu Sans Mono",
     "Monospace",
@@ -1946,11 +1947,17 @@ class MenuSdlSession:
             self.achievement_preview_title = None
             return
 
-        if self.preview_game_id != game.game_id or self.preview_surface is None:
+        if (
+            self.preview_game_id != game.game_id or self.preview_surface is None
+        ) and self.should_load_preview(game.game_id):
             self.preview_surface = self.load_game_preview_surface(game)
             self.preview_game_id = (
                 game.game_id if self.preview_surface is not None else None
             )
+            self.preview_failed_game_id = (
+                game.game_id if self.preview_surface is None else None
+            )
+            self.preview_failed_at = time.monotonic()
 
         if self.preview_surface is None:
             return
@@ -1967,6 +1974,12 @@ class MenuSdlSession:
             centery=preview_rect.centery,
         )
         self.surface.blit(achievement_surface, award_rect)
+
+    def should_load_preview(self, game_id: int) -> bool:
+        if getattr(self, "preview_failed_game_id", None) != game_id:
+            return True
+        elapsed = time.monotonic() - getattr(self, "preview_failed_at", 0.0)
+        return elapsed >= PREVIEW_RETRY_SECONDS
 
     def render_home_logo(self) -> None:
         if self.view != "main":
@@ -2711,7 +2724,12 @@ class MenuSdlSession:
             self.refresh_main_menu_state()
             return self.main_running
 
-        return self.read_proxy_running()
+        now = time.monotonic()
+        checked_at = getattr(self, "proxy_running_checked_at", None)
+        if checked_at is None or now - checked_at >= MAIN_MENU_STATE_REFRESH_SECONDS:
+            self.main_running = self.read_proxy_running()
+            self.proxy_running_checked_at = now
+        return self.main_running
 
     def start_proxy(self) -> None:
         try:
