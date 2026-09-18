@@ -336,17 +336,11 @@ def run_menu_sdl(command_runner: str) -> None:
         pygame.font.init()
 
         if running_on_mini_sdl_stack():
-            try:
-                surface = _init_onion_display(pygame)
-            except RuntimeError as exc:
-                # pygame._sdl2.video raises pygame._sdl2.sdl2.error, which is a sibling of
-                # pygame.error under RuntimeError rather than a subclass of it, so an
-                # "except pygame.error" here never fires. RuntimeError covers both.
-                log_menu_sdl(f"mini display init failed, falling back: {exc}")
-                os.environ.pop("SDL_VIDEODRIVER", None)
-                pygame.display.quit()
-                pygame.display.init()
-                surface = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
+            # No fallback: the vendored SDL2 carries no driver but "Mini", which presents
+            # only through this renderer path. A plain surface would come back as a menu
+            # that runs but never draws, so failing here and returning to the launcher is
+            # the better outcome.
+            surface = _init_onion_display(pygame)
         else:
             try:
                 surface = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
