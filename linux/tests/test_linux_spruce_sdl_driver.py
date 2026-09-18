@@ -13,12 +13,23 @@ class SpruceSdlDriverSelectionTests(unittest.TestCase):
     none of those, so without the mali preload the menu initialises the dummy driver and
     renders to nothing."""
 
-    def _select(self, platform: str, mali_sdl2: Path, baseos: str = "") -> dict[str, str]:
+    def _select(
+        self,
+        platform: str,
+        mali_sdl2: Path,
+        baseos: str = "",
+        flip_sdl2: Path | None = None,
+        trimui_sdl2: tuple[Path, ...] = (),
+    ) -> dict[str, str]:
         with tempfile.TemporaryDirectory() as temp_dir:
+            flip = flip_sdl2 or Path(temp_dir) / "absent-flip"
+            trimui = " ".join(str(path) for path in trimui_sdl2) or f"{temp_dir}/absent-trimui"
             script = f"""
             . {COMMON_SH}
             RUNTIME_DETECT_LOG={temp_dir}/runtime-detect.log
             SPRUCE_MALI_SDL2={mali_sdl2}
+            SPRUCE_FLIP_SDL2={flip}
+            TRIMUI_FIRMWARE_SDL2="{trimui}"
             APP_SPRUCE_PLATFORM={platform}
             APP_SPRUCE_BASEOS={baseos}
             select_sdl_video_driver
@@ -60,14 +71,50 @@ class SpruceSdlDriverSelectionTests(unittest.TestCase):
         self.assertEqual(values["driver"], "")
         self.assertEqual(values["preload"], "")
 
-    def test_other_aarch64_devices_get_no_preload(self) -> None:
+    def test_flip_preloads_the_sdl2_spruce_ships_for_its_own_ui(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
-            mali_sdl2 = Path(temp_dir) / "libSDL2-2.0.so.0"
-            mali_sdl2.write_bytes(b"")
-            values = self._select("Brick", mali_sdl2)
+            flip_sdl2 = Path(temp_dir) / "libSDL2-2.0.so"
+            flip_sdl2.write_bytes(b"")
+            values = self._select(
+                "Flip", Path(temp_dir) / "absent-mali", flip_sdl2=flip_sdl2
+            )
 
         self.assertEqual(values["driver"], "")
+        self.assertEqual(values["preload"], str(flip_sdl2))
+        self.assertEqual(values["no_udev"], "")
+
+    def test_flip_without_spruces_sdl2_keeps_the_bundled_one(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            values = self._select("Flip", Path(temp_dir) / "absent-mali")
+
         self.assertEqual(values["preload"], "")
+
+    def test_trimui_line_preloads_the_first_firmware_sdl2_found(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            missing = Path(temp_dir) / "libSDL2-2.0.so.0"
+            present = Path(temp_dir) / "libSDL2.so"
+            present.write_bytes(b"")
+            for platform in ("Brick", "BrickPro", "SmartPro", "SmartProS"):
+                with self.subTest(platform=platform):
+                    values = self._select(
+                        platform,
+                        Path(temp_dir) / "absent-mali",
+                        trimui_sdl2=(missing, present),
+                    )
+                    self.assertEqual(values["driver"], "")
+                    self.assertEqual(values["preload"], str(present))
+
+    def test_other_aarch64_devices_get_no_preload(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            present = Path(temp_dir) / "libSDL2-2.0.so.0"
+            present.write_bytes(b"")
+            for platform in ("Pixel2", "Zero28"):
+                with self.subTest(platform=platform):
+                    values = self._select(
+                        platform, present, flip_sdl2=present, trimui_sdl2=(present,)
+                    )
+                    self.assertEqual(values["driver"], "")
+                    self.assertEqual(values["preload"], "")
 
 
 if __name__ == "__main__":

@@ -2,6 +2,9 @@
 set -eu
 
 appdir=/mnt/SDCARD/App/RAOfflineProxy
+menu_ready_file=/tmp/raofflineproxy-menu-ready
+menu_start_seconds=20
+sdl_probe_seconds=15
 
 touch /tmp/stay_awake
 cd "$appdir"
@@ -9,21 +12,35 @@ cd "$appdir"
 . "$appdir/common.sh"
 prepare_env
 
+log_menu_failure() {
+    printf '%s %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" >> "$APP_DATA_DIR/menu-sdl.log"
+}
+
 if resolve_python_bin; then
     PYTHON_BIN="$RESOLVED_PYTHON_BIN"
     run_backend_raw "$PYTHON_BIN" probe-online >/dev/null 2>&1 &
     # Reinstall the boot hook on every launch: a spruce update wipes .tmp_update, and the
     # app directory survives it, so this is the only thing that repairs autostart.
     run_backend "$PYTHON_BIN" ensure-boot-hook >/dev/null 2>&1 || true
-    if LD_PRELOAD="$SPRUCE_SDL_PRELOAD" "$PYTHON_BIN" -m raofflineproxy.main menu-sdl; then
+    rm -f "$menu_ready_file"
+    RAOFFLINEPROXY_MENU_READY_FILE="$menu_ready_file" LD_PRELOAD="$SPRUCE_SDL_PRELOAD" \
+        "$PYTHON_BIN" -m raofflineproxy.main menu-sdl &
+    menu_status=0
+    wait_with_deadline "$!" "$menu_start_seconds" "$menu_ready_file" || menu_status=$?
+    rm -f "$menu_ready_file"
+    if [ "$menu_status" -eq 0 ]; then
         exit 0
+    fi
+    if [ "$menu_status" -eq 124 ]; then
+        log_menu_failure "menu drew nothing within ${menu_start_seconds}s, stopped it"
     fi
 
     # The menu failed to come up. On a device we have not tested, the usual cause is SDL
     # finding no usable video driver, so record which ones this device actually offers
-    # instead of leaving only a traceback.
+    # instead of leaving only a traceback. Unbuffered, so a driver that hangs during init
+    # is still named by the last line written before the deadline stops it.
     APP_SPRUCE_PLATFORM="$APP_SPRUCE_PLATFORM" LD_PRELOAD="$SPRUCE_SDL_PRELOAD" \
-        "$PYTHON_BIN" - >>"$APP_DATA_DIR/menu-sdl.log" 2>&1 <<'SDL_PROBE'
+        "$PYTHON_BIN" -u - >>"$APP_DATA_DIR/menu-sdl.log" 2>&1 <<'SDL_PROBE' &
 import ctypes, os, sys
 
 print("--- SDL video driver probe ---")
@@ -83,6 +100,9 @@ for driver in drivers:
     except Exception as exc:
         print(f"  {driver:10s} --  {exc}")
 SDL_PROBE
+    if ! wait_with_deadline "$!" "$sdl_probe_seconds"; then
+        log_menu_failure "driver probe stopped after ${sdl_probe_seconds}s"
+    fi
 
     exit 1
 fi
