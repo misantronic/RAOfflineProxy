@@ -1153,6 +1153,26 @@ class MenuLayoutTests(unittest.TestCase):
             ["Add ROM", "Start Smart Cache", "Tetris", "Clear cache", "Back"],
         )
 
+    def test_preview_target_game_matches_selected_row_when_offline(self) -> None:
+        session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
+        session.view = "cached_games"
+        session.main_online = False
+        games = [type("Game", (), {"title": t, "game_id": i})() for i, t in enumerate("ABCD")]
+        session.cached_games = games
+        session.selected_index = 3
+
+        self.assertIs(menu_sdl.MenuSdlSession.preview_target_game(session), games[3])
+
+    def test_preview_target_game_skips_header_rows_when_online(self) -> None:
+        session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
+        session.view = "cached_games"
+        session.main_online = True
+        games = [type("Game", (), {"title": t, "game_id": i})() for i, t in enumerate("ABCD")]
+        session.cached_games = games
+        session.selected_index = 3
+
+        self.assertIs(menu_sdl.MenuSdlSession.preview_target_game(session), games[1])
+
     def test_activate_cached_games_selected_starts_smart_cache_from_second_item(self) -> None:
         session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
         session.view = "cached_games"
