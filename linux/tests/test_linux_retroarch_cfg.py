@@ -1,5 +1,6 @@
 import tempfile
 import unittest
+from contextlib import ExitStack
 from unittest import mock
 from pathlib import Path
 
@@ -361,3 +362,98 @@ class CheevosAppendCfgRevertTests(unittest.TestCase):
             patched = retroarch_cfg.patch_cheevos_append_cfg(str(cfg_path), {})
 
             self.assertEqual(patched["previous_host"], "")
+
+
+class LinuxDarkosRetroarch32CredentialTests(unittest.TestCase):
+    """dArkOS ships a second, 32-bit RetroArch with its own config tree, and
+    EmulationStation runs part of the library under it. A user who set
+    achievements up there has credentials in that file only."""
+
+    def _stub_other_sources(self, stack: ExitStack) -> None:
+        stack.enter_context(
+            mock.patch.object(retroarch_cfg, "detect_rocknix_system_cfg", return_value=None)
+        )
+        stack.enter_context(
+            mock.patch.object(retroarch_cfg, "load_spruce_credentials", return_value=None)
+        )
+
+    def test_reads_a_token_from_the_32_bit_config(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir, ExitStack() as stack:
+            cfg = Path(temp_dir) / "retroarch.cfg"
+            cfg32 = Path(temp_dir) / "retroarch32.cfg"
+            cfg.write_text("cheevos_enable = \"false\"\n", encoding="utf-8")
+            cfg32.write_text(
+                'cheevos_username = "misantronic"\ncheevos_token = "tok"\n',
+                encoding="utf-8",
+            )
+            self._stub_other_sources(stack)
+            stack.enter_context(
+                mock.patch.object(
+                    retroarch_cfg, "detect_darkos_retroarch32_cfg", return_value=str(cfg32)
+                )
+            )
+
+            credentials = retroarch_cfg.load_retroarch_credentials(str(cfg))
+
+            self.assertIsNotNone(credentials)
+            self.assertEqual(credentials["user"], "misantronic")
+            self.assertEqual(credentials["token"], "tok")
+
+    def test_reads_a_password_from_the_32_bit_config(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir, ExitStack() as stack:
+            cfg = Path(temp_dir) / "retroarch.cfg"
+            cfg32 = Path(temp_dir) / "retroarch32.cfg"
+            cfg.write_text("cheevos_enable = \"false\"\n", encoding="utf-8")
+            cfg32.write_text(
+                'cheevos_username = "misantronic"\ncheevos_password = "hunter2"\n',
+                encoding="utf-8",
+            )
+            self._stub_other_sources(stack)
+            stack.enter_context(
+                mock.patch.object(
+                    retroarch_cfg, "detect_darkos_retroarch32_cfg", return_value=str(cfg32)
+                )
+            )
+
+            credentials = retroarch_cfg.load_retroarch_credentials(str(cfg))
+
+            self.assertEqual(credentials["user"], "misantronic")
+            self.assertEqual(credentials["password"], "hunter2")
+
+    def test_the_main_config_still_wins(self) -> None:
+        # The 32-bit file is a fallback, not an override: whichever build the
+        # user last logged in with, the main cfg stays authoritative.
+        with tempfile.TemporaryDirectory() as temp_dir, ExitStack() as stack:
+            cfg = Path(temp_dir) / "retroarch.cfg"
+            cfg32 = Path(temp_dir) / "retroarch32.cfg"
+            cfg.write_text(
+                'cheevos_username = "primary"\ncheevos_token = "primary-token"\n',
+                encoding="utf-8",
+            )
+            cfg32.write_text(
+                'cheevos_username = "secondary"\ncheevos_token = "secondary-token"\n',
+                encoding="utf-8",
+            )
+            self._stub_other_sources(stack)
+            stack.enter_context(
+                mock.patch.object(
+                    retroarch_cfg, "detect_darkos_retroarch32_cfg", return_value=str(cfg32)
+                )
+            )
+
+            credentials = retroarch_cfg.load_retroarch_credentials(str(cfg))
+
+            self.assertEqual(credentials["user"], "primary")
+
+    def test_no_32_bit_config_off_darkos(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir, ExitStack() as stack:
+            cfg = Path(temp_dir) / "retroarch.cfg"
+            cfg.write_text("cheevos_enable = \"false\"\n", encoding="utf-8")
+            self._stub_other_sources(stack)
+            stack.enter_context(
+                mock.patch.object(
+                    retroarch_cfg, "detect_darkos_retroarch32_cfg", return_value=None
+                )
+            )
+
+            self.assertIsNone(retroarch_cfg.load_retroarch_credentials(str(cfg)))
