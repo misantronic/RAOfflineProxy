@@ -511,6 +511,65 @@ class SpruceBootHookTests(unittest.TestCase):
         self.assertNotIn(platform.AUTOSTART_SENTINEL_START, content)
         self.assertIn("./runtime.sh", content)
 
+    def _entry_points(self, *names: str) -> dict[str, Path]:
+        temp_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(temp_dir.cleanup)
+        paths = {}
+        for name in names:
+            path = Path(temp_dir.name) / name
+            path.write_text(SPRUCE_UPDATER, encoding="utf-8")
+            paths[name] = path
+        return paths
+
+    def test_hook_goes_into_every_entry_point_on_a_shared_card(self) -> None:
+        # One spruce card boots many devices. With the hook only in the current device's
+        # entry point, moving the card from a Miyoo Mini to an RG40XX left autostart dead,
+        # and opening the app there moved the hook and broke the Mini instead.
+        paths = self._entry_points("updater", "anbernic.sh", "rgb30.sh")
+        with patch.object(platform, "SPRUCE_STARTUP_SCRIPTS", tuple(paths.values())):
+            platform.install_spruce_boot_hook(paths["updater"])
+
+        for path in paths.values():
+            content = path.read_text(encoding="utf-8")
+            self.assertEqual(content.count(platform.AUTOSTART_SENTINEL_START), 1, path.name)
+            self.assertLess(
+                content.index(platform.AUTOSTART_SENTINEL_START),
+                content.index("./runtime.sh"),
+            )
+
+    def test_opening_the_app_on_another_device_keeps_the_first_devices_hook(self) -> None:
+        paths = self._entry_points("updater", "anbernic.sh")
+        with patch.object(platform, "SPRUCE_STARTUP_SCRIPTS", tuple(paths.values())):
+            platform.install_spruce_boot_hook(paths["anbernic.sh"])
+            platform.install_spruce_boot_hook(paths["updater"])
+
+        for path in paths.values():
+            self.assertIn(platform.AUTOSTART_SENTINEL_START, path.read_text(encoding="utf-8"))
+
+    def test_entry_points_missing_from_the_card_are_skipped(self) -> None:
+        paths = self._entry_points("updater")
+        absent = paths["updater"].parent / "anbernic.sh"
+        with patch.object(
+            platform, "SPRUCE_STARTUP_SCRIPTS", (paths["updater"], absent)
+        ):
+            platform.install_spruce_boot_hook(paths["updater"])
+
+        self.assertFalse(absent.exists())
+
+    def test_remove_strips_every_entry_point(self) -> None:
+        paths = self._entry_points("updater", "anbernic.sh", "rgb30.sh")
+        entry_points = tuple(paths.values())
+        with patch.object(platform, "SPRUCE_STARTUP_SCRIPTS", entry_points):
+            platform.install_spruce_boot_hook(paths["updater"])
+            with patch.object(platform, "running_on_spruce", return_value=True):
+                with patch.object(platform, "running_on_allium", return_value=False):
+                    platform.remove_boot_hook({"startup_script": str(paths["updater"])})
+
+        for path in entry_points:
+            content = path.read_text(encoding="utf-8")
+            self.assertNotIn(platform.AUTOSTART_SENTINEL_START, content, path.name)
+            self.assertIn("./runtime.sh", content)
+
     def test_unrecognised_boot_file_is_refused(self) -> None:
         temp_dir = tempfile.TemporaryDirectory()
         self.addCleanup(temp_dir.cleanup)
