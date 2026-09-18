@@ -32,9 +32,13 @@ it. Most hardware comes up through `.tmp_update/updater`. The Anbernic H700 line
 BaseOS, which execs `.system/h700/paks/MinUI.pak/launch.sh` and reaches
 `.tmp_update/anbernic.sh`; the RGB30 comes up under MossySpruce through
 `.tmp_update/rgb30.sh`. Neither of those reads `updater` at all, so a hook placed there is
-installed, reported as enabled, and never runs. Installing also strips the block from the
-entry points the device does not boot through, so a card upgraded from an earlier build
-does not keep a dead copy.
+installed, reported as enabled, and never runs.
+
+The hook goes into every one of those files present on the card, not just the current
+device's. One spruce card boots many devices, and with a single copy, moving a card from a
+Miyoo Mini to an RG40XX left autostart dead there, while opening the app on the RG40XX
+moved the hook and broke the Mini. Each file only runs on its own device family, so the
+copies a device never executes are inert. Removing the hook strips all of them.
 `install_spruce_boot_hook()` prepends a sentinel-guarded block straight after the
 shebang — not appended, and deliberately not anchored on any device-specific line, so it
 holds whichever of those three files it lands in. The block backgrounds `autostart-launch.sh` and is

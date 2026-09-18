@@ -40,6 +40,8 @@ DEFAULT_ROCKNIX_STARTUP_SCRIPT = Path("/storage/.config/autostart/raofflineproxy
 # .system/h700/paks/MinUI.pak/launch.sh and reaches .tmp_update/anbernic.sh, and the RGB30
 # comes up under MossySpruce via .tmp_update/rgb30.sh. Neither of those ever reads
 # "updater", so a hook placed there is installed, reported as enabled, and never runs.
+# One spruce card also boots all of these devices, so the hook goes into every entry point
+# present rather than only the current device's (see install_spruce_boot_hook).
 DEFAULT_SPRUCE_STARTUP_SCRIPT = Path("/mnt/SDCARD/.tmp_update/updater")
 SPRUCE_H700_STARTUP_SCRIPT = Path("/mnt/SDCARD/.tmp_update/anbernic.sh")
 SPRUCE_RGB30_STARTUP_SCRIPT = Path("/mnt/SDCARD/.tmp_update/rgb30.sh")
@@ -241,6 +243,10 @@ def remove_boot_hook(config_data: dict) -> None:
         systemd_remove_service()
         return
 
+    if startup_script in SPRUCE_STARTUP_SCRIPTS and running_on_spruce():
+        _remove_spruce_boot_hooks()
+        return
+
     existing = startup_script.read_text(encoding="utf-8", errors="replace")
     cleaned = strip_autostart_block(existing).strip()
     startup_script.write_text(f"{cleaned}\n" if cleaned else "", encoding="utf-8")
@@ -370,21 +376,39 @@ def spruce_boot_hook_block() -> str:
 
 
 def install_spruce_boot_hook(startup_script: Path) -> None:
-    """Prepends the hook to spruce's boot entry point, straight after the shebang.
+    """Prepends the hook to spruce's boot entry points, straight after the shebang.
 
-    It cannot be appended: the file ends by dispatching into a per-device startup script
+    It cannot be appended: each file ends by dispatching into a per-device startup script
     that never returns. Prepending also keeps this independent of what that dispatch looks
     like — the hook only backgrounds our launcher and needs nothing spruce sets up first.
+
+    The device's own entry point is required. Every other spruce entry point present on
+    the card gets the hook too, because one spruce card boots many devices: a card moved
+    from a Miyoo Mini to an RG40XX boots through anbernic.sh instead of updater, and a hook
+    in only one of them leaves autostart dead on the other. Each file only ever runs on its
+    own device family, and the block is guarded and backgrounded, so the copies a device
+    never executes are inert.
     """
     if not startup_script.exists():
         raise ValueError(f"spruce boot script not found: {startup_script}")
 
-    existing = startup_script.read_text(encoding="utf-8", errors="replace")
+    _prepend_spruce_boot_hook(startup_script)
+
+    for sibling in SPRUCE_STARTUP_SCRIPTS:
+        if sibling == startup_script or not sibling.exists():
+            continue
+
+        try:
+            _prepend_spruce_boot_hook(sibling)
+        except (OSError, ValueError):
+            continue
+
+
+def _prepend_spruce_boot_hook(script: Path) -> None:
+    existing = script.read_text(encoding="utf-8", errors="replace")
     if not existing.startswith("#!"):
         # Refuse rather than write into something that isn't the shell script we expect.
-        raise ValueError(
-            f"unrecognised spruce boot script, autostart not installed: {startup_script}"
-        )
+        raise ValueError(f"unrecognised spruce boot script, autostart not installed: {script}")
 
     cleaned = strip_autostart_block(existing)
     shebang, _, remainder = cleaned.partition("\n")
@@ -392,30 +416,19 @@ def install_spruce_boot_hook(startup_script: Path) -> None:
     # strip_autostart_block removed the previous copy.
     updated = f"{shebang}\n\n{spruce_boot_hook_block()}\n\n{remainder.lstrip(chr(10))}"
     if updated != existing:
-        startup_script.write_text(updated, encoding="utf-8")
-
-    _strip_stale_spruce_boot_hooks(startup_script)
+        script.write_text(updated, encoding="utf-8")
 
 
-def _strip_stale_spruce_boot_hooks(installed: Path) -> None:
-    """Earlier builds put the hook in .tmp_update/updater on every spruce device. On the
-    boards that never read that file the block is inert, but it is still ours and would sit
-    there forever, so remove it from the entry points this device does not boot through."""
-    for candidate in SPRUCE_STARTUP_SCRIPTS:
-        if candidate == installed or not candidate.exists():
+def _remove_spruce_boot_hooks() -> None:
+    for script in SPRUCE_STARTUP_SCRIPTS:
+        if not script.exists():
             continue
 
         try:
-            existing = candidate.read_text(encoding="utf-8", errors="replace")
-        except OSError:
-            continue
-
-        cleaned = strip_autostart_block(existing)
-        if cleaned == existing:
-            continue
-
-        try:
-            candidate.write_text(cleaned.replace("\n\n\n", "\n\n"), encoding="utf-8")
+            existing = script.read_text(encoding="utf-8", errors="replace")
+            cleaned = strip_autostart_block(existing)
+            if cleaned != existing:
+                script.write_text(cleaned.replace("\n\n\n", "\n\n"), encoding="utf-8")
         except OSError:
             continue
 
