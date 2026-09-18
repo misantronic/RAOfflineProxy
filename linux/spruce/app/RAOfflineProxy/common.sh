@@ -121,6 +121,35 @@ log_runtime_detect() {
     printf '%s %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" >> "$RUNTIME_DETECT_LOG"
 }
 
+# Waits for "$1" to exit, but kills it if "$2" seconds pass first. With a ready file as
+# "$3", reaching it ends the deadline and the wait continues without one. An SDL driver
+# that blocks during init never returns, and inside a spruce app nothing else can close
+# it: the only way out would be forcing the device off.
+wait_with_deadline() {
+    deadline_pid="$1"
+    deadline_seconds="$2"
+    deadline_ready_file="${3:-}"
+    deadline_elapsed=0
+
+    while kill -0 "$deadline_pid" 2>/dev/null; do
+        if [ -n "$deadline_ready_file" ] && [ -f "$deadline_ready_file" ]; then
+            wait "$deadline_pid"
+            return $?
+        fi
+
+        if [ "$deadline_elapsed" -ge "$deadline_seconds" ]; then
+            kill -9 "$deadline_pid" 2>/dev/null
+            wait "$deadline_pid" 2>/dev/null
+            return 124
+        fi
+
+        sleep 1
+        deadline_elapsed=$((deadline_elapsed + 1))
+    done
+
+    wait "$deadline_pid"
+}
+
 normalize_display_paths() {
     sed 's#/mnt/SDCARD/#/#g'
 }
@@ -132,7 +161,29 @@ normalize_display_paths() {
 # has the same problem: without this it initialises the dummy driver and renders nowhere.
 # Both are 2.28.x, so the vendored pygame links against it unchanged.
 SPRUCE_MALI_SDL2=/mnt/SDCARD/App/PyUI/dll-mali/libSDL2-2.0.so.0
+# The bundled SDL2 has no KMSDRM either, which is the only display the Flip and the
+# TrimUI line offer, so there it falls back to the dummy driver too. spruce's own UI
+# loads a KMSDRM-capable SDL2 on each: the Flip one spruce ships in App/PyUI/dll, while
+# on TrimUI spruce/brick/sdl2 holds only SDL2_image and the core comes from the firmware.
+SPRUCE_FLIP_SDL2=/mnt/SDCARD/App/PyUI/dll/libSDL2-2.0.so
+TRIMUI_FIRMWARE_SDL2="/usr/lib/libSDL2-2.0.so.0 /usr/lib/libSDL2.so"
 SPRUCE_SDL_PRELOAD=
+
+# Preloads the first of "$@" that exists. Left unexported so only the menu gets it: the
+# proxy has no use for SDL, and a stray preload would follow every emulator this app
+# launches.
+preload_device_sdl2() {
+    for candidate in "$@"; do
+        if [ -f "$candidate" ]; then
+            SPRUCE_SDL_PRELOAD="$candidate"
+            log_runtime_detect "using device sdl2 $candidate"
+            return 0
+        fi
+    done
+
+    log_runtime_detect "no device sdl2 found at $*, using the bundled one"
+    return 1
+}
 
 select_sdl_video_driver() {
     # The bundled SDL2 is the same build the Onion package ships; its "Mini" video driver
@@ -144,6 +195,17 @@ select_sdl_video_driver() {
 
     unset SDL_VIDEODRIVER
 
+    case "$APP_SPRUCE_PLATFORM" in
+        Flip)
+            preload_device_sdl2 "$SPRUCE_FLIP_SDL2" || true
+            return 0
+            ;;
+        Brick | BrickPro | SmartPro | SmartProS)
+            preload_device_sdl2 $TRIMUI_FIRMWARE_SDL2 || true
+            return 0
+            ;;
+    esac
+
     [ "$APP_SPRUCE_BASEOS" = "1" ] || return 0
 
     if [ ! -f "$SPRUCE_MALI_SDL2" ]; then
@@ -153,8 +215,6 @@ select_sdl_video_driver() {
 
     # The mangled soname of the bundled manylinux SDL2 means LD_LIBRARY_PATH cannot
     # shadow it; preloading spruce's build resolves pygame's SDL symbols to it instead.
-    # Left unexported so only the menu gets it: the proxy has no use for SDL, and a stray
-    # preload would follow every emulator this app launches.
     SPRUCE_SDL_PRELOAD="$SPRUCE_MALI_SDL2"
     export SDL_VIDEODRIVER=mali
     # BaseOS runs neither udev nor mdev, and SDL's joystick layer blocks waiting for udev

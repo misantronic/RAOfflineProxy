@@ -367,6 +367,8 @@ def run_menu_sdl(command_runner: str) -> None:
         except pygame.error as exc:
             log_menu_sdl(f"display probe failed: {exc}")
 
+        refuse_headless_driver(pygame.display.get_driver())
+
         width, height = surface.get_size()
         log_menu_sdl(f"display set_mode surface_size={width}x{height}")
         session = MenuSdlSession(command_runner, surface, width, height, pygame)
@@ -381,6 +383,28 @@ def run_menu_sdl(command_runner: str) -> None:
         restart_muos_frontend()
         if pygame is not None:
             pygame.quit()
+
+
+HEADLESS_SDL_DRIVERS = ("dummy", "offscreen")
+MENU_READY_FILE_ENV = "RAOFFLINEPROXY_MENU_READY_FILE"
+
+
+def refuse_headless_driver(driver: str) -> None:
+    # SDL falls back to these when it finds no display it can drive. The menu then runs
+    # but draws nowhere, and with nothing on screen to exit by, the device looks frozen.
+    # Asking for one explicitly is a deliberate choice and still allowed.
+    if driver in HEADLESS_SDL_DRIVERS and os.environ.get("SDL_VIDEODRIVER") != driver:
+        raise RuntimeError(f"SDL found no usable display and fell back to {driver}")
+
+
+def signal_menu_ready() -> None:
+    ready_file = os.environ.get(MENU_READY_FILE_ENV)
+    if not ready_file:
+        return
+    try:
+        Path(ready_file).touch()
+    except OSError as exc:
+        log_menu_sdl(f"menu ready signal failed: {exc}")
 
 
 _DEBUG_DUMP_FRAME_PATH = CONFIG_DIR / "debug_frame.png"
@@ -627,10 +651,14 @@ class MenuSdlSession:
 
     def run(self) -> None:
         try:
+            first_frame = True
             while self.running:
                 self.handle_events()
                 self.handle_raw_input()
                 self.render()
+                if first_frame:
+                    signal_menu_ready()
+                    first_frame = False
                 self.clock.tick(FPS)
         finally:
             close_input_devices(self.input_handles)
