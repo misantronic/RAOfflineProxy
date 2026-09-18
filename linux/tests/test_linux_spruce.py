@@ -54,19 +54,76 @@ class SpruceDetectionTests(unittest.TestCase):
                 with patch.object(config, "ONION_VERSION_FILE", Path(temp_dir) / "absent"):
                     self.assertTrue(config.running_on_spruce())
 
+    def test_mini_sdl_stack_follows_the_selected_driver_not_the_firmware(self) -> None:
+        # The aarch64 spruce bundle ships a stock SDL2 with no "Mini" driver, so keying
+        # the Renderer display path on "is this spruce" sent it down a path that cannot
+        # work and crashed the menu on every 64-bit device.
+        with patch.dict(os.environ, {"SDL_VIDEODRIVER": "Mini"}, clear=False):
+            self.assertTrue(config.running_on_mini_sdl_stack())
+
+        with patch.dict(os.environ, {"SDL_VIDEODRIVER": "mali"}, clear=False):
+            self.assertFalse(config.running_on_mini_sdl_stack())
+
+        environ = dict(os.environ)
+        environ.pop("SDL_VIDEODRIVER", None)
+        with patch.dict(os.environ, environ, clear=True):
+            self.assertFalse(config.running_on_mini_sdl_stack())
+
+    def _platform_for(self, cpuinfo: str, baseos: str = "", os_release: str = "") -> str:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            cpuinfo_path = root / "cpuinfo"
+            cpuinfo_path.write_text(cpuinfo, encoding="utf-8")
+            baseos_path = root / "baseos-release"
+            if baseos:
+                baseos_path.write_text(baseos, encoding="utf-8")
+            os_release_path = root / "os-release"
+            if os_release:
+                os_release_path.write_text(os_release, encoding="utf-8")
+
+            with patch.object(config, "CPUINFO_PATH", cpuinfo_path):
+                with patch.object(config, "BASEOS_RELEASE_PATH", baseos_path):
+                    with patch.object(config, "OS_RELEASE_PATH", os_release_path):
+                        with patch.object(config, "LOONG_DAEMON", root / "absent"):
+                            return config.spruce_platform()
+
     def test_spruce_platform_reads_cpuinfo_tokens(self) -> None:
         cases = {
             "Hardware\t: sun8i\n": "A30",
             "Hardware\t: TG5040\n": "SmartPro",
             "CPU part\t: 0xd05\n": "Flip",
-            "CPU part\t: 0xd03\n": "AnbernicRG_XX-universal",
+            "CPU part\t: 0xd04\n": "Pixel2",
         }
         for cpuinfo, expected in cases.items():
-            with tempfile.TemporaryDirectory() as temp_dir:
-                cpuinfo_path = Path(temp_dir) / "cpuinfo"
-                cpuinfo_path.write_text(cpuinfo, encoding="utf-8")
-                with patch.object(config, "CPUINFO_PATH", cpuinfo_path):
-                    self.assertEqual(config.spruce_platform(), expected)
+            self.assertEqual(self._platform_for(cpuinfo), expected)
+
+    def test_h700_platform_comes_from_the_baseos_target(self) -> None:
+        # spruce ships one RetroArch config per panel and pad layout, so collapsing the
+        # whole 0xd03 line to a single name pointed at a file that does not exist and the
+        # proxy refused to start with "RetroArch config not found".
+        cases = {
+            "rg40xxh": "AnbernicXX640480",
+            "rg28xx": "AnbernicRG28XX",
+            "rgcubexx": "AnbernicRGCubeXX",
+            "rg34xxsp": "AnbernicXX720480",
+            "rg34xx": "AnbernicXX720480NoStick",
+            "rg35xxplus": "AnbernicXX640480NoStick",
+            "rg40xxv": "AnbernicXX640480OneStick",
+        }
+        for target, expected in cases.items():
+            platform_name = self._platform_for(
+                "CPU part\t: 0xd03\n", baseos=f"BASEOS_TARGET={target}\n"
+            )
+            self.assertEqual(platform_name, expected)
+
+    def test_h700_without_a_baseos_release_falls_back_to_the_common_panel(self) -> None:
+        self.assertEqual(self._platform_for("CPU part\t: 0xd03\n"), "AnbernicXX640480")
+
+    def test_rk3566_darkmoss_is_rgb30_not_flip(self) -> None:
+        platform_name = self._platform_for(
+            "CPU part\t: 0xd05\n", os_release='OS_NAME="DARKMOSS"\n'
+        )
+        self.assertEqual(platform_name, "RGB30")
 
     def test_spruce_platform_defaults_to_miyoo_mini(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -75,6 +132,28 @@ class SpruceDetectionTests(unittest.TestCase):
             with patch.object(config, "CPUINFO_PATH", cpuinfo_path):
                 with patch.object(config, "MAGICX_MARKER", Path(temp_dir) / "absent"):
                     self.assertEqual(config.spruce_platform(), "MiyooMini")
+
+    def test_boot_hook_follows_the_devices_real_entry_point(self) -> None:
+        # The H700 boards boot through BaseOS, which execs MinUI.pak/launch.sh into
+        # .tmp_update/anbernic.sh and never reads "updater". A hook in "updater" installs
+        # cleanly, reports itself as enabled, and then never runs at boot.
+        cases = {
+            "AnbernicXX640480": platform.SPRUCE_H700_STARTUP_SCRIPT,
+            "AnbernicRG28XX": platform.SPRUCE_H700_STARTUP_SCRIPT,
+            "RGB30": platform.SPRUCE_RGB30_STARTUP_SCRIPT,
+            "MiyooMini": platform.DEFAULT_SPRUCE_STARTUP_SCRIPT,
+            "Brick": platform.DEFAULT_SPRUCE_STARTUP_SCRIPT,
+            "Flip": platform.DEFAULT_SPRUCE_STARTUP_SCRIPT,
+        }
+        for platform_name, expected in cases.items():
+            with patch.object(platform, "spruce_platform", return_value=platform_name):
+                self.assertEqual(platform.spruce_startup_script(), expected)
+
+                with patch.object(platform, "running_on_spruce", return_value=True):
+                    with patch.object(platform, "running_on_allium", return_value=False):
+                        self.assertEqual(
+                            platform.resolve_startup_script_path({}), expected
+                        )
 
     def test_spruce_retroarch_cfg_points_at_platform_file(self) -> None:
         with patch.object(config, "spruce_platform", return_value="MiyooMini"):
@@ -431,6 +510,65 @@ class SpruceBootHookTests(unittest.TestCase):
         self.assertTrue(path.exists())
         self.assertNotIn(platform.AUTOSTART_SENTINEL_START, content)
         self.assertIn("./runtime.sh", content)
+
+    def _entry_points(self, *names: str) -> dict[str, Path]:
+        temp_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(temp_dir.cleanup)
+        paths = {}
+        for name in names:
+            path = Path(temp_dir.name) / name
+            path.write_text(SPRUCE_UPDATER, encoding="utf-8")
+            paths[name] = path
+        return paths
+
+    def test_hook_goes_into_every_entry_point_on_a_shared_card(self) -> None:
+        # One spruce card boots many devices. With the hook only in the current device's
+        # entry point, moving the card from a Miyoo Mini to an RG40XX left autostart dead,
+        # and opening the app there moved the hook and broke the Mini instead.
+        paths = self._entry_points("updater", "anbernic.sh", "rgb30.sh")
+        with patch.object(platform, "SPRUCE_STARTUP_SCRIPTS", tuple(paths.values())):
+            platform.install_spruce_boot_hook(paths["updater"])
+
+        for path in paths.values():
+            content = path.read_text(encoding="utf-8")
+            self.assertEqual(content.count(platform.AUTOSTART_SENTINEL_START), 1, path.name)
+            self.assertLess(
+                content.index(platform.AUTOSTART_SENTINEL_START),
+                content.index("./runtime.sh"),
+            )
+
+    def test_opening_the_app_on_another_device_keeps_the_first_devices_hook(self) -> None:
+        paths = self._entry_points("updater", "anbernic.sh")
+        with patch.object(platform, "SPRUCE_STARTUP_SCRIPTS", tuple(paths.values())):
+            platform.install_spruce_boot_hook(paths["anbernic.sh"])
+            platform.install_spruce_boot_hook(paths["updater"])
+
+        for path in paths.values():
+            self.assertIn(platform.AUTOSTART_SENTINEL_START, path.read_text(encoding="utf-8"))
+
+    def test_entry_points_missing_from_the_card_are_skipped(self) -> None:
+        paths = self._entry_points("updater")
+        absent = paths["updater"].parent / "anbernic.sh"
+        with patch.object(
+            platform, "SPRUCE_STARTUP_SCRIPTS", (paths["updater"], absent)
+        ):
+            platform.install_spruce_boot_hook(paths["updater"])
+
+        self.assertFalse(absent.exists())
+
+    def test_remove_strips_every_entry_point(self) -> None:
+        paths = self._entry_points("updater", "anbernic.sh", "rgb30.sh")
+        entry_points = tuple(paths.values())
+        with patch.object(platform, "SPRUCE_STARTUP_SCRIPTS", entry_points):
+            platform.install_spruce_boot_hook(paths["updater"])
+            with patch.object(platform, "running_on_spruce", return_value=True):
+                with patch.object(platform, "running_on_allium", return_value=False):
+                    platform.remove_boot_hook({"startup_script": str(paths["updater"])})
+
+        for path in entry_points:
+            content = path.read_text(encoding="utf-8")
+            self.assertNotIn(platform.AUTOSTART_SENTINEL_START, content, path.name)
+            self.assertIn("./runtime.sh", content)
 
     def test_unrecognised_boot_file_is_refused(self) -> None:
         temp_dir = tempfile.TemporaryDirectory()

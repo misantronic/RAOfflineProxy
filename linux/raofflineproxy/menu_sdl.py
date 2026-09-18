@@ -38,6 +38,7 @@ from .config import (
     running_on_allium,
     running_on_onion,
     running_on_shared_miyoo_stack,
+    running_on_mini_sdl_stack,
     running_on_rocknix,
     running_on_spruce,
     running_on_darkos,
@@ -325,25 +326,21 @@ def _init_onion_display(pygame):
 
 def run_menu_sdl(command_runner: str) -> None:
     pygame = None
-    log_menu_sdl(f"run_menu_sdl start python={sys.version.split()[0]}")
+    log_menu_sdl(
+        f"run_menu_sdl start python={sys.version.split()[0]} executable={sys.executable}"
+    )
     try:
         import pygame
 
         pygame.init()
         pygame.font.init()
 
-        if running_on_shared_miyoo_stack():
-            try:
-                surface = _init_onion_display(pygame)
-            except pygame.error as exc:
-                # The vendored "Mini" SDL2 driver this path needs only exists on the
-                # hardware it was built for. spruce also runs on boards outside that set,
-                # so fall back to a plain fullscreen surface rather than failing to start.
-                log_menu_sdl(f"mini display init failed, falling back: {exc}")
-                os.environ.pop("SDL_VIDEODRIVER", None)
-                pygame.display.quit()
-                pygame.display.init()
-                surface = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
+        if running_on_mini_sdl_stack():
+            # No fallback: the vendored SDL2 carries no driver but "Mini", which presents
+            # only through this renderer path. A plain surface would come back as a menu
+            # that runs but never draws, so failing here and returning to the launcher is
+            # the better outcome.
+            surface = _init_onion_display(pygame)
         else:
             try:
                 surface = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
@@ -359,14 +356,18 @@ def run_menu_sdl(command_runner: str) -> None:
                     surface = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
                 else:
                     raise
-            try:
-                log_menu_sdl(
-                    f"display probe driver={pygame.display.get_driver()} "
-                    f"num_displays={pygame.display.get_num_displays()} "
-                    f"desktop_sizes={pygame.display.get_desktop_sizes()}"
-                )
-            except pygame.error as exc:
-                log_menu_sdl(f"display probe failed: {exc}")
+
+        try:
+            log_menu_sdl(
+                f"display probe driver={pygame.display.get_driver()} "
+                f"num_displays={pygame.display.get_num_displays()} "
+                f"desktop_sizes={pygame.display.get_desktop_sizes()}"
+            )
+        except pygame.error as exc:
+            log_menu_sdl(f"display probe failed: {exc}")
+
+        refuse_headless_driver(pygame.display.get_driver())
+
         width, height = surface.get_size()
         log_menu_sdl(f"display set_mode surface_size={width}x{height}")
         session = MenuSdlSession(command_runner, surface, width, height, pygame)
@@ -381,6 +382,28 @@ def run_menu_sdl(command_runner: str) -> None:
         restart_muos_frontend()
         if pygame is not None:
             pygame.quit()
+
+
+HEADLESS_SDL_DRIVERS = ("dummy", "offscreen")
+MENU_READY_FILE_ENV = "RAOFFLINEPROXY_MENU_READY_FILE"
+
+
+def refuse_headless_driver(driver: str) -> None:
+    # SDL falls back to these when it finds no display it can drive. The menu then runs
+    # but draws nowhere, and with nothing on screen to exit by, the device looks frozen.
+    # Asking for one explicitly is a deliberate choice and still allowed.
+    if driver in HEADLESS_SDL_DRIVERS and os.environ.get("SDL_VIDEODRIVER") != driver:
+        raise RuntimeError(f"SDL found no usable display and fell back to {driver}")
+
+
+def signal_menu_ready() -> None:
+    ready_file = os.environ.get(MENU_READY_FILE_ENV)
+    if not ready_file:
+        return
+    try:
+        Path(ready_file).touch()
+    except OSError as exc:
+        log_menu_sdl(f"menu ready signal failed: {exc}")
 
 
 _DEBUG_DUMP_FRAME_PATH = CONFIG_DIR / "debug_frame.png"
@@ -627,10 +650,14 @@ class MenuSdlSession:
 
     def run(self) -> None:
         try:
+            first_frame = True
             while self.running:
                 self.handle_events()
                 self.handle_raw_input()
                 self.render()
+                if first_frame:
+                    signal_menu_ready()
+                    first_frame = False
                 self.clock.tick(FPS)
         finally:
             close_input_devices(self.input_handles)
@@ -1058,12 +1085,15 @@ class MenuSdlSession:
         # on Onion specifically (verified with a dual-logging capture that
         # showed both a "RAW" and an "SDL KEYDOWN" line ~20ms apart for one
         # tap) — it is NOT known to happen on muOS/Knulli/ROCKNIX, so the
-        # skip is scoped to Onion rather than applied whenever raw input
-        # happens to be available, to avoid silently disabling their
-        # existing KEYDOWN path on unverified assumptions. Keep draining the
+        # skip is scoped to that hardware rather than applied whenever raw
+        # input happens to be available, to avoid silently disabling their
+        # existing KEYDOWN path on unverified assumptions. The Miyoo gpio-keys
+        # boards are exactly the ones running the Mini SDL2 driver; spruce's
+        # aarch64 boards are not, and their button codes are unverified, so
+        # leaving KEYDOWN live there is the safer default. Keep draining the
         # event queue regardless (QUIT still matters, and an undrained SDL
         # event queue can back up).
-        skip_keydown = running_on_shared_miyoo_stack() and bool(getattr(self, "input_handles", None))
+        skip_keydown = running_on_mini_sdl_stack() and bool(getattr(self, "input_handles", None))
         for event in self.pygame.event.get():
             if event.type == self.pygame.QUIT:
                 self.running = False
