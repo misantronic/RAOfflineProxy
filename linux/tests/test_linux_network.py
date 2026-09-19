@@ -126,6 +126,61 @@ class LinuxNetworkTests(unittest.TestCase):
         finally:
             network.urllib.request.urlopen = original_urlopen
 
+    def _probe_with_flaky_upstream(self, failures: int, force: bool) -> tuple[bool, int, list[float]]:
+        original_urlopen = network.urllib.request.urlopen
+        original_sleep = network.time.sleep
+        original_interface_check = network.has_active_network_interface
+        calls = []
+        sleeps = []
+
+        class _Response:
+            status = 200
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return False
+
+        def flaky_urlopen(_request, timeout=0, context=None):
+            calls.append(timeout)
+            if len(calls) <= failures:
+                raise urllib.error.URLError("Temporary failure in name resolution")
+            return _Response()
+
+        try:
+            network.urllib.request.urlopen = flaky_urlopen
+            network.time.sleep = lambda seconds: sleeps.append(seconds)
+            network.has_active_network_interface = lambda: True
+            result = network.probe_retroachievements({}, force=force, now=100.0)
+        finally:
+            network.urllib.request.urlopen = original_urlopen
+            network.time.sleep = original_sleep
+            network.has_active_network_interface = original_interface_check
+        return result, len(calls), sleeps
+
+    def test_forced_probe_retries_transient_failures(self) -> None:
+        reachable, calls, sleeps = self._probe_with_flaky_upstream(failures=2, force=True)
+
+        self.assertTrue(reachable)
+        self.assertEqual(calls, 3)
+        self.assertEqual(sleeps, [network.PROBE_RETRY_DELAY_SECONDS] * 2)
+        self.assertTrue(network.is_retroachievements_reachable())
+
+    def test_forced_probe_gives_up_after_max_attempts(self) -> None:
+        reachable, calls, _sleeps = self._probe_with_flaky_upstream(failures=10, force=True)
+
+        self.assertFalse(reachable)
+        self.assertEqual(calls, network.PROBE_ATTEMPTS)
+        self.assertFalse(network.is_retroachievements_reachable())
+
+    def test_request_path_probe_does_not_retry(self) -> None:
+        reachable, calls, sleeps = self._probe_with_flaky_upstream(failures=1, force=False)
+
+        self.assertFalse(reachable)
+        self.assertEqual(calls, 1)
+        self.assertEqual(sleeps, [])
+
     def test_http_get_marks_retroachievements_unreachable_on_connection_error(
         self,
     ) -> None:
