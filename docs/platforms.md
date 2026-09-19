@@ -21,7 +21,7 @@ This page tracks which emulators and Linux handheld platforms `RAOfflineProxy` c
 
 |                                                                                                          | Platform    | Status                                                                               |
 | :------------------------------------------------------------------------------------------------------: | ----------- | ------------------------------------------------------------------------------------ |
-|                 <img class="platforms-table__logo" src="/knulli.png" alt="KNULLI logo">                  | **KNULLI**  | ✅ RetroArch Supported                                                               |
+|                 <img class="platforms-table__logo" src="/knulli.png" alt="KNULLI logo">                  | **KNULLI**  | ✅ RetroArch Supported<br>❌ Standalone PPSSPP not supported (no custom host setting) |
 |                  <img class="platforms-table__logo" src="/onion.svg" alt="Onion logo">                   | **Onion**   | ✅ RetroArch Supported                                                               |
 |                   <img class="platforms-table__logo" src="/muos.png" alt="muOS logo">                    | **muOS**    | ✅ RetroArch Supported<br>❌ Standalone PPSSPP not supported (no custom host setting) |
 | <img class="platforms-table__logo platforms-table__logo--rounded" src="/rocknix.png" alt="ROCKNIX logo"> | **ROCKNIX** | ✅ RetroArch, PPSSPP Supported                                                       |
