@@ -18,6 +18,8 @@ from .utils import proxy_user_agent
 LOGGER = logging.getLogger("raofflineproxy")
 REDACTED_QUERY_KEYS = {"p", "t", "token", "password"}
 REACHABILITY_INTERVAL_SECONDS = 30.0
+PROBE_ATTEMPTS = 3
+PROBE_RETRY_DELAY_SECONDS = 1.0
 HTTP_TOO_MANY_REQUESTS = 429
 HTTP_GET_MAX_429_RETRIES = 4
 HTTP_GET_INITIAL_429_BACKOFF_SECONDS = 2.0
@@ -216,6 +218,21 @@ def probe_retroachievements(
     upstream = upstream_host(config_data)
     parsed = urlsplit(upstream)
     url = f"{parsed.scheme}://{parsed.netloc}/"
+    # Only forced probes (startup, background monitor) retry: request-path probes run
+    # on every request while unreachable and must not stall the emulator.
+    attempts = PROBE_ATTEMPTS if force else 1
+    for attempt in range(attempts):
+        if attempt > 0:
+            time.sleep(PROBE_RETRY_DELAY_SECONDS)
+        if _head_upstream(url, user_agent):
+            mark_retroachievements_reachable(current_time)
+            return True
+
+    mark_retroachievements_unreachable(current_time)
+    return False
+
+
+def _head_upstream(url: str, user_agent: str | None) -> bool:
     request = urllib.request.Request(
         url,
         headers={
@@ -228,14 +245,8 @@ def probe_retroachievements(
         with urllib.request.urlopen(
             request, timeout=5, context=configured_ssl_context()
         ) as response:
-            reachable = 200 <= response.status < 500
-            if reachable:
-                mark_retroachievements_reachable(current_time)
-            else:
-                mark_retroachievements_unreachable(current_time)
-            return reachable
+            return 200 <= response.status < 500
     except Exception:
-        mark_retroachievements_unreachable(current_time)
         return False
 
 
