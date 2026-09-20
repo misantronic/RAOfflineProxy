@@ -50,8 +50,12 @@ from .spruce_conf import (
 )
 from .retroarch_cfg import (
     enforce_patched_cfg,
+    enforce_secondary_retroarch_cfgs,
     patch_retroarch_cfg,
+    patch_secondary_retroarch_cfgs,
     revert_retroarch_cfg,
+    revert_secondary_retroarch_cfgs,
+    store_secondary_retroarch_previous,
     status_retroarch_cfg,
 )
 from .service import (
@@ -113,13 +117,19 @@ def _patch_emulator_configs(config_data: dict, cfg_path: str) -> list[str]:
     output: list[str] = []
 
     remove_stale_hook()
+    # Read before the first patch: save_patch_state() rewrites the whole file, so
+    # patch_retroarch_cfg() below drops every key it does not own.
+    previous_secondary = (load_patch_state() or {}).get("secondary_cfgs", [])
     result = patch_retroarch_cfg(cfg_path, config_data)
     enforce_patched_cfg(cfg_path, config_data)
+    secondary = patch_secondary_retroarch_cfgs(config_data, previous_secondary)
+    enforce_secondary_retroarch_cfgs(config_data)
     batocera = patch_batocera_conf(config_data)
     ppsspp = patch_ppsspp_ini(config_data)
     dolphin = patch_dolphin_ini(config_data)
     spruce = patch_spruce_mode(config_data)
     patch_state = load_patch_state() or {}
+    store_secondary_retroarch_previous(patch_state, secondary)
     store_batocera_previous(patch_state, batocera)
     store_ppsspp_previous(patch_state, ppsspp)
     store_dolphin_previous(patch_state, dolphin)
@@ -137,6 +147,10 @@ def _patch_emulator_configs(config_data: dict, cfg_path: str) -> list[str]:
 
     if batocera.get("exists"):
         output.append(f"Patched batocera.conf at {batocera['path']}")
+
+    for entry in secondary.get("entries", []):
+        if entry.get("changed"):
+            output.append(f"Patched retroarch.cfg at {entry['cfg_path']}")
 
     if ppsspp.get("exists"):
         output.append(f"Patched ppsspp.ini at {ppsspp['path']}")
@@ -182,9 +196,15 @@ def _revert_proxy_config(config_data: dict, cfg_path: str | None) -> list[str]:
     ppsspp = revert_ppsspp_ini(config_data, patch_state.get("ppsspp_previous", {}))
     revert_spruce_mode(config_data, patch_state.get("spruce_previous_mode"))
     dolphin = revert_dolphin_ini(config_data, patch_state.get("dolphin_previous", {}))
+    secondary = revert_secondary_retroarch_cfgs(
+        config_data, patch_state.get("secondary_cfgs", [])
+    )
 
     if batocera.get("exists"):
         output.append(f"Reverted batocera.conf at {batocera['path']}")
+
+    for cfg in secondary.get("reverted", []):
+        output.append(f"Reverted retroarch.cfg at {cfg}")
 
     if ppsspp.get("exists"):
         output.append(f"Reverted ppsspp.ini at {ppsspp['path']}")

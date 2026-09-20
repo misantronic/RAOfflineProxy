@@ -149,6 +149,7 @@ FPS = 60
 LEFT_MARGIN = 32
 GROUP_GAP = 14
 MAIN_MENU_STATE_REFRESH_SECONDS = 1.0
+PREVIEW_RETRY_SECONDS = 2.0
 KNULLI_FONT_CANDIDATES = [
     "DejaVu Sans Mono",
     "Monospace",
@@ -1302,6 +1303,9 @@ class MenuSdlSession:
         self.view = self.support_qr_return_view
         self.restore_view_position(self.support_qr_return_view)
 
+    def cached_games_header_count(self) -> int:
+        return 2 if getattr(self, "main_online", False) else 0
+
     def activate_cached_games_selected(self) -> None:
         labels = self.current_labels()
         selected_label = labels[self.selected_index] if labels else ""
@@ -1327,8 +1331,7 @@ class MenuSdlSession:
             self.restore_view_position("main")
             return
 
-        header_count = 2 if getattr(self, "main_online", False) else 0
-        game_index = self.selected_index - header_count
+        game_index = self.selected_index - self.cached_games_header_count()
         if 0 <= game_index < len(self.cached_games):
             self.save_view_position("cached_games")
             self.active_game = self.cached_games[game_index]
@@ -1953,11 +1956,17 @@ class MenuSdlSession:
             self.achievement_preview_title = None
             return
 
-        if self.preview_game_id != game.game_id or self.preview_surface is None:
+        if (
+            self.preview_game_id != game.game_id or self.preview_surface is None
+        ) and self.should_load_preview(game.game_id):
             self.preview_surface = self.load_game_preview_surface(game)
             self.preview_game_id = (
                 game.game_id if self.preview_surface is not None else None
             )
+            self.preview_failed_game_id = (
+                game.game_id if self.preview_surface is None else None
+            )
+            self.preview_failed_at = time.monotonic()
 
         if self.preview_surface is None:
             return
@@ -1975,6 +1984,12 @@ class MenuSdlSession:
         )
         self.surface.blit(achievement_surface, award_rect)
 
+    def should_load_preview(self, game_id: int) -> bool:
+        if getattr(self, "preview_failed_game_id", None) != game_id:
+            return True
+        elapsed = time.monotonic() - getattr(self, "preview_failed_at", 0.0)
+        return elapsed >= PREVIEW_RETRY_SECONDS
+
     def render_home_logo(self) -> None:
         if self.view != "main":
             return
@@ -1990,7 +2005,7 @@ class MenuSdlSession:
 
     def preview_target_game(self):
         if self.view == "cached_games":
-            game_index = self.selected_index - 2
+            game_index = self.selected_index - self.cached_games_header_count()
             if 0 <= game_index < len(self.cached_games):
                 return self.cached_games[game_index]
             return None
@@ -2643,8 +2658,9 @@ class MenuSdlSession:
     def item_positions(self, items: list[str], start_y: int, gap: int) -> list[int]:
         positions: list[int] = []
         current_y = start_y
-        online = getattr(self, "main_online", False)
-        header_count = 2 if (self.view == "cached_games" and online) else 0
+        header_count = (
+            self.cached_games_header_count() if self.view == "cached_games" else 0
+        )
         first_game_index = header_count
         last_game_index = len(self.cached_games) + header_count - 1
         for index, _label in enumerate(items):
@@ -2717,7 +2733,12 @@ class MenuSdlSession:
             self.refresh_main_menu_state()
             return self.main_running
 
-        return self.read_proxy_running()
+        now = time.monotonic()
+        checked_at = getattr(self, "proxy_running_checked_at", None)
+        if checked_at is None or now - checked_at >= MAIN_MENU_STATE_REFRESH_SECONDS:
+            self.main_running = self.read_proxy_running()
+            self.proxy_running_checked_at = now
+        return self.main_running
 
     def start_proxy(self) -> None:
         try:

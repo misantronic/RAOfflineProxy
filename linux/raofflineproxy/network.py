@@ -192,13 +192,28 @@ def has_active_network_interface() -> bool:
     for iface_path in net_path.iterdir():
         if iface_path.name == "lo":
             continue
-        try:
-            operstate = (iface_path / "operstate").read_text().strip()
-            if operstate == "up":
-                return True
-        except OSError:
-            continue
+        if _interface_is_active(iface_path):
+            return True
     return False
+
+
+def _interface_is_active(iface_path: Path) -> bool:
+    try:
+        operstate = (iface_path / "operstate").read_text().strip()
+    except OSError:
+        return False
+
+    if operstate == "up":
+        return True
+    # operstate is "unknown" for drivers that never set carrier, so fall back to
+    # the carrier flag rather than calling the device offline.
+    if operstate != "unknown":
+        return False
+
+    try:
+        return (iface_path / "carrier").read_text().strip() == "1"
+    except OSError:
+        return False
 
 
 def probe_retroachievements(
@@ -212,6 +227,7 @@ def probe_retroachievements(
         return is_retroachievements_reachable()
 
     if not has_active_network_interface():
+        _log_probe_failure("no active network interface")
         mark_retroachievements_unreachable(current_time)
         return False
 
@@ -221,18 +237,21 @@ def probe_retroachievements(
     # Only forced probes (startup, background monitor) retry: request-path probes run
     # on every request while unreachable and must not stall the emulator.
     attempts = PROBE_ATTEMPTS if force else 1
+    reason = "unknown"
     for attempt in range(attempts):
         if attempt > 0:
             time.sleep(PROBE_RETRY_DELAY_SECONDS)
-        if _head_upstream(url, user_agent):
+        reachable, reason = _head_upstream(url, user_agent)
+        if reachable:
             mark_retroachievements_reachable(current_time)
             return True
 
+    _log_probe_failure(reason)
     mark_retroachievements_unreachable(current_time)
     return False
 
 
-def _head_upstream(url: str, user_agent: str | None) -> bool:
+def _head_upstream(url: str, user_agent: str | None) -> tuple[bool, str]:
     request = urllib.request.Request(
         url,
         headers={
@@ -245,9 +264,19 @@ def _head_upstream(url: str, user_agent: str | None) -> bool:
         with urllib.request.urlopen(
             request, timeout=5, context=configured_ssl_context()
         ) as response:
-            return 200 <= response.status < 500
-    except Exception:
-        return False
+            if 200 <= response.status < 500:
+                return True, ""
+            return False, f"HTTP {response.status}"
+    except Exception as error:
+        return False, str(error)
+
+
+def _log_probe_failure(reason: str) -> None:
+    # Only on the way from reachable to unreachable: a device that stays offline
+    # probes every 15s and would otherwise fill the log with the same line.
+    reachable, checked_at = _reachability_tracker.current()
+    if checked_at == 0.0 or reachable:
+        LOGGER.info("RetroAchievements probe failed: %s", reason)
 
 
 def http_get(url: str, user_agent: str) -> str:
