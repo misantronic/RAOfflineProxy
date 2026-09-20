@@ -174,6 +174,74 @@ class LinuxNetworkTests(unittest.TestCase):
         self.assertEqual(calls, network.PROBE_ATTEMPTS)
         self.assertFalse(network.is_retroachievements_reachable())
 
+    def _write_interface(self, root, name: str, operstate: str, carrier: str | None) -> None:
+        iface = root / name
+        iface.mkdir(parents=True)
+        (iface / "operstate").write_text(operstate)
+        if carrier is not None:
+            (iface / "carrier").write_text(carrier)
+
+    def _has_active_interface_with(self, interfaces: list[tuple[str, str, str | None]]) -> bool:
+        import tempfile
+        from pathlib import Path
+
+        original_path = network.Path
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "net"
+            root.mkdir()
+            for name, operstate, carrier in interfaces:
+                self._write_interface(root, name, operstate, carrier)
+
+            try:
+                network.Path = lambda value: root if value == "/sys/class/net" else original_path(value)
+                return network.has_active_network_interface()
+            finally:
+                network.Path = original_path
+
+    def test_tethered_interface_with_carrier_counts_as_active(self) -> None:
+        self.assertTrue(
+            self._has_active_interface_with([("lo", "unknown", "1"), ("usb0", "unknown", "1")])
+        )
+
+    def test_unknown_interface_without_carrier_is_not_active(self) -> None:
+        self.assertFalse(self._has_active_interface_with([("usb0", "unknown", "0")]))
+
+    def test_unknown_interface_with_unreadable_carrier_is_not_active(self) -> None:
+        self.assertFalse(self._has_active_interface_with([("usb0", "unknown", None)]))
+
+    def test_down_interface_is_not_active(self) -> None:
+        self.assertFalse(self._has_active_interface_with([("wlan0", "down", "1")]))
+
+    def test_up_interface_is_active_without_carrier_file(self) -> None:
+        self.assertTrue(self._has_active_interface_with([("wlan0", "up", None)]))
+
+    def test_probe_logs_reason_when_interface_is_missing(self) -> None:
+        original_interface_check = network.has_active_network_interface
+        try:
+            network.has_active_network_interface = lambda: False
+            network.mark_retroachievements_reachable(checked_at=10.0)
+
+            with self.assertLogs("raofflineproxy", level="INFO") as logs:
+                self.assertFalse(network.probe_retroachievements({}, force=True, now=100.0))
+        finally:
+            network.has_active_network_interface = original_interface_check
+
+        self.assertIn("no active network interface", "\n".join(logs.output))
+
+    def test_probe_logs_reason_once_while_offline(self) -> None:
+        original_interface_check = network.has_active_network_interface
+        try:
+            network.has_active_network_interface = lambda: False
+            network.mark_retroachievements_unreachable(checked_at=10.0)
+
+            with self.assertLogs("raofflineproxy", level="INFO") as logs:
+                logging.getLogger("raofflineproxy").info("probe ran")
+                network.probe_retroachievements({}, force=True, now=100.0)
+        finally:
+            network.has_active_network_interface = original_interface_check
+
+        self.assertNotIn("probe failed", "\n".join(logs.output))
+
     def test_request_path_probe_does_not_retry(self) -> None:
         reachable, calls, sleeps = self._probe_with_flaky_upstream(failures=1, force=False)
 
