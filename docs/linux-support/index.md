@@ -51,16 +51,12 @@ Both RetroArch and standalone PPSSPP are supported on ROCKNIX. Starting the prox
 
 == spruce
 
-spruce support is experimental. It is tested with [spruce](https://github.com/spruceUI/spruceOS/releases) 4.3.4 / 4.4.1 on a Miyoo Mini Plus on an Anbernic RG-XX.
+spruce support is experimental. Tested on a Miyoo Flip.
 
-There are two builds, one per architecture. They are not interchangeable:
-
-| Build                                | Devices                                                                                                                           |
-| ------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------- |
-| `RAOfflineProxy-Spruce-v*.zip`       | Miyoo Mini, Mini Plus, Mini Flip, A30                                                                                             |
-| `RAOfflineProxy-Spruce-arm64-v*.zip` | Miyoo Flip, TrimUI Brick, Brick Pro, Smart Pro, Smart Pro S, Pixel 2, Zero 28, Miniloong Pocket 1, Powkiddy RGB30, Anbernic RG-XX |
-
-On the Anbernic RG-XX line the 64-bit build works end to end, menu included (tested on an RG40XX-H). On the TrimUI Brick the proxy works, but the on-device menu does not come up yet. The other 64-bit devices are untested, and reports are welcome.
+spruce starts and stops the proxy with its own network services and picks games to cache
+from its game list, so there is one build for every device — armv7 (Miyoo Mini, Mini Plus,
+Mini Flip, A30) and aarch64 alike — and no on-device menu of ours. It needs a spruce with
+`spruce/scripts/appEnv.sh`.
 
 == Allium
 

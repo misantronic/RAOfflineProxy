@@ -20,7 +20,7 @@ SPRUCE_VERSION_FILE = Path("/mnt/SDCARD/spruce/spruce")
 # Onion's own version marker, used to break a tie when both firmwares have left traces on
 # the card. See running_on_spruce().
 ONION_VERSION_FILE = Path("/mnt/SDCARD/.tmp_update/onionVersion/version.txt")
-SPRUCE_RETROARCH_PLATFORM_DIR = Path("/mnt/SDCARD/RetroArch/platform")
+SPRUCE_RA_CONFIG_DIR = Path("/mnt/SDCARD/Saves/ra-configs")
 # spruce keeps the RetroAchievements credentials entered in its own settings here, and
 # only writes them into the RetroArch config when a game launches (its prepare_ra_config
 # seds them in). Before the first launch the config's cheevos_username is still empty, so
@@ -119,7 +119,7 @@ def running_on_darkos() -> bool:
 
 
 # Mirrors spruce's own device detection (spruce/scripts/helperFunctions.sh). The name has
-# to match exactly: it selects RetroArch/platform/retroarch-<name>.cfg, and spruce ships
+# to match exactly: it selects Saves/ra-configs/retroarch-<name>.cfg, and spruce ships
 # one config per panel and pad layout rather than one per SoC.
 _SPRUCE_CPUINFO_PLATFORMS = (
     ("sun8i", "A30"),
@@ -197,9 +197,9 @@ def spruce_platform() -> str:
 
 
 def spruce_retroarch_cfg() -> Path:
-    """spruce launches RetroArch with --config pointing at this per-device file, so its
-    .retroarch/retroarch.cfg is never read (see spruce/scripts/emu/lib/ra_functions.sh)."""
-    return SPRUCE_RETROARCH_PLATFORM_DIR / f"retroarch-{spruce_platform()}.cfg"
+    """The live per-device config spruce launches RetroArch with. RetroArch/platform holds
+    only .cfg.bak seeds since spruce 4.4.2."""
+    return SPRUCE_RA_CONFIG_DIR / f"retroarch-{spruce_platform()}.cfg"
 
 
 def spruce_setting(name: str) -> str | None:
