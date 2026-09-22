@@ -174,6 +174,17 @@ SPRUCE_SDL_PRELOAD=
 # happens to have put that directory on LD_LIBRARY_PATH before running us.
 SPRUCE_SDL_PRELOAD_DIR=
 
+# spruce points PYSDL2_DLL_PATH at the SDL2 each device's own UI uses (App/PyUI/launch.sh),
+# so prefer it over the paths below and pick up devices this list has never seen. It is not
+# always a complete SDL2: on TrimUI it names spruce/brick/sdl2, which carries only
+# SDL2_image while the core comes from the firmware, so the per-device paths stay as the
+# fallback and a directory without a core library simply does not match.
+pysdl2_dll_candidates() {
+    [ -n "${PYSDL2_DLL_PATH:-}" ] || return 0
+
+    printf '%s/libSDL2-2.0.so.0 %s/libSDL2-2.0.so' "$PYSDL2_DLL_PATH" "$PYSDL2_DLL_PATH"
+}
+
 # Preloads the first of "$@" that exists. Left unexported so only the menu gets it: the
 # proxy has no use for SDL, and a stray preload would follow every emulator this app
 # launches.
@@ -203,31 +214,29 @@ select_sdl_video_driver() {
 
     case "$APP_SPRUCE_PLATFORM" in
         Flip)
-            preload_device_sdl2 "$SPRUCE_FLIP_SDL2" || true
+            preload_device_sdl2 $(pysdl2_dll_candidates) "$SPRUCE_FLIP_SDL2" || true
             return 0
             ;;
         Brick | BrickPro | SmartPro | SmartProS)
-            preload_device_sdl2 $TRIMUI_FIRMWARE_SDL2 || true
+            preload_device_sdl2 $(pysdl2_dll_candidates) $TRIMUI_FIRMWARE_SDL2 || true
             return 0
             ;;
     esac
 
     [ "$APP_SPRUCE_BASEOS" = "1" ] || return 0
 
-    if [ ! -f "$SPRUCE_MALI_SDL2" ]; then
-        log_runtime_detect "mali sdl2 not found at $SPRUCE_MALI_SDL2, leaving driver unset"
+    # The mangled soname of the bundled manylinux SDL2 means LD_LIBRARY_PATH cannot
+    # shadow it; preloading spruce's build resolves pygame's SDL symbols to it instead.
+    if ! preload_device_sdl2 $(pysdl2_dll_candidates) "$SPRUCE_MALI_SDL2"; then
+        log_runtime_detect "no mali sdl2 found, leaving driver unset"
         return 0
     fi
 
-    # The mangled soname of the bundled manylinux SDL2 means LD_LIBRARY_PATH cannot
-    # shadow it; preloading spruce's build resolves pygame's SDL symbols to it instead.
-    SPRUCE_SDL_PRELOAD="$SPRUCE_MALI_SDL2"
-    SPRUCE_SDL_PRELOAD_DIR="$(dirname "$SPRUCE_MALI_SDL2")"
     export SDL_VIDEODRIVER=mali
     # BaseOS runs neither udev nor mdev, and SDL's joystick layer blocks waiting for udev
     # during SDL_Init. spruce sets the same variable for this device family.
     export SDL_JOYSTICK_DISABLE_UDEV=1
-    log_runtime_detect "using spruce mali sdl2 $SPRUCE_MALI_SDL2 driver=mali"
+    log_runtime_detect "driver=mali"
 }
 
 # Kept out of the exported LD_LIBRARY_PATH for the same reason as the preload itself: only

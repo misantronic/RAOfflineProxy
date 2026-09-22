@@ -20,6 +20,7 @@ class SpruceSdlDriverSelectionTests(unittest.TestCase):
         baseos: str = "",
         flip_sdl2: Path | None = None,
         trimui_sdl2: tuple[Path, ...] = (),
+        pysdl2_dll_path: Path | str = "",
     ) -> dict[str, str]:
         with tempfile.TemporaryDirectory() as temp_dir:
             flip = flip_sdl2 or Path(temp_dir) / "absent-flip"
@@ -30,6 +31,7 @@ class SpruceSdlDriverSelectionTests(unittest.TestCase):
             SPRUCE_MALI_SDL2={mali_sdl2}
             SPRUCE_FLIP_SDL2={flip}
             TRIMUI_FIRMWARE_SDL2="{trimui}"
+            PYSDL2_DLL_PATH={pysdl2_dll_path}
             APP_SPRUCE_PLATFORM={platform}
             APP_SPRUCE_BASEOS={baseos}
             LD_LIBRARY_PATH=/base/lib
@@ -178,6 +180,85 @@ class MenuLibraryPathTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             values = self._select(
                 platform="MiyooMini", mali_sdl2=Path(temp_dir) / "absent"
+            )
+
+        self.assertEqual(values["driver"], "Mini")
+        self.assertEqual(values["preload"], "")
+        self.assertEqual(values["menu_path"], "/base/lib")
+
+
+class PySdl2DllPathTests(unittest.TestCase):
+    """spruce exports PYSDL2_DLL_PATH per device for its own UI. Preferring it covers
+    devices our per-device list has never seen, but it is not always a complete SDL2: on
+    TrimUI it names spruce/brick/sdl2, which ships only SDL2_image."""
+
+    def _select(self, **kwargs) -> dict[str, str]:
+        return SpruceSdlDriverSelectionTests._select(
+            SpruceSdlDriverSelectionTests("run"), **kwargs
+        )
+
+    def _dir_with_sdl2(self, root: Path, name: str) -> tuple[Path, Path]:
+        directory = root / name
+        directory.mkdir()
+        library = directory / "libSDL2-2.0.so.0"
+        library.write_bytes(b"")
+        return directory, library
+
+    def test_it_wins_over_the_hardcoded_path(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            pysdl2_dir, pysdl2_lib = self._dir_with_sdl2(root, "device-sdl2")
+            _, mali_lib = self._dir_with_sdl2(root, "dll-mali")
+            values = self._select(
+                platform="AnbernicXX640480",
+                mali_sdl2=mali_lib,
+                baseos="1",
+                pysdl2_dll_path=pysdl2_dir,
+            )
+
+        self.assertEqual(values["preload"], str(pysdl2_lib))
+        self.assertEqual(values["driver"], "mali")
+        self.assertEqual(values["menu_path"], f"{pysdl2_dir}:/base/lib")
+
+    def test_a_directory_without_a_core_sdl2_falls_back(self) -> None:
+        # spruce/brick/sdl2 carries only SDL2_image; the core comes from the firmware.
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            image_only = root / "brick-sdl2"
+            image_only.mkdir()
+            (image_only / "libSDL2_image-2.0.so.0").write_bytes(b"")
+            firmware_dir, firmware_lib = self._dir_with_sdl2(root, "usr-lib")
+            values = self._select(
+                platform="Brick",
+                mali_sdl2=root / "absent",
+                trimui_sdl2=(firmware_lib,),
+                pysdl2_dll_path=image_only,
+            )
+
+        self.assertEqual(values["preload"], str(firmware_lib))
+        self.assertEqual(values["menu_path"], f"{firmware_dir}:/base/lib")
+
+    def test_unset_keeps_the_per_device_paths(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            mali_dir, mali_lib = self._dir_with_sdl2(root, "dll-mali")
+            values = self._select(
+                platform="AnbernicXX640480", mali_sdl2=mali_lib, baseos="1"
+            )
+
+        self.assertEqual(values["preload"], str(mali_lib))
+        self.assertEqual(values["menu_path"], f"{mali_dir}:/base/lib")
+
+    def test_miyoo_mini_ignores_it_and_keeps_the_bundled_stack(self) -> None:
+        # spruce points it at spruce/miyoomini/lib there, but our pygame is built against
+        # the vendored "Mini" SDL2 and that device works as it is.
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            pysdl2_dir, _ = self._dir_with_sdl2(root, "miyoomini-lib")
+            values = self._select(
+                platform="MiyooMini",
+                mali_sdl2=root / "absent",
+                pysdl2_dll_path=pysdl2_dir,
             )
 
         self.assertEqual(values["driver"], "Mini")

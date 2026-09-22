@@ -109,6 +109,16 @@ the proxy has no use for SDL, and it would otherwise follow every emulator the a
 launches. `SDL_JOYSTICK_DISABLE_UDEV=1` goes with it, because these boards run neither
 udev nor mdev and SDL's joystick layer blocks on udev during `SDL_Init`.
 
+Which SDL2 gets preloaded comes from `PYSDL2_DLL_PATH` when spruce sets it: that is the
+variable `App/PyUI/launch.sh` points at the SDL2 each device's own UI uses, so honouring it
+covers devices this bundle has never been run on. It is not always a complete SDL2, on
+TrimUI it names `spruce/brick/sdl2`, which carries only `SDL2_image` while the core comes
+from the firmware, so the per-device paths remain the fallback and a directory with no core
+library simply does not match. spruce exports it from PyUI rather than globally, so an
+autostarted proxy never sees it, which is a second reason the fallback stays. MiyooMini
+ignores it: the menu there is built against the vendored "Mini" SDL2 that ships with the
+bundle.
+
 A preloaded SDL2 also needs the directory it came from on `LD_LIBRARY_PATH`, which is what
 `menu_library_path()` adds for the menu and the driver probe. Its own `NEEDED` libraries
 live beside it and nowhere else: the mali build links `libsamplerate.so.0`, shipped only in
