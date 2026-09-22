@@ -168,6 +168,11 @@ SPRUCE_MALI_SDL2=/mnt/SDCARD/App/PyUI/dll-mali/libSDL2-2.0.so.0
 SPRUCE_FLIP_SDL2=/mnt/SDCARD/App/PyUI/dll/libSDL2-2.0.so
 TRIMUI_FIRMWARE_SDL2="/usr/lib/libSDL2-2.0.so.0 /usr/lib/libSDL2.so"
 SPRUCE_SDL_PRELOAD=
+# The directory the preloaded SDL2 came from. Its own NEEDED libraries live beside it and
+# nowhere else: spruce's mali build hard-links libsamplerate.so.0, which is shipped only in
+# dll-mali. The preload otherwise resolves purely by luck, whenever spruce's own launcher
+# happens to have put that directory on LD_LIBRARY_PATH before running us.
+SPRUCE_SDL_PRELOAD_DIR=
 
 # Preloads the first of "$@" that exists. Left unexported so only the menu gets it: the
 # proxy has no use for SDL, and a stray preload would follow every emulator this app
@@ -176,6 +181,7 @@ preload_device_sdl2() {
     for candidate in "$@"; do
         if [ -f "$candidate" ]; then
             SPRUCE_SDL_PRELOAD="$candidate"
+            SPRUCE_SDL_PRELOAD_DIR="$(dirname "$candidate")"
             log_runtime_detect "using device sdl2 $candidate"
             return 0
         fi
@@ -216,11 +222,24 @@ select_sdl_video_driver() {
     # The mangled soname of the bundled manylinux SDL2 means LD_LIBRARY_PATH cannot
     # shadow it; preloading spruce's build resolves pygame's SDL symbols to it instead.
     SPRUCE_SDL_PRELOAD="$SPRUCE_MALI_SDL2"
+    SPRUCE_SDL_PRELOAD_DIR="$(dirname "$SPRUCE_MALI_SDL2")"
     export SDL_VIDEODRIVER=mali
     # BaseOS runs neither udev nor mdev, and SDL's joystick layer blocks waiting for udev
     # during SDL_Init. spruce sets the same variable for this device family.
     export SDL_JOYSTICK_DISABLE_UDEV=1
     log_runtime_detect "using spruce mali sdl2 $SPRUCE_MALI_SDL2 driver=mali"
+}
+
+# Kept out of the exported LD_LIBRARY_PATH for the same reason as the preload itself: only
+# the menu needs these, and dll-mali carries its own libpng/libtiff/webp that would
+# otherwise shadow the bundled ones for the proxy and anything it launches.
+menu_library_path() {
+    if [ -n "$SPRUCE_SDL_PRELOAD_DIR" ]; then
+        printf '%s:%s\n' "$SPRUCE_SDL_PRELOAD_DIR" "$LD_LIBRARY_PATH"
+        return 0
+    fi
+
+    printf '%s\n' "$LD_LIBRARY_PATH"
 }
 
 prepare_env() {
