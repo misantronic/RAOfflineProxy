@@ -109,6 +109,15 @@ the proxy has no use for SDL, and it would otherwise follow every emulator the a
 launches. `SDL_JOYSTICK_DISABLE_UDEV=1` goes with it, because these boards run neither
 udev nor mdev and SDL's joystick layer blocks on udev during `SDL_Init`.
 
+A preloaded SDL2 also needs the directory it came from on `LD_LIBRARY_PATH`, which is what
+`menu_library_path()` adds for the menu and the driver probe. Its own `NEEDED` libraries
+live beside it and nowhere else: the mali build links `libsamplerate.so.0`, shipped only in
+`dll-mali`. Without it the preload resolves only when spruce's own launcher happens to have
+exported that directory first, so the app starts from the device but fails from a terminal
+with `libsamplerate.so.0: cannot open shared object file`. Like the preload, the directory
+is kept off the exported path, because `dll-mali` carries its own libpng, libtiff and webp
+that would otherwise shadow the bundled ones for the proxy and anything it launches.
+
 Verified on an RG40XX-H: `mali` yields a real 640x480 fullscreen surface.
 
 The `Brick` is still open. The proxy is confirmed working there, the menu is not, and the

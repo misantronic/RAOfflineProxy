@@ -32,10 +32,12 @@ class SpruceSdlDriverSelectionTests(unittest.TestCase):
             TRIMUI_FIRMWARE_SDL2="{trimui}"
             APP_SPRUCE_PLATFORM={platform}
             APP_SPRUCE_BASEOS={baseos}
+            LD_LIBRARY_PATH=/base/lib
             select_sdl_video_driver
             printf 'driver=%s\\n' "${{SDL_VIDEODRIVER-}}"
             printf 'preload=%s\\n' "${{SPRUCE_SDL_PRELOAD-}}"
             printf 'no_udev=%s\\n' "${{SDL_JOYSTICK_DISABLE_UDEV-}}"
+            printf 'menu_path=%s\\n' "$(menu_library_path)"
             """
             result = subprocess.run(
                 ["sh", "-c", script], capture_output=True, text=True, check=True
@@ -119,3 +121,65 @@ class SpruceSdlDriverSelectionTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class MenuLibraryPathTests(unittest.TestCase):
+    """A preloaded SDL2 resolves its own NEEDED libraries from the directory it came from:
+    spruce's mali build needs libsamplerate.so.0, which ships only in dll-mali. Without
+    that directory on the path the preload works solely because spruce's launcher happens
+    to have exported it, and running the app from a terminal fails with
+    "libsamplerate.so.0: cannot open shared object file"."""
+
+    def _select(self, **kwargs) -> dict[str, str]:
+        return SpruceSdlDriverSelectionTests._select(
+            SpruceSdlDriverSelectionTests("run"), **kwargs
+        )
+
+    def test_mali_preload_exposes_its_own_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            mali_dir = Path(temp_dir) / "dll-mali"
+            mali_dir.mkdir()
+            mali_sdl2 = mali_dir / "libSDL2-2.0.so.0"
+            mali_sdl2.write_bytes(b"")
+            values = self._select(
+                platform="AnbernicXX640480", mali_sdl2=mali_sdl2, baseos="1"
+            )
+
+        self.assertEqual(values["preload"], str(mali_sdl2))
+        self.assertEqual(values["menu_path"], f"{mali_dir}:/base/lib")
+
+    def test_flip_preload_exposes_its_own_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            flip_dir = Path(temp_dir) / "dll"
+            flip_dir.mkdir()
+            flip_sdl2 = flip_dir / "libSDL2-2.0.so"
+            flip_sdl2.write_bytes(b"")
+            values = self._select(
+                platform="Flip",
+                mali_sdl2=Path(temp_dir) / "absent",
+                flip_sdl2=flip_sdl2,
+            )
+
+        self.assertEqual(values["preload"], str(flip_sdl2))
+        self.assertEqual(values["menu_path"], f"{flip_dir}:/base/lib")
+
+    def test_without_a_preload_the_path_is_left_alone(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            values = self._select(
+                platform="AnbernicXX640480",
+                mali_sdl2=Path(temp_dir) / "absent",
+                baseos="1",
+            )
+
+        self.assertEqual(values["preload"], "")
+        self.assertEqual(values["menu_path"], "/base/lib")
+
+    def test_miyoo_mini_keeps_the_bundled_stack_untouched(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            values = self._select(
+                platform="MiyooMini", mali_sdl2=Path(temp_dir) / "absent"
+            )
+
+        self.assertEqual(values["driver"], "Mini")
+        self.assertEqual(values["preload"], "")
+        self.assertEqual(values["menu_path"], "/base/lib")

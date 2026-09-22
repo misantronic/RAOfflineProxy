@@ -24,6 +24,7 @@ if resolve_python_bin; then
     run_backend "$PYTHON_BIN" ensure-boot-hook >/dev/null 2>&1 || true
     rm -f "$menu_ready_file"
     RAOFFLINEPROXY_MENU_READY_FILE="$menu_ready_file" LD_PRELOAD="$SPRUCE_SDL_PRELOAD" \
+        LD_LIBRARY_PATH="$(menu_library_path)" \
         "$PYTHON_BIN" -m raofflineproxy.main menu-sdl &
     menu_status=0
     wait_with_deadline "$!" "$menu_start_seconds" "$menu_ready_file" || menu_status=$?
@@ -40,6 +41,7 @@ if resolve_python_bin; then
     # instead of leaving only a traceback. Unbuffered, so a driver that hangs during init
     # is still named by the last line written before the deadline stops it.
     APP_SPRUCE_PLATFORM="$APP_SPRUCE_PLATFORM" LD_PRELOAD="$SPRUCE_SDL_PRELOAD" \
+        LD_LIBRARY_PATH="$(menu_library_path)" \
         "$PYTHON_BIN" -u - >>"$APP_DATA_DIR/menu-sdl.log" 2>&1 <<'SDL_PROBE' &
 import ctypes, os, sys
 
