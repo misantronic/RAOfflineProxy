@@ -66,6 +66,7 @@ private val AWARD_ACTIONS = setOf("awardachievement", "submitlbentry")
 
 // Offline: return a canned success response instead of hitting the server
 private val FAKE_OFFLINE_SUCCESS_ACTIONS = setOf("ping", "postactivity")
+private val LAST_PLAYED_ACTIONS = setOf("ping", "startsession")
 
 // These requests are safe to cache and serve offline
 private val CACHEABLE_ACTIONS = setOf("patch", "achievementsets", "gameid", "achievements", "hashlibrary", "login2", "unlocks")
@@ -323,7 +324,12 @@ class ProxyServer(
             Log.i(TAG, "Request: $method ${redactTokens(path)} body=${redactFormBody(rawBody)} action=$action online=${isOnline()}")
         }
         extractGameActivity(path, rawBody, action)?.let { activity ->
-            activity.gameId.toIntOrNull()?.let { activeGameId = it }
+            activity.gameId.toIntOrNull()?.let { gameId ->
+                activeGameId = gameId
+                if (action in LAST_PLAYED_ACTIONS) {
+                    scope.launch(Dispatchers.IO) { recordGamePlayed(db, gameId) }
+                }
+            }
             onGameActivity(activity)
         }
 

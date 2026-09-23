@@ -197,6 +197,39 @@ class CacheKeysTest {
     }
 
     @Test
+    fun unlocksPrefix_matchesOnlyThatGame() {
+        assertTrue(CacheKeys.unlocks(12, "Player").startsWith(CacheKeys.unlocksPrefix("12")))
+        assertTrue(!CacheKeys.unlocks(123, "Player").startsWith(CacheKeys.unlocksPrefix("12")))
+    }
+
+    @Test
+    fun startSessionPrefix_matchesOnlyThatGame() {
+        assertTrue(CacheKeys.startSession(12, "Player").startsWith(CacheKeys.startSessionPrefix("12")))
+        assertTrue(!CacheKeys.startSession(123, "Player").startsWith(CacheKeys.startSessionPrefix("12")))
+    }
+
+    @Test
+    fun prefixLastPlayed_constant() {
+        assertEquals("lastplayed:", CacheKeys.PREFIX_LAST_PLAYED)
+    }
+
+    @Test
+    fun lastPlayed_buildsKey() {
+        assertEquals("lastplayed:1234", CacheKeys.lastPlayed(1234))
+    }
+
+    @Test
+    fun parseGameIdFromLastPlayedKey_validKey() {
+        assertEquals(1234, CacheKeys.parseGameIdFromLastPlayedKey("lastplayed:1234"))
+    }
+
+    @Test
+    fun parseGameIdFromLastPlayedKey_rejectsNonNumericKey() {
+        assertNull(CacheKeys.parseGameIdFromLastPlayedKey("lastplayed:"))
+        assertNull(CacheKeys.parseGameIdFromLastPlayedKey("lastplayed:abc"))
+    }
+
+    @Test
     fun parseAchievementSetsKey_handlesEmbeddedColonsByUsingLastSeparator() {
         assertEquals("hash:with:colons", CacheKeys.parseAchievementSetsHash("achievementsets:hash:with:colons:player"))
         assertEquals("player", CacheKeys.parseUserFromAchievementSetsKey("achievementsets:hash:with:colons:player"))

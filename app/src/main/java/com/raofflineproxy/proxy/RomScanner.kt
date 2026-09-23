@@ -43,6 +43,9 @@ private const val HTTP_GET_MAX_429_BACKOFF_MS = 15_000L
 private const val SCAN_CACHE_PIPELINE_LIMIT = 6
 private const val MAX_SCAN_ENTRIES = 5000
 private const val MAX_SCAN_DEPTH = 12
+// RetroAchievements adds hashes over time, so a "no match" is only cached long enough to
+// stop a repeated scan of the same folder from re-querying every unsupported ROM.
+private const val GAMEID_MISS_TTL_MS = 7L * 24 * 60 * 60 * 1000
 
 private val FALLBACK_USER_AGENT = "RetroArch/1.21.0 (Android ${Build.VERSION.RELEASE ?: "Unknown"})"
 
@@ -240,14 +243,8 @@ internal suspend fun loadCachedGameRefreshTargets(db: AppDatabase): List<CachedG
         achievementSetEntries.forEach { entry ->
             val user = CacheKeys.parseUserFromAchievementSetsKey(entry.cacheKey) ?: return@forEach
             val hash = CacheKeys.parseAchievementSetsHash(entry.cacheKey) ?: return@forEach
-            val gameId = runCatching {
-                JSONObject(normalizeCachedResponse("achievementsets", "", "u=$user&m=$hash", entry.responseBody))
-                    .getJSONObject("PatchData")
-                    .optInt("ID")
-            }.getOrDefault(0)
-            if (gameId > 0) {
-                putIfAbsent(gameId to user, hash)
-            }
+            val gameId = achievementSetsGameId(entry) ?: return@forEach
+            putIfAbsent(gameId to user, hash)
         }
     }
 
@@ -263,6 +260,29 @@ internal suspend fun loadCachedGameRefreshTargets(db: AppDatabase): List<CachedG
             romHash = endpointHash
         )
     }
+}
+
+private fun achievementSetsGameId(entry: CacheEntry): Int? {
+    val user = CacheKeys.parseUserFromAchievementSetsKey(entry.cacheKey) ?: return null
+    val hash = CacheKeys.parseAchievementSetsHash(entry.cacheKey) ?: return null
+    return runCatching {
+        JSONObject(normalizeCachedResponse("achievementsets", "", "u=$user&m=$hash", entry.responseBody))
+            .getJSONObject("PatchData")
+            .optInt("ID")
+    }.getOrDefault(0).takeIf { it > 0 }
+}
+
+internal suspend fun deleteCachedGamesData(db: AppDatabase, gameIds: Set<String>) {
+    val dao = db.cacheDao()
+    gameIds.forEach { gameId ->
+        dao.deleteByKeyPrefix(CacheKeys.patchPrefix(gameId))
+        dao.deleteByKeyPrefix(CacheKeys.unlocksPrefix(gameId))
+        dao.deleteByKeyPrefix(CacheKeys.startSessionPrefix(gameId))
+        gameId.toIntOrNull()?.let { dao.deleteByKey(CacheKeys.lastPlayed(it)) }
+    }
+    dao.getAllByPrefix(CacheKeys.PREFIX_ACHIEVEMENTSETS)
+        .filter { entry -> achievementSetsGameId(entry)?.toString() in gameIds }
+        .forEach { entry -> dao.deleteByKey(entry.cacheKey) }
 }
 
 internal suspend fun refreshCachedGameOfflineBundle(
@@ -548,6 +568,9 @@ internal suspend fun resolveGameId(
     return null
 }
 
+internal fun isCacheableGameIdResponse(body: String): Boolean =
+    runCatching { JSONObject(body).optBoolean("Success", false) }.getOrDefault(false)
+
 internal suspend fun fetchGameId(
     context: Context,
     hash: String,
@@ -557,12 +580,16 @@ internal suspend fun fetchGameId(
 ): Int? =
     run {
         db.cacheDao().get(CacheKeys.gameId(hash))
-            ?.responseBody
-            ?.let { cachedBody ->
-                val cachedGameId = runCatching { JSONObject(cachedBody).optInt("GameID", 0) }.getOrDefault(0)
+            ?.let { cached ->
+                val cachedGameId = runCatching { JSONObject(cached.responseBody).optInt("GameID", 0) }
+                    .getOrDefault(0)
                 if (cachedGameId > 0) {
                     Log.i(TAG, "fetchGameId cache hit for hash=$hash gameId=$cachedGameId")
                     return@run cachedGameId
+                }
+                if (System.currentTimeMillis() - cached.cachedAt < GAMEID_MISS_TTL_MS) {
+                    Log.i(TAG, "fetchGameId cached no-match for hash=$hash")
+                    return@run null
                 }
             }
 
@@ -578,13 +605,15 @@ internal suspend fun fetchGameId(
         when (val result = httpGet(url, userAgent)) {
             is HttpGetResult.Success -> {
                 val gameId = runCatching { JSONObject(result.body).optInt("GameID", 0) }.getOrDefault(0)
-                if (gameId > 0) {
+                if (isCacheableGameIdResponse(result.body)) {
                     db.cacheDao().upsert(
                         CacheEntry(
                             cacheKey = CacheKeys.gameId(hash),
                             responseBody = result.body
                         )
                     )
+                }
+                if (gameId > 0) {
                     Log.i(TAG, "fetchGameId matched hash=$hash gameId=$gameId")
                     gameId
                 } else {

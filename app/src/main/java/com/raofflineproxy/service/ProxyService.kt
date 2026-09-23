@@ -36,6 +36,7 @@ import com.raofflineproxy.proxy.GameActivity
 import com.raofflineproxy.proxy.ProxyServer
 import com.raofflineproxy.proxy.loadLoginCredentials
 import com.raofflineproxy.proxy.loadCachedGameRefreshTargets
+import com.raofflineproxy.proxy.loadRecentlyPlayedGameIds
 import com.raofflineproxy.proxy.loadUserAgent
 import com.raofflineproxy.proxy.refreshCachedGameOfflineBundle
 import com.raofflineproxy.proxy.RefreshNotificationMode
@@ -65,6 +66,8 @@ private const val OFFLINE_REPROBE_INTERVAL_MS = 60_000L // self-heal cadence whi
 private const val CACHE_TTL_MS = 60L * 24 * 60 * 60 * 1000 // 60 days
 private const val OFFLINE_PING_IDLE_TIMEOUT_MS = 150_000L
 private const val ONLINE_REFRESH_IDLE_DELAY_MS = 5L * 60 * 1000
+private const val REFRESH_PLAYED_WINDOW_DAYS = 7L
+private const val REFRESH_PLAYED_WINDOW_MS = REFRESH_PLAYED_WINDOW_DAYS * 24 * 60 * 60 * 1000
 private const val RESTART_DELAY_MS = 5_000L
 
 class ProxyService : Service() {
@@ -213,8 +216,15 @@ class ProxyService : Service() {
             }
             val userAgent = loadUserAgent(db)
             val refreshTargets = loadCachedGameRefreshTargets(db)
-            Log.i(TAG, "Periodic refresh: ${refreshTargets.size} game(s)")
-            for (target in refreshTargets) {
+            val playedSince = System.currentTimeMillis() - REFRESH_PLAYED_WINDOW_MS
+            val recentlyPlayed = loadRecentlyPlayedGameIds(db, playedSince)
+            val dueTargets = refreshTargets.filter { target -> target.gameId in recentlyPlayed }
+            Log.i(
+                TAG,
+                "Periodic refresh: ${dueTargets.size} of ${refreshTargets.size} cached game(s) " +
+                    "played in the last $REFRESH_PLAYED_WINDOW_DAYS day(s)"
+            )
+            for (target in dueTargets) {
                 if (onlineRefreshIdleDelayMs() > 0) {
                     Log.i(TAG, "Periodic refresh paused; proxy became active")
                     break
