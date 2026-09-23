@@ -131,6 +131,35 @@ class MiyooLifecycle:
         installed.cli.run("clear-cached-games", check=True)
         assert installed.cli.cached_game_count() == 0
 
+    def test_rescanning_a_cached_rom_sends_nothing_to_ra(self, installed):
+        installed.cli.run("cache-rom --path %s" % installed.rom, check=True)
+        installed.ra.clear_journal()
+
+        result = installed.cli.run("cache-rom --path %s" % installed.rom, check=True)
+
+        assert "Already cached" in result.stdout
+        assert installed.cli.cached_game_count() == 1
+        assert installed.ra.actions() == []
+
+    def test_unknown_rom_lookup_is_cached(self, installed):
+        # .7z arcade sets hash by file name, so a renamed copy is a game RA does not know.
+        unknown_rom = "%s/not-on-ra.7z" % installed.device.rom_dir
+        installed.container.exec(
+            "cp %s %s" % (installed.rom, unknown_rom),
+            check=True,
+            user=installed.device.run_as,
+        )
+        installed.ra.clear_journal()
+
+        first = installed.cli.run("cache-rom --path %s" % unknown_rom)
+        assert "No RetroAchievements match" in first.stdout + first.stderr
+        assert installed.ra.actions() == ["gameid"]
+
+        installed.ra.clear_journal()
+        installed.cli.run("cache-rom --path %s" % unknown_rom)
+        assert installed.ra.actions() == []
+        assert installed.cli.cached_game_count() == 0
+
     def test_launching_a_game_online_caches_it(self, installed):
         installed.cli.run("start-proxy", check=True)
         responses = installed.emulator.boot_sequence(USER, TOKEN, MSLUG_HASH)

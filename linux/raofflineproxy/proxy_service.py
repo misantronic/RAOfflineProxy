@@ -55,6 +55,7 @@ from .rom_cache import (
     merged_unlock_ids,
     refresh_game_patch,
 )
+from .last_played import LAST_PLAYED_ACTIONS, load_recently_played_game_ids, record_game_played
 from .state import save_online_state
 from .storage import Storage, current_millis, migrate_user_case_in_cache_keys
 from .utils import (
@@ -76,6 +77,9 @@ SOCKET_TIMEOUT_SECONDS = 30
 
 AWARD_ACTIONS = {"awardachievement", "submitlbentry"}
 FAKE_OFFLINE_SUCCESS_ACTIONS = {"ping", "postactivity"}
+REFRESH_PLAYED_WINDOW_DAYS = 7
+ONLINE_REFRESH_IDLE_DELAY_SECONDS = 5 * 60
+REFRESH_PLAYED_WINDOW_MS = REFRESH_PLAYED_WINDOW_DAYS * 24 * 60 * 60 * 1000
 ALWAYS_TRY_UPSTREAM_ACTIONS = {"login", "login2"}
 
 
@@ -268,6 +272,7 @@ class ProxyRuntimeServer(ThreadingTCPServer):
         self.storage = storage
         self.running = True
         self.has_internet = False
+        self.activity = GameActivityTracker()
         self.flush_lock = threading.Lock()
         self.pending_award_lock = threading.Lock()
         host = proxy_host(self.config_data)
@@ -314,6 +319,15 @@ class ProxyRuntimeServer(ThreadingTCPServer):
             schedule_image_download(url, clean_path, user_agent)
         return raw_response_bytes(200, body_bytes, content_type, "OK")
 
+    def note_game_request(self, path: str, raw_body: str) -> None:
+        if extract_request_param(path, raw_body, "g") or extract_request_param(path, raw_body, "i"):
+            self.activity.note()
+
+    def record_game_activity(self, path: str, raw_body: str) -> None:
+        game_id = extract_request_param(path, raw_body, "g")
+        if game_id and game_id.isdigit():
+            record_game_played(self.storage, int(game_id))
+
     def process_proxy_request(
         self, method: str, path: str, raw_body: str, headers: dict[str, str]
     ) -> bytes:
@@ -331,6 +345,10 @@ class ProxyRuntimeServer(ThreadingTCPServer):
             self.storage.upsert_cache(cache_keys.USER_AGENT, user_agent)
 
         action = extract_action(path, raw_body)
+        self.note_game_request(path, raw_body)
+        if action in LAST_PLAYED_ACTIONS:
+            self.record_game_activity(path, raw_body)
+
         if action in AWARD_ACTIONS:
             return self.handle_award_request(path, raw_body, headers)
 
@@ -982,6 +1000,23 @@ class ConnectivityMonitor(threading.Thread):
             was_online = is_online
 
 
+class GameActivityTracker:
+    # Monotonic on purpose: handhelds without an RTC battery jump their wall clock by years
+    # once NTP syncs, which would make a wall-clock idle timer fire or stall at random.
+    def __init__(self, clock=time.monotonic) -> None:
+        self._clock = clock
+        self._last_activity_at: float | None = None
+
+    def note(self) -> None:
+        self._last_activity_at = self._clock()
+
+    def idle_delay_seconds(self) -> float:
+        if self._last_activity_at is None:
+            return 0.0
+        elapsed = self._clock() - self._last_activity_at
+        return max(0.0, ONLINE_REFRESH_IDLE_DELAY_SECONDS - elapsed)
+
+
 class PeriodicRefresh(threading.Thread):
     def __init__(
         self,
@@ -1010,32 +1045,67 @@ class PeriodicRefresh(threading.Thread):
             )
             if credentials is None:
                 continue
+            if not self.wait_until_idle():
+                continue
             patch_entries = self.server.storage.get_all_cache_by_prefix(
                 cache_keys.PREFIX_PATCH
             )
-            game_ids: list[int] = []
-            for entry in patch_entries:
-                game_id = cache_keys.parse_game_id_from_patch_key(entry["cacheKey"])
-                if game_id is not None and game_id not in game_ids:
-                    refresh_game_patch(
-                        game_id,
-                        credentials,
-                        user_agent,
-                        self.server.storage,
-                        self.server.config_data,
-                        cache_images=image_caching_enabled(self.server.config_data),
-                    )
-                    cache_unlocks(
-                        game_id,
-                        credentials,
-                        user_agent,
-                        self.server.config_data,
-                        self.server.storage,
-                    )
-                    cache_session(game_id, credentials, self.server.storage)
-                    game_ids.append(game_id)
+            recently_played = load_recently_played_game_ids(
+                self.server.storage, current_millis() - REFRESH_PLAYED_WINDOW_MS
+            )
+            due_game_ids = due_refresh_game_ids(patch_entries, recently_played)
+            LOGGER.info(
+                "Periodic refresh: %d of %d cached game(s) played in the last %d day(s)",
+                len(due_game_ids),
+                len(patch_entries),
+                REFRESH_PLAYED_WINDOW_DAYS,
+            )
+            self.refresh_games(due_game_ids, credentials, user_agent)
             before = current_millis() - (self.cache_ttl_seconds * 1000)
             self.server.storage.evict_cache_older_than(before)
+
+    def wait_until_idle(self) -> bool:
+        idle_delay = self.server.activity.idle_delay_seconds()
+        if idle_delay <= 0:
+            return True
+        LOGGER.info("Periodic refresh deferred; proxy active recently")
+        if self.stop_event.wait(idle_delay):
+            return False
+        return self.server.is_online() and self.server.activity.idle_delay_seconds() <= 0
+
+    def refresh_games(self, game_ids: list[int], credentials: dict, user_agent: str) -> int:
+        refreshed = 0
+        for game_id in game_ids:
+            if self.server.activity.idle_delay_seconds() > 0:
+                LOGGER.info("Periodic refresh paused; proxy became active")
+                break
+            refresh_game_patch(
+                game_id,
+                credentials,
+                user_agent,
+                self.server.storage,
+                self.server.config_data,
+                cache_images=image_caching_enabled(self.server.config_data),
+            )
+            cache_unlocks(
+                game_id,
+                credentials,
+                user_agent,
+                self.server.config_data,
+                self.server.storage,
+            )
+            cache_session(game_id, credentials, self.server.storage)
+            refreshed += 1
+        return refreshed
+
+
+def due_refresh_game_ids(patch_entries: list[dict], recently_played: set[int]) -> list[int]:
+    due: list[int] = []
+    for entry in patch_entries:
+        game_id = cache_keys.parse_game_id_from_patch_key(entry["cacheKey"])
+        if game_id is not None and game_id in recently_played and game_id not in due:
+            due.append(game_id)
+    return due
 
 
 def retry_storage_corruption_report() -> None:

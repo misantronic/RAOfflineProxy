@@ -36,7 +36,7 @@ from .rom_hashing import (
     list_7z_entries,
     supported_rom_extensions,
 )
-from .storage import Storage
+from .storage import Storage, current_millis
 from .utils import proxy_user_agent, self_user_agent
 
 LOGGER = logging.getLogger("raofflineproxy")
@@ -49,6 +49,9 @@ EXCLUDED_BROWSER_DIR_NAMES = {"Imgs"}
 MAX_CACHED_GAMES = 100
 MAX_SCAN_ENTRIES = 5000
 MAX_SCAN_DEPTH = 12
+# RetroAchievements adds hashes over time, so a "no match" is only cached long enough to
+# stop a repeated scan of the same folder from re-querying every unsupported ROM.
+GAMEID_MISS_TTL_MS = 7 * 24 * 60 * 60 * 1000
 
 
 @dataclass
@@ -63,6 +66,7 @@ class AddRomResult:
     success: bool
     message: str
     game: CachedGameEntry | None = None
+    already_cached: bool = False
 
 
 @dataclass
@@ -414,6 +418,25 @@ def hash_candidates_for_manual_cache(path: Path) -> list[str]:
     return hash_rom_candidates(path)
 
 
+def is_cacheable_game_id_response(body: str) -> bool:
+    try:
+        payload = json.loads(body)
+    except Exception:
+        return False
+    if not isinstance(payload, dict):
+        return False
+    return game_id_from_response(body) is not None or payload.get("Success") is True
+
+
+def game_id_from_response(body: str) -> int | None:
+    try:
+        payload = json.loads(body)
+    except Exception:
+        return None
+    game_id = payload.get("GameID") if isinstance(payload, dict) else None
+    return game_id if isinstance(game_id, int) and game_id > 0 else None
+
+
 def fetch_game_id(
     hash_value: str,
     credentials: dict,
@@ -421,6 +444,14 @@ def fetch_game_id(
     config_data: dict,
     storage: Storage,
 ) -> int | None:
+    cached = storage.get_cache(cache_keys.game_id(hash_value))
+    if cached is not None:
+        cached_game_id = game_id_from_response(cached["responseBody"])
+        if cached_game_id is not None:
+            return cached_game_id
+        if current_millis() - cached["cachedAt"] < GAMEID_MISS_TTL_MS:
+            return None
+
     url = build_api_url(
         upstream_host(config_data),
         "gameid",
@@ -432,11 +463,11 @@ def fetch_game_id(
     )
     response_body = http_get(url, proxy_user_agent(user_agent or FALLBACK_USER_AGENT))
     payload = json.loads(response_body)
+    if is_cacheable_game_id_response(response_body):
+        storage.upsert_cache(cache_keys.game_id(hash_value), response_body)
     game_id = payload.get("GameID")
     if not isinstance(game_id, int) or game_id <= 0:
         return None
-
-    storage.upsert_cache(cache_keys.game_id(hash_value), response_body)
     return int(game_id)
 
 
@@ -473,15 +504,20 @@ def add_rom_to_cache(path: Path, storage: Storage, config_data: dict) -> AddRomR
     if game_id is None:
         return AddRomResult(False, "No RetroAchievements match")
 
+    persist_game_id_aliases(storage, hash_candidates, used_hash, game_id)
+
     cached_games = list_cached_games(storage)
-    if len(cached_games) >= MAX_CACHED_GAMES and not any(
-        game.game_id == game_id for game in cached_games
-    ):
+    existing = next((game for game in cached_games if game.game_id == game_id), None)
+    if existing is not None:
+        remember_source_rom_path(storage, game_id, credentials["user"], path)
+        return AddRomResult(
+            True, f"Already cached {existing.title}", game=existing, already_cached=True
+        )
+
+    if len(cached_games) >= MAX_CACHED_GAMES:
         return AddRomResult(
             False, f"Cache limit reached: {MAX_CACHED_GAMES} / {MAX_CACHED_GAMES}"
         )
-
-    persist_game_id_aliases(storage, hash_candidates, used_hash, game_id)
 
     try:
         cache_game(
@@ -496,13 +532,7 @@ def add_rom_to_cache(path: Path, storage: Storage, config_data: dict) -> AddRomR
     except Exception as exc:
         return AddRomResult(False, f"Caching failed: {exc}")
 
-    patch_entry = storage.get_cache(cache_keys.patch(game_id, credentials["user"]))
-    if patch_entry is not None:
-        storage.upsert_cache(
-            cache_keys.patch(game_id, credentials["user"]),
-            patch_entry["responseBody"],
-            source_rom_path=normalize_cached_rom_path(path),
-        )
+    remember_source_rom_path(storage, game_id, credentials["user"], path)
 
     game = next(
         (entry for entry in list_cached_games(storage) if entry.game_id == game_id),
@@ -512,6 +542,16 @@ def add_rom_to_cache(path: Path, storage: Storage, config_data: dict) -> AddRomR
         return AddRomResult(False, "Caching failed: patch data was not stored")
 
     return AddRomResult(True, f"Cached {game.title}", game=game)
+
+
+def remember_source_rom_path(storage: Storage, game_id: int, user: str, path: Path) -> None:
+    patch_entry = storage.get_cache(cache_keys.patch(game_id, user))
+    if patch_entry is not None:
+        storage.upsert_cache(
+            cache_keys.patch(game_id, user),
+            patch_entry["responseBody"],
+            source_rom_path=normalize_cached_rom_path(path),
+        )
 
 
 def persist_game_id_aliases(
@@ -531,6 +571,7 @@ def remove_cached_game(storage: Storage, game_id: int) -> None:
     storage.delete_cache_by_prefix(cache_keys.patch_prefix(game_id))
     storage.delete_cache_by_prefix(f"{cache_keys.PREFIX_UNLOCKS}{game_id}:")
     storage.delete_cache_by_prefix(f"{cache_keys.PREFIX_STARTSESSION}{game_id}:")
+    storage.delete_cache(cache_keys.last_played(game_id))
     remove_achievementsets_for_game(storage, game_id)
     remove_gameid_aliases_for_game(storage, game_id)
     delete_cached_images_for_game(game_id)

@@ -552,7 +552,7 @@ class LinuxSmartCacheTests(unittest.TestCase):
             sleeps = []
             try:
                 smart_cache.add_rom_to_cache = lambda _path, _store, _config: type(
-                    "Result", (), {"success": True}
+                    "Result", (), {"success": True, "already_cached": False}
                 )()
                 smart_cache.time.sleep = lambda seconds: sleeps.append(seconds)
 
@@ -760,7 +760,7 @@ class LinuxSmartCacheTests(unittest.TestCase):
             progress_updates = []
             try:
                 smart_cache.add_rom_to_cache = lambda _path, _store, _config: type(
-                    "Result", (), {"success": True}
+                    "Result", (), {"success": True, "already_cached": False}
                 )()
 
                 smart_cache.run_smart_cache(
@@ -809,7 +809,7 @@ class LinuxSmartCacheTests(unittest.TestCase):
                 )
                 smart_cache.add_rom_to_cache = lambda path, _store, _config: (
                     scanned_paths.append(path),
-                    type("Result", (), {"success": True})(),
+                    type("Result", (), {"success": True, "already_cached": False})(),
                 )[1]
 
                 result = smart_cache.run_smart_cache(
