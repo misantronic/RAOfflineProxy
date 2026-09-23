@@ -15,6 +15,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.raofflineproxy.BuildConfig
 import com.raofflineproxy.MAX_CACHED_GAMES
+import com.raofflineproxy.applyScanBatchCooldown
 import com.raofflineproxy.buildApiUrl
 import com.raofflineproxy.PrefsConstants
 import com.raofflineproxy.R
@@ -1565,6 +1566,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             val userAgent = withContext(Dispatchers.IO) { proxyUserAgent(loadUserAgent(db)) }
             withContext(Dispatchers.IO) {
                 for ((index, target) in refreshTargets.withIndex()) {
+                    applyScanBatchCooldown(index, "RAProxy/Refresh")
                     val title = _state.value.cachedGames.firstOrNull { it.gameId == target.gameId.toString() }?.title
                         ?: target.gameId.toString()
                     val progressMessage = str(R.string.refresh_progress_named, index + 1, refreshTargets.size, title)
