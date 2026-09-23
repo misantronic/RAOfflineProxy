@@ -57,6 +57,8 @@ Tapping the notification opens the app. The notification cannot be dismissed whi
 
 ## Background Refresh
 
-While the proxy is running and the device is online, all cached games are automatically refreshed **every 60 minutes**. This keeps achievement lists and unlock counts up to date without any manual action.
+While the proxy is running and the device is online, cached games you **played in the last 7 days** are automatically refreshed **every 60 minutes**. This keeps their achievement lists and unlock counts up to date without any manual action. The refresh waits until the proxy has been idle for 5 minutes, so it does not run while you are playing.
 
-During each refresh cycle, cached data older than **7 days** is automatically removed to free up storage. Login credentials are exempt - you will not be logged out by this process.
+To refresh every cached game, for example before going offline, use the refresh icon on the **Cached Games** screen.
+
+Cached games are never removed by the background refresh. Only temporary data older than **60 days** is cleaned up. Login credentials are exempt - you will not be logged out by this process.
