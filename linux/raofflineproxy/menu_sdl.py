@@ -62,6 +62,7 @@ from .retroarch_cfg import (
 )
 from .image_cache import shutdown_image_downloads
 from .rom_browser import (
+    AddRomResult,
     MAX_CACHED_GAMES,
     add_rom_to_cache,
     cached_unlock_badge_paths,
@@ -429,6 +430,14 @@ def log_menu_sdl(message: str) -> None:
     timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
     with SDL_LOG_PATH.open("a", encoding="utf-8") as handle:
         handle.write(f"{timestamp} {message}\n")
+
+
+def single_cache_completion_message(result: AddRomResult, aborted: bool) -> str:
+    if not result.success:
+        return result.message
+    cached = 0 if result.already_cached else 1
+    prefix = "Aborted: scanned" if aborted else "Scanned"
+    return f"{prefix} 1, cached {cached}, skipped {1 - cached}"
 
 
 def log_action_failure(action: str, exc: Exception) -> None:
@@ -1734,16 +1743,8 @@ class MenuSdlSession:
                 result = add_rom_to_cache(path, self.storage, load_config())
                 aborted = self.cache_abort_requested
                 self.cache_result = (result.message, time.monotonic() + 1.5)
-                self.cache_completion_message = (
-                    "Aborted: scanned 1, cached 1, skipped 0"
-                    if aborted and result.success
-                    else result.message
-                    if not result.success
-                    else "Aborted: scanned 1, cached 0, skipped 1"
-                    if aborted
-                    else "Scanned 1, cached 1, skipped 0"
-                    if result.success
-                    else "Scanned 1, cached 0, skipped 1"
+                self.cache_completion_message = single_cache_completion_message(
+                    result, aborted
                 )
                 self.cache_completed = True
             except Exception as exc:

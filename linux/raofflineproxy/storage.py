@@ -33,6 +33,15 @@ PENDING_AWARD_STATUS_FLUSHED = "flushed"
 WARNING_ACHIEVEMENT_ID = 101000001
 
 
+_EVICTION_EXEMPT_PREFIXES = (
+    cache_keys.PREFIX_LOGIN,
+    cache_keys.PREFIX_PATCH,
+    cache_keys.PREFIX_ACHIEVEMENTSETS,
+    cache_keys.PREFIX_UNLOCKS,
+    cache_keys.PREFIX_STARTSESSION,
+    cache_keys.PREFIX_GAMEID,
+)
+
 class Storage:
     def __init__(self, database_path: Path = DATABASE_FILE):
         ensure_config_dir()
@@ -450,6 +459,7 @@ class Storage:
                        OR cacheKey LIKE 'unlocks:%'
                        OR cacheKey LIKE 'startsession:%'
                        OR cacheKey LIKE 'gameid:%'
+                       OR cacheKey LIKE 'lastplayed:%'
                     """
                 )
                 self._connection.commit()
@@ -471,11 +481,15 @@ class Storage:
                         or item["cacheKey"].startswith(cache_keys.PREFIX_UNLOCKS)
                         or item["cacheKey"].startswith(cache_keys.PREFIX_STARTSESSION)
                         or item["cacheKey"].startswith(cache_keys.PREFIX_GAMEID)
+                        or item["cacheKey"].startswith(cache_keys.PREFIX_LAST_PLAYED)
                     )
                 ]
                 self._write_json_state_unlocked()
         self._after_cache_mutation(None)
 
+    # Cached game data is user-owned: it stays until the game is deleted or the cache is
+    # cleared. Only incidental proxy responses age out, so scoping the periodic refresh to
+    # recently played games can no longer silently delete a library nobody has touched.
     def evict_cache_older_than(self, before: int) -> None:
         if self._use_sqlite:
             assert self._connection is not None
@@ -486,6 +500,11 @@ class Storage:
                     WHERE cachedAt < ?
                       AND cacheKey NOT LIKE 'login2::%'
                       AND cacheKey != ?
+                      AND cacheKey NOT LIKE 'patch:%'
+                      AND cacheKey NOT LIKE 'achievementsets:%'
+                      AND cacheKey NOT LIKE 'unlocks:%'
+                      AND cacheKey NOT LIKE 'startsession:%'
+                      AND cacheKey NOT LIKE 'gameid:%'
                     """,
                     (before, cache_keys.USER_AGENT),
                 )
@@ -501,7 +520,7 @@ class Storage:
                     item
                     for item in self._json_state["api_cache"]
                     if item["cachedAt"] >= before
-                    or item["cacheKey"].startswith(cache_keys.PREFIX_LOGIN)
+                    or item["cacheKey"].startswith(_EVICTION_EXEMPT_PREFIXES)
                     or item["cacheKey"] == cache_keys.USER_AGENT
                 ]
                 self._write_json_state_unlocked()

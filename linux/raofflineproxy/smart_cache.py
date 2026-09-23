@@ -194,7 +194,7 @@ def run_cache_paths(
             )
 
         result = add_rom_to_cache(path, storage, config_data)
-        if result.success:
+        if result.success and not result.already_cached:
             cached += 1
 
         if should_abort is not None and should_abort():

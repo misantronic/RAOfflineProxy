@@ -291,6 +291,7 @@ class LinuxProxyCacheKeyTests(unittest.TestCase):
             store = storage.Storage(database_path=Path(temp_dir) / "test.sqlite3")
             runtime = object.__new__(proxy_service.ProxyRuntimeServer)
             runtime.storage = store
+            runtime.activity = proxy_service.GameActivityTracker()
             runtime.config_data = {}
             try:
                 store.upsert_cache(
@@ -803,6 +804,7 @@ class LinuxProxyCacheKeyTests(unittest.TestCase):
             store = storage.Storage(database_path=Path(temp_dir) / "test.sqlite3")
             runtime = object.__new__(proxy_service.ProxyRuntimeServer)
             runtime.storage = store
+            runtime.activity = proxy_service.GameActivityTracker()
             runtime.config_data = {}
             runtime.has_internet = True
             try:
