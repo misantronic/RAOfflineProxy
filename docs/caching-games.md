@@ -66,6 +66,8 @@ Progress is shown in a snackbar at the bottom of the screen.
 
 ::: tip
 ROMs not recognized by RetroAchievements are skipped. Text files and hidden files are also skipped.
+
+Scanning the same folder again is quick: games that are already cached are skipped, and ROMs that RetroAchievements did not recognize are not looked up again for 7 days.
 :::
 
 ### Add Individual ROM(s)
@@ -83,7 +85,7 @@ If adding ROMs would push the cache above **100 games**, the app stops once the 
 For each ROM file the following steps happen:
 
 1. **Identify the ROM**: the file is read and a unique fingerprint (hash) is computed
-2. **Look up the game**: the hash is sent to RetroAchievements to find the matching game
+2. **Look up the game**: the hash is sent to RetroAchievements to find the matching game. If the same ROM was looked up before, the saved answer is used instead
 3. **Save game data**: the full achievement list and game metadata are downloaded and saved
 4. **Save unlocks**: your current unlock progress for that game is downloaded and saved
 5. **Build session data**: a local session response is built from your saved unlocks (no server call)
@@ -101,11 +103,17 @@ The **Cached Games** screen shows a list of all games currently saved. For each 
 
 ## Refreshing Cache
 
-Tap the **refresh icon** to re-fetch data for all cached games while online. This updates achievement lists and your unlock counts. The proxy also runs an **automatic background refresh every 60 minutes** while the service is running and you are online.
+Tap the **refresh icon** to re-fetch data for all cached games while online. This updates achievement lists and your unlock counts.
+
+The proxy also runs an **automatic background refresh every 60 minutes** while the service is running and you are online. To keep the load on the RetroAchievements servers low, it only covers games you **played in the last 7 days**, and it waits until the proxy has been idle for 5 minutes, so it does not run while you are playing.
+
+::: tip Refresh before going offline
+Games you have not played recently are not refreshed in the background. If you unlocked achievements on another device, tap the **refresh icon** before you disconnect so your offline unlock state is current. Launching a game while online also fetches its latest unlocks.
+:::
 
 ## Cache Expiration
 
-Saved game data older than **60 days** is automatically removed during each background refresh cycle. If you plan to go offline for longer than a week, refresh your cache manually before disconnecting. Your login credentials are not affected by cache expiration.
+Cached games do not expire. They stay available offline until you delete them or clear the cache, no matter how long you are offline. Only temporary data the proxy saves along the way is removed after **60 days**. Your login credentials are never removed.
 
 ## Deleting a Cached Game
 
