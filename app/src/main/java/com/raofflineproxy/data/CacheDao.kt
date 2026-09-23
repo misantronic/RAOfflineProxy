@@ -32,7 +32,22 @@ interface CacheDao {
         updateBody(entry.cacheKey, entry.responseBody, entry.sourceRomPath, entry.cachedAt)
     }
 
-    @Query("DELETE FROM api_cache WHERE cachedAt < :before AND cacheKey NOT LIKE 'login2::%' AND cacheKey != 'ua::last'")
+    // Cached game data is user-owned: it stays until the game is deleted or the cache is
+    // cleared. Only incidental proxy responses age out, so scoping the periodic refresh to
+    // recently played games can no longer silently delete a library nobody has touched.
+    @Query(
+        """
+        DELETE FROM api_cache
+        WHERE cachedAt < :before
+          AND cacheKey NOT LIKE 'login2::%'
+          AND cacheKey != 'ua::last'
+          AND cacheKey NOT LIKE 'patch:%'
+          AND cacheKey NOT LIKE 'achievementsets:%'
+          AND cacheKey NOT LIKE 'unlocks:%'
+          AND cacheKey NOT LIKE 'startsession:%'
+          AND cacheKey NOT LIKE 'gameid:%'
+        """
+    )
     suspend fun evictOlderThan(before: Long)
 
     @Query("SELECT id, cacheKey, sourceRomPath, cachedAt, firstCachedAt FROM api_cache WHERE cacheKey LIKE 'patch:%' ORDER BY firstCachedAt DESC")

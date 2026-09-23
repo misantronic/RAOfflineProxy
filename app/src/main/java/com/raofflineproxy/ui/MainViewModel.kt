@@ -56,6 +56,7 @@ import com.raofflineproxy.proxy.HttpGetResult
 import com.raofflineproxy.proxy.httpGet
 import com.raofflineproxy.proxy.loginAndCacheToken
 import com.raofflineproxy.proxy.loadLoginCredentials
+import com.raofflineproxy.proxy.deleteCachedGamesData
 import com.raofflineproxy.proxy.loadCachedGameRefreshTargets
 import com.raofflineproxy.proxy.refreshCachedGameOfflineBundle
 import com.raofflineproxy.proxy.RefreshNotificationMode
@@ -1421,6 +1422,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             db.cacheDao().deleteByKeyPrefix(CacheKeys.PREFIX_GAMEID)
             db.cacheDao().deleteByKeyPrefix(CacheKeys.PREFIX_UNLOCKS)
             db.cacheDao().deleteByKeyPrefix(CacheKeys.PREFIX_STARTSESSION)
+            db.cacheDao().deleteByKeyPrefix(CacheKeys.PREFIX_LAST_PLAYED)
             clearAllCachedImages(application)
             PrefsConstants.clearAppUpdateLastCheckedAt(application)
             _state.value = _state.value.copy(
@@ -1529,7 +1531,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun deleteCachedGame(game: CachedGame) {
         removeCachedGamesFromState(setOf(game.gameId))
         viewModelScope.launch(Dispatchers.IO) {
-            db.cacheDao().deleteByKeyPrefix(CacheKeys.patchPrefix(game.gameId))
+            deleteCachedGamesData(db, setOf(game.gameId))
             deleteCachedImagesForGame(application, game.gameId)
         }
     }
@@ -1540,10 +1542,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val gameIds = games.map { it.gameId }.toSet()
         removeCachedGamesFromState(gameIds)
         viewModelScope.launch(Dispatchers.IO) {
-            games.forEach { game ->
-                db.cacheDao().deleteByKeyPrefix(CacheKeys.patchPrefix(game.gameId))
-                deleteCachedImagesForGame(application, game.gameId)
-            }
+            deleteCachedGamesData(db, gameIds)
+            games.forEach { game -> deleteCachedImagesForGame(application, game.gameId) }
         }
     }
 
