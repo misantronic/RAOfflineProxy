@@ -569,7 +569,10 @@ internal suspend fun resolveGameId(
 }
 
 internal fun isCacheableGameIdResponse(body: String): Boolean =
-    runCatching { JSONObject(body).optBoolean("Success", false) }.getOrDefault(false)
+    runCatching {
+        val payload = JSONObject(body)
+        payload.optInt("GameID", 0) > 0 || payload.optBoolean("Success", false)
+    }.getOrDefault(false)
 
 internal suspend fun fetchGameId(
     context: Context,

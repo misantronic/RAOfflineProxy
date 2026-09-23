@@ -13,6 +13,11 @@ class GameIdCacheTest {
     }
 
     @Test
+    fun cachesMatchWithoutSuccessFlag() {
+        assertTrue(isCacheableGameIdResponse("""{"GameID":10701}"""))
+    }
+
+    @Test
     fun cachesGenuineNoMatch() {
         assertTrue(isCacheableGameIdResponse("""{"Success":true,"GameID":0}"""))
     }
@@ -23,7 +28,7 @@ class GameIdCacheTest {
     }
 
     @Test
-    fun skipsResponseWithoutSuccessFlag() {
+    fun skipsNoMatchWithoutSuccessFlag() {
         assertFalse(isCacheableGameIdResponse("""{"GameID":0}"""))
     }
 
