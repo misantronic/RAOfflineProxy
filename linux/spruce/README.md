@@ -29,6 +29,7 @@ in `Saves/ra-configs/`.
 | `SPRUCE_RA_CONFIG` | live RetroArch config, seeded if absent |
 | `SPRUCE_PYTHON` | CPython 3.10 |
 | `CFW` | `SPRUCE` |
+| `SSL_CERT_FILE` | spruce's CA bundle; its python ships none |
 
 Nothing here re-implements spruce's device detection or config paths. `common.sh` refuses
 to run if `appEnv.sh` is missing rather than guessing: only Flip, RGB30 and Miniloong can

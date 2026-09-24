@@ -4,12 +4,13 @@ FROM arm32v7/debian:bookworm-slim
 # layout; only a handful of marker files tell the three firmwares apart. One
 # image with a FIRMWARE build-arg keeps that relationship explicit.
 #
-# The base is bookworm, not bullseye: the Miyoo firmwares ship their own
+# The base is bookworm, not bullseye: Onion and Allium ship their own
 # CPython 3.9 inside the bundle (see README.md), so the system python only
 # needs to be something resolve_python_bin must not pick, not a version
-# match. bullseye's security pool stopped serving the pinned package files
-# apt-get update's index referenced once bullseye went EOL, breaking the
-# build; bookworm is what darkos/muos/knulli already use.
+# match. spruce ships no interpreter and takes the system python through
+# the fake appEnv.sh below. bullseye's security pool stopped serving the
+# pinned package files apt-get update's index referenced once bullseye went
+# EOL, breaking the build; bookworm is what darkos/muos/knulli already use.
 ARG FIRMWARE=onion
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -26,7 +27,7 @@ RUN mkdir -p \
         /mnt/SDCARD/Apps \
         /mnt/SDCARD/Roms/SFC \
         /mnt/SDCARD/RetroArch/.retroarch \
-        /mnt/SDCARD/RetroArch/platform \
+        /mnt/SDCARD/Saves/ra-configs \
         /mnt/SDCARD/Saves/spruce \
         /mnt/SDCARD/.tmp_update/config \
         /mnt/SDCARD/.tmp_update/startup \
@@ -34,7 +35,7 @@ RUN mkdir -p \
         /mnt/SDCARD/.tmp_update/bin
 
 COPY rootfs/miyoo/retroarch.cfg /mnt/SDCARD/RetroArch/.retroarch/retroarch.cfg
-COPY rootfs/miyoo/retroarch.cfg /mnt/SDCARD/RetroArch/platform/retroarch-MiyooMini.cfg
+COPY rootfs/miyoo/retroarch.cfg /mnt/SDCARD/Saves/ra-configs/retroarch-MiyooMini.cfg
 COPY rootfs/miyoo/spruce-config.json /mnt/SDCARD/Saves/spruce/spruce-config.json
 
 # The firmware markers config.py disambiguates on:
@@ -48,8 +49,14 @@ RUN set -eu; \
         echo "v4.4.0-beta-20260120" > /mnt/SDCARD/.tmp_update/onionVersion/version.txt; \
         ;; \
       spruce) \
-        mkdir -p /mnt/SDCARD/spruce; \
+        mkdir -p /mnt/SDCARD/spruce/scripts; \
         echo "4.0.0" > /mnt/SDCARD/spruce/spruce; \
+        printf '%s\n' '#!/bin/sh' \
+          'export CFW=SPRUCE' \
+          'export SPRUCE_PLATFORM=MiyooMini' \
+          'export SPRUCE_PYTHON=/usr/bin/python3' \
+          'export SPRUCE_RA_CONFIG=/mnt/SDCARD/Saves/ra-configs/retroarch-MiyooMini.cfg' \
+          > /mnt/SDCARD/spruce/scripts/appEnv.sh; \
         printf '#!/bin/sh\nexit 0\n' > /mnt/SDCARD/.tmp_update/updater; \
         chmod +x /mnt/SDCARD/.tmp_update/updater; \
         ;; \
