@@ -9,13 +9,21 @@ You can do that in two ways:
 
 The rest of this page explains the manual caching flow in the **Cached Games** screen and what data gets saved locally.
 
-## Cache Limit
+## Caching Pace
 
-Manual caching is limited to **100 cached games** at a time.
+There is no limit on how many games you can cache.
 
-This limit exists to keep bulk caching from generating too many RetroAchievements requests at once. Each manually cached game can require multiple upstream requests, so the cap helps reduce server load while still leaving enough room for a practical offline library.
+To go easy on the RetroAchievements servers, the **Add ROM**, **Scan ROM folder**, and **Smart Cache** actions cache up to **100 new games every 30 minutes**. Anything beyond that is queued and cached in the background during the next 30-minute windows, as long as the proxy is running and you are online. The queue is kept across restarts of the app and the device, and it waits while you are playing.
 
-When the proxy is running, the **Cached Games** header shows a counter such as `12/100 cached`. Once you reach `100/100`, the **Scan ROM folder** and **Add ROM** actions are disabled until you delete some cached games or clear the cache.
+Only ROMs that actually need RetroAchievements count toward the 100. Games that are already cached and ROMs RetroAchievements did not recognize recently are skipped without using any of it.
+
+If an action would queue more than 100 games, the app asks first and shows how many games will be cached right away, how many will be queued, and roughly how long the queue will take.
+
+Games you launch in an emulator while the proxy is running are always cached right away and never count toward the 100.
+
+When the proxy is running, the **Cached Games** header shows a counter such as `42 cached`, or `42 cached · 158 queued` while games are waiting. **Clear Cache** also empties the queue.
+
+Caching progress also appears in the proxy's notification, together with the number of queued games and when the next batch starts. If you cache games while the proxy is stopped, a separate notification shows the progress until the run is done.
 
 ## What Gets Cached
 
@@ -60,9 +68,11 @@ If Smart Cache does not find anything new, it simply finishes without adding mor
 3. Pick the folder containing your ROM files
 4. The app scans all ROM files, identifies them, and saves their achievement data
 
-If the scan reaches the **100-game cache limit**, it stops there and skips the remaining files.
+If the folder contains more new games than can be cached right now, the rest is queued and cached in the background (see [Caching Pace](#caching-pace)).
 
-Progress is shown in a snackbar at the bottom of the screen.
+Progress is shown in a snackbar at the bottom of the screen, first as `Hashing x/y` while the ROMs are identified, then as `Caching x/y` while the first batch is saved. When it finishes, the snackbar sums up how many games were cached, queued, and skipped.
+
+If you abort a scan, the games it queued are removed from the queue again. Games it already cached stay cached.
 
 ::: tip
 ROMs not recognized by RetroAchievements are skipped. Text files and hidden files are also skipped.
@@ -78,19 +88,20 @@ Scanning the same folder again is quick: games that are already cached are skipp
 
 This is useful when you just want to cache one or two games without scanning an entire folder.
 
-If adding ROMs would push the cache above **100 games**, the app stops once the limit is reached.
+If you pick more new games than can be cached right now, the rest is queued and cached in the background (see [Caching Pace](#caching-pace)).
 
 ## The Caching Process
 
-For each ROM file the following steps happen:
+Caching runs in two phases:
 
-1. **Identify the ROM**: the file is read and a unique fingerprint (hash) is computed
-2. **Look up the game**: the hash is sent to RetroAchievements to find the matching game. If the same ROM was looked up before, the saved answer is used instead
-3. **Save game data**: the full achievement list and game metadata are downloaded and saved
-4. **Save unlocks**: your current unlock progress for that game is downloaded and saved
-5. **Build session data**: a local session response is built from your saved unlocks (no server call)
+1. **Identify the ROMs**: every file is read and a unique fingerprint (hash) is computed. This happens on your device only; ROMs that are already cached, or that RetroAchievements recently did not recognize, are skipped here. Everything else is queued.
+2. **Cache the queued games**: games are taken from the queue in batches of up to 100 every 30 minutes (see [Caching Pace](#caching-pace)). The first batch starts as soon as all ROMs are identified. For each game:
+   - **Look up the game**: the hash is sent to RetroAchievements to find the matching game. If the same ROM was looked up before, the saved answer is used instead
+   - **Save game data**: the full achievement list and game metadata are downloaded and saved
+   - **Save unlocks**: your current unlock progress for that game is downloaded and saved
+   - **Build session data**: a local session response is built from your saved unlocks (no server call)
 
-There is a short delay between files to avoid overloading the RA servers.
+After every 50 games there is a short pause to avoid overloading the RA servers.
 
 ## Viewing Cached Games
 
@@ -99,7 +110,7 @@ The **Cached Games** screen shows a list of all games currently saved. For each 
 - Game title and icon
 - Number of unlocked achievements out of total
 - Date last cached
-- Cached games counter (`X/100`) while the proxy is running
+- Cached games counter, plus the number of queued games while any are waiting
 
 ## Refreshing Cache
 

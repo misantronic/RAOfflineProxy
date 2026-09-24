@@ -14,7 +14,6 @@ import androidx.core.content.edit
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.raofflineproxy.BuildConfig
-import com.raofflineproxy.MAX_CACHED_GAMES
 import com.raofflineproxy.applyScanBatchCooldown
 import com.raofflineproxy.buildApiUrl
 import com.raofflineproxy.PrefsConstants
@@ -41,6 +40,17 @@ import com.raofflineproxy.data.PENDING_AWARD_STATUS_FLUSHED
 import com.raofflineproxy.data.PENDING_AWARD_STATUS_PENDING
 import com.raofflineproxy.data.CachedAchievement
 import com.raofflineproxy.proxy.AwardFlusher
+import com.raofflineproxy.service.CachingNotifications
+import com.raofflineproxy.service.CachingPhase
+import com.raofflineproxy.service.CachingProgress
+import com.raofflineproxy.service.text
+import com.raofflineproxy.proxy.CACHE_BUDGET_LIMIT
+import com.raofflineproxy.proxy.CacheQueue
+import com.raofflineproxy.proxy.QueueEstimate
+import com.raofflineproxy.proxy.estimateQueueForDocuments
+import com.raofflineproxy.proxy.SmartCacheRunResult
+import com.raofflineproxy.proxy.ScanResult
+import com.raofflineproxy.proxy.drainCacheQueue
 import com.raofflineproxy.proxy.FlushEvent
 import com.raofflineproxy.proxy.LoginCredentials
 import com.raofflineproxy.proxy.PasswordCredentials
@@ -78,7 +88,9 @@ import com.raofflineproxy.update.AppUpdateChecker
 import com.raofflineproxy.update.AppUpdateInfo
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -151,6 +163,8 @@ data class MainUiState(
     val ppssppShizukuRootModeUnknown: Boolean = false,
     val scanInProgress: Boolean = false,
     val scanProgress: String? = null,
+    val queuedRomCount: Int = 0,
+    val pendingQueueConfirmation: QueueEstimate? = null,
     val flushInProgress: Boolean = false,
     val availableAppUpdate: AppUpdateInfo? = null
 ) {
@@ -202,6 +216,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private var pendingAddRomUris = emptyList<Uri>()
     private var pendingCredentialAction: PendingCredentialAction? = null
     private var lastTokenValidationAttemptAt: Long = 0L
+    private var queueConfirmation: CompletableDeferred<Boolean>? = null
     private fun str(resId: Int): String = getApplication<Application>().getString(resId)
     private fun str(resId: Int, vararg args: Any): String = getApplication<Application>().getString(resId, *args)
 
@@ -228,6 +243,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         refreshReachability(forceProbe = true)
 
         recoverPatchedCfgIfProxyStopped()
+        CachingNotifications.clearStandalone(app)
+
+        viewModelScope.launch {
+            CacheQueue.observeCount(db).collect { count ->
+                _state.value = _state.value.copy(queuedRomCount = count)
+            }
+        }
 
         connectivityManager.registerNetworkCallback(
             NetworkRequest.Builder()
@@ -1351,14 +1373,72 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    fun resolveQueueConfirmation(accepted: Boolean) {
+        queueConfirmation?.complete(accepted)
+    }
+
+    private suspend fun confirmLargeQueue(estimate: QueueEstimate): Boolean {
+        val deferred = CompletableDeferred<Boolean>()
+        queueConfirmation = deferred
+        _state.value = _state.value.copy(pendingQueueConfirmation = estimate)
+        return try {
+            deferred.await()
+        } finally {
+            queueConfirmation = null
+            _state.value = _state.value.copy(pendingQueueConfirmation = null)
+        }
+    }
+
+    private data class FirstBatch(val cached: Int = 0, val noMatch: Int = 0)
+
+    /** Hashes every ROM of a run first (which only fills the queue), then caches the current
+     *  budget window right away, even with the proxy stopped; the rest stays queued for the
+     *  proxy service. Aborting the run removes the ROMs it queued; games it already cached stay. */
+    private suspend fun <T> hashThenCacheFirstBatch(
+        credentials: LoginCredentials,
+        onAbort: (() -> Unit)?,
+        shouldCache: (T) -> Boolean,
+        hashing: suspend (onHashed: (CachingProgress) -> Unit, onQueued: (String) -> Unit) -> T
+    ): Pair<T, FirstBatch> {
+        val queuedThisRun = ConcurrentHashMap.newKeySet<String>()
+        try {
+            val result = withContext(Dispatchers.IO) {
+                hashing({ progress -> showCachingProgress(progress, onAbort) }, { key -> queuedThisRun += key })
+            }
+            if (!shouldCache(result)) return result to FirstBatch()
+            return result to withContext(Dispatchers.IO) { drainFirstBatch(credentials, onAbort) }
+        } catch (c: CancellationException) {
+            withContext(NonCancellable + Dispatchers.IO) { CacheQueue.removeKeys(db, queuedThisRun) }
+            throw c
+        }
+    }
+
+    private suspend fun drainFirstBatch(credentials: LoginCredentials, onAbort: (() -> Unit)?): FirstBatch {
+        val app = getApplication<Application>()
+        val userAgent = proxyUserAgent(loadUserAgent(db))
+        val result = drainCacheQueue(app, db, credentials, userAgent, shouldPause = { false }) { current, total, label ->
+            showCachingProgress(CachingProgress(CachingPhase.Caching, current, total, label), onAbort)
+        }
+        return FirstBatch(result.cached, result.noMatch)
+    }
+
+    private fun showCachingProgress(progress: CachingProgress, onAbort: (() -> Unit)?) {
+        val app = getApplication<Application>()
+        val message = progress.text(app)
+        _state.value = _state.value.copy(scanProgress = message)
+        SnackbarManager.showProgress(message, onAbort = onAbort)
+        CachingNotifications.report(app, progress)
+    }
+
+    private suspend fun cachingResultMessage(resId: Int, firstBatch: FirstBatch, skipped: Int): String {
+        val queued = withContext(Dispatchers.IO) { CacheQueue.count(db) }
+        val summary = str(resId, firstBatch.cached, queued, skipped + firstBatch.noMatch)
+        return if (queued > 0) "$summary ${str(R.string.caching_queue_hint, CACHE_BUDGET_LIMIT)}" else summary
+    }
+
     fun addRom(fileUris: List<Uri>) {
         val app = getApplication<Application>()
         viewModelScope.launch {
-            if (_state.value.cachedGames.size >= MAX_CACHED_GAMES) {
-                SnackbarManager.showMessage(str(R.string.cached_games_limit_reached, MAX_CACHED_GAMES), SnackbarDuration.Indefinite)
-                return@launch
-            }
-
             val hasPlaylistFile = fileUris.any { uri ->
                 val name = DocumentFile.fromSingleUri(app, uri)?.name ?: ""
                 hasExtension(name, "cue", "m3u")
@@ -1374,45 +1454,38 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             }
 
             val credentials = requireCredentials(PendingCredentialAction.AddRom(fileUris)) ?: return@launch
-            val total = fileUris.size
-            var matched = 0
-            var skipped = 0
-            var limitReached = false
-            val userAgent = withContext(Dispatchers.IO) { proxyUserAgent(loadUserAgent(db)) }
-            for ((index, uri) in fileUris.withIndex()) {
-                if (_state.value.cachedGames.size >= MAX_CACHED_GAMES) {
-                    skipped += total - index
-                    limitReached = true
-                    break
-                }
-                val progressMessage = str(R.string.scan_hashing, index + 1, total)
-                _state.value = _state.value.copy(scanInProgress = true, scanProgress = progressMessage)
-                SnackbarManager.showProgress(progressMessage)
-                val result = withContext(Dispatchers.IO) {
-                    scanRomFolder(app, uri, credentials, userAgent, db, singleFile = true) { _, _, fileName ->
-                        val lookupMessage = str(R.string.scan_looking_up, index + 1, total, fileName)
-                        _state.value = _state.value.copy(scanProgress = lookupMessage)
-                        SnackbarManager.showProgress(lookupMessage)
-                    }
-                }
-                matched += result.matched
-                skipped += result.skipped
-                limitReached = false || result.limitReached
-                if (result.limitReached) break
+            val estimate = withContext(Dispatchers.IO) { estimateQueueForDocuments(app, db, fileUris) }
+            if (estimate.needsConfirmation && !confirmLargeQueue(estimate)) {
+                SnackbarManager.showMessage(str(R.string.scan_cancelled), SnackbarDuration.Short)
+                return@launch
             }
-            _state.value = _state.value.copy(
-                scanInProgress = false,
-                scanProgress = null
-            )
-            SnackbarManager.showProgress(null)
-            SnackbarManager.showMessage(
-                if (limitReached) {
-                    str(R.string.scan_add_complete_limit, matched, total, skipped, MAX_CACHED_GAMES, SnackbarDuration.Indefinite)
-                } else {
-                    str(R.string.scan_add_complete, matched, total, skipped)
-                },
-                SnackbarDuration.Indefinite
-            )
+            val total = fileUris.size
+            _state.value = _state.value.copy(scanInProgress = true)
+            val message = try {
+                val (skipped, firstBatch) = hashThenCacheFirstBatch(
+                    credentials,
+                    onAbort = null,
+                    shouldCache = { true }
+                ) { onHashed, onQueued ->
+                    var skipped = 0
+                    for ((index, uri) in fileUris.withIndex()) {
+                        val result = scanRomFolder(app, uri, db, singleFile = true, onQueued = onQueued) { _, _, fileName ->
+                            onHashed(CachingProgress(CachingPhase.Hashing, index + 1, total, fileName))
+                        }
+                        skipped += result.skipped
+                    }
+                    skipped
+                }
+                cachingResultMessage(R.string.scan_add_complete, firstBatch, skipped)
+            } finally {
+                CachingNotifications.report(app, null)
+                _state.value = _state.value.copy(
+                    scanInProgress = false,
+                    scanProgress = null
+                )
+                SnackbarManager.showProgress(null)
+            }
+            SnackbarManager.showMessage(message, SnackbarDuration.Indefinite)
         }
     }
 
@@ -1424,6 +1497,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             db.cacheDao().deleteByKeyPrefix(CacheKeys.PREFIX_UNLOCKS)
             db.cacheDao().deleteByKeyPrefix(CacheKeys.PREFIX_STARTSESSION)
             db.cacheDao().deleteByKeyPrefix(CacheKeys.PREFIX_LAST_PLAYED)
+            db.cacheDao().deleteByKeyPrefix(CacheKeys.PREFIX_CACHE_QUEUE)
             clearAllCachedImages(application)
             PrefsConstants.clearAppUpdateLastCheckedAt(application)
             _state.value = _state.value.copy(
@@ -1485,10 +1559,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun scanRoms(treeUri: Uri) {
         val app = getApplication<Application>()
         scanJob = viewModelScope.launch {
-            if (_state.value.cachedGames.size >= MAX_CACHED_GAMES) {
-                SnackbarManager.showMessage(str(R.string.cached_games_limit_reached, MAX_CACHED_GAMES), SnackbarDuration.Indefinite)
-                return@launch
-            }
             val credentials = requireCredentials(PendingCredentialAction.ScanRoms(treeUri)) ?: return@launch
             val startingMessage = str(R.string.scan_starting)
             _state.value = _state.value.copy(scanInProgress = true, scanProgress = startingMessage)
@@ -1496,18 +1566,25 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             var completionMessage: String? = null
             var completionDuration = SnackbarDuration.Indefinite
             try {
-                val userAgent = withContext(Dispatchers.IO) { proxyUserAgent(loadUserAgent(db)) }
-                val result = withContext(Dispatchers.IO) {
-                    scanRomFolder(app, treeUri, credentials, userAgent, db) { current, total, fileName ->
-                        val progressMessage = str(R.string.scan_progress, current, total, fileName)
-                        _state.value = _state.value.copy(scanProgress = progressMessage)
-                        SnackbarManager.showProgress(progressMessage, onAbort = ::cancelScan)
+                val (result, firstBatch) = hashThenCacheFirstBatch(
+                    credentials,
+                    onAbort = ::cancelScan,
+                    shouldCache = { result: ScanResult -> !result.cancelled }
+                ) { onHashed, onQueued ->
+                    scanRomFolder(
+                        app,
+                        treeUri,
+                        db,
+                        confirmLargeQueue = ::confirmLargeQueue,
+                        onQueued = onQueued
+                    ) { current, total, fileName ->
+                        onHashed(CachingProgress(CachingPhase.Hashing, current, total, fileName))
                     }
                 }
-                completionMessage = if (result.limitReached) {
-                    str(R.string.scan_complete_limit, result.matched, result.total, result.skipped, MAX_CACHED_GAMES)
+                completionMessage = if (result.cancelled) {
+                    str(R.string.scan_cancelled)
                 } else {
-                    str(R.string.scan_complete, result.matched, result.total, result.skipped)
+                    cachingResultMessage(R.string.scan_complete, firstBatch, result.skipped)
                 }
             } catch (c: CancellationException) {
                 Log.i("RAProxy/Scan", "scanRoms aborted for treeUri=$treeUri")
@@ -1517,6 +1594,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 Log.e("RAProxy/Scan", "scanRoms failed for treeUri=$treeUri", t)
                 SnackbarManager.showError(t.message ?: "ROM scan failed.")
             } finally {
+                CachingNotifications.report(app, null)
                 _state.value = _state.value.copy(
                     scanInProgress = false,
                     scanProgress = null
@@ -1608,10 +1686,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val app = getApplication<Application>()
         smartCacheJob = viewModelScope.launch {
             Log.i("RAProxy/SmartCache", "startSmartCache invoked cachedGames=${_state.value.cachedGames.size}")
-            if (_state.value.cachedGames.size >= MAX_CACHED_GAMES) {
-                SnackbarManager.showMessage(str(R.string.cached_games_limit_reached, MAX_CACHED_GAMES), SnackbarDuration.Indefinite)
-                return@launch
-            }
             val credentials = requireCredentials(PendingCredentialAction.SmartCache) ?: return@launch
             val romTreeUris = loadSmartCacheRomSafUris()
             val startingMessage = str(R.string.smart_cache_starting)
@@ -1620,28 +1694,29 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             var completionMessage: String? = null
             var completionDuration = SnackbarDuration.Indefinite
             try {
-                val userAgent = withContext(Dispatchers.IO) { proxyUserAgent(loadUserAgent(db)) }
-                val result = withContext(Dispatchers.IO) {
+                val (result, firstBatch) = hashThenCacheFirstBatch(
+                    credentials,
+                    onAbort = ::cancelSmartCache,
+                    shouldCache = { result: SmartCacheRunResult -> result.queued > 0 }
+                ) { onHashed, onQueued ->
                     runSmartCache(
                         context = app,
-                        credentials = credentials,
-                        userAgent = userAgent,
                         db = db,
                         emulatorSupport = loadEmulatorSupport(app),
                         retroArchTreeUri = loadSafUri(),
                         dolphinTreeUri = loadDolphinSafUri(),
                         ppssppTreeUri = loadPpssppSafUri(),
                         romTreeUris = romTreeUris,
-                        consentAlreadyRequested = consentRequestedPackages.toSet()
+                        consentAlreadyRequested = consentRequestedPackages.toSet(),
+                        confirmLargeQueue = ::confirmLargeQueue,
+                        onQueued = onQueued
                     ) { current, total, label ->
-                        val progressMessage = str(R.string.smart_cache_progress, current, total, label)
-                        _state.value = _state.value.copy(scanProgress = progressMessage)
-                        SnackbarManager.showProgress(progressMessage, onAbort = ::cancelSmartCache)
+                        onHashed(CachingProgress(CachingPhase.Hashing, current, total, label))
                     }
                 }
                 Log.i(
                     "RAProxy/SmartCache",
-                    "startSmartCache result matched=${result.matched} total=${result.total} skipped=${result.skipped} limitReached=${result.limitReached} needsSafGrant=${result.needsSafGrant} message=${result.message}"
+                    "startSmartCache result cached=${firstBatch.cached} total=${result.total} skipped=${result.skipped} queued=${result.queued} needsSafGrant=${result.needsSafGrant} message=${result.message}"
                 )
                 if (result.requiredConsentPackages.isNotEmpty()) {
                     consentRequestedPackages += result.requiredConsentPackages
@@ -1718,11 +1793,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     "no_recent_games" -> str(R.string.smart_cache_no_recent_games)
                     "no_readable_candidates" -> str(R.string.smart_cache_no_readable_candidates)
                     "no_ra_matches" -> str(R.string.smart_cache_no_ra_matches)
-                    else -> if (result.limitReached) {
-                        str(R.string.smart_cache_complete_limit, result.matched, result.total, result.skipped, MAX_CACHED_GAMES)
-                    } else {
-                        str(R.string.smart_cache_complete, result.matched, result.total, result.skipped)
-                    }
+                    "cancelled" -> str(R.string.smart_cache_aborted)
+                    else -> cachingResultMessage(R.string.smart_cache_complete, firstBatch, result.skipped)
                 }
                 completionMessage = message
             } catch (c: CancellationException) {
@@ -1734,6 +1806,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 SnackbarManager.showError(t.message ?: "Smart Cache failed.")
             } finally {
                 Log.i("RAProxy/SmartCache", "startSmartCache clearing progress UI")
+                CachingNotifications.report(app, null)
                 _state.value = _state.value.copy(scanInProgress = false, scanProgress = null)
                 SnackbarManager.showProgress(null)
             }

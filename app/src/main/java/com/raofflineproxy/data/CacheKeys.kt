@@ -10,6 +10,8 @@ object CacheKeys {
     const val PREFIX_STARTSESSION = "startsession:"
     const val PREFIX_GAMEID = "gameid:"
     const val PREFIX_LAST_PLAYED = "lastplayed:"
+    const val PREFIX_CACHE_QUEUE = "cachequeue:"
+    const val CACHE_BUDGET = "cachebudget"
 
     fun login(user: String) = "$PREFIX_LOGIN$user"
     fun gameId(hash: String) = "$PREFIX_GAMEID$hash"
@@ -23,6 +25,7 @@ object CacheKeys {
     fun startSession(gameId: Int, user: String) = "$PREFIX_STARTSESSION$gameId:${user.lowercase()}:0"
     fun startSession(gameId: String, user: String) = "$PREFIX_STARTSESSION$gameId:${user.lowercase()}:0"
     fun lastPlayed(gameId: Int) = "$PREFIX_LAST_PLAYED$gameId"
+    fun cacheQueue(hash: String) = "$PREFIX_CACHE_QUEUE${hash.lowercase()}"
 
     fun parseGameIdFromPatchKey(cacheKey: String): Int? =
         cacheKey.removePrefix(PREFIX_PATCH).split(":").firstOrNull()?.toIntOrNull()

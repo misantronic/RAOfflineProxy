@@ -7,7 +7,6 @@ import android.os.Environment
 import android.provider.DocumentsContract
 import android.util.Log
 import androidx.documentfile.provider.DocumentFile
-import com.raofflineproxy.MAX_CACHED_GAMES
 import com.raofflineproxy.PrefsConstants
 import com.raofflineproxy.data.AppDatabase
 import com.raofflineproxy.proxy.hash.RomHashInput
@@ -18,7 +17,6 @@ import com.raofflineproxy.ui.Emulator
 import com.raofflineproxy.ui.EmulatorSupport
 import com.raofflineproxy.ui.RETROARCH_PACKAGE_CANDIDATES
 import com.raofflineproxy.ui.UI_PPSSPP_PACKAGE_CANDIDATES
-import com.raofflineproxy.applyScanBatchCooldown
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -194,10 +192,9 @@ internal data class SmartCacheStrategyResult(
 )
 
 internal data class SmartCacheRunResult(
-    val matched: Int,
     val total: Int,
     val skipped: Int,
-    val limitReached: Boolean,
+    val queued: Int = 0,
     val needsSafGrant: Boolean = false,
     val message: String? = null,
     val requiredRomGrantPaths: List<String> = emptyList(),
@@ -693,8 +690,6 @@ private fun queryArmsxRomLibrary(context: Context, authority: String, emulator: 
 
 internal suspend fun runSmartCache(
     context: Context,
-    credentials: LoginCredentials,
-    userAgent: String,
     db: AppDatabase,
     emulatorSupport: EmulatorSupport,
     retroArchTreeUri: Uri?,
@@ -705,6 +700,8 @@ internal suspend fun runSmartCache(
      *  forever the moment someone taps Deny, so a package that has been put to the user once
      *  is treated as answered and the run proceeds without it. */
     consentAlreadyRequested: Set<String> = emptySet(),
+    confirmLargeQueue: suspend (QueueEstimate) -> Boolean = { true },
+    onQueued: (key: String) -> Unit = {},
     onProgress: (current: Int, total: Int, label: String) -> Unit
 ): SmartCacheRunResult {
     Log.i(
@@ -713,26 +710,13 @@ internal suspend fun runSmartCache(
     )
     val cachedGameIds = loadCachedGameIds(db)
     val cachedRomPaths = loadCachedRomPaths(db)
-    val remainingSlots = MAX_CACHED_GAMES - cachedGameIds.size
-    if (remainingSlots <= 0) {
-        Log.i(TAG, "runSmartCache aborted because cache is already full")
-        return SmartCacheRunResult(
-            matched = 0,
-            total = 0,
-            skipped = 0,
-            limitReached = true
-        )
-    }
-
     val activeStrategies = listOf(RetroArchSmartCacheStrategy, DolphinSmartCacheStrategy, PpssppSmartCacheStrategy, WatermelonDsSmartCacheStrategy, Armsx1SmartCacheStrategy, Armsx2SmartCacheStrategy)
         .filter { strategy -> strategy.isEnabled(context, emulatorSupport) }
     if (activeStrategies.isEmpty()) {
         Log.i(TAG, "runSmartCache found no active strategies")
         return SmartCacheRunResult(
-            matched = 0,
             total = 0,
             skipped = 0,
-            limitReached = false,
             message = "no_strategies"
         )
     }
@@ -777,10 +761,8 @@ internal suspend fun runSmartCache(
         // then sits through a second full pass to actually use it.
         Log.i(TAG, "runSmartCache stopping before caching to request companion consent=$unaskedConsentPackages")
         return SmartCacheRunResult(
-            matched = 0,
             total = 0,
             skipped = 0,
-            limitReached = false,
             message = "needs_companion_consent",
             requiredConsentPackages = unaskedConsentPackages.toList()
         )
@@ -792,10 +774,8 @@ internal suspend fun runSmartCache(
             "runSmartCache stopping before caching because strategy access is still required targets=$requiredSafGrantTargets message=$strategyMessage"
         )
         return SmartCacheRunResult(
-            matched = 0,
             total = 0,
             skipped = 0,
-            limitReached = false,
             needsSafGrant = true,
             message = strategyMessage ?: when {
                 SmartCacheEmulator.RetroArch in requiredSafGrantTargets -> "needs_saf_grant"
@@ -809,10 +789,8 @@ internal suspend fun runSmartCache(
     if (discoveredCandidates.isEmpty()) {
         Log.i(TAG, "runSmartCache found no discovered candidates strategyMessage=$strategyMessage")
         return SmartCacheRunResult(
-            matched = 0,
             total = 0,
             skipped = 0,
-            limitReached = false,
             needsSafGrant = false,
             message = strategyMessage ?: "no_recent_games",
             requiredSafGrantTargets = requiredSafGrantTargets.toList()
@@ -840,10 +818,8 @@ internal suspend fun runSmartCache(
     if (preflight.requiredRomGrantPaths.isNotEmpty()) {
         Log.i(TAG, "runSmartCache requesting ROM tree grants paths=${preflight.requiredRomGrantPaths}")
         return SmartCacheRunResult(
-            matched = 0,
             total = candidates.size,
             skipped = 0,
-            limitReached = false,
             needsSafGrant = true,
             message = "needs_rom_saf_grant",
             requiredRomGrantPaths = preflight.requiredRomGrantPaths,
@@ -853,16 +829,14 @@ internal suspend fun runSmartCache(
     if (preflight.resolved.isEmpty()) {
         Log.i(TAG, "runSmartCache found no cacheable candidates after preflight")
         return SmartCacheRunResult(
-            matched = 0,
             total = 0,
             skipped = 0,
-            limitReached = false,
             message = "no_readable_candidates",
             requiredRomGrantPaths = emptyList()
         )
     }
 
-    val candidateCap = minOf(remainingSlots, MAX_SMART_CACHE_FILES)
+    val candidateCap = MAX_SMART_CACHE_FILES
     val resolvedCandidates = selectSmartCacheCandidates(preflight.resolved, candidateCap)
     val droppedByCap = preflight.resolved.filterNot { it in resolvedCandidates }
     resolvedCandidates.forEach { resolvedCandidate ->
@@ -879,25 +853,36 @@ internal suspend fun runSmartCache(
     }
     Log.i(
         TAG,
-        "runSmartCache readable cap=$candidateCap resolved=${preflight.resolved.size} capped=${resolvedCandidates.size} remainingSlots=$remainingSlots retroArchSelected=${resolvedCandidates.count { it.candidate.emulator == SmartCacheEmulator.RetroArch }} dolphinSelected=${resolvedCandidates.count { it.candidate.emulator == SmartCacheEmulator.Dolphin }} ppssppSelected=${resolvedCandidates.count { it.candidate.emulator == SmartCacheEmulator.Ppsspp }} watermelonDsSelected=${resolvedCandidates.count { it.candidate.emulator == SmartCacheEmulator.WatermelonDs }} armsx1Selected=${resolvedCandidates.count { it.candidate.emulator == SmartCacheEmulator.Armsx1 }} armsx2Selected=${resolvedCandidates.count { it.candidate.emulator == SmartCacheEmulator.Armsx2 }}"
+        "runSmartCache readable cap=$candidateCap resolved=${preflight.resolved.size} capped=${resolvedCandidates.size} retroArchSelected=${resolvedCandidates.count { it.candidate.emulator == SmartCacheEmulator.RetroArch }} dolphinSelected=${resolvedCandidates.count { it.candidate.emulator == SmartCacheEmulator.Dolphin }} ppssppSelected=${resolvedCandidates.count { it.candidate.emulator == SmartCacheEmulator.Ppsspp }} watermelonDsSelected=${resolvedCandidates.count { it.candidate.emulator == SmartCacheEmulator.WatermelonDs }} armsx1Selected=${resolvedCandidates.count { it.candidate.emulator == SmartCacheEmulator.Armsx1 }} armsx2Selected=${resolvedCandidates.count { it.candidate.emulator == SmartCacheEmulator.Armsx2 }}"
     )
 
     val relevantTotal = resolvedCandidates.size
+    val estimate = estimateQueueForPaths(
+        db,
+        resolvedCandidates.map { it.candidate.path },
+        cachedRomPaths,
+        CacheQueue.queuedRomPaths(db)
+    )
+    if (estimate.needsConfirmation && !confirmLargeQueue(estimate)) {
+        return SmartCacheRunResult(
+            total = relevantTotal,
+            skipped = 0,
+            message = "cancelled",
+            requiredSafGrantTargets = requiredSafGrantTargets.toList()
+        )
+    }
     val queueResult = executeResolvedSmartCacheCandidates(
         context = context,
-        credentials = credentials,
-        userAgent = userAgent,
         db = db,
         candidates = resolvedCandidates,
+        onQueued = onQueued,
         onProgress = onProgress
     )
 
-    if (queueResult.matched == 0 && queueResult.skipped == relevantTotal && !queueResult.limitReached) {
+    if (queueResult.queued == 0 && queueResult.skipped == relevantTotal) {
         return SmartCacheRunResult(
-            matched = 0,
             total = relevantTotal,
             skipped = queueResult.skipped,
-            limitReached = false,
             needsSafGrant = false,
             message = strategyMessage ?: "no_ra_matches",
             requiredSafGrantTargets = requiredSafGrantTargets.toList()
@@ -905,17 +890,16 @@ internal suspend fun runSmartCache(
     }
 
     return SmartCacheRunResult(
-        matched = queueResult.matched,
         total = relevantTotal,
         skipped = queueResult.skipped,
-        limitReached = queueResult.limitReached,
+        queued = queueResult.queued,
         needsSafGrant = false,
         message = null,
         requiredSafGrantTargets = requiredSafGrantTargets.toList()
     ).also {
         Log.i(
             TAG,
-            "runSmartCache complete matched=${it.matched} total=${it.total} skipped=${it.skipped} limitReached=${it.limitReached} needsSafGrant=${it.needsSafGrant} message=${it.message}"
+            "runSmartCache complete total=${it.total} skipped=${it.skipped} queued=${it.queued} needsSafGrant=${it.needsSafGrant} message=${it.message}"
         )
     }
 }
@@ -1510,27 +1494,17 @@ private fun formatSmartCacheTimestamp(timestamp: Long): String =
 
 private suspend fun executeResolvedSmartCacheCandidates(
     context: Context,
-    credentials: LoginCredentials,
-    userAgent: String,
     db: AppDatabase,
     candidates: List<ResolvedSmartCacheCandidate>,
+    onQueued: (key: String) -> Unit,
     onProgress: (current: Int, total: Int, label: String) -> Unit
 ): ScanResult {
     val cachedGameIds = loadCachedGameIds(db)
     val total = candidates.size
-    var matched = 0
     var skipped = 0
-    var limitReached = false
+    var queued = 0
 
     for ((index, resolvedCandidate) in candidates.withIndex()) {
-        if (cachedGameIds.size >= MAX_CACHED_GAMES) {
-            skipped += total - index
-            limitReached = true
-            break
-        }
-
-        applyScanBatchCooldown(index, TAG)
-
         val candidate = resolvedCandidate.candidate
         val label = candidate.title?.takeIf { it.isNotBlank() } ?: candidate.path.substringAfterLast('/')
         onProgress(index + 1, total, label)
@@ -1545,50 +1519,16 @@ private suspend fun executeResolvedSmartCacheCandidates(
             continue
         }
 
-        val resolved = resolveGameId(context, candidateHashes, credentials, userAgent, db)
-        if (resolved == null) {
-            Log.i(
-                TAG,
-                "${candidate.emulator} candidate dropped title=${candidate.title} reason=no-gameid path=${candidate.path} hashes=$candidateHashes lastModifiedAt=${candidate.lastModifiedAt} lastModifiedText=${candidate.lastModifiedAt?.let(::formatSmartCacheTimestamp)}"
-            )
+        if (enqueueRomIfNeeded(db, candidateHashes, cachedGameIds, candidate.path, label, onQueued)) {
+            Log.i(TAG, "${candidate.emulator} candidate queued title=${candidate.title} path=${candidate.path}")
+            queued++
+        } else {
+            Log.i(TAG, "${candidate.emulator} candidate skipped title=${candidate.title} reason=answered-locally path=${candidate.path}")
             skipped++
-            continue
         }
-        val (hash, gameId) = resolved
-
-        val gameIdString = gameId.toString()
-        if (gameIdString in cachedGameIds) {
-            Log.i(
-                TAG,
-                "${candidate.emulator} candidate dropped title=${candidate.title} reason=already-cached path=${candidate.path} gameId=$gameId lastModifiedAt=${candidate.lastModifiedAt} lastModifiedText=${candidate.lastModifiedAt?.let(::formatSmartCacheTimestamp)}"
-            )
-            skipped++
-            continue
-        }
-
-        cacheGame(
-            context = context,
-            gameId = gameId,
-            creds = credentials,
-            userAgent = userAgent,
-            db = db,
-            romHash = hash,
-            sourceRomPath = candidate.path,
-        )
-        Log.i(
-            TAG,
-            "${candidate.emulator} candidate cached title=${candidate.title} path=${candidate.path} gameId=$gameId hash=$hash lastModifiedAt=${candidate.lastModifiedAt} lastModifiedText=${candidate.lastModifiedAt?.let(::formatSmartCacheTimestamp)}"
-        )
-        cachedGameIds.add(gameIdString)
-        matched++
     }
 
-    return ScanResult(
-        matched = matched,
-        total = total,
-        skipped = skipped,
-        limitReached = limitReached
-    )
+    return ScanResult(total = total, skipped = skipped, queued = queued)
 }
 
 private fun hashResolvedCandidate(context: Context, candidate: ResolvedSmartCacheCandidate): List<String> = when {
