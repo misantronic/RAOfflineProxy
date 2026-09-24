@@ -5,6 +5,7 @@ import com.raofflineproxy.data.CacheEntry
 import com.raofflineproxy.data.CacheKeys
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.sync.Mutex
+import java.util.concurrent.atomic.AtomicInteger
 import org.json.JSONArray
 import org.json.JSONObject
 import kotlin.math.ceil
@@ -80,6 +81,20 @@ internal fun estimateQueue(
 internal object CacheQueue {
     // The app's first-batch drain and the service worker share one queue and one budget.
     val drainLock = Mutex()
+    private val activeBulkRuns = AtomicInteger()
+
+    /** True while Add ROM, Scan folder or Smart Cache hashes and runs its first batch; the
+     *  service worker stands down meanwhile so it never drains a queue that is still filling. */
+    val bulkRunActive: Boolean get() = activeBulkRuns.get() > 0
+
+    suspend fun <T> duringBulkRun(block: suspend () -> T): T {
+        activeBulkRuns.incrementAndGet()
+        try {
+            return block()
+        } finally {
+            activeBulkRuns.decrementAndGet()
+        }
+    }
 
     /** Returns false when the ROM was already waiting in the queue. */
     suspend fun enqueue(db: AppDatabase, rom: QueuedRom): Boolean =

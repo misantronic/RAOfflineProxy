@@ -1402,11 +1402,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     ): Pair<T, FirstBatch> {
         val queuedThisRun = ConcurrentHashMap.newKeySet<String>()
         try {
-            val result = withContext(Dispatchers.IO) {
-                hashing({ progress -> showCachingProgress(progress, onAbort) }, { key -> queuedThisRun += key })
+            return CacheQueue.duringBulkRun {
+                val result = withContext(Dispatchers.IO) {
+                    hashing({ progress -> showCachingProgress(progress, onAbort) }, { key -> queuedThisRun += key })
+                }
+                if (!shouldCache(result)) return@duringBulkRun result to FirstBatch()
+                result to withContext(Dispatchers.IO) { drainFirstBatch(credentials, onAbort) }
             }
-            if (!shouldCache(result)) return result to FirstBatch()
-            return result to withContext(Dispatchers.IO) { drainFirstBatch(credentials, onAbort) }
         } catch (c: CancellationException) {
             withContext(NonCancellable + Dispatchers.IO) { CacheQueue.removeKeys(db, queuedThisRun) }
             throw c
@@ -1416,7 +1418,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private suspend fun drainFirstBatch(credentials: LoginCredentials, onAbort: (() -> Unit)?): FirstBatch {
         val app = getApplication<Application>()
         val userAgent = proxyUserAgent(loadUserAgent(db))
-        val result = drainCacheQueue(app, db, credentials, userAgent, shouldPause = { false }) { current, total, label ->
+        val result = drainCacheQueue(app, db, credentials, userAgent, shouldPause = { false }, waitForLock = true) { current, total, label ->
             showCachingProgress(CachingProgress(CachingPhase.Caching, current, total, label), onAbort)
         }
         return FirstBatch(result.cached, result.noMatch)

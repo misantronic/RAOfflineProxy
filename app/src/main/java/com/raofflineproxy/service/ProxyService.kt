@@ -289,7 +289,8 @@ class ProxyService : Service() {
         }
     }
 
-    private fun canWorkOnCacheQueue(): Boolean = isServerReachable() && onlineRefreshIdleDelayMs() <= 0
+    private fun canWorkOnCacheQueue(): Boolean =
+        !CacheQueue.bulkRunActive && isServerReachable() && onlineRefreshIdleDelayMs() <= 0
 
     private suspend fun periodicRefreshLoop() {
         while (true) {

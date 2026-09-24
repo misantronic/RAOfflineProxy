@@ -532,9 +532,11 @@ internal suspend fun drainCacheQueue(
     creds: LoginCredentials,
     userAgent: String,
     shouldPause: () -> Boolean,
+    waitForLock: Boolean = false,
     onItem: suspend (current: Int, total: Int, label: String) -> Unit = { _, _, _ -> }
 ): QueueDrainResult {
-    if (!CacheQueue.drainLock.tryLock()) return QueueDrainResult(0, 0, DrainStop.Busy)
+    if (waitForLock) CacheQueue.drainLock.lock()
+    else if (!CacheQueue.drainLock.tryLock()) return QueueDrainResult(0, 0, DrainStop.Busy)
     try {
         var cached = 0
         var noMatch = 0
