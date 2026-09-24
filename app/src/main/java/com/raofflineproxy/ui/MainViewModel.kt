@@ -1498,6 +1498,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             db.cacheDao().deleteByKeyPrefix(CacheKeys.PREFIX_STARTSESSION)
             db.cacheDao().deleteByKeyPrefix(CacheKeys.PREFIX_LAST_PLAYED)
             db.cacheDao().deleteByKeyPrefix(CacheKeys.PREFIX_CACHE_QUEUE)
+            db.cacheDao().deleteByKey(CacheKeys.CACHE_BUDGET)
             clearAllCachedImages(application)
             PrefsConstants.clearAppUpdateLastCheckedAt(application)
             _state.value = _state.value.copy(
