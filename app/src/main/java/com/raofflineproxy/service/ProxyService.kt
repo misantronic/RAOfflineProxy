@@ -245,7 +245,7 @@ class ProxyService : Service() {
             CacheQueueAlarm.cancel(this)
             return CACHE_QUEUE_POLL_MS
         }
-        if (!canWorkOnCacheQueue()) return CACHE_QUEUE_POLL_MS
+        if (!canWorkOnCacheQueue()) return deferCacheQueueWhileActive()
         val credentials = loadLoginCredentials(db) ?: return CACHE_QUEUE_POLL_MS
         if (credentials.token == cacheQueueRejectedToken) return CACHE_QUEUE_POLL_MS
         val userAgent = proxyUserAgent(loadUserAgent(db))
@@ -287,8 +287,24 @@ class ProxyService : Service() {
                 CacheQueueAlarm.cancel(this)
                 CACHE_QUEUE_POLL_MS
             }
+            DrainStop.Paused -> deferCacheQueueWhileActive()
             else -> CACHE_QUEUE_POLL_MS
         }
+    }
+
+    /** The queue waits while a game is played. The alarm brings it back once the proxy has been
+     *  idle long enough, so it still resumes when the device falls asleep right after playing. */
+    private fun deferCacheQueueWhileActive(): Long {
+        val idleDelayMs = onlineRefreshIdleDelayMs()
+        if (idleDelayMs <= 0) return CACHE_QUEUE_POLL_MS
+        val resumeAt = maxOf(System.currentTimeMillis() + idleDelayMs, nextQueueWindowAt ?: 0L)
+        CacheQueueAlarm.schedule(this, resumeAt)
+        if (nextQueueWindowAt != resumeAt) {
+            nextQueueWindowAt = resumeAt
+            updateNotification()
+            Log.i(TAG, "Cache queue deferred while the proxy is active, next attempt at ${java.text.DateFormat.getTimeInstance().format(java.util.Date(resumeAt))}")
+        }
+        return (resumeAt - System.currentTimeMillis()).coerceAtLeast(1_000L)
     }
 
     private fun canWorkOnCacheQueue(): Boolean =
