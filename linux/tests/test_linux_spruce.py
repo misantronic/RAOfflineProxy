@@ -137,6 +137,21 @@ class SpruceDetectionTests(unittest.TestCase):
                 with patch.object(config, "running_on_spruce", return_value=False):
                     self.assertTrue(config.running_on_darkos())
 
+    def test_spruce_platform_prefers_the_platform_spruce_exports(self) -> None:
+        # spruce's own detection is the source of truth and grows with each new device;
+        # a dArkMoss unit other than the RGB30 was reported as an RGB30 here.
+        with patch.object(config, "running_on_spruce", return_value=True):
+            with patch.dict(os.environ, {"SPRUCE_PLATFORM": "Miniloong"}, clear=False):
+                platform_name = self._platform_for(
+                    "CPU part\t: 0xd05\n", os_release='OS_NAME="DARKMOSS"\n'
+                )
+        self.assertEqual(platform_name, "Miniloong")
+
+    def test_spruce_platform_ignores_the_environment_off_spruce(self) -> None:
+        with patch.object(config, "running_on_spruce", return_value=False):
+            with patch.dict(os.environ, {"SPRUCE_PLATFORM": "Miniloong"}, clear=False):
+                self.assertEqual(self._platform_for("CPU part\t: 0xd05\n"), "Flip")
+
     def test_spruce_platform_defaults_to_miyoo_mini(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             cpuinfo_path = Path(temp_dir) / "cpuinfo"

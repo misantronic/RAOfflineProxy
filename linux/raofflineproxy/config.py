@@ -180,6 +180,14 @@ def _spruce_rk3566_platform() -> str:
 
 
 def spruce_platform() -> str:
+    # spruce's app contract (appEnv.sh, sourced by common.sh) exports the platform it
+    # detected, and its device table is the one that grows with each new device; the copy
+    # below is only a fallback for a proxy started outside that environment.
+    if running_on_spruce():
+        platform_name = os.environ.get("SPRUCE_PLATFORM", "").strip()
+        if platform_name:
+            return platform_name
+
     try:
         info = CPUINFO_PATH.read_text(encoding="utf-8", errors="replace")
     except OSError:
