@@ -1,5 +1,6 @@
 package com.raofflineproxy.update
 
+import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
@@ -140,6 +141,20 @@ class AppUpdateCheckerTest {
         val result = AppUpdateChecker.selectLatestUpdate("1.3.0-alpha1-nightly.57", releases)
 
         assertEquals("1.3.0-alpha2-nightly.60", result?.versionName)
+    }
+
+    @Test
+    fun nightlyVersionName_readsVersionAfterPlatformLabel() {
+        val release = JSONObject().put("name", "Android 1.3.0-alpha1-nightly.57")
+
+        assertEquals("1.3.0-alpha1-nightly.57", AppUpdateChecker.nightlyVersionName(release))
+    }
+
+    @Test
+    fun nightlyVersionName_acceptsBareVersionTitle() {
+        val release = JSONObject().put("name", "1.3.0-alpha1-nightly.57")
+
+        assertEquals("1.3.0-alpha1-nightly.57", AppUpdateChecker.nightlyVersionName(release))
     }
 
     @Test

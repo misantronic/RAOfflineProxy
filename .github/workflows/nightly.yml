@@ -106,7 +106,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          .github/scripts/publish-nightly.sh nightly-android "${{ steps.version.outputs.version }}" \
+          .github/scripts/publish-nightly.sh nightly-android Android "${{ steps.version.outputs.version }}" \
             "app/build/outputs/apk/release/RAOfflineProxy-v${{ steps.version.outputs.version }}.apk"
 
   linux:
@@ -187,7 +187,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           version="${{ steps.version.outputs.version }}"
-          .github/scripts/publish-nightly.sh nightly-linux "${version}" \
+          .github/scripts/publish-nightly.sh nightly-linux Linux "${version}" \
             "linux/knulli/dist/RAOfflineProxy-Knulli-v${version}-Install.sh" \
             "linux/onion/dist/RAOfflineProxy-Onion-v${version}.zip" \
             "linux/spruce/dist/RAOfflineProxy-Spruce-v${version}.zip" \

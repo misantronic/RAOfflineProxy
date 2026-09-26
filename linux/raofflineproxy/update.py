@@ -173,7 +173,7 @@ def fetch_releases(platform: str) -> list[ReleaseCandidate] | None:
     accepted = [
         candidate
         for release in data
-        if (candidate := parse_release(platform, release, version_field="tag_name")) is not None
+        if (candidate := parse_release(platform, release, str(release.get("tag_name") or ""))) is not None
     ]
     LOGGER.info("Fetched %s %s release candidates", len(accepted), platform)
     return accepted
@@ -185,7 +185,7 @@ def fetch_nightly_releases(platform: str) -> list[ReleaseCandidate]:
     if not isinstance(data, dict):
         return []
 
-    candidate = parse_release(platform, data, version_field="name")
+    candidate = parse_release(platform, data, nightly_version_name(data))
     if candidate is None or not candidate.parsed_version.is_nightly:
         LOGGER.info("No usable nightly release for platform=%s", platform)
         return []
@@ -249,13 +249,18 @@ def fetch_github_json(url: str) -> object | None:
         return None
 
 
-def parse_release(platform: str, release: dict, version_field: str) -> ReleaseCandidate | None:
+def nightly_version_name(release: dict) -> str:
+    title = str(release.get("name") or "").strip()
+    return title.rsplit(" ", 1)[-1]
+
+
+def parse_release(platform: str, release: dict, raw_version_name: str) -> ReleaseCandidate | None:
     if release.get("draft"):
         LOGGER.debug("Skipping draft release")
         return None
 
     tag_name = str(release.get("tag_name") or "").strip()
-    version_name = str(release.get(version_field) or "").strip().removeprefix("v")
+    version_name = raw_version_name.strip().removeprefix("v")
     parsed_version = parse_version(version_name)
     if parsed_version is None:
         LOGGER.debug("Skipping release tag=%s unsupported version format", tag_name)
