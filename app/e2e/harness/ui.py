@@ -54,7 +54,7 @@ class Ui:
         for node in root.iter("node"):
             if node.get("resource-id") != qualified:
                 continue
-            if text is not None and node.get("text") != text:
+            if text is not None and (node.get("text") or "").casefold() != text.casefold():
                 continue
             return dict(node.attrib)
         return None

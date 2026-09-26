@@ -30,7 +30,7 @@ Current Notification Manager state:
 UI_DUMP = """<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
 <hierarchy rotation="0">
   <node index="0" text="" resource-id="com.raofflineproxy:id/drawer_layout" enabled="true" bounds="[0,0][1080,2400]">
-    <node index="1" text="Start proxy" resource-id="com.raofflineproxy:id/btn_start_proxy" enabled="false" bounds="[100,1200][980,1340]" />
+    <node index="1" text="START PROXY" resource-id="com.raofflineproxy:id/btn_start_proxy" enabled="false" bounds="[100,1200][980,1340]" />
   </node>
 </hierarchy>
 """
@@ -69,6 +69,7 @@ def test_ui_finds_views_and_taps_their_centre():
 
     node = ui.find("btn_start_proxy", text="Start proxy")
     assert node is not None and node["enabled"] == "false"
+    assert ui.find("btn_start_proxy", text="START PROXY") == node
     assert ui.find("btn_start_proxy", text="Stop proxy") is None
 
     ui.tap(node)
