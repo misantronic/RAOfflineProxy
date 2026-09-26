@@ -3,6 +3,8 @@ package com.raofflineproxy.proxy
 import android.content.Context
 import android.util.Log
 import com.raofflineproxy.sharedHttpClient
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import okhttp3.Request
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
@@ -36,6 +38,23 @@ fun scheduleImageDownload(
             }
         }
     }.onFailure { inFlightDownloads.remove(dedupeKey) }
+}
+
+internal data class ImageDownload(val url: String, val path: String)
+
+/** Downloads one after another in the caller's coroutine, for the cache queue: the batch holds
+ *  the wake lock until its images are done instead of leaving a backlog that keeps the device
+ *  awake long after. */
+internal suspend fun downloadImagesInline(
+    context: Context,
+    images: List<ImageDownload>,
+    userAgent: String,
+    gameId: Int
+) = withContext(Dispatchers.IO) {
+    images.distinctBy { it.path }.forEach { image ->
+        if (resolveCachedStaticAsset(context, image.path) != null) return@forEach
+        downloadStaticImage(context, image.url, image.path, userAgent, gameId)
+    }
 }
 
 private fun imageCacheRoot(context: Context): File = File(context.filesDir, IMAGE_CACHE_DIR)

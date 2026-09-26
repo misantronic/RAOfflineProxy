@@ -43,7 +43,7 @@ You can cache games in either of these ways:
 
 The app will identify each ROM, look it up on RetroAchievements, and save all the achievement data for that game.
 
-Manual caching is capped at **100 games** to limit bulk server requests to RetroAchievements. The **Cached Games** screen shows the current total as `X/100 cached` while the proxy is running.
+There is no limit on how many games you can cache. To limit bulk server requests to RetroAchievements, manual caching adds up to **100 new games every 30 minutes** and queues the rest in the background. See [Caching Pace](./caching-games#caching-pace).
 
 See [Caching Games](./caching-games) for full details.
 
