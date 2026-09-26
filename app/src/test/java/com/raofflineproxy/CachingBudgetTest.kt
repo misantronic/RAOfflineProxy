@@ -4,6 +4,7 @@ import com.raofflineproxy.data.CacheKeys
 import com.raofflineproxy.proxy.BudgetWindow
 import com.raofflineproxy.proxy.CACHE_BUDGET_LIMIT
 import com.raofflineproxy.proxy.CACHE_BUDGET_WINDOW_MS
+import com.raofflineproxy.proxy.CACHE_LOOKUP_LIMIT
 import com.raofflineproxy.proxy.CachedGameIdLookup
 import com.raofflineproxy.proxy.QueuedRom
 import com.raofflineproxy.proxy.classifyCachedGameId
@@ -22,36 +23,55 @@ class CachingBudgetTest {
     // ── Budget window ──
 
     @Test
-    fun budget_grantsUpToLimitThenDenies() {
+    fun budget_grantsGamesUpToLimitThenDenies() {
         var window = BudgetWindow()
         repeat(CACHE_BUDGET_LIMIT) {
-            val (granted, next) = window.tryAcquire(start)
+            val (granted, next) = window.tryAcquireGame(start)
             assertTrue(granted)
             window = next
         }
-        val (granted, _) = window.tryAcquire(start + 1)
-        assertFalse(granted)
+        assertFalse(window.tryAcquireGame(start + 1).first)
+        assertFalse(window.tryAcquireLookup(start + 1).first)
+    }
+
+    @Test
+    fun budget_lookupsDoNotUseGames() {
+        var window = BudgetWindow()
+        repeat(CACHE_BUDGET_LIMIT) {
+            val (granted, next) = window.tryAcquireLookup(start)
+            assertTrue(granted)
+            window = next
+        }
+        assertEquals(CACHE_BUDGET_LIMIT, window.remaining(start))
+        assertTrue(window.tryAcquireGame(start).first)
+    }
+
+    @Test
+    fun budget_closesWhenLookupsRunOut() {
+        val window = BudgetWindow(windowStart = start, used = 10, lookups = CACHE_LOOKUP_LIMIT)
+        assertFalse(window.tryAcquireLookup(start + 1).first)
+        assertEquals(0, window.remaining(start + 1))
+        assertEquals(start + CACHE_BUDGET_WINDOW_MS, window.nextAvailableAt(start + 1))
     }
 
     @Test
     fun budget_resetsAfterWindow() {
-        val full = BudgetWindow(windowStart = start, used = CACHE_BUDGET_LIMIT)
-        assertFalse(full.tryAcquire(start + CACHE_BUDGET_WINDOW_MS - 1).first)
-        val (granted, next) = full.tryAcquire(start + CACHE_BUDGET_WINDOW_MS)
+        val full = BudgetWindow(windowStart = start, used = CACHE_BUDGET_LIMIT, lookups = CACHE_LOOKUP_LIMIT)
+        assertFalse(full.tryAcquireGame(start + CACHE_BUDGET_WINDOW_MS - 1).first)
+        val (granted, next) = full.tryAcquireLookup(start + CACHE_BUDGET_WINDOW_MS)
         assertTrue(granted)
-        assertEquals(1, next.used)
-        assertEquals(start + CACHE_BUDGET_WINDOW_MS, next.windowStart)
+        assertEquals(BudgetWindow(windowStart = start + CACHE_BUDGET_WINDOW_MS, lookups = 1), next)
     }
 
     @Test
     fun budget_clockJumpingBackStartsFreshWindow() {
         val full = BudgetWindow(windowStart = start, used = CACHE_BUDGET_LIMIT)
-        assertTrue(full.tryAcquire(start - 1).first)
+        assertTrue(full.tryAcquireGame(start - 1).first)
     }
 
     @Test
     fun budget_remainingAndNextAvailable() {
-        val window = BudgetWindow(windowStart = start, used = 40)
+        val window = BudgetWindow(windowStart = start, used = 40, lookups = 120)
         assertEquals(CACHE_BUDGET_LIMIT - 40, window.remaining(start + 10))
         assertEquals(start + 10, window.nextAvailableAt(start + 10))
 
@@ -62,8 +82,9 @@ class CachingBudgetTest {
 
     @Test
     fun budget_jsonRoundTripAndGarbage() {
-        val window = BudgetWindow(windowStart = start, used = 7)
+        val window = BudgetWindow(windowStart = start, used = 7, lookups = 21)
         assertEquals(window, BudgetWindow.fromJson(window.toJson()))
+        assertEquals(BudgetWindow(start, 7, 0), BudgetWindow.fromJson("""{"windowStart":$start,"used":7}"""))
         assertEquals(BudgetWindow(), BudgetWindow.fromJson("not json"))
         assertEquals(BudgetWindow(), BudgetWindow.fromJson(null))
     }
@@ -165,23 +186,23 @@ class CachingBudgetTest {
 
     @Test
     fun windowProgress_boundedByQueue() {
-        assertEquals(3, windowProgressTotal(requestedBefore = 0, queuedIncludingCurrent = 3, budgetLeftAfterCurrent = 99))
+        assertEquals(3, windowProgressTotal(cachedBefore = 0, queuedIncludingCurrent = 3, gamesLeft = 100))
     }
 
     @Test
     fun windowProgress_boundedByBudget() {
-        assertEquals(100, windowProgressTotal(requestedBefore = 0, queuedIncludingCurrent = 250, budgetLeftAfterCurrent = 99))
+        assertEquals(100, windowProgressTotal(cachedBefore = 0, queuedIncludingCurrent = 250, gamesLeft = 100))
     }
 
     @Test
     fun windowProgress_staysStableWhileDraining() {
-        assertEquals(100, windowProgressTotal(requestedBefore = 40, queuedIncludingCurrent = 210, budgetLeftAfterCurrent = 59))
-        assertEquals(100, windowProgressTotal(requestedBefore = 99, queuedIncludingCurrent = 151, budgetLeftAfterCurrent = 0))
+        assertEquals(100, windowProgressTotal(cachedBefore = 40, queuedIncludingCurrent = 210, gamesLeft = 60))
+        assertEquals(100, windowProgressTotal(cachedBefore = 99, queuedIncludingCurrent = 151, gamesLeft = 1))
     }
 
     @Test
-    fun windowProgress_lastItemOfQueue() {
-        assertEquals(7, windowProgressTotal(requestedBefore = 6, queuedIncludingCurrent = 1, budgetLeftAfterCurrent = 50))
+    fun windowProgress_shrinksAsUnknownRomsLeaveTheQueue() {
+        assertEquals(12, windowProgressTotal(cachedBefore = 10, queuedIncludingCurrent = 2, gamesLeft = 50))
     }
 
     // ── Cached gameid classification ──

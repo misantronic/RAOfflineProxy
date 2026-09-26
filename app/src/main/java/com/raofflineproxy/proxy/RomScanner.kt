@@ -523,9 +523,11 @@ internal fun classifyCachedGameId(body: String?, cachedAt: Long, now: Long): Cac
 }
 
 /** The single place that sends RA requests for bulk caching: works through the queue oldest
- *  first within the caching budget. Only one caller drains at a time; a concurrent call returns
- *  [DrainStop.Busy] at once. A failed ROM keeps its place and is retried on a later round
- *  instead of back to back. [onItem] reports progress within the current budget window. */
+ *  first within the caching budget. A window allows [CACHE_BUDGET_LIMIT] cached games; ROMs
+ *  RetroAchievements doesn't know only use a game id lookup, so a window keeps going until its
+ *  games are cached or the lookups run out. Only one caller drains at a time; a concurrent call
+ *  returns [DrainStop.Busy] at once. A failed ROM keeps its place and is retried on a later round
+ *  instead of back to back. [onItem] reports progress in games within the current window. */
 internal suspend fun drainCacheQueue(
     context: Context,
     db: AppDatabase,
@@ -542,12 +544,14 @@ internal suspend fun drainCacheQueue(
         var noMatch = 0
         var requested = 0
         fun result(stop: DrainStop, nextAttemptAt: Long? = null) = QueueDrainResult(cached, noMatch, stop, nextAttemptAt)
+        suspend fun budgetExhausted(now: Long) = result(DrainStop.BudgetExhausted, CacheBudget.nextAvailableAt(db, now))
         while (true) {
             if (shouldPause()) return result(DrainStop.Paused)
             val rom = CacheQueue.oldest(db) ?: return result(DrainStop.Empty)
             val now = System.currentTimeMillis()
             val cachedGameIds = loadCachedGameIds(db)
-            when (val local = localGameIdAnswer(db, rom.hashes, now)) {
+            val local = localGameIdAnswer(db, rom.hashes, now)
+            when (local) {
                 LocalGameIdAnswer.NoMatch -> {
                     CacheQueue.remove(db, rom)
                     noMatch++
@@ -559,22 +563,29 @@ internal suspend fun drainCacheQueue(
                 }
                 LocalGameIdAnswer.NeedsLookup -> Unit
             }
-            if (!CacheBudget.tryAcquire(db, now)) {
-                return result(DrainStop.BudgetExhausted, CacheBudget.nextAvailableAt(db, now))
-            }
+            val gamesLeft = CacheBudget.remaining(db, now)
+            if (gamesLeft == 0) return budgetExhausted(now)
             applyScanBatchCooldown(requested, TAG)
-            onItem(
-                requested + 1,
-                windowProgressTotal(requested, CacheQueue.count(db), CacheBudget.remaining(db, now)),
-                rom.label
-            )
+            onItem(cached + 1, windowProgressTotal(cached, CacheQueue.count(db), gamesLeft), rom.label)
             requested++
-            when (val lookup = resolveGameIdResult(context, rom.hashes, creds, userAgent, db, reportFailures = false)) {
+            val lookup = when (local) {
+                is LocalGameIdAnswer.Match -> GameIdLookup.Match(local.hash, local.gameId)
+                else -> {
+                    if (!CacheBudget.tryAcquireLookup(db, now)) return budgetExhausted(now)
+                    resolveGameIdResult(context, rom.hashes, creds, userAgent, db, reportFailures = false)
+                }
+            }
+            when (lookup) {
                 GameIdLookup.NoMatch -> {
                     CacheQueue.remove(db, rom)
                     noMatch++
                 }
                 is GameIdLookup.Match -> {
+                    if (lookup.gameId.toString() in cachedGameIds) {
+                        CacheQueue.remove(db, rom)
+                        continue
+                    }
+                    if (!CacheBudget.tryAcquireGame(db)) return budgetExhausted(System.currentTimeMillis())
                     val succeeded = cacheGame(
                         context = context,
                         gameId = lookup.gameId,
@@ -607,10 +618,10 @@ internal suspend fun drainCacheQueue(
     }
 }
 
-/** How many ROMs this drain can still handle in the current window, counting the one in
- *  progress: bounded by what is queued and by what is left of the budget. */
-internal fun windowProgressTotal(requestedBefore: Int, queuedIncludingCurrent: Int, budgetLeftAfterCurrent: Int): Int =
-    requestedBefore + 1 + minOf(queuedIncludingCurrent - 1, budgetLeftAfterCurrent).coerceAtLeast(0)
+/** Games this drain can still cache in the current window, counting the one in progress:
+ *  bounded by what is queued and by the games left in the budget. */
+internal fun windowProgressTotal(cachedBefore: Int, queuedIncludingCurrent: Int, gamesLeft: Int): Int =
+    cachedBefore + minOf(queuedIncludingCurrent, gamesLeft).coerceAtLeast(1)
 
 private suspend fun recordFailedAttempt(db: AppDatabase, rom: QueuedRom) {
     val retry = rom.afterFailedAttempt()
