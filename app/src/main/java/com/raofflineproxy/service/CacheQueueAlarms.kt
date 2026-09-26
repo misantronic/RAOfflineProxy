@@ -8,8 +8,8 @@ import android.content.Intent
 import android.os.PowerManager
 
 private const val CACHE_QUEUE_ALARM_REQUEST_CODE = 1002
-// A batch of 100 games takes a few minutes; the cap only matters if a drain hangs.
-private const val CACHE_QUEUE_WAKE_LOCK_TIMEOUT_MS = 10L * 60 * 1000
+// A batch of 100 games, images included, takes several minutes; the cap only matters if a drain hangs.
+private const val CACHE_QUEUE_WAKE_LOCK_TIMEOUT_MS = 30L * 60 * 1000
 
 /** The worker waits on the monotonic clock, which stops while the CPU sleeps. This alarm wakes
  *  the device when the next budget window opens, so a queue keeps moving with the screen off. */

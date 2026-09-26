@@ -321,7 +321,9 @@ internal suspend fun refreshCachedGameOfflineBundle(
     db: AppDatabase,
     notificationMode: RefreshNotificationMode,
     cacheImages: Boolean = true,
+    awaitImages: Boolean = false,
 ): Boolean {
+    val inlineImages = mutableListOf<ImageDownload>()
     val action = if (target.endpoint == RefreshEndpoint.AchievementSets && !target.romHash.isNullOrBlank()) {
         "achievementsets"
     } else {
@@ -375,7 +377,8 @@ internal suspend fun refreshCachedGameOfflineBundle(
             if (cacheImages) {
                 val proxyBaseUrl = "http://${proxyHost()}:${proxyPort(context)}"
                 rewriteImageUrls(action, result.body, proxyBaseUrl) { originalUrl, imagePath ->
-                    scheduleImageDownload(context, originalUrl, imagePath, userAgent, target.gameId)
+                    if (awaitImages) inlineImages += ImageDownload(originalUrl, imagePath)
+                    else scheduleImageDownload(context, originalUrl, imagePath, userAgent, target.gameId)
                 }
             }
         }
@@ -393,6 +396,7 @@ internal suspend fun refreshCachedGameOfflineBundle(
 
     val unlocksOk = cacheUnlocks(context, target.gameId, creds, userAgent, db, notificationMode)
     cacheSession(target.gameId, creds, db)
+    downloadImagesInline(context, inlineImages, userAgent, target.gameId)
     Log.i(TAG, "refreshCachedGameOfflineBundle complete for gameId=${target.gameId} endpoint=$action")
     return unlocksOk
 }
@@ -641,6 +645,7 @@ private suspend fun cacheQueuedRom(
                 db = db,
                 romHash = lookup.hash,
                 sourceRomPath = rom.sourceRomPath,
+                awaitImages = true,
                 notificationMode = RefreshNotificationMode.Background
             ) -> QueuedRomOutcome.Cached
             else -> QueuedRomOutcome.Failed
@@ -859,6 +864,7 @@ internal suspend fun cacheGame(
     romHash: String? = null,
     sourceRomPath: String? = null,
     cacheImages: Boolean = true,
+    awaitImages: Boolean = false,
     notificationMode: RefreshNotificationMode = RefreshNotificationMode.Foreground,
 ): Boolean =
     refreshCachedGameOfflineBundle(
@@ -875,6 +881,7 @@ internal suspend fun cacheGame(
         db = db,
         notificationMode = notificationMode,
         cacheImages = cacheImages,
+        awaitImages = awaitImages,
     )
 
 
