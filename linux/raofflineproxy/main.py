@@ -10,6 +10,7 @@ from pathlib import Path
 from .auth import resolve_credentials
 from .config import (
     CONFIG_FILE,
+    DEFAULT_ONION_APP_DIR,
     configure_logging,
     detect_retroarch_cfg,
     load_config,
@@ -42,11 +43,6 @@ from .dolphin_cfg import (
     patch_dolphin_ini,
     revert_dolphin_ini,
     store_dolphin_previous,
-)
-from .spruce_conf import (
-    patch_spruce_mode,
-    revert_spruce_mode,
-    store_spruce_previous,
 )
 from .retroarch_cfg import (
     enforce_patched_cfg,
@@ -90,7 +86,11 @@ from .smart_cache import (
 from .storage import Storage
 from .state import load_online_state, load_patch_state, save_patch_state, save_online_state
 from .ui import write_status_image, write_text_image
-from .update import update_status
+from .update import (
+    download_onion_update_archive,
+    install_onion_update_archive,
+    update_status,
+)
 
 STALE_HOOK_PATH = Path("/userdata/system/scripts/RAOfflineProxy_game_hook.sh")
 LOGGER = logging.getLogger("raofflineproxy")
@@ -127,13 +127,11 @@ def _patch_emulator_configs(config_data: dict, cfg_path: str) -> list[str]:
     batocera = patch_batocera_conf(config_data)
     ppsspp = patch_ppsspp_ini(config_data)
     dolphin = patch_dolphin_ini(config_data)
-    spruce = patch_spruce_mode(config_data)
     patch_state = load_patch_state() or {}
     store_secondary_retroarch_previous(patch_state, secondary)
     store_batocera_previous(patch_state, batocera)
     store_ppsspp_previous(patch_state, ppsspp)
     store_dolphin_previous(patch_state, dolphin)
-    store_spruce_previous(patch_state, spruce)
     save_patch_state(patch_state)
 
     if not result.get("exists", True):
@@ -194,7 +192,6 @@ def _revert_proxy_config(config_data: dict, cfg_path: str | None) -> list[str]:
     revert_cfg_path = patch_state.get("cfg_path") or cfg_path
     batocera = revert_batocera_conf(config_data, patch_state.get("batocera_previous", {}))
     ppsspp = revert_ppsspp_ini(config_data, patch_state.get("ppsspp_previous", {}))
-    revert_spruce_mode(config_data, patch_state.get("spruce_previous_mode"))
     dolphin = revert_dolphin_ini(config_data, patch_state.get("dolphin_previous", {}))
     secondary = revert_secondary_retroarch_cfgs(
         config_data, patch_state.get("secondary_cfgs", [])
@@ -281,6 +278,7 @@ def main() -> None:
             "smart-cache-status",
             "run-smart-cache",
             "update-status",
+            "install-update",
             "service-status",
             "status",
             "run-service",
@@ -301,6 +299,12 @@ def main() -> None:
         "--path",
         dest="path",
         help="Filesystem path for browser and cache commands",
+    )
+    parser.add_argument(
+        "--json",
+        dest="as_json",
+        action="store_true",
+        help="Print machine-readable output",
     )
     parser.add_argument(
         "--paths-file",
@@ -458,10 +462,24 @@ def main() -> None:
             storage = Storage()
             try:
                 games = list_cached_games(storage)
-                if not games:
+                unlock_counts = cached_unlock_counts(storage) if games else {}
+
+                if args.as_json:
+                    print(json.dumps(
+                        [
+                            {
+                                "game_id": game.game_id,
+                                "title": game.title,
+                                "unlocks": unlock_counts.get(game.game_id),
+                            }
+                            for game in games
+                        ],
+                        separators=(",", ":"),
+                    ))
                     return
 
-                unlock_counts = cached_unlock_counts(storage)
+                if not games:
+                    return
 
                 for game in games:
                     unlock_count = unlock_counts.get(game.game_id)
@@ -684,6 +702,15 @@ def main() -> None:
             finally:
                 storage.close()
 
+            if args.as_json:
+                print(json.dumps(
+                    {"success": result.success, "message": result.message},
+                    separators=(",", ":"),
+                ))
+                if not result.success:
+                    raise SystemExit(1)
+                return
+
             if not result.success:
                 raise RuntimeError(result.message)
 
@@ -833,6 +860,23 @@ def main() -> None:
             if service.get("running") and service.get("pid"):
                 service_line += f" | PID: {service['pid']}"
             print(service_line)
+            return
+
+        if args.command == "install-update":
+            if not args.platform:
+                raise ValueError("install-update requires --platform")
+
+            info = update_status(args.platform, force=True)
+            if not info.asset_url:
+                raise RuntimeError(f"No {args.platform} asset in the latest release")
+
+            stop_service_process()
+            archive = download_onion_update_archive(info.asset_url)
+            install_onion_update_archive(archive, DEFAULT_ONION_APP_DIR, "App")
+
+            result = {"installed": True, "version": info.latest_version}
+            print(json.dumps(result, separators=(",", ":")) if args.as_json
+                  else f"Installed {info.latest_version}")
             return
 
         if args.command == "update-status":

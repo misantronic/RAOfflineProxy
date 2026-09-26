@@ -1,172 +1,83 @@
 # RAOfflineProxy — spruceOS
 
-spruceOS bundle, derived from the Onion one. Support is **experimental**.
-
-Both firmwares use the same `/mnt/SDCARD/App/<name>/` layout, so the armv7 bundle reuses
-Onion's CPython runtime, its pygame + `Mini` SDL2 vendor libraries and its armv7
-`libraproxy_rchash.so`. spruce also runs on aarch64 hardware, which Onion does not, so a
-second bundle pairs its own CPython 3.11 with muOS's cp311 pygame and SDL2.
+spruce drives the proxy itself: a toggle in **Settings → RetroAchievements → Offline
+Achievements** starts and stops it alongside its other network services, and games are
+picked for caching from the game list's options menu. The app ships as a background
+service with no UI of its own.
 
 ## What differs from Onion
 
 | | Onion | spruce |
 | --- | --- | --- |
-| RetroArch config | `/mnt/SDCARD/RetroArch/.retroarch/retroarch.cfg` | `/mnt/SDCARD/RetroArch/platform/retroarch-<device>.cfg` |
+| RetroArch config | `/mnt/SDCARD/RetroArch/.retroarch/retroarch.cfg` | `/mnt/SDCARD/Saves/ra-configs/retroarch-<device>.cfg` |
 | RA credentials | the RetroArch config | `/mnt/SDCARD/Saves/spruce/spruce-config.json` |
 | Default proxy port | 8080 | 8099 |
-| Autostart | `/mnt/SDCARD/.tmp_update/startup/raofflineproxy.sh` | block prepended to `/mnt/SDCARD/.tmp_update/updater` |
-| Version gate | requires Onion v4.4.0+ | none |
+| Python | bundled | spruce's, via `get_python_path()` |
+| UI | pygame menu | spruce's own |
+| Start/stop | autostart hook | spruce's network services |
 
-spruce launches RetroArch with `--config` pointing at the per-device file
-(`spruce/scripts/emu/lib/ra_functions.sh`), so its `.retroarch/retroarch.cfg` is never
-read. `common.sh` resolves the device the same way spruce's own `helperFunctions.sh` does
-and exports the matching path as `RAOFFLINEPROXY_RETROARCH_CFG`.
+`RetroArch/platform/` holds only `.cfg.bak` seeds since spruce 4.4.2; the live config is
+in `Saves/ra-configs/`.
 
-## Autostart
+## The spruce contract
 
-spruce has no drop-in boot directory: one script is the entire boot entry point, and it
-ends by dispatching into a per-device startup script that never returns.
+`common.sh` sources `/mnt/SDCARD/spruce/scripts/appEnv.sh` and uses what it exports:
 
-Which script that is depends on what boots the board, and `spruce_startup_script()` picks
-it. Most hardware comes up through `.tmp_update/updater`. The Anbernic H700 line runs under
-BaseOS, which execs `.system/h700/paks/MinUI.pak/launch.sh` and reaches
-`.tmp_update/anbernic.sh`; the RGB30 comes up under MossySpruce through
-`.tmp_update/rgb30.sh`. Neither of those reads `updater` at all, so a hook placed there is
-installed, reported as enabled, and never runs.
+| | |
+| --- | --- |
+| `SPRUCE_PLATFORM` | device name |
+| `SPRUCE_RA_CONFIG` | live RetroArch config, seeded if absent |
+| `SPRUCE_PYTHON` | CPython 3.10 |
+| `CFW` | `SPRUCE` |
+| `SSL_CERT_FILE` | spruce's CA bundle; its python ships none |
 
-The hook goes into every one of those files present on the card, not just the current
-device's. One spruce card boots many devices, and with a single copy, moving a card from a
-Miyoo Mini to an RG40XX left autostart dead there, while opening the app on the RG40XX
-moved the hook and broke the Mini. Each file only runs on its own device family, so the
-copies a device never executes are inert. Removing the hook strips all of them.
-`install_spruce_boot_hook()` prepends a sentinel-guarded block straight after the
-shebang — not appended, and deliberately not anchored on any device-specific line, so it
-holds whichever of those three files it lands in. The block backgrounds `autostart-launch.sh` and is
-wrapped in `[ -x ]`, because this file is the only path to a bootable device.
+Nothing here re-implements spruce's device detection or config paths. `common.sh` refuses
+to run if `appEnv.sh` is missing rather than guessing: only Flip, RGB30 and Miniloong can
+be told apart by more than `/proc/cpuinfo`, and the Anbernic line has seven platforms
+behind one part id.
 
-The updater is destroyed by every spruce update (it is on the updater's own delete list,
-while `App/RAOfflineProxy` is not), so `launch.sh` reinstalls the hook on each app launch
-— the same self-repair pattern ROCKNIX needs. Verified on a Miyoo Mini Plus running
-spruce 4.3.4: after a reboot the service came up on its own, bound its port, and the hook
-survived.
+spruce forces softcore in the RetroArch config for the launch whenever the toggle is on,
+so this app does not touch `modeToggle`. PyUI holds `spruce-config.json` in memory and
+rewrites it whole on any settings change, so an edit from outside is lost.
 
-No OS version gate: spruce 4.3.x ships RetroArch 1.22.2, whose achievements client
-handles `cheevos_custom_host` correctly. That gate exists for Onion because OnionOS
-v4.3.1-1 shipped an older RetroArch.
+## Which spruce commands are used
+
+`start-proxy`, `stop-proxy`, `cache-rom --path <rom>`. spruce sources `common.sh` in a
+subshell for the environment, so resolving the interpreter stays this app's business.
 
 ## Build
 
 ```
-./linux/onion/fetch_runtime.sh   # once
-./linux/onion/fetch_vendor.sh    # once
 ./linux/spruce/build_bundle.sh
 ```
 
-`build_bundle.sh` takes an architecture and defaults to `armv7`:
+Produces `linux/spruce/dist/RAOfflineProxy-Spruce-v<VER>.zip`, extracted over the SD card
+root so the app lands in `/mnt/SDCARD/App/RAOfflineProxy`.
 
-```sh
-./linux/spruce/fetch_runtime_arm64.sh      # once, for the arm64 target
-./linux/spruce/build_bundle.sh armv7
-./linux/spruce/build_bundle.sh arm64
-```
-
-Produces `linux/spruce/dist/RAOfflineProxy-Spruce-v<VER>.zip` and
-`RAOfflineProxy-Spruce-arm64-v<VER>.zip`, extracted over the SD card root so the app lands
-in `/mnt/SDCARD/App/RAOfflineProxy`.
+No interpreter, no pygame and no SDL2: `menu_sdl` is the only module that imports pygame
+and it does so inside `run_menu_sdl`, so the package runs without it. That leaves the
+hashing lib as the only native piece, and both arches of it ship — one bundle covers every
+spruce device, armv7 (`MiyooMini`, `A30`) and aarch64 alike.
 
 ## Hardware coverage
 
-Each bundle carries its own runtime, native lib and SDL2, so the two are not
-interchangeable. `detect_spruce_platform()` in `common.sh` is the authoritative list:
-
-| Bundle | spruce targets |
-| --- | --- |
-| `armv7` | `MiyooMini` (Mini, Mini Plus, Mini Flip), `A30` |
-| `arm64` | `Brick`, `BrickPro`, `SmartPro`, `SmartProS`, `Flip`, `Miniloong`, `RGB30`, `Pixel2`, `Zero28`, and the H700 Anbernic line (`AnbernicXX640480`, `AnbernicXX640480NoStick`, `AnbernicXX640480OneStick`, `AnbernicXX720480`, `AnbernicXX720480NoStick`, `AnbernicRG28XX`, `AnbernicRGCubeXX`) |
-
-The platform name is not cosmetic: it selects `RetroArch/platform/retroarch-<name>.cfg`,
-and spruce ships one config per panel and pad layout rather than one per SoC. The H700
-line therefore cannot be collapsed to a single label, and its variant comes from
-`BASEOS_TARGET` in `/etc/baseos-release`, exactly as `helperFunctions.sh` reads it. The
-RK3566 boards need the same care in the other direction: `Flip`, `Miniloong` and `RGB30`
-share a Cortex-A55 part id, so `/etc/os-release` and `/loong/loong_daemon` break the tie.
-
-Only `MiyooMini` is verified (tested on a Mini Plus). The A30 shares the architecture so
-the runtime should load, but the vendored SDL2 is steward-fu's Miyoo Mini build: its
-`Mini` video driver does not exist there, so `common.sh` leaves `SDL_VIDEODRIVER` unset
-and `menu_sdl` falls back to a plain fullscreen surface. Whether that build works on A30
-hardware is untested.
-
-On `arm64` the bundled SDL2 is the stock manylinux build, which speaks only x11, wayland,
-offscreen and dummy. Boards with a framebuffer and no compositor therefore have no usable
-video driver at all, and the menu renders to nothing while the proxy itself runs fine.
-
-spruce solves this for the Anbernic H700 line by staging a mali-fbdev SDL2 next to PyUI
-(`App/PyUI/dll-mali`, documented in that directory's `PROVENANCE.md`). Both it and the
-bundled build are SDL 2.28.x, so `select_sdl_video_driver()` preloads spruce's copy for the
-menu process and selects `SDL_VIDEODRIVER=mali`. The preload is deliberately not exported:
-the proxy has no use for SDL, and it would otherwise follow every emulator the app
-launches. `SDL_JOYSTICK_DISABLE_UDEV=1` goes with it, because these boards run neither
-udev nor mdev and SDL's joystick layer blocks on udev during `SDL_Init`.
-
-A preloaded SDL2 also needs the directory it came from on `LD_LIBRARY_PATH`, which is what
-`menu_library_path()` adds for the menu and the driver probe. Its own `NEEDED` libraries
-live beside it and nowhere else: the mali build links `libsamplerate.so.0`, shipped only in
-`dll-mali`. Without it the preload resolves only when spruce's own launcher happens to have
-exported that directory first, so the app starts from the device but fails from a terminal
-with `libsamplerate.so.0: cannot open shared object file`. Like the preload, the directory
-is kept off the exported path, because `dll-mali` carries its own libpng, libtiff and webp
-that would otherwise shadow the bundled ones for the proxy and anything it launches.
-
-Verified on an RG40XX-H: `mali` yields a real 640x480 fullscreen surface.
-
-The `Brick` is still open. The proxy is confirmed working there, the menu is not, and the
-same shape of fix probably applies with `spruce/brick/sdl2` in place of `dll-mali`. When
-the menu fails, `launch.sh` writes an SDL report to `data/menu-sdl.log`: it asks the SDL
-that pygame actually loaded which drivers it was built with, then tries each one. A
-hardcoded guess list was there before and reported every driver as unavailable on the
-RG40XX-H, which hid the fact that the bundled SDL2 was simply the wrong build for the
-board.
-
-A runtime that does not match the hardware is not silently ignored: `resolve_python_bin`
-records why each candidate was rejected in `data/runtime-detect.log`, including the
-device's `uname -m`. Without that, a wrong-architecture bundle falls through to spruce's
-system `python3`, which has no vendored pygame, and the only visible symptom is a
-`ModuleNotFoundError` far from the cause.
+Verified on a Miyoo Flip: service starts and stops from the toggle, binds its port, and
+the RetroArch host is patched and restored. Other devices are untested.
 
 ## Timezone
 
-spruce's PyUI applies the chosen zone by exporting `TZ` into its own environment, so
-anything it launches inherits it. The boot hook runs from `.tmp_update/updater` long
-before PyUI exists, so an autostarted proxy would stamp every award timestamp in UTC.
-`resolve_spruce_timezone()` reads the zone name out of `/mnt/SDCARD/Saves/*-system.json`
-(globbed rather than mapped per device) and exports `TZ=":<zoneinfo>/<zone>"`, the same
-absolute-path form spruce itself uses. It never overrides a `TZ` that is already set.
+`resolve_spruce_timezone()` reads the zone from `/mnt/SDCARD/Saves/spruce/shared-system.json`
+(or the older per-device `Saves/*-system.json`) and exports `TZ=":<zoneinfo>/<zone>"`, the
+absolute-path form spruce uses. It never overrides a `TZ` that is already set.
 
 ## Credentials
 
-spruce stores the RetroAchievements username and password entered in its own settings in
+spruce stores the RetroAchievements username and password from its own settings in
 `spruce-config.json`, and only copies them into the RetroArch config when a game launches.
-Before the first launch the config's `cheevos_username` is still empty, so
-`load_spruce_credentials()` reads that file directly — the same shape as the ROCKNIX
-appendconfig case. spruce stores no token, only a password.
+Before the first launch `cheevos_username` is still empty, so `load_spruce_credentials()`
+reads that file directly. spruce stores no token, only a password.
 
 ## Default port
 
-spruce ships SFTPGo bound to `0.0.0.0:8080` (`spruce/bin/SFTPGo/sftpgo/sftpgo.json`) and
-starts it whenever SFTPGo is enabled in Network Settings, so the usual 8080 default can
-never bind there. The spruce default is 8099; `proxy_port` in `data/config.json` still
-overrides it.
-
-## Achievements mode
-
-spruce rewrites `cheevos_enable`, `cheevos_hardcore_mode_enable`, `cheevos_username` and
-`cheevos_password` into the device config on every game launch, from its own
-RetroAchievements settings — after our patch has already run, so its mode decides whether
-achievements are on at all. `cheevos_custom_host` is not in that list, which is why the
-proxy redirect survives on its own.
-
-`spruce_conf.py` therefore patches spruce's `modeToggle` to `Softcore` alongside the
-config patching, and restores the previous value on stop. `Disabled` would switch
-achievements off, `Hardcore` would enable a mode this app does not support, and `Manual`
-leaves the config alone but never writes the account credentials into it.
+spruce ships SFTPGo bound to `0.0.0.0:8080`, so the usual default can never bind. The
+spruce default is 8099; `proxy_port` in `data/config.json` still overrides it.

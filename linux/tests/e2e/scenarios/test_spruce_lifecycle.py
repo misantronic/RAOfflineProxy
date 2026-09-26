@@ -5,7 +5,7 @@ import pytest
 from linux.tests.e2e.scenarios._miyoo_common import MiyooLifecycle
 
 SPRUCE_VERSION_FILE = "/mnt/SDCARD/spruce/spruce"
-PLATFORM_CFG_DIR = "/mnt/SDCARD/RetroArch/platform"
+RA_CONFIG_DIR = "/mnt/SDCARD/Saves/ra-configs"
 LEGACY_CFG = "/mnt/SDCARD/RetroArch/.retroarch/retroarch.cfg"
 
 
@@ -17,7 +17,31 @@ def installed(spruce):
 
 
 class TestSpruceLifecycle(MiyooLifecycle):
-    pass
+    def test_zip_unpacks_onto_the_card(self, installed):
+        base = installed.device.base_dir
+        for entry in ("common.sh", "app", "lib/armv7", "lib/aarch64"):
+            assert installed.container.exists("%s/%s" % (base, entry))
+
+    def test_bundled_armv7_runtime_is_the_one_that_runs(self, installed):
+        """spruce ships no interpreter: common.sh runs the SPRUCE_PYTHON that
+        appEnv.sh names."""
+        result = installed.container.exec(
+            "cd %s && . ./common.sh && prepare_env >/dev/null 2>&1 && "
+            'resolve_python_bin && echo "$RESOLVED_PYTHON_BIN"' % installed.device.base_dir,
+            check=True,
+        )
+        assert result.stdout.strip().splitlines()[-1] == "/usr/bin/python3"
+
+    def test_common_sh_exports_the_bundled_environment(self, installed):
+        result = installed.container.exec(
+            "cd %s && . ./common.sh && prepare_env >/dev/null 2>&1 && "
+            'printf "%%s\\n%%s\\n" "$RAOFFLINEPROXY_CONFIG_DIR" '
+            '"$RAOFFLINEPROXY_RETROARCH_CFG"' % installed.device.base_dir,
+            check=True,
+        )
+        config_dir, retroarch_cfg = result.stdout.strip().splitlines()[:2]
+        assert config_dir == installed.device.config_dir
+        assert retroarch_cfg == installed.device.retroarch_cfg
 
 
 class TestSpruceSpecific:
@@ -82,7 +106,7 @@ class TestSpruceSpecific:
         )
         lines = probe.stdout.strip().splitlines()
         assert lines[-2] == "MiyooMini"
-        assert lines[-1] == PLATFORM_CFG_DIR + "/retroarch-MiyooMini.cfg"
+        assert lines[-1] == RA_CONFIG_DIR + "/retroarch-MiyooMini.cfg"
 
     def test_boot_hook_is_inserted_into_the_updater(self, installed):
         """spruce has no drop-in boot directory: .tmp_update/updater is the whole

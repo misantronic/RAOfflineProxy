@@ -143,25 +143,21 @@ RAOfflineProxy patches the emulator configs it needs in order to redirect RetroA
 
 > spruce support is currently experimental.
 >
-> Tested on a Miyoo Mini Plus running [spruce 4.3.4](https://github.com/spruceUI/spruceOS/releases).
+> Tested on a Miyoo Flip. Requires a spruce with `spruce/scripts/appEnv.sh`.
 
-spruce runs on both 32-bit and 64-bit devices, and each has its own download. Pick the one that matches your handheld:
+spruce runs the proxy itself, so there is one download for every device and no app to
+launch.
 
-| Download                             | Devices                                                                                       |
-| ------------------------------------ | --------------------------------------------------------------------------------------------- |
-| `RAOfflineProxy-Spruce-v*.zip`       | Miyoo Mini, Mini Plus, Mini Flip, A30                                                         |
-| `RAOfflineProxy-Spruce-arm64-v*.zip` | Miyoo Flip, TrimUI Brick, Brick Pro, Smart Pro, Smart Pro S, Pixel 2, Zero 28, Anbernic RG-XX |
-
-1. Download the matching `RAOfflineProxy-Spruce-*.zip` from [GitHub Releases](https://github.com/misantronic/RAOfflineProxy/releases)
+1. Download `RAOfflineProxy-Spruce-v*.zip` from [GitHub Releases](https://github.com/misantronic/RAOfflineProxy/releases)
 2. Extract it over the root of your SD card so the app lands in:
 
 ```text
 /App/RAOfflineProxy/
 ```
 
-3. Launch **RAOfflineProxy** from spruce's Apps section
-4. Start the proxy while online
-5. Launch a game once so its data is cached
+3. Enter your RetroAchievements username and password in **Settings → RetroAchievements**
+4. Turn on **Offline Achievements** in the same menu
+5. While online, press the options button on a game and choose **Cache Achievements**
 
 == Allium
 
