@@ -274,7 +274,7 @@ class ProxyService : Service() {
             Log.i(TAG, "Cache queue: processed ${result.processed}, ${CacheQueue.count(db)} left${nextWindow.orEmpty()}")
         }
         return when (result.stop) {
-            DrainStop.BudgetExhausted -> {
+            DrainStop.BudgetExhausted, DrainStop.RateLimited -> {
                 val at = nextAttemptAt ?: (System.currentTimeMillis() + CACHE_QUEUE_POLL_MS)
                 CacheQueueAlarm.schedule(this, at)
                 (at - System.currentTimeMillis()).coerceAtLeast(1_000L)

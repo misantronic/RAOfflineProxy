@@ -8,68 +8,80 @@ import kotlinx.coroutines.sync.withLock
 import org.json.JSONObject
 
 internal const val CACHE_BUDGET_LIMIT = 100
-internal const val CACHE_LOOKUP_LIMIT = 300
+internal const val CACHE_REQUEST_LIMIT = 300
 internal const val CACHE_BUDGET_WINDOW_MS = 30L * 60 * 1000
+// A game id lookup plus the achievement set and unlocks of a game RetroAchievements knows.
+internal const val REQUESTS_PER_NEW_GAME = 3
 
-/** One budget window: [used] counts games cached, [lookups] counts game id lookups, including
- *  those for ROMs RetroAchievements doesn't know. A window closes when either runs out. */
-internal data class BudgetWindow(val windowStart: Long = 0L, val used: Int = 0, val lookups: Int = 0) {
+/** One budget window: [used] counts games cached, [requests] every RA request the queue sent,
+ *  including lookups for ROMs RetroAchievements doesn't know. [pausedUntil] holds the queue back
+ *  after a 429 and outlives the window. */
+internal data class BudgetWindow(
+    val windowStart: Long = 0L,
+    val used: Int = 0,
+    val requests: Int = 0,
+    val pausedUntil: Long = 0L
+) {
     // A clock that jumped backwards starts a fresh window instead of blocking caching until it
     // catches up again.
     fun current(now: Long, windowMs: Long = CACHE_BUDGET_WINDOW_MS): BudgetWindow =
-        if (now < windowStart || now - windowStart >= windowMs) BudgetWindow(now) else this
+        if (now < windowStart || now - windowStart >= windowMs) BudgetWindow(now, pausedUntil = pausedUntil) else this
 
-    fun tryAcquireLookup(
+    /** Whether [neededRequests] more requests and one more game still fit into this window. */
+    fun fits(
         now: Long,
+        neededRequests: Int,
         limit: Int = CACHE_BUDGET_LIMIT,
-        lookupLimit: Int = CACHE_LOOKUP_LIMIT,
+        requestLimit: Int = CACHE_REQUEST_LIMIT,
         windowMs: Long = CACHE_BUDGET_WINDOW_MS
-    ): Pair<Boolean, BudgetWindow> {
+    ): Boolean {
         val window = current(now, windowMs)
-        return if (window.isOpen(limit, lookupLimit)) true to window.copy(lookups = window.lookups + 1) else false to window
+        return now >= pausedUntil && window.used < limit && window.requests + neededRequests <= requestLimit
     }
 
-    fun tryAcquireGame(
-        now: Long,
-        limit: Int = CACHE_BUDGET_LIMIT,
-        windowMs: Long = CACHE_BUDGET_WINDOW_MS
-    ): Pair<Boolean, BudgetWindow> {
+    fun charge(now: Long, requests: Int, games: Int, windowMs: Long = CACHE_BUDGET_WINDOW_MS): BudgetWindow {
         val window = current(now, windowMs)
-        return if (window.used < limit) true to window.copy(used = window.used + 1) else false to window
+        return window.copy(used = window.used + games, requests = window.requests + requests)
     }
 
+    /** New games that still fit into this window, assuming each needs a lookup. */
     fun remaining(
         now: Long,
         limit: Int = CACHE_BUDGET_LIMIT,
-        lookupLimit: Int = CACHE_LOOKUP_LIMIT,
+        requestLimit: Int = CACHE_REQUEST_LIMIT,
         windowMs: Long = CACHE_BUDGET_WINDOW_MS
-    ): Int {
-        val window = current(now, windowMs)
-        return if (window.isOpen(limit, lookupLimit)) limit - window.used else 0
-    }
+    ): Int = if (now < pausedUntil) 0 else current(now, windowMs).gamesLeft(limit, requestLimit)
 
     fun nextAvailableAt(
         now: Long,
         limit: Int = CACHE_BUDGET_LIMIT,
-        lookupLimit: Int = CACHE_LOOKUP_LIMIT,
+        requestLimit: Int = CACHE_REQUEST_LIMIT,
         windowMs: Long = CACHE_BUDGET_WINDOW_MS
     ): Long {
         val window = current(now, windowMs)
-        return if (window.isOpen(limit, lookupLimit)) now else window.windowStart + windowMs
+        val windowOpensAt = if (window.gamesLeft(limit, requestLimit) > 0) now else window.windowStart + windowMs
+        return maxOf(pausedUntil, windowOpensAt)
     }
 
-    private fun isOpen(limit: Int, lookupLimit: Int): Boolean = used < limit && lookups < lookupLimit
+    private fun gamesLeft(limit: Int, requestLimit: Int): Int =
+        minOf(limit - used, (requestLimit - requests) / REQUESTS_PER_NEW_GAME).coerceAtLeast(0)
 
     fun toJson(): String = JSONObject()
         .put("windowStart", windowStart)
         .put("used", used)
-        .put("lookups", lookups)
+        .put("requests", requests)
+        .put("pausedUntil", pausedUntil)
         .toString()
 
     companion object {
         fun fromJson(body: String?): BudgetWindow = runCatching {
             val json = JSONObject(body.orEmpty())
-            BudgetWindow(json.optLong("windowStart", 0L), json.optInt("used", 0), json.optInt("lookups", 0))
+            BudgetWindow(
+                json.optLong("windowStart", 0L),
+                json.optInt("used", 0),
+                json.optInt("requests", 0),
+                json.optLong("pausedUntil", 0L)
+            )
         }.getOrDefault(BudgetWindow())
     }
 }
@@ -77,24 +89,26 @@ internal data class BudgetWindow(val windowStart: Long = 0L, val used: Int = 0, 
 internal object CacheBudget {
     private val mutex = Mutex()
 
-    suspend fun tryAcquireLookup(db: AppDatabase, now: Long = System.currentTimeMillis()): Boolean =
-        acquire(db) { it.tryAcquireLookup(now) }
+    suspend fun fits(db: AppDatabase, neededRequests: Int, now: Long = System.currentTimeMillis()): Boolean =
+        mutex.withLock { load(db).fits(now, neededRequests) }
 
-    suspend fun tryAcquireGame(db: AppDatabase, now: Long = System.currentTimeMillis()): Boolean =
-        acquire(db) { it.tryAcquireGame(now) }
+    suspend fun charge(db: AppDatabase, requests: Int, games: Int, now: Long = System.currentTimeMillis()) {
+        if (requests == 0 && games == 0) return
+        mutex.withLock { save(db, load(db).charge(now, requests, games)) }
+    }
+
+    suspend fun pauseUntil(db: AppDatabase, until: Long) {
+        mutex.withLock {
+            val window = load(db)
+            if (until > window.pausedUntil) save(db, window.copy(pausedUntil = until))
+        }
+    }
 
     suspend fun remaining(db: AppDatabase, now: Long = System.currentTimeMillis()): Int =
         mutex.withLock { load(db).remaining(now) }
 
     suspend fun nextAvailableAt(db: AppDatabase, now: Long = System.currentTimeMillis()): Long =
         mutex.withLock { load(db).nextAvailableAt(now) }
-
-    private suspend fun acquire(db: AppDatabase, attempt: (BudgetWindow) -> Pair<Boolean, BudgetWindow>): Boolean =
-        mutex.withLock {
-            val (granted, updated) = attempt(load(db))
-            if (granted) save(db, updated)
-            granted
-        }
 
     private suspend fun load(db: AppDatabase): BudgetWindow =
         BudgetWindow.fromJson(db.cacheDao().get(CacheKeys.CACHE_BUDGET)?.responseBody)

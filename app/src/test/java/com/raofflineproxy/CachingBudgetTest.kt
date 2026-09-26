@@ -4,7 +4,9 @@ import com.raofflineproxy.data.CacheKeys
 import com.raofflineproxy.proxy.BudgetWindow
 import com.raofflineproxy.proxy.CACHE_BUDGET_LIMIT
 import com.raofflineproxy.proxy.CACHE_BUDGET_WINDOW_MS
-import com.raofflineproxy.proxy.CACHE_LOOKUP_LIMIT
+import com.raofflineproxy.proxy.CACHE_QUEUE_RATE_LIMIT_PAUSE_MS
+import com.raofflineproxy.proxy.CACHE_REQUEST_LIMIT
+import com.raofflineproxy.proxy.CacheQueue
 import com.raofflineproxy.proxy.CachedGameIdLookup
 import com.raofflineproxy.proxy.QueuedRom
 import com.raofflineproxy.proxy.classifyCachedGameId
@@ -23,55 +25,52 @@ class CachingBudgetTest {
     // ── Budget window ──
 
     @Test
-    fun budget_grantsGamesUpToLimitThenDenies() {
-        var window = BudgetWindow()
-        repeat(CACHE_BUDGET_LIMIT) {
-            val (granted, next) = window.tryAcquireGame(start)
-            assertTrue(granted)
-            window = next
-        }
-        assertFalse(window.tryAcquireGame(start + 1).first)
-        assertFalse(window.tryAcquireLookup(start + 1).first)
+    fun budget_fitsUntilGameLimit() {
+        val window = BudgetWindow(windowStart = start, used = CACHE_BUDGET_LIMIT - 1, requests = 10)
+        assertTrue(window.fits(start + 1, neededRequests = 3))
+        val full = window.charge(start + 1, requests = 3, games = 1)
+        assertEquals(CACHE_BUDGET_LIMIT, full.used)
+        assertFalse(full.fits(start + 2, neededRequests = 2))
     }
 
     @Test
-    fun budget_lookupsDoNotUseGames() {
-        var window = BudgetWindow()
-        repeat(CACHE_BUDGET_LIMIT) {
-            val (granted, next) = window.tryAcquireLookup(start)
-            assertTrue(granted)
-            window = next
-        }
-        assertEquals(CACHE_BUDGET_LIMIT, window.remaining(start))
-        assertTrue(window.tryAcquireGame(start).first)
+    fun budget_unknownRomsOnlyCostTheirRequests() {
+        var window = BudgetWindow(windowStart = start)
+        repeat(90) { window = window.charge(start, requests = 1, games = 0) }
+        assertEquals(0, window.used)
+        assertEquals(70, window.remaining(start))
+        assertTrue(window.fits(start, neededRequests = 3))
     }
 
     @Test
-    fun budget_closesWhenLookupsRunOut() {
-        val window = BudgetWindow(windowStart = start, used = 10, lookups = CACHE_LOOKUP_LIMIT)
-        assertFalse(window.tryAcquireLookup(start + 1).first)
+    fun budget_closesWhenRequestsRunOut() {
+        val window = BudgetWindow(windowStart = start, used = 10, requests = CACHE_REQUEST_LIMIT - 2)
+        assertFalse(window.fits(start + 1, neededRequests = 3))
+        assertTrue(window.fits(start + 1, neededRequests = 2))
         assertEquals(0, window.remaining(start + 1))
         assertEquals(start + CACHE_BUDGET_WINDOW_MS, window.nextAvailableAt(start + 1))
     }
 
     @Test
     fun budget_resetsAfterWindow() {
-        val full = BudgetWindow(windowStart = start, used = CACHE_BUDGET_LIMIT, lookups = CACHE_LOOKUP_LIMIT)
-        assertFalse(full.tryAcquireGame(start + CACHE_BUDGET_WINDOW_MS - 1).first)
-        val (granted, next) = full.tryAcquireLookup(start + CACHE_BUDGET_WINDOW_MS)
-        assertTrue(granted)
-        assertEquals(BudgetWindow(windowStart = start + CACHE_BUDGET_WINDOW_MS, lookups = 1), next)
+        val full = BudgetWindow(windowStart = start, used = CACHE_BUDGET_LIMIT, requests = CACHE_REQUEST_LIMIT)
+        assertFalse(full.fits(start + CACHE_BUDGET_WINDOW_MS - 1, neededRequests = 1))
+        assertTrue(full.fits(start + CACHE_BUDGET_WINDOW_MS, neededRequests = 3))
+        assertEquals(
+            BudgetWindow(windowStart = start + CACHE_BUDGET_WINDOW_MS, used = 1, requests = 3),
+            full.charge(start + CACHE_BUDGET_WINDOW_MS, requests = 3, games = 1)
+        )
     }
 
     @Test
     fun budget_clockJumpingBackStartsFreshWindow() {
         val full = BudgetWindow(windowStart = start, used = CACHE_BUDGET_LIMIT)
-        assertTrue(full.tryAcquireGame(start - 1).first)
+        assertTrue(full.fits(start - 1, neededRequests = 3))
     }
 
     @Test
     fun budget_remainingAndNextAvailable() {
-        val window = BudgetWindow(windowStart = start, used = 40, lookups = 120)
+        val window = BudgetWindow(windowStart = start, used = 40, requests = 120)
         assertEquals(CACHE_BUDGET_LIMIT - 40, window.remaining(start + 10))
         assertEquals(start + 10, window.nextAvailableAt(start + 10))
 
@@ -81,12 +80,44 @@ class CachingBudgetTest {
     }
 
     @Test
+    fun budget_pauseHoldsBackAnOpenWindow() {
+        val paused = BudgetWindow(windowStart = start, used = 5, requests = 20, pausedUntil = start + 600_000)
+        assertFalse(paused.fits(start + 1, neededRequests = 1))
+        assertEquals(0, paused.remaining(start + 1))
+        assertEquals(start + 600_000, paused.nextAvailableAt(start + 1))
+        assertTrue(paused.fits(start + 600_000, neededRequests = 3))
+    }
+
+    @Test
+    fun budget_pauseOutlivesTheWindow() {
+        val paused = BudgetWindow(windowStart = start, used = CACHE_BUDGET_LIMIT, pausedUntil = start + CACHE_BUDGET_WINDOW_MS + 60_000)
+        val later = start + CACHE_BUDGET_WINDOW_MS + 1
+        assertFalse(paused.fits(later, neededRequests = 1))
+        assertEquals(start + CACHE_BUDGET_WINDOW_MS + 60_000, paused.nextAvailableAt(later))
+        assertEquals(paused.pausedUntil, paused.charge(later, requests = 1, games = 0).pausedUntil)
+    }
+
+    @Test
     fun budget_jsonRoundTripAndGarbage() {
-        val window = BudgetWindow(windowStart = start, used = 7, lookups = 21)
+        val window = BudgetWindow(windowStart = start, used = 7, requests = 21, pausedUntil = start + 5)
         assertEquals(window, BudgetWindow.fromJson(window.toJson()))
-        assertEquals(BudgetWindow(start, 7, 0), BudgetWindow.fromJson("""{"windowStart":$start,"used":7}"""))
+        assertEquals(BudgetWindow(start, 7), BudgetWindow.fromJson("""{"windowStart":$start,"used":7,"lookups":9}"""))
         assertEquals(BudgetWindow(), BudgetWindow.fromJson("not json"))
         assertEquals(BudgetWindow(), BudgetWindow.fromJson(null))
+    }
+
+    // ── Rate limit ──
+
+    @Test
+    fun rateLimit_pausesAtLeastTenMinutesOrRetryAfter() {
+        val now = 9_000_000_000_000L
+        CacheQueue.onRateLimited(retryAfterMs = 5_000, now = now)
+        assertEquals(now + CACHE_QUEUE_RATE_LIMIT_PAUSE_MS, CacheQueue.rateLimitedUntil(now))
+        CacheQueue.onRateLimited(retryAfterMs = 60L * 60 * 1000, now = now)
+        assertEquals(now + 60L * 60 * 1000, CacheQueue.rateLimitedUntil(now))
+        CacheQueue.onRateLimited(retryAfterMs = null, now = now + 1)
+        assertEquals(now + 60L * 60 * 1000, CacheQueue.rateLimitedUntil(now + 1))
+        assertNull(CacheQueue.rateLimitedUntil(now + 60L * 60 * 1000))
     }
 
     // ── Queue rows ──

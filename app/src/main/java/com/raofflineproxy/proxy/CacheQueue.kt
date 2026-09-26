@@ -6,6 +6,7 @@ import com.raofflineproxy.data.CacheKeys
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.sync.Mutex
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicLong
 import org.json.JSONArray
 import org.json.JSONObject
 import kotlin.math.ceil
@@ -78,10 +79,26 @@ internal fun estimateQueue(
     return QueueEstimate(candidates, cachedNow, newlyQueued, queuedAfter, etaMinutes)
 }
 
+internal const val CACHE_QUEUE_RATE_LIMIT_PAUSE_MS = 10L * 60 * 1000
+
 internal object CacheQueue {
     // The app's first-batch drain and the service worker share one queue and one budget.
     val drainLock = Mutex()
     private val activeBulkRuns = AtomicInteger()
+    private val rateLimitedUntil = AtomicLong()
+
+    /** True while the queue sends requests: a 429 then stops it instead of being retried. */
+    val isDraining: Boolean get() = drainLock.isLocked
+
+    /** RetroAchievements answered 429: the queue stops for at least ten minutes, longer if the
+     *  server's Retry-After asks for it. */
+    fun onRateLimited(retryAfterMs: Long?, now: Long = System.currentTimeMillis()) {
+        val until = now + maxOf(CACHE_QUEUE_RATE_LIMIT_PAUSE_MS, retryAfterMs ?: 0L)
+        rateLimitedUntil.accumulateAndGet(until, ::maxOf)
+    }
+
+    fun rateLimitedUntil(now: Long = System.currentTimeMillis()): Long? =
+        rateLimitedUntil.get().takeIf { it > now }
 
     /** True while Add ROM, Scan folder or Smart Cache hashes and runs its first batch; the
      *  service worker stands down meanwhile so it never drains a queue that is still filling. */
