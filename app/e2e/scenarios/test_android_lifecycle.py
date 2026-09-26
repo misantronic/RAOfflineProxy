@@ -135,8 +135,14 @@ class TestOffline:
 
     def test_offline_award_queues_and_flushes_when_back_online(self, running):
         running.emulator.boot_sequence(USER, TOKEN, MSLUG_HASH)
+        unlock_refreshes = len(running.ra.journal("unlocks"))
         status, payload = running.emulator.award(USER, TOKEN, 22001)
         assert status == 200 and payload["Success"] is True
+        wait_until(
+            lambda: len(running.ra.journal("unlocks")) > unlock_refreshes,
+            30,
+            message="post-award unlocks refresh",
+        )
 
         running.go_offline()
 
@@ -147,8 +153,8 @@ class TestOffline:
         running.wait_for_notification_text("1 pending award")
         assert 22002 not in running.ra.unlocks(USER, MSLUG_GAME_ID)
 
-        _status, unlocks = running.emulator.unlocks(USER, TOKEN, MSLUG_GAME_ID)
-        assert sorted(unlocks["UserUnlocks"]) == [22001, 22002]
+        _status, session = running.emulator.start_session(USER, TOKEN, MSLUG_GAME_ID)
+        assert sorted(entry["ID"] for entry in session["Unlocks"]) == [22001, 22002]
 
         running.go_online()
 
