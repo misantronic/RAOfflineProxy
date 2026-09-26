@@ -243,7 +243,7 @@ class LinuxUpdateTests(unittest.TestCase):
             "draft": False,
             "prerelease": True,
             "tag_name": "nightly-linux",
-            "name": "1.3.0-alpha1-nightly.57",
+            "name": "Linux 1.3.0-alpha1-nightly.57",
             "html_url": "https://example.com/nightly",
             "assets": [
                 {
@@ -271,7 +271,7 @@ class LinuxUpdateTests(unittest.TestCase):
         release = {
             "draft": False,
             "tag_name": "nightly-linux",
-            "name": "1.4.0",
+            "name": "Linux 1.4.0",
             "html_url": "https://example.com/nightly",
             "assets": [
                 {
@@ -284,6 +284,15 @@ class LinuxUpdateTests(unittest.TestCase):
         update.configured_ssl_context = lambda: object()
 
         self.assertEqual(update.fetch_nightly_releases("onion"), [])
+
+    def test_nightly_version_name_reads_version_after_platform_label(self) -> None:
+        self.assertEqual(
+            update.nightly_version_name({"name": "Linux 1.3.0-alpha1-nightly.57"}),
+            "1.3.0-alpha1-nightly.57",
+        )
+
+    def test_nightly_version_name_accepts_bare_version_title(self) -> None:
+        self.assertEqual(update.nightly_version_name({"name": "1.3.0-alpha1-nightly.57"}), "1.3.0-alpha1-nightly.57")
 
     def test_fetch_nightly_releases_returns_empty_when_missing(self) -> None:
         def fake_urlopen(request, timeout=0, context=None):

@@ -51,7 +51,8 @@ internal object AppUpdateChecker {
 
     private fun parseNightlyRelease(body: String): ReleaseInfo? =
         try {
-            parseRelease(JSONObject(body), versionField = "name")?.takeIf { it.version.isNightly }
+            val release = JSONObject(body)
+            parseRelease(release, nightlyVersionName(release))?.takeIf { it.version.isNightly }
         } catch (e: JSONException) {
             Log.w(TAG, "Nightly release response could not be parsed: ${e.message}")
             null
@@ -86,16 +87,19 @@ internal object AppUpdateChecker {
         val releases = JSONArray(body)
 
         val accepted = (0 until releases.length()).mapNotNull { index ->
-            releases.optJSONObject(index)?.let { parseRelease(it, versionField = "tag_name") }
+            releases.optJSONObject(index)?.let { parseRelease(it, it.optString("tag_name")) }
         }
         Log.d(TAG, "Parsed releases: total=${releases.length()} accepted=${accepted.size}")
         return accepted
     }
 
-    private fun parseRelease(release: JSONObject, versionField: String): ReleaseInfo? {
+    internal fun nightlyVersionName(release: JSONObject): String =
+        release.optString("name").trim().substringAfterLast(' ')
+
+    private fun parseRelease(release: JSONObject, rawVersionName: String): ReleaseInfo? {
         if (release.optBoolean("draft")) return null
 
-        val versionName = release.optString(versionField)
+        val versionName = rawVersionName
             .trim()
             .removePrefix("v")
             .takeIf { it.isNotBlank() }
