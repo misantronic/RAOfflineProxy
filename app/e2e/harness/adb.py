@@ -58,6 +58,17 @@ class Adb:
     ) -> subprocess.CompletedProcess:
         return self.run("shell", command, check=check, timeout=timeout, stdin=stdin)
 
+    def output_bytes(self, *args: str, timeout: float = 120) -> bytes:
+        result = subprocess.run(
+            self._base() + list(args),
+            capture_output=True,
+            stdin=subprocess.DEVNULL,
+            timeout=timeout,
+        )
+        if result.returncode != 0:
+            raise AdbError("adb %s failed (%d)" % (" ".join(args), result.returncode))
+        return result.stdout
+
     def devices(self) -> list:
         result = self.run("devices", check=False, timeout=30)
         rows = [line.split("\t") for line in result.stdout.splitlines()[1:]]

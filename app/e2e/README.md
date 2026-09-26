@@ -40,6 +40,13 @@ validated. The app treats an unvalidated network as offline.
 | `harness/ui.py` | taps views by resource id from a `uiautomator dump`, so start and stop go through the real `MainViewModel` path |
 | `harness/session.py` | per-test reset and the app-level helpers the scenarios use |
 
+## Diagnostics
+
+When a scenario fails, the harness saves a screenshot, the uiautomator window
+dump, the resumed activity and logcat to `app/e2e/artifacts/<test>/`. Set
+`RAOP_ANDROID_E2E_ARTIFACTS` to save them somewhere else. CI uploads that
+directory as the `android-e2e-api-<level>` artifact when a leg fails.
+
 ## Per-test reset
 
 Each test clears the app's data and deletes the host the Flycast stub

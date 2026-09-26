@@ -24,16 +24,23 @@ class Ui:
     def __init__(self, adb: Adb, package: str) -> None:
         self.adb = adb
         self.package = package
+        self.last_dump_output = ""
 
     def _qualified(self, resource_id: str) -> str:
         return resource_id if ":" in resource_id else "%s:id/%s" % (self.package, resource_id)
 
-    def dump(self) -> ET.Element | None:
+    def dump_xml(self) -> str | None:
         # uiautomator refuses to dump while the window is not idle; the caller retries.
+        self.adb.shell("rm -f %s" % DUMP_PATH, check=False)
         result = self.adb.shell("uiautomator dump %s" % DUMP_PATH, check=False, timeout=60)
-        if result.returncode != 0 or "dumped to" not in result.stdout:
+        self.last_dump_output = (result.stdout + result.stderr).strip()
+        xml = self.adb.shell("cat %s" % DUMP_PATH, check=False)
+        return xml.stdout if xml.returncode == 0 and xml.stdout.strip() else None
+
+    def dump(self) -> ET.Element | None:
+        xml = self.dump_xml()
+        if xml is None:
             return None
-        xml = self.adb.shell("cat %s" % DUMP_PATH, check=False).stdout
         try:
             return ET.fromstring(xml)
         except ET.ParseError:
@@ -67,8 +74,8 @@ class Ui:
                 return last
             time.sleep(1.0)
         raise UiNotFound(
-            "view %s (text=%r enabled=%r) not found; last seen: %r"
-            % (resource_id, text, enabled, last)
+            "view %s (text=%r enabled=%r) not found; last seen: %r; last uiautomator output: %r"
+            % (resource_id, text, enabled, last, self.last_dump_output)
         )
 
     def tap(self, node: dict) -> None:

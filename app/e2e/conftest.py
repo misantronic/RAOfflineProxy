@@ -8,15 +8,21 @@ import pytest
 from app.e2e.harness.adb import Adb, adb_binary
 from app.e2e.harness.apks import build_apks
 from app.e2e.harness.device import AndroidDevice
+from app.e2e.harness.diagnostics import artifact_dir, capture
 from app.e2e.harness.fake_ra_host import HostFakeRa
 from app.e2e.harness.rcheevos_host import HostEmulator
-from app.e2e.harness.session import PROXY_PORT, AndroidSession
+from app.e2e.harness.session import APP_PACKAGE, PROXY_PORT, AndroidSession
+from app.e2e.harness.ui import Ui
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 # Must match the e2eRaHost the APK was built with (default http://10.0.2.2:8181).
 FAKE_RA_PORT = int(os.environ.get("RAOP_ANDROID_E2E_RA_PORT", "8181"))
 HOST_PROXY_PORT = 18080
+ARTIFACTS_DIR = Path(
+    os.environ.get("RAOP_ANDROID_E2E_ARTIFACTS", str(REPO_ROOT / "app" / "e2e" / "artifacts"))
+)
+DEVICE_KEY = pytest.StashKey()
 
 # All-files access for the direct retroarch.cfg path and `cmd connectivity
 # airplane-mode` both need Android 11.
@@ -34,6 +40,15 @@ def pytest_addoption(parser) -> None:
 
 def _opted_in(config) -> bool:
     return bool(config.getoption("--android-e2e")) or os.environ.get("RAOP_ANDROID_E2E") == "1"
+
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_makereport(item, call):
+    outcome = yield
+    report = outcome.get_result()
+    device = item.config.stash.get(DEVICE_KEY, None)
+    if report.failed and report.when in ("setup", "call") and device is not None:
+        capture(device, Ui(device.adb, APP_PACKAGE), artifact_dir(ARTIFACTS_DIR, item.nodeid))
 
 
 def pytest_collection_modifyitems(config, items) -> None:
@@ -69,7 +84,7 @@ def fake_ra():
 
 
 @pytest.fixture(scope="session")
-def device(adb):
+def device(adb, pytestconfig):
     target = AndroidDevice(adb)
     target.wait_for_boot()
     if target.sdk_int() < MIN_SDK:
@@ -78,6 +93,7 @@ def device(adb):
     for apk in build_apks(REPO_ROOT).all():
         target.install(str(apk))
     target.forward(HOST_PROXY_PORT, PROXY_PORT)
+    pytestconfig.stash[DEVICE_KEY] = target
     try:
         yield target
     finally:

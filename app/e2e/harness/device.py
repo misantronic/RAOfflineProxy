@@ -117,6 +117,23 @@ class AndroidDevice:
             "cmd connectivity airplane-mode %s" % ("enable" if enabled else "disable")
         )
 
+    def clear_logcat(self) -> None:
+        self.adb.run("logcat", "-c", check=False)
+
+    def logcat(self) -> str:
+        return self.adb.run("logcat", "-d", "-b", "main,system,crash", check=False, timeout=60).stdout
+
+    def screenshot(self) -> bytes:
+        return self.adb.output_bytes("exec-out", "screencap", "-p")
+
+    def foreground(self) -> str:
+        result = self.adb.shell("dumpsys activity activities", check=False)
+        return "\n".join(
+            line.strip()
+            for line in result.stdout.splitlines()
+            if "ResumedActivity" in line or "mFocusedApp" in line
+        )
+
     def service_running(self, package: str, service_class: str) -> bool:
         result = self.adb.shell("dumpsys activity services %s" % package, check=False)
         return service_class in result.stdout

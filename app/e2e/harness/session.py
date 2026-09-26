@@ -82,6 +82,7 @@ class AndroidSession:
 
     def reset(self, hardcore: bool = True) -> None:
         self.device.set_airplane_mode(False)
+        self.device.clear_logcat()
         self.device.clear_data(APP_PACKAGE)
         self.device.remove_app_file(FLYCAST_PACKAGE, FLYCAST_HOST_OVERRIDE_FILE)
         self.device.allow_all_files_access(APP_PACKAGE)

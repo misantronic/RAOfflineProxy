@@ -7,6 +7,7 @@ import urllib.request
 import pytest
 
 from app.e2e.harness.device import AndroidDevice
+from app.e2e.harness.diagnostics import artifact_dir, capture
 from app.e2e.harness.fake_ra_host import HostFakeRa
 from app.e2e.harness.session import PROXY_VALUE, cfg_value, retroarch_cfg
 from app.e2e.harness.ui import Ui
@@ -109,3 +110,27 @@ def test_host_fake_ra_serves_and_resets(fake_ra):
 
     assert fake_ra.actions() == []
     assert _gameid(fake_ra, "d" * 32)["GameID"] == 0
+
+
+class FakeDevice:
+    def screenshot(self) -> bytes:
+        return b"\x89PNG"
+
+    def foreground(self) -> str:
+        return "mResumedActivity: com.raofflineproxy/.ui.MainActivity"
+
+    def logcat(self) -> str:
+        raise RuntimeError("adb went away")
+
+
+def test_diagnostics_capture_survives_a_failing_step(tmp_path):
+    adb = FakeAdb({"uiautomator dump": "UI hierchary dumped to: /sdcard/x.xml", "cat ": UI_DUMP})
+    target = artifact_dir(tmp_path, "app/e2e/scenarios/test_x.py::TestA::test_b")
+
+    capture(FakeDevice(), Ui(adb, "com.raofflineproxy"), target)
+
+    assert target.name == "app_e2e_scenarios_test_x.py_TestA_test_b"
+    assert (target / "screenshot.png").read_bytes() == b"\x89PNG"
+    assert "btn_start_proxy" in (target / "window.xml").read_text()
+    assert "MainActivity" in (target / "foreground.txt").read_text()
+    assert "adb went away" in (target / "logcat.txt").read_text()
