@@ -115,6 +115,11 @@ def running_on_mini_sdl_stack() -> bool:
 
 
 def running_on_darkos() -> bool:
+    # dArkMoss, spruce's dArkOS-derived base, keeps dArkOS's home directory, but the
+    # proxy there is spruce's card bundle and spruce owns the service: the systemd unit
+    # and the /home/ark install paths do not apply.
+    if running_on_spruce():
+        return False
     return DEFAULT_DARKOS_HOME.exists()
 
 

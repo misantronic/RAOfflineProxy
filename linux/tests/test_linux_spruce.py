@@ -124,6 +124,19 @@ class SpruceDetectionTests(unittest.TestCase):
         )
         self.assertEqual(platform_name, "RGB30")
 
+    def test_spruce_wins_over_darkos_on_a_darkos_derived_base(self) -> None:
+        # dArkMoss keeps dArkOS's /home/ark. Answering "dArkOS" there sent start-proxy
+        # through a systemd unit pointing at /home/ark/raofflineproxy, which does not
+        # exist, so the daemon never started and the unit was written onto the base.
+        with tempfile.TemporaryDirectory() as temp_dir:
+            ark_home = Path(temp_dir) / "ark"
+            ark_home.mkdir()
+            with patch.object(config, "DEFAULT_DARKOS_HOME", ark_home):
+                with patch.object(config, "running_on_spruce", return_value=True):
+                    self.assertFalse(config.running_on_darkos())
+                with patch.object(config, "running_on_spruce", return_value=False):
+                    self.assertTrue(config.running_on_darkos())
+
     def test_spruce_platform_defaults_to_miyoo_mini(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             cpuinfo_path = Path(temp_dir) / "cpuinfo"
