@@ -19,3 +19,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "RAOfflineProxy"
 include(":app")
+include(":e2e-stub-emulator")

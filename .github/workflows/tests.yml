@@ -13,6 +13,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       linux: ${{ steps.filter.outputs.linux }}
+      android: ${{ steps.filter.outputs.android }}
     steps:
       - uses: actions/checkout@v7
 
@@ -23,6 +24,18 @@ jobs:
             linux:
               - 'linux/**'
               - 'third_party/**'
+              - '.github/workflows/tests.yml'
+            android:
+              - 'app/**'
+              - 'e2e-stub-emulator/**'
+              - 'linux/tests/e2e/fake_ra/**'
+              - 'linux/tests/e2e/harness/rcheevos.py'
+              - 'third_party/**'
+              - 'build.gradle.kts'
+              - 'settings.gradle.kts'
+              - 'gradle.properties'
+              - 'gradle/**'
+              - 'gradlew'
               - '.github/workflows/tests.yml'
 
   linux-tests:
@@ -66,6 +79,7 @@ jobs:
           filters: |
             android:
               - 'app/**'
+              - 'e2e-stub-emulator/**'
               - 'third_party/**'
               - 'build.gradle.kts'
               - 'settings.gradle.kts'
@@ -189,3 +203,67 @@ jobs:
         env:
           ZIG_BIN: zig
         run: python3 -m pytest linux/tests/e2e -q --e2e-device ${{ matrix.device }}
+
+  # Emulator E2E: installs the e2e build (RA_HOST pointed at the host) plus stub
+  # emulator packages on an Android emulator and drives the real UI start/stop
+  # path against the fake RA server. See app/e2e/README.md.
+  #
+  # Same gating as linux-e2e: pull requests touching the app, the "e2e" label,
+  # and workflow_dispatch.
+  android-e2e:
+    name: android e2e (API ${{ matrix.api-level }})
+    needs: changes
+    if: >-
+      !cancelled() && (
+        github.event_name != 'pull_request' ||
+        needs.changes.outputs.android == 'true' ||
+        contains(github.event.pull_request.labels.*.name, 'e2e')
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        api-level: [30, 35]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - uses: gradle/actions/setup-gradle@v6.3.0
+
+      - name: Install NDK
+        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;28.0.13004108" "cmake;3.22.1"
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.14"
+
+      - name: Install test dependencies
+        run: pip install pytest
+
+      - name: Build E2E APKs
+        run: ./gradlew :app:assembleE2e :e2e-stub-emulator:assembleRetroarchDebug :e2e-stub-emulator:assembleFlycastDebug
+
+      # The hosted runners expose /dev/kvm but only to root by default.
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Run Android E2E scenarios
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ matrix.api-level }}
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: python3 -m pytest app/e2e -q --android-e2e
