@@ -90,7 +90,6 @@ class ProxyService : Service() {
     private var cacheQueueJob: Job? = null
     private var cacheQueueRejectedToken: String? = null
     private var cachingObserverJob: Job? = null
-    @Volatile private var queueProgress: CachingProgress? = null
     @Volatile private var queuedCount = 0
     @Volatile private var nextQueueWindowAt: Long? = null
     @Volatile private var lastCachingNotificationAt = 0L
@@ -251,20 +250,23 @@ class ProxyService : Service() {
         if (credentials.token == cacheQueueRejectedToken) return CACHE_QUEUE_POLL_MS
         val userAgent = proxyUserAgent(loadUserAgent(db))
         CacheQueueWakeLock.hold(this)
-        val result = drainCacheQueue(
-            this,
-            db,
-            credentials,
-            userAgent,
-            shouldPause = { !canWorkOnCacheQueue() },
-            onItem = { current, total, label ->
-                queueProgress = CachingProgress(CachingPhase.Caching, current, total, label)
-                updateCachingNotification()
-            }
-        )
+        val result = try {
+            drainCacheQueue(
+                this,
+                db,
+                credentials,
+                userAgent,
+                shouldPause = { !canWorkOnCacheQueue() },
+                onItem = { current, total, label ->
+                    CachingNotifications.reportQueue(CachingProgress(CachingPhase.Caching, current, total, label))
+                    updateCachingNotification()
+                }
+            )
+        } finally {
+            CachingNotifications.reportQueue(null)
+        }
         if (result.stop == DrainStop.AuthRejected) cacheQueueRejectedToken = credentials.token
         val nextAttemptAt = result.nextAttemptAt
-        queueProgress = null
         nextQueueWindowAt = nextAttemptAt
         updateNotification()
         if (result.processed > 0 || nextAttemptAt != null) {
@@ -395,7 +397,7 @@ class ProxyService : Service() {
             getString(R.string.notification_offline_title) to offlineText
         }
         val caching = cachingStatus()
-        val progress = CachingNotifications.progress.value ?: queueProgress
+        val progress = CachingNotifications.progress.value ?: CachingNotifications.queueProgress.value
         return Notification.Builder(this, PROXY_NOTIFICATION_CHANNEL_ID)
             .setContentTitle(title)
             .setContentText(if (caching == null) text else "$text · ${caching.first}")
@@ -413,7 +415,7 @@ class ProxyService : Service() {
     /** Short line for the collapsed notification and a longer one for the expanded view. */
     private fun cachingStatus(): Pair<String, String>? {
         val appProgress = CachingNotifications.progress.value
-        val queue = queueProgress
+        val queue = CachingNotifications.queueProgress.value
         val nextWindow = nextQueueWindowAt
         return when {
             appProgress != null -> appProgress.shortText(this) to appProgress.text(this)
@@ -435,7 +437,7 @@ class ProxyService : Service() {
 
     private fun updateCachingNotification() {
         val now = SystemClock.elapsedRealtime()
-        val active = CachingNotifications.progress.value != null || queueProgress != null
+        val active = CachingNotifications.progress.value != null || CachingNotifications.queueProgress.value != null
         if (active && now - lastCachingNotificationAt < CACHING_NOTIFICATION_MIN_INTERVAL_MS) return
         lastCachingNotificationAt = now
         updateNotification()

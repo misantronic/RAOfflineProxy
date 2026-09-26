@@ -51,6 +51,10 @@ internal fun openAppIntent(context: Context): PendingIntent =
 object CachingNotifications {
     private val _progress = MutableStateFlow<CachingProgress?>(null)
     val progress: StateFlow<CachingProgress?> = _progress.asStateFlow()
+    private val _queueProgress = MutableStateFlow<CachingProgress?>(null)
+
+    /** Progress of the proxy service draining the queue in the background. */
+    val queueProgress: StateFlow<CachingProgress?> = _queueProgress.asStateFlow()
     @Volatile private var lastPostedAt = 0L
 
     fun report(context: Context, progress: CachingProgress?) {
@@ -69,6 +73,10 @@ object CachingNotifications {
         ensureProxyNotificationChannel(context)
         context.getSystemService(NotificationManager::class.java)
             .notify(STANDALONE_NOTIFICATION_ID, buildStandalone(context, progress))
+    }
+
+    fun reportQueue(progress: CachingProgress?) {
+        _queueProgress.value = progress
     }
 
     fun clearStandalone(context: Context) {

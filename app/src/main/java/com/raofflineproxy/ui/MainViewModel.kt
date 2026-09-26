@@ -250,6 +250,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 _state.value = _state.value.copy(queuedRomCount = count)
             }
         }
+        viewModelScope.launch { mirrorBackgroundQueueProgress() }
 
         connectivityManager.registerNetworkCallback(
             NetworkRequest.Builder()
@@ -1422,6 +1423,25 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             showCachingProgress(CachingProgress(CachingPhase.Caching, current, total, label), onAbort)
         }
         return FirstBatch(result.cached, result.noMatch)
+    }
+
+    /** Shows the proxy service's background queue run in the same progress snackbar as a bulk
+     *  run started from the app. A bulk run keeps the worker idle, so the two never overlap. */
+    private suspend fun mirrorBackgroundQueueProgress() {
+        val app = getApplication<Application>()
+        var showing = false
+        CachingNotifications.queueProgress.collect { progress ->
+            when {
+                progress != null -> {
+                    SnackbarManager.showProgress(progress.text(app))
+                    showing = true
+                }
+                showing -> {
+                    SnackbarManager.showProgress(null)
+                    showing = false
+                }
+            }
+        }
     }
 
     private fun showCachingProgress(progress: CachingProgress, onAbort: (() -> Unit)?) {
