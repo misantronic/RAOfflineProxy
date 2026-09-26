@@ -13,6 +13,7 @@ class LinuxUpdateTests(unittest.TestCase):
         update.save_cached_update_status = self._original_save_cached_update_status
         update.load_cached_update_status = self._original_load_cached_update_status
         update.fetch_releases = self._original_fetch_releases
+        update.fetch_nightly_releases = self._original_fetch_nightly_releases
         update.read_update_asset = self._original_read_update_asset
         update.time.sleep = self._original_sleep
         update.urllib.request.urlopen = self._original_urlopen
@@ -22,6 +23,7 @@ class LinuxUpdateTests(unittest.TestCase):
         self._original_save_cached_update_status = update.save_cached_update_status
         self._original_load_cached_update_status = update.load_cached_update_status
         self._original_fetch_releases = update.fetch_releases
+        self._original_fetch_nightly_releases = update.fetch_nightly_releases
         self._original_read_update_asset = update.read_update_asset
         self._original_sleep = update.time.sleep
         self._original_urlopen = update.urllib.request.urlopen
@@ -168,6 +170,129 @@ class LinuxUpdateTests(unittest.TestCase):
 
         self.assertTrue(succeeded)
         self.assertIsNone(latest)
+
+    def test_parse_version_accepts_nightly(self) -> None:
+        parsed = update.parse_version("1.3.0-alpha1-nightly.57")
+
+        self.assertIsNotNone(parsed)
+        self.assertEqual(parsed.stage_number, 1)
+        self.assertEqual(parsed.nightly_number, 57)
+        self.assertTrue(parsed.is_nightly)
+        self.assertGreater(parsed, update.parse_version("1.3.0-alpha1"))
+        self.assertLess(parsed, update.parse_version("1.3.0-alpha2"))
+
+    def test_parse_version_rejects_malformed_nightly(self) -> None:
+        self.assertIsNone(update.parse_version("1.3.0-alpha1-nightly."))
+        self.assertIsNone(update.parse_version("1.3.0-alpha1-nightly.x"))
+
+    def test_fetch_latest_release_skips_nightly_lookup_for_stable_install(self) -> None:
+        update.fetch_releases = lambda _platform: []
+        update.fetch_nightly_releases = lambda _platform: self.fail("stable installs must not query nightlies")
+
+        succeeded, latest = update.fetch_latest_release("knulli", "1.3.0-alpha1")
+
+        self.assertTrue(succeeded)
+        self.assertIsNone(latest)
+
+    def test_fetch_latest_release_ignores_nightly_candidates_for_stable_install(self) -> None:
+        update.fetch_releases = lambda _platform: [release_candidate("1.3.0-alpha1-nightly.57")]
+
+        succeeded, latest = update.fetch_latest_release("knulli", "1.3.0-alpha1")
+
+        self.assertTrue(succeeded)
+        self.assertIsNone(latest)
+
+    def test_fetch_latest_release_returns_newer_nightly_for_nightly_install(self) -> None:
+        update.fetch_releases = lambda _platform: [release_candidate("1.3.0-alpha1")]
+        update.fetch_nightly_releases = lambda _platform: [release_candidate("1.3.0-alpha1-nightly.58")]
+
+        succeeded, latest = update.fetch_latest_release("knulli", "1.3.0-alpha1-nightly.57")
+
+        self.assertTrue(succeeded)
+        self.assertEqual(latest.version_name, "1.3.0-alpha1-nightly.58")
+
+    def test_fetch_latest_release_ignores_stable_of_same_base_for_nightly_install(self) -> None:
+        update.fetch_releases = lambda _platform: [release_candidate("1.3.0-alpha1")]
+        update.fetch_nightly_releases = lambda _platform: [release_candidate("1.3.0-alpha1-nightly.57")]
+
+        succeeded, latest = update.fetch_latest_release("knulli", "1.3.0-alpha1-nightly.57")
+
+        self.assertTrue(succeeded)
+        self.assertIsNone(latest)
+
+    def test_fetch_latest_release_returns_newer_stable_for_nightly_install(self) -> None:
+        update.fetch_releases = lambda _platform: [release_candidate("1.3.0-alpha2")]
+        update.fetch_nightly_releases = lambda _platform: [release_candidate("1.3.0-alpha1-nightly.57")]
+
+        succeeded, latest = update.fetch_latest_release("knulli", "1.3.0-alpha1-nightly.57")
+
+        self.assertTrue(succeeded)
+        self.assertEqual(latest.version_name, "1.3.0-alpha2")
+
+    def test_fetch_latest_release_prefers_nightly_over_stable_of_same_base(self) -> None:
+        update.fetch_releases = lambda _platform: [release_candidate("1.3.0-alpha2")]
+        update.fetch_nightly_releases = lambda _platform: [release_candidate("1.3.0-alpha2-nightly.60")]
+
+        succeeded, latest = update.fetch_latest_release("knulli", "1.3.0-alpha1-nightly.57")
+
+        self.assertTrue(succeeded)
+        self.assertEqual(latest.version_name, "1.3.0-alpha2-nightly.60")
+
+    def test_fetch_nightly_releases_reads_version_from_release_name(self) -> None:
+        release = {
+            "draft": False,
+            "prerelease": True,
+            "tag_name": "nightly-linux",
+            "name": "1.3.0-alpha1-nightly.57",
+            "html_url": "https://example.com/nightly",
+            "assets": [
+                {
+                    "name": "RAOfflineProxy-Onion-v1.3.0-alpha1-nightly.57.zip",
+                    "browser_download_url": "https://example.com/nightly-onion.zip",
+                }
+            ],
+        }
+        requested_urls = []
+
+        def fake_urlopen(request, timeout=0, context=None):
+            requested_urls.append(request.full_url)
+            return FakeJsonResponse(release)
+
+        update.urllib.request.urlopen = fake_urlopen
+        update.configured_ssl_context = lambda: object()
+
+        candidates = update.fetch_nightly_releases("onion")
+
+        self.assertEqual(requested_urls, [update.GITHUB_NIGHTLY_RELEASE_URL])
+        self.assertEqual([candidate.version_name for candidate in candidates], ["1.3.0-alpha1-nightly.57"])
+        self.assertEqual(candidates[0].asset_url, "https://example.com/nightly-onion.zip")
+
+    def test_fetch_nightly_releases_rejects_non_nightly_release_name(self) -> None:
+        release = {
+            "draft": False,
+            "tag_name": "nightly-linux",
+            "name": "1.4.0",
+            "html_url": "https://example.com/nightly",
+            "assets": [
+                {
+                    "name": "RAOfflineProxy-Onion-v1.4.0.zip",
+                    "browser_download_url": "https://example.com/onion.zip",
+                }
+            ],
+        }
+        update.urllib.request.urlopen = lambda _request, timeout=0, context=None: FakeJsonResponse(release)
+        update.configured_ssl_context = lambda: object()
+
+        self.assertEqual(update.fetch_nightly_releases("onion"), [])
+
+    def test_fetch_nightly_releases_returns_empty_when_missing(self) -> None:
+        def fake_urlopen(request, timeout=0, context=None):
+            raise update.urllib.error.HTTPError(request.full_url, 404, "Not Found", {}, None)
+
+        update.urllib.request.urlopen = fake_urlopen
+        update.configured_ssl_context = lambda: object()
+
+        self.assertEqual(update.fetch_nightly_releases("onion"), [])
 
     def test_fetch_latest_release_returns_none_for_invalid_current_version(self) -> None:
         succeeded, latest = update.fetch_latest_release("onion", "not-a-version")
@@ -562,6 +687,29 @@ class LinuxUpdateTests(unittest.TestCase):
         self.assertEqual(len(releases), 1)
         self.assertEqual(len(attempts), 2)
         self.assertEqual(sleeps, [update.RELEASES_FETCH_RETRY_DELAY_SECONDS])
+
+
+def release_candidate(version_name: str) -> update.ReleaseCandidate:
+    return update.ReleaseCandidate(
+        version_name=version_name,
+        parsed_version=update.parse_version(version_name),
+        release_url=f"https://example.com/release/{version_name}",
+        asset_url=f"https://example.com/asset/{version_name}",
+    )
+
+
+class FakeJsonResponse:
+    def __init__(self, payload: object) -> None:
+        self._body = json.dumps(payload).encode("utf-8")
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        return False
+
+    def read(self) -> bytes:
+        return self._body
 
 
 if __name__ == "__main__":

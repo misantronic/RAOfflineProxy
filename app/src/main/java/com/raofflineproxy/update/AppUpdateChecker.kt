@@ -6,10 +6,14 @@ import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
 import org.json.JSONArray
+import org.json.JSONException
+import org.json.JSONObject
 
 private const val CONNECT_TIMEOUT_MS = 10_000
 private const val READ_TIMEOUT_MS = 10_000
 private const val RELEASES_URL = "https://api.github.com/repos/misantronic/RAOfflineProxy/releases"
+private const val NIGHTLY_RELEASE_URL = "$RELEASES_URL/tags/nightly-android"
+private const val STABLE_NIGHTLY_NUMBER = -1
 private const val TAG = "RAProxy/AppUpdateChecker"
 
 data class AppUpdateInfo(
@@ -26,7 +30,9 @@ internal object AppUpdateChecker {
 
         Log.i(TAG, "Fetched ${releases.size} Android release candidates")
 
-        return selectLatestUpdate(currentVersionName, releases)
+        val candidates = releases + fetchNightlyCandidates(currentVersionName)
+
+        return selectLatestUpdate(currentVersionName, candidates)
             ?.also { Log.i(TAG, "Found newer update version=${it.versionName} apkUrl=${it.apkUrl}") }
             ?: run {
                 Log.i(TAG, "No newer Android update found for currentVersion=$currentVersionName")
@@ -34,8 +40,25 @@ internal object AppUpdateChecker {
             }
     }
 
-    private fun fetchReleases(): List<ReleaseInfo>? {
-        val connection = (URL(RELEASES_URL).openConnection() as HttpURLConnection).apply {
+    private fun fetchReleases(): List<ReleaseInfo>? = fetchBody(RELEASES_URL)?.let(::parseReleases)
+
+    private fun fetchNightlyCandidates(currentVersionName: String): List<ReleaseInfo> {
+        if (parseVersion(currentVersionName)?.isNightly != true) return emptyList()
+
+        Log.i(TAG, "Checking nightly release $NIGHTLY_RELEASE_URL")
+        return listOfNotNull(fetchBody(NIGHTLY_RELEASE_URL)?.let(::parseNightlyRelease))
+    }
+
+    private fun parseNightlyRelease(body: String): ReleaseInfo? =
+        try {
+            parseRelease(JSONObject(body), versionField = "name")?.takeIf { it.version.isNightly }
+        } catch (e: JSONException) {
+            Log.w(TAG, "Nightly release response could not be parsed: ${e.message}")
+            null
+        }
+
+    private fun fetchBody(url: String): String? {
+        val connection = (URL(url).openConnection() as HttpURLConnection).apply {
             connectTimeout = CONNECT_TIMEOUT_MS
             readTimeout = READ_TIMEOUT_MS
             setRequestProperty("Accept", "application/vnd.github+json")
@@ -46,14 +69,13 @@ internal object AppUpdateChecker {
             val statusCode = connection.responseCode
             if (statusCode !in 200..299) {
                 val errorBody = connection.errorStream?.bufferedReader()?.use { it.readText() }.orEmpty()
-                Log.w(TAG, "GitHub releases request failed with HTTP $statusCode: ${errorBody.take(512)}")
+                Log.w(TAG, "GitHub request $url failed with HTTP $statusCode: ${errorBody.take(512)}")
                 return null
             }
 
-            val body = connection.inputStream.bufferedReader().use { it.readText() }
-            parseReleases(body)
+            connection.inputStream.bufferedReader().use { it.readText() }
         } catch (e: IOException) {
-            Log.w(TAG, "GitHub releases request failed: ${e.message ?: e::class.java.simpleName}")
+            Log.w(TAG, "GitHub request $url failed: ${e.message ?: e::class.java.simpleName}")
             null
         } finally {
             connection.disconnect()
@@ -63,32 +85,31 @@ internal object AppUpdateChecker {
     private fun parseReleases(body: String): List<ReleaseInfo> {
         val releases = JSONArray(body)
 
-        val accepted = buildList {
-            for (index in 0 until releases.length()) {
-                val release = releases.optJSONObject(index) ?: continue
-                if (release.optBoolean("draft")) continue
-
-                val versionName = release.optString("tag_name")
-                    .trim()
-                    .removePrefix("v")
-                    .takeIf { it.isNotBlank() }
-                    ?: continue
-                val version = parseVersion(versionName) ?: continue
-                val releaseUrl = release.optString("html_url").takeIf { it.isNotBlank() } ?: continue
-                val apkUrl = release.optJSONArray("assets")?.let(::findApkUrl) ?: continue
-
-                add(
-                    ReleaseInfo(
-                        versionName = versionName,
-                        version = version,
-                        apkUrl = apkUrl,
-                        releaseUrl = releaseUrl
-                    )
-                )
-            }
+        val accepted = (0 until releases.length()).mapNotNull { index ->
+            releases.optJSONObject(index)?.let { parseRelease(it, versionField = "tag_name") }
         }
         Log.d(TAG, "Parsed releases: total=${releases.length()} accepted=${accepted.size}")
         return accepted
+    }
+
+    private fun parseRelease(release: JSONObject, versionField: String): ReleaseInfo? {
+        if (release.optBoolean("draft")) return null
+
+        val versionName = release.optString(versionField)
+            .trim()
+            .removePrefix("v")
+            .takeIf { it.isNotBlank() }
+            ?: return null
+        val version = parseVersion(versionName) ?: return null
+        val releaseUrl = release.optString("html_url").takeIf { it.isNotBlank() } ?: return null
+        val apkUrl = release.optJSONArray("assets")?.let(::findApkUrl) ?: return null
+
+        return ReleaseInfo(
+            versionName = versionName,
+            version = version,
+            apkUrl = apkUrl,
+            releaseUrl = releaseUrl
+        )
     }
 
     private fun findApkUrl(assets: JSONArray): String? {
@@ -119,6 +140,7 @@ internal object AppUpdateChecker {
 
         return releases
             .filter { it.version > currentVersion }
+            .filter { currentVersion.isNightly || !it.version.isNightly }
             .maxByOrNull { it.version }
             ?.let {
                 AppUpdateInfo(
@@ -145,10 +167,23 @@ internal data class AppVersion(
     val minor: Int,
     val patch: Int,
     val channelRank: Int,
-    val channelNumber: Int
+    val channelNumber: Int,
+    val nightlyNumber: Int = STABLE_NIGHTLY_NUMBER
 ) : Comparable<AppVersion> {
+    val isNightly: Boolean
+        get() = nightlyNumber != STABLE_NIGHTLY_NUMBER
+
     override fun compareTo(other: AppVersion): Int =
-        compareValuesBy(this, other, AppVersion::major, AppVersion::minor, AppVersion::patch, AppVersion::channelRank, AppVersion::channelNumber)
+        compareValuesBy(
+            this,
+            other,
+            AppVersion::major,
+            AppVersion::minor,
+            AppVersion::patch,
+            AppVersion::channelRank,
+            AppVersion::channelNumber,
+            AppVersion::nightlyNumber
+        )
 }
 
 internal data class ReleaseInfo(
@@ -189,8 +224,12 @@ private fun parseVersion(raw: String): AppVersion? {
             Int.MAX_VALUE
         } else {
             match.groupValues[5].toIntOrNull() ?: return null
-        }
+        },
+        nightlyNumber = match.groupValues[6]
+            .takeIf { it.isNotEmpty() }
+            ?.let { it.toIntOrNull() ?: return null }
+            ?: STABLE_NIGHTLY_NUMBER
     )
 }
 
-private val VERSION_REGEX = Regex("^(\\d+)\\.(\\d+)\\.(\\d+)(?:-(alpha|beta)(\\d+))?$")
+private val VERSION_REGEX = Regex("^(\\d+)\\.(\\d+)\\.(\\d+)(?:-(alpha|beta)(\\d+))?(?:-nightly\\.(\\d+))?$")

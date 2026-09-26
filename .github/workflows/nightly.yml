@@ -1,0 +1,197 @@
+name: Nightly
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'app/**'
+      - 'linux/**'
+      - 'third_party/**'
+      - 'build.gradle.kts'
+      - 'settings.gradle.kts'
+      - 'gradle.properties'
+      - 'gradle/**'
+      - 'gradlew'
+      - '.github/scripts/*-nightly*.sh'
+      - '.github/workflows/nightly.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  changes:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    outputs:
+      android: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.android == 'true' }}
+      linux: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.linux == 'true' }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: dorny/paths-filter@v4
+        id: filter
+        if: github.event_name == 'push'
+        with:
+          filters: |
+            android:
+              - 'app/**'
+              - 'third_party/**'
+              - 'build.gradle.kts'
+              - 'settings.gradle.kts'
+              - 'gradle.properties'
+              - 'gradle/**'
+              - 'gradlew'
+              - '.github/scripts/*-nightly*.sh'
+              - '.github/workflows/nightly.yml'
+            linux:
+              - 'linux/**'
+              - 'third_party/**'
+              - '.github/scripts/*-nightly*.sh'
+              - '.github/workflows/nightly.yml'
+
+  android:
+    needs: changes
+    if: needs.changes.outputs.android == 'true'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: nightly-android
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - name: Stamp nightly version
+        id: version
+        run: |
+          base="$(sed -n 's/^ *versionName = "\(.*\)"$/\1/p' app/build.gradle.kts)"
+          .github/scripts/stamp-nightly-version.sh "${base}" app/build.gradle.kts
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - uses: gradle/actions/setup-gradle@v6.3.0
+
+      - name: Install NDK
+        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;28.0.13004108" "cmake;3.22.1"
+
+      # Signed with the release key so a nightly installs over the stable app.
+      - name: Write signing config
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ -z "${KEYSTORE_BASE64}" ] || [ -z "${KEYSTORE_PASSWORD}" ] || [ -z "${KEY_ALIAS}" ] || [ -z "${KEY_PASSWORD}" ]; then
+            echo "::error::Android signing secrets are missing"
+            exit 1
+          fi
+          keystore="${RUNNER_TEMP}/release.jks"
+          echo "${KEYSTORE_BASE64}" | base64 --decode > "${keystore}"
+          {
+            echo "storeFile=${keystore}"
+            echo "storePassword=${KEYSTORE_PASSWORD}"
+            echo "keyAlias=${KEY_ALIAS}"
+            echo "keyPassword=${KEY_PASSWORD}"
+          } > keystore.properties
+
+      - name: Build release APK
+        run: ./gradlew assembleRelease
+
+      - name: Publish nightly-android
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          .github/scripts/publish-nightly.sh nightly-android "${{ steps.version.outputs.version }}" \
+            "app/build/outputs/apk/release/RAOfflineProxy-v${{ steps.version.outputs.version }}.apk"
+
+  linux:
+    needs: changes
+    if: needs.changes.outputs.linux == 'true'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: nightly-linux
+      cancel-in-progress: false
+    env:
+      ZIG_BIN: zig
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - name: Stamp nightly version
+        id: version
+        run: |
+          base="$(sed -n 's/^APP_VERSION = .* or "\(.*\)"$/\1/p' linux/raofflineproxy/config.py)"
+          .github/scripts/stamp-nightly-version.sh "${base}" linux ':!linux/tests'
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.14"
+
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: "0.16.0"
+
+      - name: Install image tooling
+        run: sudo apt-get update && sudo apt-get install -y imagemagick
+
+      - name: Cache vendored pygame
+        id: vendor-cache
+        uses: actions/cache@v6
+        with:
+          path: |
+            linux/rocknix/vendor
+            linux/muos/vendor
+          key: nightly-vendor-${{ hashFiles('linux/rocknix/fetch_vendor.sh', 'linux/muos/fetch_vendor.sh') }}
+
+      - name: Fetch vendored pygame
+        if: steps.vendor-cache.outputs.cache-hit != 'true'
+        run: |
+          bash linux/rocknix/fetch_vendor.sh
+          bash linux/muos/fetch_vendor.sh
+
+      - name: Cache Onion runtime and pygame
+        id: onion-cache
+        uses: actions/cache@v6
+        with:
+          path: |
+            linux/onion/runtime-cache
+            linux/onion/vendor
+          key: onion-runtime-${{ hashFiles('linux/onion/fetch_runtime.sh', 'linux/onion/fetch_vendor.sh') }}
+
+      - name: Fetch Onion runtime and pygame
+        if: steps.onion-cache.outputs.cache-hit != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          bash linux/onion/fetch_runtime.sh
+          bash linux/onion/fetch_vendor.sh
+
+      - name: Build bundles
+        run: |
+          bash linux/knulli/build_bundle.sh
+          bash linux/onion/build_bundle.sh
+          bash linux/spruce/build_bundle.sh
+          bash linux/allium/build_bundle.sh
+          bash linux/muos/build_bundle.sh
+          bash linux/rocknix/build_bundle.sh
+          bash linux/darkos/build_bundle.sh
+
+      - name: Publish nightly-linux
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="${{ steps.version.outputs.version }}"
+          .github/scripts/publish-nightly.sh nightly-linux "${version}" \
+            "linux/knulli/dist/RAOfflineProxy-Knulli-v${version}-Install.sh" \
+            "linux/onion/dist/RAOfflineProxy-Onion-v${version}.zip" \
+            "linux/spruce/dist/RAOfflineProxy-Spruce-v${version}.zip" \
+            "linux/allium/dist/RAOfflineProxy-Allium-v${version}.zip" \
+            "linux/muos/dist/RAOfflineProxy-muOS-v${version}.muxapp" \
+            "linux/rocknix/dist/RAOfflineProxy-Rocknix-v${version}-Install.sh" \
+            "linux/darkos/dist/RAOfflineProxy-DarkOS-v${version}-Install.sh"
