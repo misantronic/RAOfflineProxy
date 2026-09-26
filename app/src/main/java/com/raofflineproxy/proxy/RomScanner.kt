@@ -530,7 +530,7 @@ internal fun classifyCachedGameId(body: String?, cachedAt: Long, now: Long): Cac
  *  first within the caching budget. A window allows [CACHE_BUDGET_LIMIT] cached games and
  *  [CACHE_REQUEST_LIMIT] requests, charged with what each ROM really sent, so ROMs
  *  RetroAchievements doesn't know only cost their lookup. A 429 stops the queue for at least
- *  [CACHE_QUEUE_RATE_LIMIT_PAUSE_MS]. Only one caller drains at a time; a concurrent call returns
+ *  [RATE_LIMIT_PAUSE_MS]. Only one caller drains at a time; a concurrent call returns
  *  [DrainStop.Busy] at once. A failed ROM keeps its place and is retried on a later round instead
  *  of back to back. [onItem] reports progress in games within the current window. */
 internal suspend fun drainCacheQueue(
@@ -544,13 +544,14 @@ internal suspend fun drainCacheQueue(
 ): QueueDrainResult {
     if (waitForLock) CacheQueue.drainLock.lock()
     else if (!CacheQueue.drainLock.tryLock()) return QueueDrainResult(0, 0, DrainStop.Busy)
+    RateLimitBackoff.enterBackground()
     try {
         var cached = 0
         var noMatch = 0
         var requested = 0
         fun result(stop: DrainStop, nextAttemptAt: Long? = null) = QueueDrainResult(cached, noMatch, stop, nextAttemptAt)
         suspend fun rateLimited(): QueueDrainResult? {
-            val until = CacheQueue.rateLimitedUntil() ?: return null
+            val until = RateLimitBackoff.pausedUntil() ?: return null
             CacheBudget.pauseUntil(db, until)
             Log.w(TAG, "Cache queue paused: RetroAchievements answered 429")
             return result(DrainStop.RateLimited, until)
@@ -606,6 +607,7 @@ internal suspend fun drainCacheQueue(
             }
         }
     } finally {
+        RateLimitBackoff.leaveBackground()
         CacheQueue.drainLock.unlock()
     }
 }
@@ -764,7 +766,7 @@ internal suspend fun resolveGameIdResult(
             is GameIdLookup.Match -> return lookup
             GameIdLookup.NoMatch -> continue
             is GameIdLookup.Failed -> {
-                if (lookup.authError || CacheQueue.isDraining && CacheQueue.rateLimitedUntil() != null) return lookup
+                if (lookup.authError || RateLimitBackoff.inBackground && RateLimitBackoff.pausedUntil() != null) return lookup
                 failure = lookup
             }
         }
@@ -1003,7 +1005,7 @@ private fun pendingAwardUser(award: PendingAward): String? {
 
 internal fun httpGet(url: String, userAgent: String): HttpGetResult {
     val action = apiActionFromUrl(url)
-    val maxRetries = if (CacheQueue.isDraining) 0 else HTTP_GET_MAX_429_RETRIES
+    val maxRetries = if (RateLimitBackoff.inBackground) 0 else HTTP_GET_MAX_429_RETRIES
 
     repeat(maxRetries + 1) { attempt ->
         if (action != null) {
@@ -1031,7 +1033,7 @@ internal fun httpGet(url: String, userAgent: String): HttpGetResult {
             }
 
             if (statusCode == HTTP_TOO_MANY_REQUESTS) {
-                CacheQueue.onRateLimited(retryAfterHeaderMillis(connection))
+                RateLimitBackoff.onRateLimited(retryAfterHeaderMillis(connection))
             }
             if (statusCode == HTTP_TOO_MANY_REQUESTS && attempt < maxRetries) {
                 val retryAfterMillis = retryAfterMillis(connection, attempt)

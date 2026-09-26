@@ -4,9 +4,9 @@ import com.raofflineproxy.data.CacheKeys
 import com.raofflineproxy.proxy.BudgetWindow
 import com.raofflineproxy.proxy.CACHE_BUDGET_LIMIT
 import com.raofflineproxy.proxy.CACHE_BUDGET_WINDOW_MS
-import com.raofflineproxy.proxy.CACHE_QUEUE_RATE_LIMIT_PAUSE_MS
 import com.raofflineproxy.proxy.CACHE_REQUEST_LIMIT
-import com.raofflineproxy.proxy.CacheQueue
+import com.raofflineproxy.proxy.RATE_LIMIT_PAUSE_MS
+import com.raofflineproxy.proxy.RateLimitBackoff
 import com.raofflineproxy.proxy.CachedGameIdLookup
 import com.raofflineproxy.proxy.QueuedRom
 import com.raofflineproxy.proxy.classifyCachedGameId
@@ -111,13 +111,13 @@ class CachingBudgetTest {
     @Test
     fun rateLimit_pausesAtLeastTenMinutesOrRetryAfter() {
         val now = 9_000_000_000_000L
-        CacheQueue.onRateLimited(retryAfterMs = 5_000, now = now)
-        assertEquals(now + CACHE_QUEUE_RATE_LIMIT_PAUSE_MS, CacheQueue.rateLimitedUntil(now))
-        CacheQueue.onRateLimited(retryAfterMs = 60L * 60 * 1000, now = now)
-        assertEquals(now + 60L * 60 * 1000, CacheQueue.rateLimitedUntil(now))
-        CacheQueue.onRateLimited(retryAfterMs = null, now = now + 1)
-        assertEquals(now + 60L * 60 * 1000, CacheQueue.rateLimitedUntil(now + 1))
-        assertNull(CacheQueue.rateLimitedUntil(now + 60L * 60 * 1000))
+        RateLimitBackoff.onRateLimited(retryAfterMs = 5_000, now = now)
+        assertEquals(now + RATE_LIMIT_PAUSE_MS, RateLimitBackoff.pausedUntil(now))
+        RateLimitBackoff.onRateLimited(retryAfterMs = 60L * 60 * 1000, now = now)
+        assertEquals(now + 60L * 60 * 1000, RateLimitBackoff.pausedUntil(now))
+        RateLimitBackoff.onRateLimited(retryAfterMs = null, now = now + 1)
+        assertEquals(now + 60L * 60 * 1000, RateLimitBackoff.pausedUntil(now + 1))
+        assertNull(RateLimitBackoff.pausedUntil(now + 60L * 60 * 1000))
     }
 
     // ── Queue rows ──

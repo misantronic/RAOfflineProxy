@@ -33,6 +33,7 @@ import com.raofflineproxy.data.CacheKeys
 import com.raofflineproxy.proxyUserAgent
 import com.raofflineproxy.proxy.AwardFlusher
 import com.raofflineproxy.proxy.CacheQueue
+import com.raofflineproxy.proxy.RateLimitBackoff
 import com.raofflineproxy.proxy.GameActivity
 import com.raofflineproxy.proxy.ProxyServer
 import com.raofflineproxy.proxy.loadLoginCredentials
@@ -314,6 +315,10 @@ class ProxyService : Service() {
         while (true) {
             delay(REFRESH_INTERVAL_MS.milliseconds)
             if (!isServerReachable()) continue
+            RateLimitBackoff.pausedUntil()?.let { until ->
+                Log.i(TAG, "Periodic refresh skipped; RetroAchievements rate-limited us until ${java.text.DateFormat.getTimeInstance().format(java.util.Date(until))}")
+                continue
+            }
             val idleDelayMs = onlineRefreshIdleDelayMs()
             if (idleDelayMs > 0) {
                 Log.i(TAG, "Periodic refresh deferred; proxy active recently")
@@ -336,20 +341,26 @@ class ProxyService : Service() {
                 "Periodic refresh: ${dueTargets.size} of ${refreshTargets.size} cached game(s) " +
                     "played in the last $REFRESH_PLAYED_WINDOW_DAYS day(s)"
             )
-            for (target in dueTargets) {
-                if (onlineRefreshIdleDelayMs() > 0) {
-                    Log.i(TAG, "Periodic refresh paused; proxy became active")
-                    break
+            RateLimitBackoff.background {
+                for (target in dueTargets) {
+                    if (onlineRefreshIdleDelayMs() > 0) {
+                        Log.i(TAG, "Periodic refresh paused; proxy became active")
+                        break
+                    }
+                    if (RateLimitBackoff.pausedUntil() != null) {
+                        Log.w(TAG, "Periodic refresh stopped: RetroAchievements answered 429")
+                        break
+                    }
+                    refreshCachedGameOfflineBundle(
+                        context = this@ProxyService,
+                        target = target,
+                        creds = credentials,
+                        userAgent = userAgent,
+                        db = db,
+                        notificationMode = RefreshNotificationMode.Background,
+                        cacheImages = false,
+                    )
                 }
-                refreshCachedGameOfflineBundle(
-                    context = this@ProxyService,
-                    target = target,
-                    creds = credentials,
-                    userAgent = userAgent,
-                    db = db,
-                    notificationMode = RefreshNotificationMode.Background,
-                    cacheImages = false,
-                )
             }
             db.cacheDao().evictOlderThan(System.currentTimeMillis() - CACHE_TTL_MS)
             Log.i(TAG, "Periodic refresh complete")
