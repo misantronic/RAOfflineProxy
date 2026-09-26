@@ -47,6 +47,11 @@ dump, the resumed activity and logcat to `app/e2e/artifacts/<test>/`. Set
 `RAOP_ANDROID_E2E_ARTIFACTS` to save them somewhere else. CI uploads that
 directory as the `android-e2e-api-<level>` artifact when a leg fails.
 
+## Orientation
+
+The device is locked to landscape for the whole session, since that is how
+the app is normally used on handhelds.
+
 ## Per-test reset
 
 Each test clears the app's data and deletes the host the Flycast stub

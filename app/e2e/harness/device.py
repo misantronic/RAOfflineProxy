@@ -43,6 +43,10 @@ class AndroidDevice:
         ):
             self.adb.shell("settings put global %s 0" % key)
 
+    def lock_landscape(self) -> None:
+        self.adb.shell("settings put system accelerometer_rotation 0")
+        self.adb.shell("settings put system user_rotation 1")
+
     def install(self, apk: str) -> None:
         self.adb.run("install", "-r", "-g", apk, timeout=300)
 

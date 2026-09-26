@@ -63,6 +63,15 @@ def test_notification_is_matched_by_package_and_id():
     assert device.notification("com.raofflineproxy", 2) is None
 
 
+def test_lock_landscape_disables_auto_rotate_and_rotates_once():
+    adb = FakeAdb({})
+    AndroidDevice(adb).lock_landscape()
+    assert adb.commands == [
+        "settings put system accelerometer_rotation 0",
+        "settings put system user_rotation 1",
+    ]
+
+
 def test_ui_finds_views_and_taps_their_centre():
     adb = FakeAdb({"uiautomator dump": "UI hierchary dumped to: /sdcard/x.xml", "cat ": UI_DUMP})
     ui = Ui(adb, "com.raofflineproxy")

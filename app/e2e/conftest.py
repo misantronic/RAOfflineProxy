@@ -90,6 +90,7 @@ def device(adb, pytestconfig):
     if target.sdk_int() < MIN_SDK:
         pytest.skip("Android E2E needs API %d+, device is API %d" % (MIN_SDK, target.sdk_int()))
     target.disable_animations()
+    target.lock_landscape()
     for apk in build_apks(REPO_ROOT).all():
         target.install(str(apk))
     target.forward(HOST_PROXY_PORT, PROXY_PORT)
