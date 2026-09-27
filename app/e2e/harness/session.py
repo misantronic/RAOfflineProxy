@@ -31,8 +31,13 @@ TOKEN = "tok-testuser-000000000001"
 START_LABEL = "Start proxy"
 STOP_LABEL = "Stop proxy"
 
+# The toolbar toggle rather than the home button: Android 15+ swaps the home
+# button for "Manual Emulator Setup" whenever a config-file emulator is installed.
+PROXY_TOGGLE = "action_proxy_root"
+PROXY_TOGGLE_LABEL = "tv_proxy_label"
+
 # Update checks and the smart-cache prompt would reach the internet or pop a
-# dialog over the start button; the support button only adds noise to dumps.
+# dialog over the proxy toggle; the support button only adds noise to dumps.
 SEEDED_PREFS = """<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
 <map>
     <boolean name="app_update_check_enabled" value="false" />
@@ -97,7 +102,7 @@ class AndroidSession:
 
     def launch(self) -> None:
         self.device.launch(MAIN_ACTIVITY)
-        self.ui.wait_for("btn_start_proxy", text=START_LABEL, enabled=True, timeout=90)
+        self.wait_for_proxy_toggle(START_LABEL, timeout=90)
 
     def teardown(self) -> None:
         self.device.set_airplane_mode(False)
@@ -143,24 +148,27 @@ class AndroidSession:
             "notification text containing %r" % fragment,
         )
 
-    def tap_proxy_button(self, label: str) -> None:
-        node = self.ui.wait_for("btn_start_proxy", text=label, enabled=True, timeout=60)
-        self.ui.tap(node)
+    def wait_for_proxy_toggle(self, label: str, timeout: float = 60.0) -> dict:
+        self.ui.wait_for(PROXY_TOGGLE_LABEL, text=label, timeout=timeout)
+        return self.ui.wait_for(PROXY_TOGGLE, enabled=True, timeout=timeout)
+
+    def tap_proxy_toggle(self, label: str) -> None:
+        self.ui.tap(self.wait_for_proxy_toggle(label))
 
     def start_proxy(self) -> None:
-        self.tap_proxy_button(START_LABEL)
+        self.tap_proxy_toggle(START_LABEL)
         wait_until(self.proxy_service_running, 60, message="ProxyService running")
         wait_until(
             lambda: self.cfg_value("cheevos_custom_host") == PROXY_VALUE,
             60,
             message="retroarch.cfg patched",
         )
-        self.ui.wait_for("btn_start_proxy", text=STOP_LABEL, enabled=True, timeout=60)
+        self.wait_for_proxy_toggle(STOP_LABEL)
 
     def stop_proxy(self) -> None:
-        self.tap_proxy_button(STOP_LABEL)
+        self.tap_proxy_toggle(STOP_LABEL)
         wait_until(lambda: not self.proxy_service_running(), 60, message="ProxyService stopped")
-        self.ui.wait_for("btn_start_proxy", text=START_LABEL, timeout=60)
+        self.ui.wait_for(PROXY_TOGGLE_LABEL, text=START_LABEL, timeout=60)
 
     def wait_until_online(self, timeout: float = 120.0) -> None:
         self.wait_for_notification_title("Online", timeout)
