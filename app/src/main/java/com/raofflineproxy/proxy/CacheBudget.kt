@@ -9,9 +9,13 @@ import org.json.JSONObject
 
 internal const val CACHE_BUDGET_LIMIT = 100
 internal const val CACHE_BUDGET_WINDOW_MS = 30L * 60 * 1000
+// Bounds how long a batch keeps the device awake, e.g. on a stretch of ROMs RetroAchievements
+// doesn't know, which cost lookups but never fill the budget.
+internal const val CACHE_BATCH_MAX_MS = 10L * 60 * 1000
 
 /** One budget window: [used] counts games cached; lookups for ROMs RetroAchievements doesn't know
- *  are free. [pausedUntil] holds the queue back after a 429 and outlives the window. */
+ *  are free. [pausedUntil] holds the queue back after a 429 or after a batch hit its time limit,
+ *  so no new batch starts before then, and outlives the window. */
 internal data class BudgetWindow(
     val windowStart: Long = 0L,
     val used: Int = 0,
@@ -42,6 +46,9 @@ internal data class BudgetWindow(
         val windowOpensAt = if (window.used < limit) now else window.windowStart + windowMs
         return maxOf(pausedUntil, windowOpensAt)
     }
+
+    fun endsAt(now: Long, windowMs: Long = CACHE_BUDGET_WINDOW_MS): Long =
+        maxOf(pausedUntil, current(now, windowMs).windowStart + windowMs)
 
     fun toJson(): String = JSONObject()
         .put("windowStart", windowStart)
@@ -76,6 +83,9 @@ internal object CacheBudget {
 
     suspend fun nextAvailableAt(db: AppDatabase, now: Long = System.currentTimeMillis()): Long =
         mutex.withLock { load(db).nextAvailableAt(now) }
+
+    suspend fun windowEndsAt(db: AppDatabase, now: Long = System.currentTimeMillis()): Long =
+        mutex.withLock { load(db).endsAt(now) }
 
     private suspend fun load(db: AppDatabase): BudgetWindow =
         BudgetWindow.fromJson(db.cacheDao().get(CacheKeys.CACHE_BUDGET)?.responseBody)

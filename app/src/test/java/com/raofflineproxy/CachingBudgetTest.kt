@@ -75,6 +75,14 @@ class CachingBudgetTest {
     }
 
     @Test
+    fun budget_windowEndsAtItsEndOrAfterThePause() {
+        val window = BudgetWindow(windowStart = start, used = 20)
+        assertEquals(start + CACHE_BUDGET_WINDOW_MS, window.endsAt(start + 60_000))
+        val paused = window.copy(pausedUntil = start + CACHE_BUDGET_WINDOW_MS + 5)
+        assertEquals(start + CACHE_BUDGET_WINDOW_MS + 5, paused.endsAt(start + 60_000))
+    }
+
+    @Test
     fun budget_jsonRoundTripAndGarbage() {
         val window = BudgetWindow(windowStart = start, used = 7, pausedUntil = start + 5)
         assertEquals(window, BudgetWindow.fromJson(window.toJson()))

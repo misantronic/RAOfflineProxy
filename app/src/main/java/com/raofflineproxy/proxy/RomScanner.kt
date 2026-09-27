@@ -529,7 +529,8 @@ internal fun classifyCachedGameId(body: String?, cachedAt: Long, now: Long): Cac
 
 /** The single place that sends RA requests for bulk caching: works through the queue oldest
  *  first within the caching budget. A window allows [CACHE_BUDGET_LIMIT] cached games; ROMs
- *  RetroAchievements doesn't know don't count. A 429 stops the queue for at least
+ *  RetroAchievements doesn't know don't count. A batch ends after [CACHE_BATCH_MAX_MS] at the
+ *  latest and leaves the rest for the next window. A 429 stops the queue for at least
  *  [RATE_LIMIT_PAUSE_MS]. Only one caller drains at a time; a concurrent call returns
  *  [DrainStop.Busy] at once. A failed ROM keeps its place and is retried on a later round instead
  *  of back to back. [onItem] reports progress in games within the current window. */
@@ -549,6 +550,7 @@ internal suspend fun drainCacheQueue(
         var cached = 0
         var noMatch = 0
         var requested = 0
+        val stopAt = System.currentTimeMillis() + CACHE_BATCH_MAX_MS
         fun result(stop: DrainStop, nextAttemptAt: Long? = null) = QueueDrainResult(cached, noMatch, stop, nextAttemptAt)
         suspend fun rateLimited(): QueueDrainResult? {
             val until = RateLimitBackoff.pausedUntil() ?: return null
@@ -559,6 +561,12 @@ internal suspend fun drainCacheQueue(
         while (true) {
             if (shouldPause()) return result(DrainStop.Paused)
             rateLimited()?.let { return it }
+            if (System.currentTimeMillis() >= stopAt) {
+                val windowEnd = CacheBudget.windowEndsAt(db)
+                CacheBudget.pauseUntil(db, windowEnd)
+                Log.i(TAG, "Cache queue: batch time limit reached, rest waits for the next window")
+                return result(DrainStop.BudgetExhausted, windowEnd)
+            }
             val rom = CacheQueue.oldest(db) ?: return result(DrainStop.Empty)
             val now = System.currentTimeMillis()
             val cachedGameIds = loadCachedGameIds(db)

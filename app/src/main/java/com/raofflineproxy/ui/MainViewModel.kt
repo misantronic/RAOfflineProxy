@@ -45,7 +45,6 @@ import com.raofflineproxy.service.CachingPhase
 import com.raofflineproxy.service.CachingProgress
 import com.raofflineproxy.service.text
 import com.raofflineproxy.proxy.CACHE_BUDGET_LIMIT
-import com.raofflineproxy.proxy.CACHE_BUDGET_WINDOW_MS
 import com.raofflineproxy.proxy.CacheQueue
 import com.raofflineproxy.proxy.QueueEstimate
 import com.raofflineproxy.proxy.estimateQueueForDocuments
@@ -1396,8 +1395,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Hashes every ROM of a run first (which only fills the queue), then caches the current
      *  budget window right away, even with the proxy stopped; the rest stays queued for the
-     *  proxy service. A wake lock keeps the run going with the screen off, and the first batch
-     *  ends after one budget window at the latest, then hands over to the proxy service.
+     *  proxy service. A wake lock keeps the run going with the screen off; when the first batch
+     *  ends, the proxy service takes over.
      *  Aborting the run removes the ROMs it queued; games it already cached stay. */
     private suspend fun <T> hashThenCacheFirstBatch(
         credentials: LoginCredentials,
@@ -1427,15 +1426,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private suspend fun drainFirstBatch(credentials: LoginCredentials, onAbort: (() -> Unit)?): FirstBatch {
         val app = getApplication<Application>()
         val userAgent = proxyUserAgent(loadUserAgent(db))
-        val stopAt = System.currentTimeMillis() + CACHE_BUDGET_WINDOW_MS
-        val result = drainCacheQueue(
-            app,
-            db,
-            credentials,
-            userAgent,
-            shouldPause = { System.currentTimeMillis() >= stopAt },
-            waitForLock = true
-        ) { current, total, label ->
+        val result = drainCacheQueue(app, db, credentials, userAgent, shouldPause = { false }, waitForLock = true) { current, total, label ->
             showCachingProgress(CachingProgress(CachingPhase.Caching, current, total, label), onAbort)
         }
         return FirstBatch(result.cached, result.noMatch)
