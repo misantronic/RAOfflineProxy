@@ -21,6 +21,10 @@ RAOfflineProxy runs a tiny local proxy on your device. It sits between supported
 - **Android**: [`v1.13.0-alpha1`](https://github.com/misantronic/RAOfflineProxy/releases/tag/v1.13.0-alpha1)
 - **Linux**: [`v1.13.0-alpha1`](https://github.com/misantronic/RAOfflineProxy/releases/tag/v1.13.0-alpha1)
 
+### Nightly builds
+
+Untested development builds for testers are published at [RAOfflineProxy-nightly](https://github.com/misantronic/RAOfflineProxy-nightly). If you are not sure you need them, use the stable release above.
+
 ## Obtainium
 
 RAOfflineProxy is listed in the [Obtainium Emulation Pack](https://github.com/RJNY/Obtainium-Emulation-Pack/releases).
