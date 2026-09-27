@@ -21,7 +21,7 @@ from .state import load_update_status, save_update_status
 
 LOGGER = logging.getLogger("raofflineproxy")
 GITHUB_RELEASES_URL = "https://api.github.com/repos/misantronic/RAOfflineProxy/releases"
-GITHUB_NIGHTLY_RELEASE_URL = f"{GITHUB_RELEASES_URL}/tags/nightly-linux"
+GITHUB_NIGHTLY_RELEASE_URL = "https://api.github.com/repos/misantronic/RAOfflineProxy-nightly/releases/tags/nightly-linux"
 NIGHTLY_VERSION_SEPARATOR = "-nightly."
 STABLE_NIGHTLY_NUMBER = -1
 UPDATE_CHECK_INTERVAL_SECONDS = 24 * 60 * 60

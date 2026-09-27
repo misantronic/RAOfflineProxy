@@ -12,7 +12,7 @@ import org.json.JSONObject
 private const val CONNECT_TIMEOUT_MS = 10_000
 private const val READ_TIMEOUT_MS = 10_000
 private const val RELEASES_URL = "https://api.github.com/repos/misantronic/RAOfflineProxy/releases"
-private const val NIGHTLY_RELEASE_URL = "$RELEASES_URL/tags/nightly-android"
+private const val NIGHTLY_RELEASE_URL = "https://api.github.com/repos/misantronic/RAOfflineProxy-nightly/releases/tags/nightly-android"
 private const val STABLE_NIGHTLY_NUMBER = -1
 private const val TAG = "RAProxy/AppUpdateChecker"
 

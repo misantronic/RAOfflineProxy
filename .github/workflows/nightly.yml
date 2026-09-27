@@ -17,7 +17,10 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
+
+env:
+  NIGHTLY_REPO: misantronic/RAOfflineProxy-nightly
 
 jobs:
   changes:
@@ -104,7 +107,7 @@ jobs:
 
       - name: Publish nightly-android
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.NIGHTLY_REPO_TOKEN }}
         run: |
           .github/scripts/publish-nightly.sh nightly-android Android "${{ steps.version.outputs.version }}" \
             "app/build/outputs/apk/release/RAOfflineProxy-v${{ steps.version.outputs.version }}.apk"
@@ -184,7 +187,7 @@ jobs:
 
       - name: Publish nightly-linux
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.NIGHTLY_REPO_TOKEN }}
         run: |
           version="${{ steps.version.outputs.version }}"
           .github/scripts/publish-nightly.sh nightly-linux Linux "${version}" \
