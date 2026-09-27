@@ -124,6 +124,23 @@ class SpruceDetectionTests(unittest.TestCase):
         )
         self.assertEqual(platform_name, "RGB30")
 
+    def test_spruce_wins_over_darkos_on_a_darkos_derived_base(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            ark_home = Path(temp_dir) / "ark"
+            ark_home.mkdir()
+            with patch.object(config, "DEFAULT_DARKOS_HOME", ark_home):
+                with patch.object(config, "running_on_spruce", return_value=True):
+                    self.assertFalse(config.running_on_darkos())
+                with patch.object(config, "running_on_spruce", return_value=False):
+                    self.assertTrue(config.running_on_darkos())
+
+    def test_spruce_platform_prefers_the_platform_spruce_exports(self) -> None:
+        with patch.dict(os.environ, {"SPRUCE_PLATFORM": "Miniloong"}, clear=False):
+            platform_name = self._platform_for(
+                "CPU part\t: 0xd05\n", os_release='OS_NAME="DARKMOSS"\n'
+            )
+        self.assertEqual(platform_name, "Miniloong")
+
     def test_spruce_platform_defaults_to_miyoo_mini(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             cpuinfo_path = Path(temp_dir) / "cpuinfo"

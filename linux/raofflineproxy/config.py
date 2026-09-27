@@ -115,6 +115,9 @@ def running_on_mini_sdl_stack() -> bool:
 
 
 def running_on_darkos() -> bool:
+    # dArkMoss keeps dArkOS's home directory, but spruce owns the service there.
+    if running_on_spruce():
+        return False
     return DEFAULT_DARKOS_HOME.exists()
 
 
@@ -175,6 +178,11 @@ def _spruce_rk3566_platform() -> str:
 
 
 def spruce_platform() -> str:
+    # appEnv.sh exports the platform spruce detected; the table below is the fallback.
+    platform_name = os.environ.get("SPRUCE_PLATFORM", "").strip()
+    if platform_name:
+        return platform_name
+
     try:
         info = CPUINFO_PATH.read_text(encoding="utf-8", errors="replace")
     except OSError:
