@@ -102,6 +102,7 @@ class AndroidSession:
 
     def launch(self) -> None:
         self.device.launch(MAIN_ACTIVITY)
+        self.device.lock_landscape()
         self.ui.wait_for_landscape()
         self.wait_for_proxy_toggle(START_LABEL, timeout=90)
 
