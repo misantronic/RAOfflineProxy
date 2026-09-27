@@ -46,6 +46,11 @@ class AndroidDevice:
     def lock_landscape(self) -> None:
         self.adb.shell("settings put system accelerometer_rotation 0")
         self.adb.shell("settings put system user_rotation 1")
+        # Android 12+ ignores user_rotation alone; `wm user-rotation` does not exist on 11.
+        self.adb.shell("wm user-rotation lock 1", check=False)
+
+    def hide_error_dialogs(self) -> None:
+        self.adb.shell("settings put global hide_error_dialogs 1")
 
     def install(self, apk: str) -> None:
         self.adb.run("install", "-r", "-g", apk, timeout=300)

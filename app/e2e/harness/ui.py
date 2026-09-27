@@ -7,6 +7,8 @@ import xml.etree.ElementTree as ET
 from app.e2e.harness.adb import Adb
 
 DUMP_PATH = "/sdcard/raop_window_dump.xml"
+ANR_WAIT_BUTTON = "android:id/aerr_wait"
+LANDSCAPE = "1"
 BOUNDS = re.compile(r"\[(\d+),(\d+)\]\[(\d+),(\d+)\]")
 
 
@@ -42,9 +44,36 @@ class Ui:
         if xml is None:
             return None
         try:
-            return ET.fromstring(xml)
+            root = ET.fromstring(xml)
         except ET.ParseError:
             return None
+        return None if self._dismissed_anr_dialog(root) else root
+
+    def _dismissed_anr_dialog(self, root: ET.Element) -> bool:
+        # A slow emulator can raise "<app> isn't responding" for the launcher
+        # and it covers the app under test; "Wait" dismisses it harmlessly.
+        wait = next(
+            (node for node in root.iter("node") if node.get("resource-id") == ANR_WAIT_BUTTON),
+            None,
+        )
+        if wait is None:
+            return False
+        self.tap(dict(wait.attrib))
+        return True
+
+    def rotation(self) -> str | None:
+        root = self.dump()
+        return None if root is None else root.get("rotation")
+
+    def wait_for_landscape(self, timeout: float = 30.0) -> None:
+        deadline = time.time() + timeout
+        last = None
+        while time.time() < deadline:
+            last = self.rotation()
+            if last == LANDSCAPE:
+                return
+            time.sleep(1.0)
+        raise UiNotFound("display never rotated to landscape; last rotation: %r" % last)
 
     def find(self, resource_id: str, text: str | None = None) -> dict | None:
         root = self.dump()

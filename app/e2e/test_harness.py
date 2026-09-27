@@ -69,6 +69,7 @@ def test_lock_landscape_disables_auto_rotate_and_rotates_once():
     assert adb.commands == [
         "settings put system accelerometer_rotation 0",
         "settings put system user_rotation 1",
+        "wm user-rotation lock 1",
     ]
 
 
@@ -83,6 +84,28 @@ def test_ui_finds_views_and_taps_their_centre():
 
     ui.tap(node)
     assert adb.commands[-1] == "input tap 540 1270"
+
+
+ANR_DUMP = """<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy rotation="1">
+  <node index="0" text="Pixel Launcher isn't responding" resource-id="android:id/alertTitle" bounds="[133,1068][947,1131]" />
+  <node index="1" text="Wait" resource-id="android:id/aerr_wait" bounds="[70,1296][1010,1422]" />
+</hierarchy>
+"""
+
+
+def test_ui_dismisses_an_anr_dialog_with_wait():
+    adb = FakeAdb({"uiautomator dump": "UI hierchary dumped to: /sdcard/x.xml", "cat ": ANR_DUMP})
+    ui = Ui(adb, "com.raofflineproxy")
+
+    assert ui.find("tv_proxy_label", text="Start proxy") is None
+    assert adb.commands[-1] == "input tap 540 1359"
+
+
+def test_ui_reports_display_rotation():
+    landscape = UI_DUMP.replace('rotation="0"', 'rotation="1"')
+    adb = FakeAdb({"uiautomator dump": "UI hierchary dumped to: /sdcard/x.xml", "cat ": landscape})
+    assert Ui(adb, "com.raofflineproxy").rotation() == "1"
 
 
 def test_ui_treats_a_busy_window_as_not_found():
