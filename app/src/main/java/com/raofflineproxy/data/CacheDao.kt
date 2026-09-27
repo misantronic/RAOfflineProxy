@@ -68,6 +68,12 @@ interface CacheDao {
     suspend fun getByPrefix(prefix: String): CacheEntry? =
         getSummaryByPrefix(prefix)?.withResponseBody(this)
 
+    @Query("SELECT id, cacheKey, sourceRomPath, cachedAt, firstCachedAt FROM api_cache WHERE cacheKey LIKE :prefix || '%' ORDER BY cachedAt DESC LIMIT 1")
+    suspend fun getLatestSummaryByPrefix(prefix: String): CacheEntrySummary?
+
+    suspend fun getLatestByPrefix(prefix: String): CacheEntry? =
+        getLatestSummaryByPrefix(prefix)?.withResponseBody(this)
+
     @Query("SELECT id, cacheKey, sourceRomPath, cachedAt, firstCachedAt FROM api_cache WHERE cacheKey LIKE :prefix || '%'")
     suspend fun getAllSummariesByPrefix(prefix: String): List<CacheEntrySummary>
 

@@ -11,7 +11,7 @@ object CacheKeys {
     const val PREFIX_GAMEID = "gameid:"
     const val PREFIX_LAST_PLAYED = "lastplayed:"
 
-    fun login(user: String) = "$PREFIX_LOGIN$user"
+    fun login(user: String) = "$PREFIX_LOGIN${user.lowercase()}"
     fun gameId(hash: String) = "$PREFIX_GAMEID$hash"
     fun patch(gameId: Int, user: String) = "$PREFIX_PATCH$gameId:${user.lowercase()}"
     fun patchPrefix(gameId: String) = "$PREFIX_PATCH$gameId:"

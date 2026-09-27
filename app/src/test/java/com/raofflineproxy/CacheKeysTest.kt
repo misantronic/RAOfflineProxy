@@ -1,6 +1,7 @@
 package com.raofflineproxy
 
 import com.raofflineproxy.data.CacheKeys
+import com.raofflineproxy.proxy.proxyCacheKey
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -45,6 +46,12 @@ class CacheKeysTest {
     @Test
     fun login_buildsKeyWithUsername() {
         assertEquals("login2::player1", CacheKeys.login("player1"))
+    }
+
+    @Test
+    fun login_lowercasesUsernameToMatchProxyCacheKey() {
+        assertEquals("login2::carter84", CacheKeys.login("Carter84"))
+        assertEquals(proxyCacheKey("/dorequest.php?r=login2&u=Carter84", ""), CacheKeys.login("Carter84"))
     }
 
     @Test
