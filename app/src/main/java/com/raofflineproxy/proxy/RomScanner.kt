@@ -128,7 +128,7 @@ internal sealed interface HttpGetResult {
 }
 
 suspend fun loadLoginCredentials(db: AppDatabase): LoginCredentials? {
-    val entry = db.cacheDao().getLatestByPrefix(CacheKeys.PREFIX_LOGIN) ?: return null
+    val entry = db.cacheDao().getByPrefix(CacheKeys.PREFIX_LOGIN) ?: return null
     return try {
         val json = JSONObject(entry.responseBody)
         val user = json.optString("User").takeIf { it.isNotEmpty() } ?: return null
