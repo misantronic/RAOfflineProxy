@@ -27,7 +27,6 @@ import org.json.JSONObject
 import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
-import java.util.concurrent.atomic.AtomicLong
 import kotlin.math.min
 
 private const val TAG = "RAProxy"
@@ -35,8 +34,6 @@ private const val HTTP_ERROR_BODY_LOG_LIMIT = 512
 private const val HTTP_TOO_MANY_REQUESTS = 429
 private const val HTTP_RETRY_AFTER_HEADER = "Retry-After"
 
-/** Every RA API request httpGet sends, so the queue can charge its budget with what it really sent. */
-internal val raRequestCount = AtomicLong()
 private const val HTTP_GET_MAX_429_RETRIES = 4
 private const val HTTP_GET_INITIAL_429_BACKOFF_MS = 2_000L
 private const val HTTP_GET_MAX_429_BACKOFF_MS = 15_000L
@@ -531,9 +528,8 @@ internal fun classifyCachedGameId(body: String?, cachedAt: Long, now: Long): Cac
 }
 
 /** The single place that sends RA requests for bulk caching: works through the queue oldest
- *  first within the caching budget. A window allows [CACHE_BUDGET_LIMIT] cached games and
- *  [CACHE_REQUEST_LIMIT] requests, charged with what each ROM really sent, so ROMs
- *  RetroAchievements doesn't know only cost their lookup. A 429 stops the queue for at least
+ *  first within the caching budget. A window allows [CACHE_BUDGET_LIMIT] cached games; ROMs
+ *  RetroAchievements doesn't know don't count. A 429 stops the queue for at least
  *  [RATE_LIMIT_PAUSE_MS]. Only one caller drains at a time; a concurrent call returns
  *  [DrainStop.Busy] at once. A failed ROM keeps its place and is retried on a later round instead
  *  of back to back. [onItem] reports progress in games within the current window. */
@@ -579,16 +575,13 @@ internal suspend fun drainCacheQueue(
                 }
                 LocalGameIdAnswer.NeedsLookup -> Unit
             }
-            val lookups = if (local is LocalGameIdAnswer.Match) 0 else rom.hashes.size
-            if (!CacheBudget.fits(db, lookups + REQUESTS_PER_NEW_GAME - 1, now)) {
-                return result(DrainStop.BudgetExhausted, CacheBudget.nextAvailableAt(db, now))
-            }
+            val gamesLeft = CacheBudget.remaining(db, now)
+            if (gamesLeft == 0) return result(DrainStop.BudgetExhausted, CacheBudget.nextAvailableAt(db, now))
             applyScanBatchCooldown(requested, TAG)
-            onItem(cached + 1, windowProgressTotal(cached, CacheQueue.count(db), CacheBudget.remaining(db, now)), rom.label)
+            onItem(cached + 1, windowProgressTotal(cached, CacheQueue.count(db), gamesLeft), rom.label)
             requested++
-            val sentBefore = raRequestCount.get()
             val outcome = cacheQueuedRom(context, db, creds, userAgent, rom, local, cachedGameIds)
-            CacheBudget.charge(db, (raRequestCount.get() - sentBefore).toInt(), if (outcome == QueuedRomOutcome.Cached) 1 else 0)
+            if (outcome == QueuedRomOutcome.Cached) CacheBudget.chargeGame(db)
             rateLimited()?.let { return it }
             when (outcome) {
                 QueuedRomOutcome.Cached -> {
@@ -1017,7 +1010,6 @@ internal fun httpGet(url: String, userAgent: String): HttpGetResult {
     repeat(maxRetries + 1) { attempt ->
         if (action != null) {
             throttleRetroAchievementsApiRequest("GET $action")
-            raRequestCount.incrementAndGet()
         }
 
         val connection = (URL(url).openConnection() as HttpURLConnection).apply {

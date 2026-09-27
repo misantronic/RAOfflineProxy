@@ -31,15 +31,15 @@ internal object CacheQueueAlarm {
     )
 }
 
-/** Keeps the CPU awake for one round of the queue worker. Not reference counted: the alarm
- *  receiver takes it and the worker releases it when its round ends. */
-internal object CacheQueueWakeLock {
+/** A partial wake lock for caching work, capped at [CACHE_QUEUE_WAKE_LOCK_TIMEOUT_MS]. Not
+ *  reference counted: whoever holds it releases it once, however often it was taken. */
+internal class CachingWakeLock(private val tag: String) {
     private var wakeLock: PowerManager.WakeLock? = null
 
     @Synchronized
     fun hold(context: Context) {
         val lock = wakeLock ?: context.getSystemService(PowerManager::class.java)
-            .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "RAOfflineProxy:cacheQueue")
+            .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, tag)
             .apply { setReferenceCounted(false) }
             .also { wakeLock = it }
         lock.acquire(CACHE_QUEUE_WAKE_LOCK_TIMEOUT_MS)
@@ -50,6 +50,14 @@ internal object CacheQueueWakeLock {
         wakeLock?.takeIf { it.isHeld }?.release()
     }
 }
+
+/** One round of the queue worker: the alarm receiver takes it, the worker releases it when its
+ *  round ends. */
+internal val CacheQueueWakeLock = CachingWakeLock("RAOfflineProxy:cacheQueue")
+
+/** A bulk run from the app, hashing and first batch, so it finishes with the screen off too. Kept
+ *  apart from the worker's lock, whose release at the end of every round would otherwise end it. */
+internal val BulkRunWakeLock = CachingWakeLock("RAOfflineProxy:bulkRun")
 
 class CacheQueueAlarmReceiver : BroadcastReceiver() {
     // The system only holds a wake lock for onReceive, so take ours here: signalling the worker
