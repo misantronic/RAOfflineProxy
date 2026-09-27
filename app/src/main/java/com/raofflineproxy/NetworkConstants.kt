@@ -15,8 +15,8 @@ import java.net.URLDecoder
 import java.security.MessageDigest
 import kotlin.math.max
 
-const val RA_HOST = "https://retroachievements.org"
-const val RA_MEDIA_HOST = "https://media.retroachievements.org"
+val RA_HOST: String = BuildConfig.RA_HOST
+val RA_MEDIA_HOST: String = BuildConfig.RA_MEDIA_HOST
 private const val PROXY_HOST = "127.0.0.1"
 const val PROXY_UA_TAG = "RAOfflineProxy"
 private const val REQUEST_THROTTLE_TAG = "RAProxy/RateLimit"

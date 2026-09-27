@@ -11,6 +11,8 @@ val keystoreProperties = Properties().also { props ->
     if (propsFile.exists()) props.load(propsFile.inputStream())
 }
 
+val e2eRaHost = providers.gradleProperty("e2eRaHost").getOrElse("http://10.0.2.2:8181")
+
 android {
     namespace = "com.raofflineproxy"
     compileSdk = 37
@@ -21,6 +23,8 @@ android {
         targetSdk = 36
         versionCode = 30
         versionName = "1.13.0-alpha1"
+        buildConfigField("String", "RA_HOST", "\"https://retroachievements.org\"")
+        buildConfigField("String", "RA_MEDIA_HOST", "\"https://media.retroachievements.org\"")
     }
 
     signingConfigs {
@@ -38,6 +42,12 @@ android {
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             signingConfig = signingConfigs.getByName("release")
+        }
+        create("e2e") {
+            initWith(getByName("debug"))
+            matchingFallbacks += listOf("debug")
+            buildConfigField("String", "RA_HOST", "\"$e2eRaHost\"")
+            buildConfigField("String", "RA_MEDIA_HOST", "\"$e2eRaHost\"")
         }
     }
 

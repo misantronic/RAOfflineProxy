@@ -31,3 +31,4 @@ linux/**/tmp_assets/
 infra/dist/
 infra/cdk.out/
 lambda/*/dist/
+app/e2e/artifacts/

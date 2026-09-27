@@ -1,0 +1,115 @@
+from __future__ import annotations
+
+import re
+import time
+import xml.etree.ElementTree as ET
+
+from app.e2e.harness.adb import Adb
+
+DUMP_PATH = "/sdcard/raop_window_dump.xml"
+ANR_WAIT_BUTTON = "android:id/aerr_wait"
+LANDSCAPE = "1"
+BOUNDS = re.compile(r"\[(\d+),(\d+)\]\[(\d+),(\d+)\]")
+
+
+class UiNotFound(AssertionError):
+    pass
+
+
+class Ui:
+    """Finds views by resource id in a uiautomator dump and taps them.
+
+    Deliberately thin: the app is driven the way a user drives it, so the
+    start/stop path under test is the real MainViewModel one.
+    """
+
+    def __init__(self, adb: Adb, package: str) -> None:
+        self.adb = adb
+        self.package = package
+        self.last_dump_output = ""
+
+    def _qualified(self, resource_id: str) -> str:
+        return resource_id if ":" in resource_id else "%s:id/%s" % (self.package, resource_id)
+
+    def dump_xml(self) -> str | None:
+        # uiautomator refuses to dump while the window is not idle; the caller retries.
+        self.adb.shell("rm -f %s" % DUMP_PATH, check=False)
+        result = self.adb.shell("uiautomator dump %s" % DUMP_PATH, check=False, timeout=60)
+        self.last_dump_output = (result.stdout + result.stderr).strip()
+        xml = self.adb.shell("cat %s" % DUMP_PATH, check=False)
+        return xml.stdout if xml.returncode == 0 and xml.stdout.strip() else None
+
+    def dump(self) -> ET.Element | None:
+        xml = self.dump_xml()
+        if xml is None:
+            return None
+        try:
+            root = ET.fromstring(xml)
+        except ET.ParseError:
+            return None
+        return None if self._dismissed_anr_dialog(root) else root
+
+    def _dismissed_anr_dialog(self, root: ET.Element) -> bool:
+        # A slow emulator can raise "<app> isn't responding" for the launcher
+        # and it covers the app under test; "Wait" dismisses it harmlessly.
+        wait = next(
+            (node for node in root.iter("node") if node.get("resource-id") == ANR_WAIT_BUTTON),
+            None,
+        )
+        if wait is None:
+            return False
+        self.tap(dict(wait.attrib))
+        return True
+
+    def rotation(self) -> str | None:
+        root = self.dump()
+        return None if root is None else root.get("rotation")
+
+    def wait_for_landscape(self, timeout: float = 30.0) -> None:
+        deadline = time.time() + timeout
+        last = None
+        while time.time() < deadline:
+            last = self.rotation()
+            if last == LANDSCAPE:
+                return
+            time.sleep(1.0)
+        raise UiNotFound("display never rotated to landscape; last rotation: %r" % last)
+
+    def find(self, resource_id: str, text: str | None = None) -> dict | None:
+        root = self.dump()
+        if root is None:
+            return None
+        qualified = self._qualified(resource_id)
+        for node in root.iter("node"):
+            if node.get("resource-id") != qualified:
+                continue
+            if text is not None and (node.get("text") or "").casefold() != text.casefold():
+                continue
+            return dict(node.attrib)
+        return None
+
+    def wait_for(
+        self,
+        resource_id: str,
+        text: str | None = None,
+        enabled: bool | None = None,
+        timeout: float = 60.0,
+    ) -> dict:
+        deadline = time.time() + timeout
+        last = None
+        while time.time() < deadline:
+            last = self.find(resource_id, text)
+            if last is not None and (enabled is None or (last.get("enabled") == "true") is enabled):
+                return last
+            time.sleep(1.0)
+        raise UiNotFound(
+            "view %s (text=%r enabled=%r) not found; last seen: %r; last uiautomator output: %r"
+            % (resource_id, text, enabled, last, self.last_dump_output)
+        )
+
+    def tap(self, node: dict) -> None:
+        match = BOUNDS.match(node.get("bounds", ""))
+        if match is None:
+            raise UiNotFound("view has no bounds: %r" % node)
+        left, top, right, bottom = (int(value) for value in match.groups())
+        self.adb.shell("input tap %d %d" % ((left + right) // 2, (top + bottom) // 2))
