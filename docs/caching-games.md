@@ -15,16 +15,6 @@ There is no limit on how many games you can cache.
 
 To go easy on the RetroAchievements servers, the **Add ROM**, **Scan ROM folder**, and **Smart Cache** actions cache up to **100 new games every 30 minutes**. Anything beyond that is queued and cached in the background during the next 30-minute windows, as long as the proxy is running and you are online. The queue is kept across restarts of the app and the device, and it waits while you are playing.
 
-Only ROMs that actually need RetroAchievements count toward the 100. Games that are already cached and ROMs RetroAchievements did not recognize recently are skipped without using any of it.
-
-If an action would queue more than 100 games, the app asks first and shows how many games will be cached right away, how many will be queued, and roughly how long the queue will take.
-
-Games you launch in an emulator while the proxy is running are always cached right away and never count toward the 100.
-
-When the proxy is running, the **Cached Games** header shows a counter such as `42 cached`, or `42 cached · 158 queued` while games are waiting. **Clear Cache** also empties the queue.
-
-Caching progress also appears in the proxy's notification, together with the number of queued games and when the next batch starts. If you cache games while the proxy is stopped, a separate notification shows the progress until the run is done.
-
 ## What Gets Cached
 
 For each game, the proxy saves three types of data locally:
