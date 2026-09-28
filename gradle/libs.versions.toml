@@ -1,7 +1,7 @@
 [versions]
 agp = "9.4.1"
 ksp = "2.3.12"
-coreKtx = "1.19.0"
+coreKtx = "1.19.1"
 appcompat = "1.8.0"
 material = "1.14.0"
 lifecycleViewmodel = "2.11.0"
