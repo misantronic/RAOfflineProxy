@@ -34,11 +34,12 @@ PPSSPP supports two patching paths depending on the installed build. RAOfflinePr
 
 == Other Emulators
 
-**ARMSX1**, **ARMSX2**, **Flycast**, **WatermelonDS**, **Mupen64Plus AE**, and **EmuCoreX** all expose a RetroAchievements host-override broadcast receiver. To redirect achievement traffic to the local proxy, RAOfflineProxy sends a targeted broadcast to the installed package instead of editing a config file:
+**ARMSX1**, **ARMSX2**, **Flycast**, **WatermelonDS**, **Mupen64Plus AE**, **EmuCoreX**, and **NetherSX2** all expose a RetroAchievements host-override broadcast receiver. To redirect achievement traffic to the local proxy, RAOfflineProxy sends a targeted broadcast to the installed package instead of editing a config file:
 
 - The RetroAchievements host override is set to the proxy on your device
 - The emulator writes the change to its own configuration and applies it on the next game load
 - No config file patching or SAF grant is required
+- NetherSX2 binds the host once per app launch, so it restarts itself to apply the change (deferred until you quit the running game). Current NetherSX2 builds do not ship the receiver yet, so it is skipped until a release includes it
 - Emulators that ship under more than one package ID (current, legacy, and debug builds) use the same broadcast flow
 - Hardcore mode is left to the emulator, see [Why Hardcore Mode is Disabled](#why-hardcore-mode-is-disabled)
 

@@ -5,6 +5,9 @@ import android.net.Uri
 import com.raofflineproxy.PrefsConstants
 import com.raofflineproxy.R
 import com.raofflineproxy.proxy.LoginCredentials
+import com.raofflineproxy.proxyBase
+import com.raofflineproxy.proxyPort
+import com.raofflineproxy.proxyValue
 
 internal const val UI_ARMSX1_PACKAGE = "com.nanodata.armsx"
 internal const val UI_ARMSX2_LEGACY_PACKAGE = "come.nanodata.armsx2"
@@ -14,6 +17,7 @@ internal const val UI_WATERMELONDS_PACKAGE = "me.magnum.melondualds"
 internal const val UI_MUPEN64_PACKAGE = "org.mupen64plusae.v3.alpha"
 internal const val UI_MUPEN64_DEBUG_PACKAGE = "org.mupen64plusae.v3.alpha.debug"
 internal const val UI_EMUCOREX_PACKAGE = "com.sbro.emucorex"
+internal const val UI_NETHERSX2_PACKAGE = "xyz.aethersx2.android"
 
 internal class ConfigOverride(
     // Wire identifier for the Shizuku user service, which runs in its own process and dispatches
@@ -33,7 +37,8 @@ internal class BroadcastOverride(
     val revertSuccessRes: Int,
     val revertErrorRes: Int,
     private val defaultReceiverClass: String,
-    private val receiverClassByPackage: Map<String, String> = emptyMap()
+    private val receiverClassByPackage: Map<String, String> = emptyMap(),
+    val hostValue: (Context) -> String = { context -> proxyBase(proxyPort(context)) }
 ) {
     fun receiverClassFor(packageName: String): String =
         receiverClassByPackage[packageName] ?: defaultReceiverClass
@@ -191,6 +196,22 @@ enum class Emulator(
             revertSuccessRes = R.string.emucorex_revert_success,
             revertErrorRes = R.string.emucorex_revert_error_unavailable,
             defaultReceiverClass = "com.sbro.emucorex.core.utils.RetroAchievementsHostOverrideReceiver"
+        )
+    ),
+    NetherSx2(
+        displayName = "NetherSX2",
+        labelRes = R.string.emulator_nethersx2,
+        enabledPrefsKey = PrefsConstants.KEY_ENABLE_NETHERSX2,
+        patchedThisRunPrefsKey = PrefsConstants.KEY_NETHERSX2_PATCHED_THIS_RUN,
+        packageCandidates = listOf(UI_NETHERSX2_PACKAGE),
+        broadcastOverride = BroadcastOverride(
+            patchSuccessRes = R.string.nethersx2_patch_success,
+            patchErrorRes = R.string.nethersx2_patch_error_unavailable,
+            revertSuccessRes = R.string.nethersx2_revert_success,
+            revertErrorRes = R.string.nethersx2_revert_error_unavailable,
+            defaultReceiverClass = "xyz.aethersx2.android.RetroAchievementsHostOverrideReceiver",
+            // NetherSX2 binary-patches the host into libemucore.so and expects it without a scheme.
+            hostValue = ::proxyValue
         )
     );
 
