@@ -14,8 +14,9 @@ interface CacheDao {
     suspend fun get(key: String): CacheEntry? =
         getSummary(key)?.withResponseBody(this)
 
+    /** Returns the new row id, or -1 when a row with the same key already existed. */
     @Insert(onConflict = OnConflictStrategy.IGNORE)
-    suspend fun insertIgnore(entry: CacheEntry)
+    suspend fun insertIgnore(entry: CacheEntry): Long
 
     @Query(
         "UPDATE api_cache SET responseBody = :responseBody, sourceRomPath = COALESCE(:sourceRomPath, sourceRomPath), cachedAt = :cachedAt WHERE cacheKey = :cacheKey"
@@ -32,9 +33,10 @@ interface CacheDao {
         updateBody(entry.cacheKey, entry.responseBody, entry.sourceRomPath, entry.cachedAt)
     }
 
-    // Cached game data is user-owned: it stays until the game is deleted or the cache is
-    // cleared. Only incidental proxy responses age out, so scoping the periodic refresh to
-    // recently played games can no longer silently delete a library nobody has touched.
+    // Cached game data and the caching queue are user-owned: they stay until the game is
+    // deleted or the cache is cleared. Only incidental proxy responses age out, so scoping the
+    // periodic refresh to recently played games can no longer silently delete a library nobody
+    // has touched.
     @Query(
         """
         DELETE FROM api_cache
@@ -46,6 +48,7 @@ interface CacheDao {
           AND cacheKey NOT LIKE 'unlocks:%'
           AND cacheKey NOT LIKE 'startsession:%'
           AND cacheKey NOT LIKE 'gameid:%'
+          AND cacheKey NOT LIKE 'cachequeue:%'
         """
     )
     suspend fun evictOlderThan(before: Long)
@@ -76,6 +79,17 @@ interface CacheDao {
 
     @Query("DELETE FROM api_cache WHERE cacheKey LIKE :prefix || '%'")
     suspend fun deleteByKeyPrefix(prefix: String)
+
+    @Query("SELECT COUNT(*) FROM api_cache WHERE cacheKey LIKE :prefix || '%'")
+    suspend fun countByPrefix(prefix: String): Int
+
+    @Query("SELECT COUNT(*) FROM api_cache WHERE cacheKey LIKE :prefix || '%'")
+    fun observeCountByPrefix(prefix: String): Flow<Int>
+
+    @Query(
+        "SELECT id, cacheKey, sourceRomPath, cachedAt, firstCachedAt FROM api_cache WHERE cacheKey LIKE :prefix || '%' ORDER BY firstCachedAt ASC, id ASC LIMIT :limit"
+    )
+    suspend fun oldestSummariesByPrefix(prefix: String, limit: Int): List<CacheEntrySummary>
 
     @Query("DELETE FROM api_cache WHERE cacheKey = :key")
     suspend fun deleteByKey(key: String)

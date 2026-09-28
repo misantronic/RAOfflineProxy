@@ -20,11 +20,12 @@ import androidx.recyclerview.widget.ConcatAdapter
 import androidx.recyclerview.widget.DividerItemDecoration
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
-import com.raofflineproxy.MAX_CACHED_GAMES
 import com.raofflineproxy.PrefsConstants
 import com.raofflineproxy.R
 import com.raofflineproxy.data.CachedGame
 import com.raofflineproxy.data.ConsoleNames
+import com.raofflineproxy.proxy.CACHE_BUDGET_LIMIT
+import com.raofflineproxy.proxy.QueueEstimate
 import java.io.File
 import kotlinx.coroutines.launch
 
@@ -38,6 +39,7 @@ class CachedGamesFragment : Fragment() {
     private val collapsedConsoleIds = mutableSetOf<Int>()
     private var currentGames: List<CachedGame> = emptyList()
     private var gamesAdapter: CachedGamesAdapter? = null
+    private var queueDialog: AlertDialog? = null
 
     private val romFolderPickerLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -153,15 +155,17 @@ class CachedGamesFragment : Fragment() {
                 val actionsEnabled = state.isOnline
                     && !state.scanInProgress
                 val showSmartCache = !viewModel.isSmartCacheDisabledForShizuku(state)
-                val smartCacheEnabled = actionsEnabled
-                    && showSmartCache
-                    && state.cachedGames.size < MAX_CACHED_GAMES
-                val scanEnabled = state.isOnline
-                    && !state.scanInProgress
-                    && state.cachedGames.size < MAX_CACHED_GAMES
+                val smartCacheEnabled = actionsEnabled && showSmartCache
+                val scanEnabled = state.isOnline && !state.scanInProgress
                 val statusText = when {
                     !state.isOnline -> getString(R.string.cached_games_offline_hint)
-                    else -> getString(R.string.cached_games_counter, state.cachedGames.size, MAX_CACHED_GAMES)
+                    state.queuedRomCount == 0 -> getString(R.string.cached_games_counter, state.cachedGames.size)
+                    !state.proxyRunning -> getString(
+                        R.string.cached_games_counter_queued_paused,
+                        state.cachedGames.size,
+                        state.queuedRomCount
+                    )
+                    else -> getString(R.string.cached_games_counter_queued, state.cachedGames.size, state.queuedRomCount)
                 }
                 headerAdapter.update(
                     CachedGamesHeaderAdapter.HeaderState(
@@ -174,14 +178,49 @@ class CachedGamesFragment : Fragment() {
                         statusText = statusText
                     )
                 )
+                updateQueueDialog(state.pendingQueueConfirmation)
             }
         }
     }
 
     override fun onDestroyView() {
         super.onDestroyView()
+        queueDialog?.dismiss()
+        queueDialog = null
         gamesAdapter = null
     }
+
+    private fun updateQueueDialog(estimate: QueueEstimate?) {
+        if (estimate == null) {
+            queueDialog?.dismiss()
+            queueDialog = null
+            return
+        }
+        if (queueDialog != null) return
+        queueDialog = AlertDialog.Builder(requireContext())
+            .setTitle(R.string.queue_confirm_title)
+            .setMessage(
+                getString(
+                    R.string.queue_confirm_message,
+                    estimate.cachedNow,
+                    estimate.queuedAfter,
+                    CACHE_BUDGET_LIMIT,
+                    formatQueueEta(estimate.etaMinutes)
+                )
+            )
+            .setPositiveButton(R.string.queue_confirm_continue) { _, _ -> viewModel.resolveQueueConfirmation(true) }
+            .setNegativeButton(android.R.string.cancel) { _, _ -> viewModel.resolveQueueConfirmation(false) }
+            .setCancelable(false)
+            .create()
+            .also { it.show() }
+    }
+
+    private fun formatQueueEta(minutes: Int): String =
+        if (minutes < 60) {
+            getString(R.string.queue_eta_minutes, minutes)
+        } else {
+            getString(R.string.queue_eta_hours, minutes / 60, minutes % 60)
+        }
 
     private fun loadCollapsedState() {
         collapsedConsoleIds.clear()

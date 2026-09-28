@@ -4,7 +4,6 @@ import android.Manifest
 import android.app.ActivityManager
 import android.app.AlarmManager
 import android.app.Notification
-import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
@@ -31,7 +30,10 @@ import com.raofflineproxy.probeRetroAchievements
 import com.raofflineproxy.proxyPort
 import com.raofflineproxy.data.AppDatabase
 import com.raofflineproxy.data.CacheKeys
+import com.raofflineproxy.proxyUserAgent
 import com.raofflineproxy.proxy.AwardFlusher
+import com.raofflineproxy.proxy.CacheQueue
+import com.raofflineproxy.proxy.RateLimitBackoff
 import com.raofflineproxy.proxy.GameActivity
 import com.raofflineproxy.proxy.ProxyServer
 import com.raofflineproxy.proxy.loadLoginCredentials
@@ -40,7 +42,8 @@ import com.raofflineproxy.proxy.loadRecentlyPlayedGameIds
 import com.raofflineproxy.proxy.loadUserAgent
 import com.raofflineproxy.proxy.refreshCachedGameOfflineBundle
 import com.raofflineproxy.proxy.RefreshNotificationMode
-import com.raofflineproxy.ui.MainActivity
+import com.raofflineproxy.proxy.DrainStop
+import com.raofflineproxy.proxy.drainCacheQueue
 import com.raofflineproxy.ui.Emulator
 import com.raofflineproxy.ui.broadcastNotPatchedResult
 import com.raofflineproxy.ui.configNotPatchedResult
@@ -54,12 +57,14 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.channels.Channel
 import org.json.JSONObject
 import kotlin.time.Duration.Companion.milliseconds
 
 private const val TAG = "RAProxy/ProxyService"
-private const val CHANNEL_ID = "proxy_service"
 private const val NOTIFICATION_ID = 1
 private const val REFRESH_INTERVAL_MS = 60L * 60 * 1000 // 1 hour
 private const val OFFLINE_REPROBE_INTERVAL_MS = 60_000L // self-heal cadence while offline
@@ -68,6 +73,9 @@ private const val OFFLINE_PING_IDLE_TIMEOUT_MS = 150_000L
 private const val ONLINE_REFRESH_IDLE_DELAY_MS = 5L * 60 * 1000
 private const val REFRESH_PLAYED_WINDOW_DAYS = 7L
 private const val REFRESH_PLAYED_WINDOW_MS = REFRESH_PLAYED_WINDOW_DAYS * 24 * 60 * 60 * 1000
+private const val CACHE_QUEUE_POLL_MS = 60_000L
+private const val CACHE_QUEUE_RETRY_MS = 5L * 60 * 1000
+private const val CACHING_NOTIFICATION_MIN_INTERVAL_MS = 500L
 private const val RESTART_DELAY_MS = 5_000L
 
 class ProxyService : Service() {
@@ -80,6 +88,12 @@ class ProxyService : Service() {
     private var hasInternet = false
     private var networkCallbackRegistered = false
     private var refreshJob: Job? = null
+    private var cacheQueueJob: Job? = null
+    private var cacheQueueRejectedToken: String? = null
+    private var cachingObserverJob: Job? = null
+    @Volatile private var queuedCount = 0
+    @Volatile private var nextQueueWindowAt: Long? = null
+    @Volatile private var lastCachingNotificationAt = 0L
     private var reachabilityWatchdogJob: Job? = null
     private var flushJob: Job? = null
     private var pendingObserverJob: Job? = null
@@ -168,6 +182,22 @@ class ProxyService : Service() {
             refreshJob = serviceScope.launch { periodicRefreshLoop() }
         }
 
+        if (cacheQueueJob?.isActive != true) {
+            cacheQueueJob = serviceScope.launch { cacheQueueLoop() }
+        }
+
+        CachingNotifications.clearStandalone(this)
+        if (cachingObserverJob?.isActive != true) {
+            cachingObserverJob = serviceScope.launch {
+                combine(CachingNotifications.progress, CacheQueue.observeCount(db)) { _, count -> count }
+                    .collect { count ->
+                        queuedCount = count
+                        if (count == 0) nextQueueWindowAt = null
+                        updateCachingNotification()
+                    }
+            }
+        }
+
         if (reachabilityWatchdogJob?.isActive != true) {
             reachabilityWatchdogJob = serviceScope.launch { reachabilityWatchdogLoop() }
         }
@@ -198,10 +228,97 @@ class ProxyService : Service() {
         }
     }
 
+    private suspend fun cacheQueueLoop() {
+        while (true) {
+            val waitMs = try {
+                processCacheQueue()
+            } finally {
+                CacheQueueWakeLock.release()
+            }
+            withTimeoutOrNull(waitMs.milliseconds) { cacheQueueWake.receive() }
+        }
+    }
+
+    /** Drains what the caching budget allows, arms the alarm for the next round and returns how
+     *  long to wait before looking again while the device stays awake. */
+    private suspend fun processCacheQueue(): Long {
+        if (CacheQueue.count(db) == 0) {
+            CacheQueueAlarm.cancel(this)
+            return CACHE_QUEUE_POLL_MS
+        }
+        if (!canWorkOnCacheQueue()) return deferCacheQueueWhileActive()
+        val credentials = loadLoginCredentials(db) ?: return CACHE_QUEUE_POLL_MS
+        if (credentials.token == cacheQueueRejectedToken) return CACHE_QUEUE_POLL_MS
+        val userAgent = proxyUserAgent(loadUserAgent(db))
+        CacheQueueWakeLock.hold(this)
+        val result = try {
+            drainCacheQueue(
+                this,
+                db,
+                credentials,
+                userAgent,
+                shouldPause = { !canWorkOnCacheQueue() },
+                onItem = { current, total, label ->
+                    CachingNotifications.reportQueue(CachingProgress(CachingPhase.Caching, current, total, label))
+                    updateCachingNotification()
+                }
+            )
+        } finally {
+            CachingNotifications.reportQueue(null)
+        }
+        if (result.stop == DrainStop.AuthRejected) cacheQueueRejectedToken = credentials.token
+        val nextAttemptAt = result.nextAttemptAt
+        nextQueueWindowAt = nextAttemptAt
+        updateNotification()
+        if (result.processed > 0 || nextAttemptAt != null) {
+            val nextWindow = nextAttemptAt?.let { ", next window at ${java.text.DateFormat.getTimeInstance().format(java.util.Date(it))}" }
+            Log.i(TAG, "Cache queue: processed ${result.processed}, ${CacheQueue.count(db)} left${nextWindow.orEmpty()}")
+        }
+        return when (result.stop) {
+            DrainStop.BudgetExhausted, DrainStop.RateLimited -> {
+                val at = nextAttemptAt ?: (System.currentTimeMillis() + CACHE_QUEUE_POLL_MS)
+                CacheQueueAlarm.schedule(this, at)
+                (at - System.currentTimeMillis()).coerceAtLeast(1_000L)
+            }
+            DrainStop.Failed -> {
+                CacheQueueAlarm.schedule(this, System.currentTimeMillis() + CACHE_QUEUE_RETRY_MS)
+                CACHE_QUEUE_RETRY_MS
+            }
+            DrainStop.Empty -> {
+                CacheQueueAlarm.cancel(this)
+                CACHE_QUEUE_POLL_MS
+            }
+            DrainStop.Paused -> deferCacheQueueWhileActive()
+            else -> CACHE_QUEUE_POLL_MS
+        }
+    }
+
+    /** The queue waits while a game is played. The alarm brings it back once the proxy has been
+     *  idle long enough, so it still resumes when the device falls asleep right after playing. */
+    private fun deferCacheQueueWhileActive(): Long {
+        val idleDelayMs = onlineRefreshIdleDelayMs()
+        if (idleDelayMs <= 0) return CACHE_QUEUE_POLL_MS
+        val resumeAt = maxOf(System.currentTimeMillis() + idleDelayMs, nextQueueWindowAt ?: 0L)
+        CacheQueueAlarm.schedule(this, resumeAt)
+        if (nextQueueWindowAt != resumeAt) {
+            nextQueueWindowAt = resumeAt
+            updateNotification()
+            Log.i(TAG, "Cache queue deferred while the proxy is active, next attempt at ${java.text.DateFormat.getTimeInstance().format(java.util.Date(resumeAt))}")
+        }
+        return (resumeAt - System.currentTimeMillis()).coerceAtLeast(1_000L)
+    }
+
+    private fun canWorkOnCacheQueue(): Boolean =
+        !CacheQueue.bulkRunActive && isServerReachable() && onlineRefreshIdleDelayMs() <= 0
+
     private suspend fun periodicRefreshLoop() {
         while (true) {
             delay(REFRESH_INTERVAL_MS.milliseconds)
             if (!isServerReachable()) continue
+            RateLimitBackoff.pausedUntil()?.let { until ->
+                Log.i(TAG, "Periodic refresh skipped; RetroAchievements rate-limited us until ${java.text.DateFormat.getTimeInstance().format(java.util.Date(until))}")
+                continue
+            }
             val idleDelayMs = onlineRefreshIdleDelayMs()
             if (idleDelayMs > 0) {
                 Log.i(TAG, "Periodic refresh deferred; proxy active recently")
@@ -224,20 +341,26 @@ class ProxyService : Service() {
                 "Periodic refresh: ${dueTargets.size} of ${refreshTargets.size} cached game(s) " +
                     "played in the last $REFRESH_PLAYED_WINDOW_DAYS day(s)"
             )
-            for (target in dueTargets) {
-                if (onlineRefreshIdleDelayMs() > 0) {
-                    Log.i(TAG, "Periodic refresh paused; proxy became active")
-                    break
+            RateLimitBackoff.background {
+                for (target in dueTargets) {
+                    if (onlineRefreshIdleDelayMs() > 0) {
+                        Log.i(TAG, "Periodic refresh paused; proxy became active")
+                        break
+                    }
+                    if (RateLimitBackoff.pausedUntil() != null) {
+                        Log.w(TAG, "Periodic refresh stopped: RetroAchievements answered 429")
+                        break
+                    }
+                    refreshCachedGameOfflineBundle(
+                        context = this@ProxyService,
+                        target = target,
+                        creds = credentials,
+                        userAgent = userAgent,
+                        db = db,
+                        notificationMode = RefreshNotificationMode.Background,
+                        cacheImages = false,
+                    )
                 }
-                refreshCachedGameOfflineBundle(
-                    context = this@ProxyService,
-                    target = target,
-                    creds = credentials,
-                    userAgent = userAgent,
-                    db = db,
-                    notificationMode = RefreshNotificationMode.Background,
-                    cacheImages = false,
-                )
             }
             db.cacheDao().evictOlderThan(System.currentTimeMillis() - CACHE_TTL_MS)
             Log.i(TAG, "Periodic refresh complete")
@@ -260,6 +383,8 @@ class ProxyService : Service() {
             revertPatchedCfgIfNeeded()
         }
         runningInProcess = false
+        CacheQueueAlarm.cancel(this)
+        CacheQueueWakeLock.release()
         proxyServer.stop()
         if (networkCallbackRegistered) {
             runCatching { connectivityManager.unregisterNetworkCallback(networkCallback) }
@@ -282,20 +407,10 @@ class ProxyService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     private fun createNotificationChannel() {
-        val channel = NotificationChannel(
-            CHANNEL_ID,
-            getString(R.string.notification_channel_name),
-            NotificationManager.IMPORTANCE_LOW
-        ).apply { description = getString(R.string.notification_channel_description) }
-        getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
+        ensureProxyNotificationChannel(this)
     }
 
     private fun buildNotification(): Notification {
-        val tapIntent = PendingIntent.getActivity(
-            this, 0,
-            Intent(this, MainActivity::class.java),
-            PendingIntent.FLAG_IMMUTABLE
-        )
         val (title, text) = if (isServerReachable())
             getString(R.string.notification_online_title) to getString(R.string.notification_online_text)
         else {
@@ -308,13 +423,51 @@ class ProxyService : Service() {
             }
             getString(R.string.notification_offline_title) to offlineText
         }
-        return Notification.Builder(this, CHANNEL_ID)
+        val caching = cachingStatus()
+        val progress = CachingNotifications.progress.value ?: CachingNotifications.queueProgress.value
+        return Notification.Builder(this, PROXY_NOTIFICATION_CHANNEL_ID)
             .setContentTitle(title)
-            .setContentText(text)
+            .setContentText(if (caching == null) text else "$text · ${caching.first}")
+            .apply {
+                if (caching != null) setStyle(Notification.BigTextStyle().bigText("$text\n${caching.second}"))
+                if (progress != null) setProgress(progress.total, progress.current, false)
+            }
             .setSmallIcon(R.mipmap.ic_notification)
-            .setContentIntent(tapIntent)
+            .setContentIntent(openAppIntent(this))
             .setOngoing(true)
+            .setOnlyAlertOnce(true)
             .build()
+    }
+
+    /** Short line for the collapsed notification and a longer one for the expanded view. */
+    private fun cachingStatus(): Pair<String, String>? {
+        val appProgress = CachingNotifications.progress.value
+        val queue = CachingNotifications.queueProgress.value
+        val nextWindow = nextQueueWindowAt
+        return when {
+            appProgress != null -> appProgress.shortText(this) to appProgress.text(this)
+            queue != null -> queue.shortText(this) to queue.text(this)
+            queuedCount > 0 -> {
+                val short = getString(R.string.notification_caching_queue_waiting_short, queuedCount)
+                val long = nextWindow?.let {
+                    getString(
+                        R.string.notification_caching_queue_waiting,
+                        queuedCount,
+                        java.text.DateFormat.getTimeInstance(java.text.DateFormat.SHORT).format(java.util.Date(it))
+                    )
+                } ?: short
+                short to long
+            }
+            else -> null
+        }
+    }
+
+    private fun updateCachingNotification() {
+        val now = SystemClock.elapsedRealtime()
+        val active = CachingNotifications.progress.value != null || CachingNotifications.queueProgress.value != null
+        if (active && now - lastCachingNotificationAt < CACHING_NOTIFICATION_MIN_INTERVAL_MS) return
+        lastCachingNotificationAt = now
+        updateNotification()
     }
 
     private fun updateNotification() {
@@ -423,6 +576,7 @@ class ProxyService : Service() {
                     lastOfflinePingAt = 0L
                     offlineIdleTimeoutJob?.cancel()
                     requestFlush()
+                    wakeCacheQueue()
                 } else if (!isReachableNow && effectiveWasReachable) {
                     Log.i(TAG, "RetroAchievements unreachable")
                     if (recentGameId != null) {
@@ -509,6 +663,13 @@ class ProxyService : Service() {
 
         @Volatile
         private var runningInProcess = false
+        private val cacheQueueWake = Channel<Unit>(Channel.CONFLATED)
+
+        fun isRunningInProcess(): Boolean = runningInProcess
+
+        fun wakeCacheQueue() {
+            cacheQueueWake.trySend(Unit)
+        }
 
         private fun restartPendingIntent(context: Context): PendingIntent = PendingIntent.getBroadcast(
             context,
