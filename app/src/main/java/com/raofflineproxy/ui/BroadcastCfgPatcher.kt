@@ -6,8 +6,6 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import com.raofflineproxy.PrefsConstants
-import com.raofflineproxy.proxyBase
-import com.raofflineproxy.proxyPort
 
 private const val SET_ACTION_SUFFIX = ".action.SET_RETROACHIEVEMENTS_HOST_OVERRIDE"
 private const val CLEAR_ACTION_SUFFIX = ".action.CLEAR_RETROACHIEVEMENTS_HOST_OVERRIDE"
@@ -86,7 +84,7 @@ private fun sendHostOverride(
         .setComponent(ComponentName(packageName, override.receiverClassFor(packageName)))
         .addFlags(Intent.FLAG_RECEIVER_FOREGROUND)
     if (!clear) {
-        intent.putExtra(HOST_OVERRIDE_EXTRA, proxyBase(proxyPort(context)))
+        intent.putExtra(HOST_OVERRIDE_EXTRA, override.hostValue(context))
     }
     context.sendBroadcast(intent)
 
