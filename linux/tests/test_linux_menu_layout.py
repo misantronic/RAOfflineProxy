@@ -251,6 +251,8 @@ class MenuLayoutTests(unittest.TestCase):
         session.pending_awards = []
         session.running = True
         session.storage = object()
+        session.view_positions = {"cached_games": (12, 8)}
+        session.scroll_offset = 0
 
         original_current_labels = menu_sdl.MenuSdlSession.current_labels
         original_proxy_running = menu_sdl.MenuSdlSession.proxy_running
@@ -274,6 +276,7 @@ class MenuLayoutTests(unittest.TestCase):
             menu_sdl.MenuSdlSession.activate_selected(session)
 
             self.assertEqual(session.view, "cached_games")
+            self.assertEqual((0, 0), (session.selected_index, session.scroll_offset))
         finally:
             menu_sdl.MenuSdlSession.current_labels = original_current_labels
             menu_sdl.MenuSdlSession.proxy_running = original_proxy_running
@@ -1318,6 +1321,35 @@ class MenuLayoutTests(unittest.TestCase):
             menu_sdl.MenuSdlSession.status_text(session, running=False),
             "Preparing cache...",
         )
+
+    def test_cache_counts_reload_the_list_only_when_they_change(self) -> None:
+        session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
+        session.view = "cached_games"
+        session.cache_counts = (5, 10)
+        counts = iter([(5, 10), (6, 9)])
+        reloads = []
+        session.read_cache_counts = lambda: next(counts)
+        session.refresh_cached_games = lambda: reloads.append(True)
+        clock = iter([100.0, 102.0, 106.0])
+        original_monotonic = menu_sdl.time.monotonic
+        try:
+            menu_sdl.time.monotonic = lambda: next(clock)
+
+            menu_sdl.MenuSdlSession.refresh_cache_counts(session)
+            menu_sdl.MenuSdlSession.refresh_cache_counts(session)
+            self.assertEqual([], reloads)
+            menu_sdl.MenuSdlSession.refresh_cache_counts(session)
+        finally:
+            menu_sdl.time.monotonic = original_monotonic
+
+        self.assertEqual([True], reloads)
+
+    def test_cache_counts_are_not_polled_during_other_views(self) -> None:
+        session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
+        session.view = "cache_progress"
+        session.read_cache_counts = lambda: self.fail("must not poll")
+
+        menu_sdl.MenuSdlSession.refresh_cache_counts(session)
 
     def test_clear_cache_returns_to_the_top_of_the_list(self) -> None:
         session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)

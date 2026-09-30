@@ -56,7 +56,7 @@ from .retroarch_cfg import (
     revert_retroarch_cfg,
 )
 from .image_cache import shutdown_image_downloads
-from . import cache_queue
+from . import cache_keys, cache_queue
 from .rom_browser import (
     AddRomResult,
     add_rom_to_cache,
@@ -149,6 +149,7 @@ FPS = 60
 LEFT_MARGIN = 32
 GROUP_GAP = 14
 MAIN_MENU_STATE_REFRESH_SECONDS = 1.0
+CACHE_COUNTS_REFRESH_SECONDS = 5.0
 PREVIEW_RETRY_SECONDS = 2.0
 KNULLI_FONT_CANDIDATES = [
     "DejaVu Sans Mono",
@@ -663,6 +664,7 @@ class MenuSdlSession:
             while self.running:
                 self.handle_events()
                 self.handle_raw_input()
+                self.refresh_cache_counts()
                 self.render()
                 if first_frame:
                     signal_menu_ready()
@@ -1276,7 +1278,8 @@ class MenuSdlSession:
         if selected_label.startswith("Cached games"):
             self.save_view_position("main")
             self.view = "cached_games"
-            self.restore_view_position("cached_games")
+            self.view_positions.pop("cached_games", None)
+            self.reset_selection()
             self.refresh_cached_games()
             return
 
@@ -1760,14 +1763,33 @@ class MenuSdlSession:
         self.reset_selection()
 
     def refresh_cached_games(self) -> None:
+        self.cache_counts = self.read_cache_counts()
         self.cached_games = list_cached_games(self.storage)
-        self.queued_count = cache_queue.count(self.storage)
+        self.queued_count = self.cache_counts[1]
         self.pending_awards = list_pending_awards(self.storage)
         self.preview_surface = None
         self.preview_game_id = None
         self.achievement_preview_surface = None
         self.achievement_preview_game_id = None
         self.achievement_preview_title = None
+
+    def read_cache_counts(self) -> tuple[int, int]:
+        return (
+            self.storage.count_cache_by_prefix(cache_keys.PREFIX_PATCH),
+            cache_queue.count(self.storage),
+        )
+
+    def refresh_cache_counts(self) -> None:
+        """Follows the proxy service's background queue while the menu is open: cheap counts
+        every few seconds, the full game list only once they changed."""
+        if self.view not in ("main", "cached_games"):
+            return
+        now = time.monotonic()
+        if now - getattr(self, "cache_counts_checked_at", 0.0) < CACHE_COUNTS_REFRESH_SECONDS:
+            return
+        self.cache_counts_checked_at = now
+        if self.read_cache_counts() != getattr(self, "cache_counts", None):
+            self.refresh_cached_games()
 
     def refresh_pending_awards(self) -> None:
         self.pending_awards = list_pending_awards(self.storage)
