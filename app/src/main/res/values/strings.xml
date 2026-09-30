@@ -322,6 +322,10 @@
     <string name="cached_games_offline_hint">Go online to add, scan, or refresh cached games.</string>
     <string name="cached_games_counter">%1$d cached</string>
     <string name="cached_games_counter_queued">%1$d cached · %2$d queued</string>
+    <string name="cached_games_counter_with_queue_status">%1$s · %2$s</string>
+    <string name="cached_games_queue_next_batch">next batch %1$s</string>
+    <string name="cached_games_queue_next_batch_soon">next batch soon</string>
+    <string name="cached_games_queue_caching_now">caching now</string>
     <string name="cached_games_counter_queued_paused">%1$d cached · %2$d queued (paused while the proxy is stopped)</string>
 
     <!-- Caching queue confirmation -->

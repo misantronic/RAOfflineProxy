@@ -165,6 +165,8 @@ data class MainUiState(
     val scanInProgress: Boolean = false,
     val scanProgress: String? = null,
     val queuedRomCount: Int = 0,
+    val nextQueueBatchAt: Long? = null,
+    val queueCachingNow: Boolean = false,
     val pendingQueueConfirmation: QueueEstimate? = null,
     val flushInProgress: Boolean = false,
     val availableAppUpdate: AppUpdateInfo? = null
@@ -252,6 +254,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             }
         }
         viewModelScope.launch { mirrorBackgroundQueueProgress() }
+        viewModelScope.launch {
+            combine(CachingNotifications.nextQueueBatchAt, CachingNotifications.queueProgress) { at, progress ->
+                at to (progress != null)
+            }.collect { (at, cachingNow) ->
+                _state.value = _state.value.copy(nextQueueBatchAt = at, queueCachingNow = cachingNow)
+            }
+        }
 
         connectivityManager.registerNetworkCallback(
             NetworkRequest.Builder()

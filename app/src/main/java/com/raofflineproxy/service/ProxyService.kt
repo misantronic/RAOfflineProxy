@@ -93,6 +93,10 @@ class ProxyService : Service() {
     private var cachingObserverJob: Job? = null
     @Volatile private var queuedCount = 0
     @Volatile private var nextQueueWindowAt: Long? = null
+        set(value) {
+            field = value
+            CachingNotifications.reportNextQueueBatch(value)
+        }
     @Volatile private var lastCachingNotificationAt = 0L
     private var reachabilityWatchdogJob: Job? = null
     private var flushJob: Job? = null

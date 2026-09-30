@@ -27,6 +27,8 @@ import com.raofflineproxy.data.ConsoleNames
 import com.raofflineproxy.proxy.CACHE_BUDGET_LIMIT
 import com.raofflineproxy.proxy.QueueEstimate
 import java.io.File
+import java.text.DateFormat
+import java.util.Date
 import kotlinx.coroutines.launch
 
 private const val TAG = "RAProxy/CachedGamesFragment"
@@ -165,7 +167,7 @@ class CachedGamesFragment : Fragment() {
                         state.cachedGames.size,
                         state.queuedRomCount
                     )
-                    else -> getString(R.string.cached_games_counter_queued, state.cachedGames.size, state.queuedRomCount)
+                    else -> queuedStatusText(state)
                 }
                 headerAdapter.update(
                     CachedGamesHeaderAdapter.HeaderState(
@@ -249,6 +251,21 @@ class CachedGamesFragment : Fragment() {
                     Intent.FLAG_GRANT_PREFIX_URI_PERMISSION
             )
         }
+
+    private fun queuedStatusText(state: MainUiState): String {
+        val counter = getString(R.string.cached_games_counter_queued, state.cachedGames.size, state.queuedRomCount)
+        val nextBatchAt = state.nextQueueBatchAt
+        val batch = when {
+            state.queueCachingNow -> getString(R.string.cached_games_queue_caching_now)
+            nextBatchAt == null -> return counter
+            nextBatchAt > System.currentTimeMillis() -> getString(
+                R.string.cached_games_queue_next_batch,
+                DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(nextBatchAt))
+            )
+            else -> getString(R.string.cached_games_queue_next_batch_soon)
+        }
+        return getString(R.string.cached_games_counter_with_queue_status, counter, batch)
+    }
 
     private fun createAddRomIntent(): Intent =
         Intent(Intent.ACTION_OPEN_DOCUMENT).apply {

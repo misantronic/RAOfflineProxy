@@ -79,6 +79,16 @@ object CachingNotifications {
         _queueProgress.value = progress
     }
 
+    private val _nextQueueBatchAt = MutableStateFlow<Long?>(null)
+
+    /** When the proxy service expects to run its next background batch, or null when it has none
+     *  planned. */
+    val nextQueueBatchAt: StateFlow<Long?> = _nextQueueBatchAt.asStateFlow()
+
+    fun reportNextQueueBatch(at: Long?) {
+        _nextQueueBatchAt.value = at
+    }
+
     fun clearStandalone(context: Context) {
         context.getSystemService(NotificationManager::class.java).cancel(STANDALONE_NOTIFICATION_ID)
     }
