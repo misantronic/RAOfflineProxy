@@ -324,28 +324,26 @@ class MenuLayoutTests(unittest.TestCase):
         session.active_game = object()
         session.storage = object()
         session.message = None
+        session.view_positions = {}
 
         original_clear_cached_games = menu_sdl.clear_cached_games
         original_refresh_cached_games = menu_sdl.MenuSdlSession.refresh_cached_games
-        original_restore_view_position = menu_sdl.MenuSdlSession.restore_view_position
         try:
-            called = {"cleared": False, "refreshed": False, "restored": None}
+            called = {"cleared": False, "refreshed": False}
             menu_sdl.clear_cached_games = lambda _storage: called.__setitem__("cleared", True)
             menu_sdl.MenuSdlSession.refresh_cached_games = lambda self: called.__setitem__("refreshed", True)
-            menu_sdl.MenuSdlSession.restore_view_position = lambda self, view: called.__setitem__("restored", view)
 
             menu_sdl.MenuSdlSession.activate_clear_cache_confirm_selected(session)
 
             self.assertTrue(called["cleared"])
             self.assertTrue(called["refreshed"])
-            self.assertEqual(called["restored"], "cached_games")
+            self.assertEqual(session.selected_index, 0)
             self.assertEqual(session.view, "cached_games")
             self.assertIsNone(session.active_game)
             self.assertIsNotNone(session.message)
         finally:
             menu_sdl.clear_cached_games = original_clear_cached_games
             menu_sdl.MenuSdlSession.refresh_cached_games = original_refresh_cached_games
-            menu_sdl.MenuSdlSession.restore_view_position = original_restore_view_position
 
     def test_activate_clear_cache_confirm_no_cancels(self) -> None:
         session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
@@ -1320,6 +1318,64 @@ class MenuLayoutTests(unittest.TestCase):
             menu_sdl.MenuSdlSession.status_text(session, running=False),
             "Preparing cache...",
         )
+
+    def test_clear_cache_returns_to_the_top_of_the_list(self) -> None:
+        session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
+        session.storage = object()
+        session.clear_cache_return_view = "cached_games"
+        session.view_positions = {"cached_games": (42, 30)}
+        session.selected_index = 1
+        session.scroll_offset = 0
+        session.refresh_cached_games = lambda: None
+        original_clear = menu_sdl.clear_cached_games
+        try:
+            menu_sdl.clear_cached_games = lambda _storage: None
+
+            menu_sdl.MenuSdlSession.clear_cache_and_return(session)
+        finally:
+            menu_sdl.clear_cached_games = original_clear
+
+        self.assertEqual("cached_games", session.view)
+        self.assertEqual((0, 0), (session.selected_index, session.scroll_offset))
+        self.assertNotIn("cached_games", session.view_positions)
+
+    def test_bulk_run_within_one_window_is_cached_right_away(self) -> None:
+        session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
+        session.storage = object()
+        runs = []
+        original_estimate = menu_sdl.estimate_queue_for_paths
+        try:
+            menu_sdl.estimate_queue_for_paths = lambda _storage, paths: (
+                menu_sdl.cache_queue.estimate_queue(len(paths), 0, 100, 0)
+            )
+
+            menu_sdl.MenuSdlSession.start_bulk_run(session, [Path("a.nes")] * 100, "file_browser", runs.append)
+        finally:
+            menu_sdl.estimate_queue_for_paths = original_estimate
+
+        self.assertEqual([True], runs)
+
+    def test_large_bulk_run_is_confirmed_then_left_to_the_background(self) -> None:
+        session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
+        session.storage = object()
+        session.reset_selection = lambda: None
+        session.selected_index = 0
+        runs = []
+        original_estimate = menu_sdl.estimate_queue_for_paths
+        try:
+            menu_sdl.estimate_queue_for_paths = lambda _storage, paths: (
+                menu_sdl.cache_queue.estimate_queue(len(paths), 0, 100, 0)
+            )
+
+            menu_sdl.MenuSdlSession.start_bulk_run(session, [Path("a.nes")] * 250, "file_browser", runs.append)
+            self.assertEqual("queue_confirm", session.view)
+            self.assertEqual([], runs)
+
+            menu_sdl.MenuSdlSession.activate_queue_confirm_selected(session)
+        finally:
+            menu_sdl.estimate_queue_for_paths = original_estimate
+
+        self.assertEqual([False], runs)
 
     def test_update_cache_progress_uses_current_item_status_line(self) -> None:
         session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)

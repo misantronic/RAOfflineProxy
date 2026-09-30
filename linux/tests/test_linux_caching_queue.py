@@ -100,6 +100,14 @@ class QueueModelTests(unittest.TestCase):
         self.assertTrue(large.needs_confirmation)
         self.assertFalse(rescan.needs_confirmation)
 
+    def test_confirm_message_counts_everything_left_to_the_background(self) -> None:
+        estimate = cache_queue.estimate_queue(candidates=857, already_known=0, budget_remaining=100, queued_now=0)
+
+        self.assertEqual(
+            "Up to 857 games are cached in the background: 100 every 30 minutes while the proxy is running (about 4 h 0 min).",
+            smart_cache.queue_confirm_message(estimate),
+        )
+
     def test_eta_text(self) -> None:
         self.assertEqual("30 minutes", smart_cache.format_eta(30))
         self.assertEqual("2 h 30 min", smart_cache.format_eta(150))
@@ -356,6 +364,33 @@ class BulkRunTests(QueueTestCase):
 
         self.assertEqual(1, cache_queue.count(self.store))
         self.assertEqual("cachequeue:earlier", cache_queue.oldest(self.store).key)
+
+    def test_without_cache_now_everything_is_left_to_the_service(self) -> None:
+        self.game_ids.update({"a": 1, "b": 2})
+        self.store.upsert_cache(cache_keys.game_id("known"), '{"Success":true,"GameID":0}')
+
+        result = smart_cache.run_cache_paths(
+            self.store, {}, self.roms("a", "b", "known"), cache_now=False
+        )
+
+        self.assertEqual((3, 0, 2, 1), (result.scanned, result.cached, result.queued, result.skipped))
+        self.assertEqual([], self.lookups)
+        self.assertEqual(0, cache_budget.load(self.store).used)
+
+    def test_completion_message_tells_where_queued_games_go(self) -> None:
+        result = smart_cache.SmartCacheResult(scanned=250, total=250, cached=0, skipped=10, queued=240)
+
+        running = smart_cache.cache_completion_message(result, aborted=False)
+        stopped = smart_cache.cache_completion_message(result, aborted=False, proxy_running=False)
+
+        self.assertEqual(
+            "Cached 0, queued 240, skipped 10\nQueued games are cached in the background, up to 100 every 30 minutes.",
+            running,
+        )
+        self.assertEqual(
+            "Cached 0, queued 240, skipped 10\nCaching starts when the proxy is running.",
+            stopped,
+        )
 
     def test_requires_a_login(self) -> None:
         with mock.patch.object(smart_cache, "resolve_credentials", lambda *_args: None):

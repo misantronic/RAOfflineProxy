@@ -1448,18 +1448,19 @@ class MenuSdlSession:
         if self.view == "cached_games":
             self.refresh_cached_games()
 
-    def confirm_large_queue(self, paths: list[Path], return_view: str, action) -> bool:
-        """Asks before a bulk run that would grow the queue above one budget window; returns
-        False when the run has to wait for the answer."""
+    def start_bulk_run(self, paths: list[Path], return_view: str, run) -> None:
+        """A run that fits one budget window is cached right here with progress. A larger one
+        is confirmed first, then only hashed and left to the proxy service, since watching up to
+        a window's worth of games being cached tells nothing more than the result."""
         estimate = estimate_queue_for_paths(self.storage, paths)
         if not estimate.needs_confirmation:
-            return True
+            run(True)
+            return
         self.queue_confirm_text = queue_confirm_message(estimate)
-        self.queue_confirm_action = action
+        self.queue_confirm_action = lambda: run(False)
         self.queue_confirm_return_view = return_view
         self.view = "queue_confirm"
         self.reset_selection()
-        return False
 
     def activate_queue_confirm_selected(self) -> None:
         if self.selected_index != 0:
@@ -1486,7 +1487,8 @@ class MenuSdlSession:
         self.active_game = None
         self.refresh_cached_games()
         self.view = self.clear_cache_return_view
-        self.restore_view_position(self.clear_cache_return_view)
+        self.view_positions.pop(self.clear_cache_return_view, None)
+        self.reset_selection()
         self.message = ("Cache cleared", time.monotonic() + 1.5)
 
     def is_knulli_platform(self) -> bool:
@@ -1818,15 +1820,15 @@ class MenuSdlSession:
         current_dir = self.browser_dir
         cache_paths = list_scannable_files_recursive(current_dir)
         self.save_browser_position()
-        if not self.confirm_large_queue(
+        self.start_bulk_run(
             cache_paths,
             "file_browser",
-            lambda: self.run_folder_cache_for(current_dir, cache_paths),
-        ):
-            return
-        self.run_folder_cache_for(current_dir, cache_paths)
+            lambda cache_now: self.run_folder_cache_for(current_dir, cache_paths, cache_now),
+        )
 
-    def run_folder_cache_for(self, current_dir: Path, cache_paths: list[Path]) -> None:
+    def run_folder_cache_for(
+        self, current_dir: Path, cache_paths: list[Path], cache_now: bool
+    ) -> None:
         self.cache_progress_title = f"Caching: {current_dir.name}"
         if cache_paths:
             self.cache_progress_text = (
@@ -1852,6 +1854,7 @@ class MenuSdlSession:
                     paths=cache_paths,
                     should_abort=lambda: self.cache_abort_requested,
                     on_progress=self.update_cache_progress,
+                    cache_now=cache_now,
                 )
                 if result.total <= 0:
                     self.cache_result = (
@@ -1859,7 +1862,7 @@ class MenuSdlSession:
                         time.monotonic() + ERROR_SECONDS,
                     )
                     self.cache_completion_message = cache_completion_message(
-                        result, self.cache_abort_requested
+                        result, self.cache_abort_requested, self.proxy_running()
                     )
                     self.cache_completed = True
                 else:
@@ -1868,7 +1871,7 @@ class MenuSdlSession:
                         time.monotonic() + 1.5,
                     )
                     self.cache_completion_message = cache_completion_message(
-                        result, self.cache_abort_requested
+                        result, self.cache_abort_requested, self.proxy_running()
                     )
                     self.cache_completed = True
             except Exception as exc:
@@ -2418,13 +2421,13 @@ class MenuSdlSession:
 
         history_paths = smart_cache_paths(self.storage, self.config_data)
         return_view = "main" if self.view == "smart_cache_prompt" else self.view
-        if not self.confirm_large_queue(
-            history_paths, return_view, lambda: self.run_smart_cache_for(history_paths)
-        ):
-            return
-        self.run_smart_cache_for(history_paths)
+        self.start_bulk_run(
+            history_paths,
+            return_view,
+            lambda cache_now: self.run_smart_cache_for(history_paths, cache_now),
+        )
 
-    def run_smart_cache_for(self, history_paths: list[Path]) -> None:
+    def run_smart_cache_for(self, history_paths: list[Path], cache_now: bool) -> None:
         self.smart_cache_in_progress = True
         self.cache_progress_title = "Smart Cache"
         if history_paths:
@@ -2451,9 +2454,11 @@ class MenuSdlSession:
                     self.config_data,
                     should_abort=lambda: self.cache_abort_requested,
                     on_progress=self.update_smart_cache_progress,
+                    paths=history_paths,
+                    cache_now=cache_now,
                 )
                 self.cache_completion_message = cache_completion_message(
-                    result, self.cache_abort_requested
+                    result, self.cache_abort_requested, self.proxy_running()
                 )
                 self.cache_completed = True
             except Exception as exc:

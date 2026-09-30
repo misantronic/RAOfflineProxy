@@ -139,13 +139,16 @@ def run_smart_cache(
     config_data: dict,
     should_abort=None,
     on_progress=None,
+    paths: list[Path] | None = None,
+    cache_now: bool = True,
 ) -> SmartCacheResult:
     return run_cache_paths(
         storage,
         config_data,
-        smart_cache_paths(storage, config_data),
+        smart_cache_paths(storage, config_data) if paths is None else paths,
         should_abort=should_abort,
         on_progress=on_progress,
+        cache_now=cache_now,
     )
 
 
@@ -156,6 +159,7 @@ def run_folder_cache(
     paths: list[Path] | None = None,
     should_abort=None,
     on_progress=None,
+    cache_now: bool = True,
 ) -> SmartCacheResult:
     return run_cache_paths(
         storage,
@@ -163,6 +167,7 @@ def run_folder_cache(
         list_scannable_files_recursive(current_dir) if paths is None else paths,
         should_abort=should_abort,
         on_progress=on_progress,
+        cache_now=cache_now,
     )
 
 
@@ -186,11 +191,12 @@ def run_cache_paths(
     should_abort=None,
     on_progress=None,
     on_rom_result=None,
+    cache_now: bool = True,
 ) -> SmartCacheResult:
     """Hashes every ROM first, which only fills the queue, then caches the current budget window
-    right away; the rest stays queued for the proxy service. Aborting removes the ROMs this run
-    queued; games it already cached stay. on_rom_result hears each path's fate once: ok, fail
-    or queued."""
+    right away; the rest stays queued for the proxy service. Without cache_now the whole run is
+    left to the proxy service. Aborting removes the ROMs this run queued; games it already cached
+    stay. on_rom_result hears each path's fate once: ok, fail or queued."""
     total = len(paths)
     if total == 0:
         return SmartCacheResult(scanned=0, total=0, cached=0, skipped=0)
@@ -256,7 +262,7 @@ def run_cache_paths(
                 continue
             paths_by_key.setdefault(rom.key, []).append(path)
 
-        if not abort() and paths_by_key:
+        if cache_now and not abort() and paths_by_key:
             drain = rom_browser.drain_cache_queue(
                 storage,
                 config_data,
@@ -781,17 +787,21 @@ def format_eta(minutes: int) -> str:
 
 def queue_confirm_message(estimate: cache_queue.QueueEstimate) -> str:
     return (
-        f"Up to {estimate.cached_now} games are cached now, the other "
-        f"{estimate.queued_after} in the background: {cache_budget.CACHE_BUDGET_LIMIT} every "
-        f"30 minutes while the proxy is running (about {format_eta(estimate.eta_minutes)})."
+        f"Up to {estimate.cached_now + estimate.queued_after} games are cached in the background: "
+        f"{cache_budget.CACHE_BUDGET_LIMIT} every 30 minutes while the proxy is running "
+        f"(about {format_eta(estimate.eta_minutes)})."
     )
 
 
-def cache_completion_message(result: SmartCacheResult, aborted: bool) -> str:
+def cache_completion_message(
+    result: SmartCacheResult, aborted: bool, proxy_running: bool = True
+) -> str:
     prefix = "Aborted: cached" if aborted else "Cached"
     summary = f"{prefix} {result.cached}, queued {result.queued}, skipped {result.skipped}"
     if result.queued <= 0:
         return summary
+    if not proxy_running:
+        return f"{summary}\nCaching starts when the proxy is running."
     return (
         f"{summary}\nQueued games are cached in the background, up to "
         f"{cache_budget.CACHE_BUDGET_LIMIT} every 30 minutes."
