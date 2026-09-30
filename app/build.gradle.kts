@@ -25,6 +25,7 @@ android {
         versionName = "1.13.0-alpha1"
         buildConfigField("String", "RA_HOST", "\"https://retroachievements.org\"")
         buildConfigField("String", "RA_MEDIA_HOST", "\"https://media.retroachievements.org\"")
+        buildConfigField("String", "USAGE_STATS_URL", "\"https://ud63psmdb5.execute-api.eu-central-1.amazonaws.com/usage/ping\"")
     }
 
     signingConfigs {
@@ -48,6 +49,7 @@ android {
             matchingFallbacks += listOf("debug")
             buildConfigField("String", "RA_HOST", "\"$e2eRaHost\"")
             buildConfigField("String", "RA_MEDIA_HOST", "\"$e2eRaHost\"")
+            buildConfigField("String", "USAGE_STATS_URL", "\"\"")
         }
     }
 

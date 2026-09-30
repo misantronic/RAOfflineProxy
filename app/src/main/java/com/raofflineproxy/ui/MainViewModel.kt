@@ -87,6 +87,8 @@ import com.raofflineproxy.service.BulkRunWakeLock
 import com.raofflineproxy.service.ProxyService
 import com.raofflineproxy.update.AppUpdateChecker
 import com.raofflineproxy.update.AppUpdateInfo
+import com.raofflineproxy.usage.UsageReporter
+import com.raofflineproxy.usage.UsageStats
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CompletableDeferred
@@ -147,6 +149,7 @@ data class MainUiState(
     val appUpdateCheckEnabled: Boolean = true,
     val hideSupportButton: Boolean = false,
     val showLockedAchievements: Boolean = false,
+    val usageStatsConsent: Boolean? = null,
     val proxyPort: Int = PrefsConstants.DEFAULT_PROXY_PORT,
     val emulators: EmulatorSupport = EmulatorSupport.NONE,
     val pendingAwards: List<PendingAwardUi> = emptyList(),
@@ -280,6 +283,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             appUpdateCheckEnabled = loadAppUpdateCheckEnabled(),
             hideSupportButton = loadHideSupportButtonEnabled(),
             showLockedAchievements = loadShowLockedAchievementsEnabled(),
+            usageStatsConsent = PrefsConstants.loadUsageStatsConsent(app),
             proxyPort = PrefsConstants.loadProxyPort(app),
             emulators = emulatorSupport,
             shizukuStatus = resolveShizukuStatus(app),
@@ -2094,6 +2098,19 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun setShowLockedAchievementsEnabled(enabled: Boolean) {
         PrefsConstants.saveShowLockedAchievementsEnabled(getApplication(), enabled)
         _state.value = _state.value.copy(showLockedAchievements = enabled)
+    }
+
+    fun setUsageStatsConsent(granted: Boolean) {
+        val app = getApplication<Application>()
+        PrefsConstants.saveUsageStatsConsent(app, granted)
+        _state.value = _state.value.copy(usageStatsConsent = granted)
+        if (granted) reportUsageStatsIfDue() else UsageStats.clear(app)
+    }
+
+    fun reportUsageStatsIfDue() {
+        viewModelScope.launch(Dispatchers.IO) {
+            UsageReporter.reportIfDue(getApplication(), db)
+        }
     }
 
     fun setAppUpdateCheckEnabled(enabled: Boolean) {

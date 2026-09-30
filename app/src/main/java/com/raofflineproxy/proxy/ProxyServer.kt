@@ -14,6 +14,8 @@ import com.raofflineproxy.sha256Hex
 import com.raofflineproxy.sharedHttpClient
 import com.raofflineproxy.throttleRetroAchievementsApiRequest
 import com.raofflineproxy.data.AppDatabase
+import com.raofflineproxy.usage.RaRequestSource
+import com.raofflineproxy.usage.executeCounted
 import com.raofflineproxy.data.CacheEntry
 import com.raofflineproxy.data.CacheKeys
 import com.raofflineproxy.data.PendingAward
@@ -554,7 +556,7 @@ class ProxyServer(
             if (method == "POST") Log.d(TAG, "→ RA POST body: ${redactFormBody(rawBody)}")
 
             throttleRetroAchievementsApiRequest("$method ${action.lowercase()}")
-            sharedHttpClient.newCall(request).execute().use { resp ->
+            sharedHttpClient.newCall(request).executeCounted(RaRequestSource.Emulator).use { resp ->
                 val body = resp.body.string()
                 Log.d(TAG, "← RA ${resp.code} for ${redactTokens(path)} (${body.length} bytes)")
                 if (action == "awardachievement") {

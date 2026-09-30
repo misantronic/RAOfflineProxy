@@ -22,6 +22,8 @@ import com.raofflineproxy.data.PENDING_AWARD_STATUS_PENDING
 import com.raofflineproxy.data.PendingAward
 import com.raofflineproxy.proxyUserAgent
 import com.raofflineproxy.parseFormParams
+import com.raofflineproxy.usage.RaRequestSource
+import com.raofflineproxy.usage.UsageStats
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.IOException
@@ -76,7 +78,8 @@ internal data class QueueDrainResult(
     val cached: Int,
     val noMatch: Int,
     val stop: DrainStop,
-    val nextAttemptAt: Long? = null
+    val nextAttemptAt: Long? = null,
+    val timeLimited: Boolean = false
 ) {
     val processed: Int get() = cached + noMatch
 }
@@ -550,8 +553,11 @@ internal suspend fun drainCacheQueue(
         var cached = 0
         var noMatch = 0
         var requested = 0
-        val stopAt = System.currentTimeMillis() + CACHE_BATCH_MAX_MS
-        fun result(stop: DrainStop, nextAttemptAt: Long? = null) = QueueDrainResult(cached, noMatch, stop, nextAttemptAt)
+        val startedAt = System.currentTimeMillis()
+        val stopAt = startedAt + CACHE_BATCH_MAX_MS
+        fun result(stop: DrainStop, nextAttemptAt: Long? = null, timeLimited: Boolean = false) =
+            QueueDrainResult(cached, noMatch, stop, nextAttemptAt, timeLimited)
+                .also { UsageStats.recordBatch(it, System.currentTimeMillis() - startedAt) }
         suspend fun rateLimited(): QueueDrainResult? {
             val until = RateLimitBackoff.pausedUntil() ?: return null
             CacheBudget.pauseUntil(db, until)
@@ -565,7 +571,7 @@ internal suspend fun drainCacheQueue(
                 val windowEnd = CacheBudget.windowEndsAt(db)
                 CacheBudget.pauseUntil(db, windowEnd)
                 Log.i(TAG, "Cache queue: batch time limit reached, rest waits for the next window")
-                return result(DrainStop.BudgetExhausted, windowEnd)
+                return result(DrainStop.BudgetExhausted, windowEnd, timeLimited = true)
             }
             val rom = CacheQueue.oldest(db) ?: return result(DrainStop.Empty)
             val now = System.currentTimeMillis()
@@ -1027,8 +1033,12 @@ internal fun httpGet(url: String, userAgent: String): HttpGetResult {
             setRequestProperty("Accept-Encoding", "identity")
         }
 
+        val source = if (RateLimitBackoff.inBackground) RaRequestSource.Background else RaRequestSource.App
+        var responded = false
         try {
             val statusCode = connection.responseCode
+            responded = true
+            if (action != null) UsageStats.recordRaRequest(source, statusCode)
             val reason = connection.responseMessage
             val body = (if (statusCode in 200..299) connection.inputStream else connection.errorStream)
                 ?.bufferedReader()
@@ -1055,6 +1065,7 @@ internal fun httpGet(url: String, userAgent: String): HttpGetResult {
                 )
             }
         } catch (e: IOException) {
+            if (action != null && !responded) UsageStats.recordRaRequest(source, statusCode = null)
             return HttpGetResult.Failure(
                 kind = "network",
                 exceptionMessage = e.message ?: e::class.java.simpleName
