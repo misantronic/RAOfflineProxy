@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from linux.raofflineproxy import cache_keys, last_played, menu_sdl, proxy_service, rom_browser, smart_cache, storage
+from linux.raofflineproxy import cache_keys, last_played, menu_sdl, proxy_service, rom_browser, storage
 
 CREDENTIALS = {"user": "misantronic", "token": "token"}
 OLD = 1
@@ -286,36 +286,6 @@ class AlreadyCachedTests(StorageTestCase):
 
         self.assertIn(rom_browser.normalize_cached_rom_path(rom_path), rom_browser.load_cached_rom_paths(self.store))
 
-    def test_already_cached_game_is_accepted_at_cache_limit(self) -> None:
-        self.store.upsert_cache("patch:10701:misantronic", self.PATCH)
-        for game_id in range(1, rom_browser.MAX_CACHED_GAMES):
-            self.store.upsert_cache(f"patch:{game_id}:misantronic", self.PATCH)
-
-        result, downloads = self.add_rom(self.rom())
-
-        self.assertEqual([], downloads)
-        self.assertTrue(result.already_cached)
-
-
-class BulkCacheCountingTests(StorageTestCase):
-    def test_already_cached_games_count_as_skipped(self) -> None:
-        results = iter(
-            [
-                rom_browser.AddRomResult(True, "Already cached A", already_cached=True),
-                rom_browser.AddRomResult(True, "Cached B"),
-                rom_browser.AddRomResult(False, "No RetroAchievements match"),
-            ]
-        )
-        paths = [Path("a.gb"), Path("b.gb"), Path("c.gb")]
-
-        with mock.patch.object(smart_cache, "add_rom_to_cache", lambda *_args: next(results)), \
-                mock.patch.object(smart_cache, "apply_scan_batch_cooldown", lambda _scanned: True):
-            result = smart_cache.run_cache_paths(self.store, {}, paths, limit=25)
-
-        self.assertEqual(3, result.scanned)
-        self.assertEqual(1, result.cached)
-        self.assertEqual(2, result.skipped)
-
 
 class SingleCacheMessageTests(unittest.TestCase):
     def test_new_game(self) -> None:
@@ -333,6 +303,10 @@ class SingleCacheMessageTests(unittest.TestCase):
     def test_failure_shows_reason(self) -> None:
         result = rom_browser.AddRomResult(False, "No RetroAchievements match")
         self.assertEqual("No RetroAchievements match", menu_sdl.single_cache_completion_message(result, False))
+
+    def test_queued_game_shows_when_caching_continues(self) -> None:
+        result = rom_browser.AddRomResult(True, "Queued A: caching continues at 12:30", queued=True)
+        self.assertEqual("Queued A: caching continues at 12:30", menu_sdl.single_cache_completion_message(result, False))
 
 
 class FakeClock:

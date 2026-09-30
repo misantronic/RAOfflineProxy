@@ -13,6 +13,16 @@ class DummyFont:
         return self._height
 
 
+class FakePreviewSurface:
+    def get_rect(self, **_kwargs):
+        return type("Rect", (), {"left": 0, "centery": 0})()
+
+
+class FakeScreen:
+    def blit(self, *_args) -> None:
+        pass
+
+
 class MenuLayoutTests(unittest.TestCase):
     def test_clear_cache_confirm_labels_show_yes_no(self) -> None:
         session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
@@ -140,7 +150,7 @@ class MenuLayoutTests(unittest.TestCase):
             "PROXY: STOPPED OFFLINE, LOGIN REQUIRED",
         )
 
-    def test_cached_games_status_shows_count_out_of_max(self) -> None:
+    def test_cached_games_status_shows_count_and_queue(self) -> None:
         session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
         session.view = "cached_games"
         session.cached_games = [
@@ -153,7 +163,21 @@ class MenuLayoutTests(unittest.TestCase):
 
         self.assertEqual(
             menu_sdl.MenuSdlSession.status_text(session, running=False),
-            "CACHED: 5 / 100",
+            "CACHED: 5",
+        )
+        session.queued_count = 158
+        self.assertEqual(
+            menu_sdl.MenuSdlSession.status_text(session, running=True),
+            "CACHED: 5 | QUEUED: 158",
+        )
+        self.assertEqual(
+            menu_sdl.MenuSdlSession.status_text(session, running=False),
+            "CACHED: 5 | QUEUED: 158 (PAUSED, PROXY STOPPED)",
+        )
+        session.queue_status = "NEXT BATCH: 23:05"
+        self.assertEqual(
+            menu_sdl.MenuSdlSession.status_text(session, running=True),
+            "CACHED: 5 | QUEUED: 158 | NEXT BATCH: 23:05",
         )
 
     def test_game_actions_status_includes_cached_unlock_count(self) -> None:
@@ -242,6 +266,8 @@ class MenuLayoutTests(unittest.TestCase):
         session.pending_awards = []
         session.running = True
         session.storage = object()
+        session.view_positions = {"cached_games": (12, 8)}
+        session.scroll_offset = 0
 
         original_current_labels = menu_sdl.MenuSdlSession.current_labels
         original_proxy_running = menu_sdl.MenuSdlSession.proxy_running
@@ -265,6 +291,7 @@ class MenuLayoutTests(unittest.TestCase):
             menu_sdl.MenuSdlSession.activate_selected(session)
 
             self.assertEqual(session.view, "cached_games")
+            self.assertEqual((0, 0), (session.selected_index, session.scroll_offset))
         finally:
             menu_sdl.MenuSdlSession.current_labels = original_current_labels
             menu_sdl.MenuSdlSession.proxy_running = original_proxy_running
@@ -315,28 +342,26 @@ class MenuLayoutTests(unittest.TestCase):
         session.active_game = object()
         session.storage = object()
         session.message = None
+        session.view_positions = {}
 
         original_clear_cached_games = menu_sdl.clear_cached_games
         original_refresh_cached_games = menu_sdl.MenuSdlSession.refresh_cached_games
-        original_restore_view_position = menu_sdl.MenuSdlSession.restore_view_position
         try:
-            called = {"cleared": False, "refreshed": False, "restored": None}
+            called = {"cleared": False, "refreshed": False}
             menu_sdl.clear_cached_games = lambda _storage: called.__setitem__("cleared", True)
             menu_sdl.MenuSdlSession.refresh_cached_games = lambda self: called.__setitem__("refreshed", True)
-            menu_sdl.MenuSdlSession.restore_view_position = lambda self, view: called.__setitem__("restored", view)
 
             menu_sdl.MenuSdlSession.activate_clear_cache_confirm_selected(session)
 
             self.assertTrue(called["cleared"])
             self.assertTrue(called["refreshed"])
-            self.assertEqual(called["restored"], "cached_games")
+            self.assertEqual(session.selected_index, 0)
             self.assertEqual(session.view, "cached_games")
             self.assertIsNone(session.active_game)
             self.assertIsNotNone(session.message)
         finally:
             menu_sdl.clear_cached_games = original_clear_cached_games
             menu_sdl.MenuSdlSession.refresh_cached_games = original_refresh_cached_games
-            menu_sdl.MenuSdlSession.restore_view_position = original_restore_view_position
 
     def test_activate_clear_cache_confirm_no_cancels(self) -> None:
         session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
@@ -873,14 +898,18 @@ class MenuLayoutTests(unittest.TestCase):
         session.view = "smart_cache_prompt"
         session.reset_selection = lambda: setattr(session, "reset_called", True)
 
-        original_load_content_history_paths = menu_sdl.load_content_history_paths
+        original_smart_cache_paths = menu_sdl.smart_cache_paths
+        original_estimate = menu_sdl.estimate_queue_for_paths
         original_run_smart_cache = menu_sdl.run_smart_cache
         original_thread = menu_sdl.threading.Thread
         try:
-            menu_sdl.load_content_history_paths = lambda _config: [
+            menu_sdl.smart_cache_paths = lambda _storage, _config: [
                 Path("/roms/tetris.gb"),
                 Path("/roms/zelda.gbc"),
             ]
+            menu_sdl.estimate_queue_for_paths = lambda _storage, paths: (
+                menu_sdl.cache_queue.estimate_queue(len(paths), 0, 100, 0)
+            )
             menu_sdl.run_smart_cache = lambda *_args, **_kwargs: (_ for _ in ()).throw(
                 AssertionError("worker should not run in this test")
             )
@@ -899,11 +928,12 @@ class MenuLayoutTests(unittest.TestCase):
 
             self.assertEqual(session.view, "cache_progress")
             self.assertEqual(session.cache_progress_title, "Smart Cache")
-            self.assertEqual(session.cache_progress_text, "Caching 1/2: tetris.gb")
+            self.assertEqual(session.cache_progress_text, "Hashing 1/2: tetris.gb")
             self.assertEqual(session.cache_return_view, "main")
             self.assertTrue(session.thread_started)
         finally:
-            menu_sdl.load_content_history_paths = original_load_content_history_paths
+            menu_sdl.smart_cache_paths = original_smart_cache_paths
+            menu_sdl.estimate_queue_for_paths = original_estimate
             menu_sdl.run_smart_cache = original_run_smart_cache
             menu_sdl.threading.Thread = original_thread
 
@@ -913,12 +943,12 @@ class MenuLayoutTests(unittest.TestCase):
         progress = type(
             "Progress",
             (),
-            {"scanned": 2, "total": 5, "current_label": "Zelda.gbc"},
+            {"scanned": 2, "total": 5, "current_label": "Zelda.gbc", "phase": "hashing"},
         )()
 
         menu_sdl.MenuSdlSession.update_smart_cache_progress(session, progress)
 
-        self.assertEqual(session.cache_progress_text, "Caching 2/5: Zelda.gbc")
+        self.assertEqual(session.cache_progress_text, "Hashing 2/5: Zelda.gbc")
 
     def test_activate_game_actions_selected_uses_back_index_after_unlock_titles(
         self,
@@ -1201,7 +1231,10 @@ class MenuLayoutTests(unittest.TestCase):
         loads = []
         session.load_game_preview_surface = lambda g: loads.append(g.game_id)
 
+        settled = 100.0 + menu_sdl.PREVIEW_SETTLE_SECONDS
         with patch.object(menu_sdl.time, "monotonic", return_value=100.0):
+            menu_sdl.MenuSdlSession.render_game_preview(session)
+        with patch.object(menu_sdl.time, "monotonic", return_value=settled):
             for _ in range(60):
                 menu_sdl.MenuSdlSession.render_game_preview(session)
         self.assertEqual(loads, [7])
@@ -1209,10 +1242,55 @@ class MenuLayoutTests(unittest.TestCase):
         with patch.object(
             menu_sdl.time,
             "monotonic",
-            return_value=100.0 + menu_sdl.PREVIEW_RETRY_SECONDS,
+            return_value=settled + menu_sdl.PREVIEW_RETRY_SECONDS,
         ):
             menu_sdl.MenuSdlSession.render_game_preview(session)
         self.assertEqual(loads, [7, 7])
+
+    def test_render_game_preview_loads_nothing_while_scrolling(self) -> None:
+        session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
+        games = [type("Game", (), {"title": f"G{i}", "game_id": i})() for i in range(1, 11)]
+        current = {"game": games[0]}
+        session.preview_target_game = lambda: current["game"]
+        session.preview_surface = None
+        session.preview_game_id = None
+        loads = []
+        session.load_game_preview_surface = lambda g: loads.append(g.game_id) or FakePreviewSurface()
+        session.surface = FakeScreen()
+        session.width = 640
+        session.current_achievement_preview_surface = lambda: None
+
+        for step, game in enumerate(games):
+            current["game"] = game
+            with patch.object(menu_sdl.time, "monotonic", return_value=100.0 + step * 0.1):
+                menu_sdl.MenuSdlSession.render_game_preview(session)
+        self.assertEqual(loads, [])
+
+        with patch.object(menu_sdl.time, "monotonic", return_value=110.0):
+            menu_sdl.MenuSdlSession.render_game_preview(session)
+        self.assertEqual(loads, [10])
+
+    def test_render_game_preview_reuses_decoded_images(self) -> None:
+        session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
+        tetris = type("Game", (), {"title": "Tetris", "game_id": 7})()
+        zelda = type("Game", (), {"title": "Zelda", "game_id": 8})()
+        current = {"game": tetris}
+        session.preview_target_game = lambda: current["game"]
+        session.preview_surface = None
+        session.preview_game_id = None
+        loads = []
+        session.load_game_preview_surface = lambda g: loads.append(g.game_id) or FakePreviewSurface()
+        session.surface = FakeScreen()
+        session.width = 640
+        session.current_achievement_preview_surface = lambda: None
+
+        for game, start in ((tetris, 100.0), (zelda, 110.0), (tetris, 120.0)):
+            current["game"] = game
+            for now in (start, start + 1.0):
+                with patch.object(menu_sdl.time, "monotonic", return_value=now):
+                    menu_sdl.MenuSdlSession.render_game_preview(session)
+
+        self.assertEqual(loads, [7, 8])
 
     def test_activate_cached_games_selected_starts_smart_cache_from_second_item(self) -> None:
         session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
@@ -1307,13 +1385,120 @@ class MenuLayoutTests(unittest.TestCase):
             "Preparing cache...",
         )
 
+    def test_cache_counts_reload_the_list_only_when_they_change(self) -> None:
+        session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
+        session.view = "cached_games"
+        session.cache_counts = (5, 10)
+        counts = iter([(5, 10), (6, 9)])
+        reloads = []
+        session.read_cache_counts = lambda: next(counts)
+        session.refresh_cached_games = lambda: reloads.append(True)
+        clock = iter([100.0, 102.0, 106.0])
+        original_monotonic = menu_sdl.time.monotonic
+        try:
+            menu_sdl.time.monotonic = lambda: next(clock)
+
+            menu_sdl.MenuSdlSession.refresh_cache_counts(session)
+            menu_sdl.MenuSdlSession.refresh_cache_counts(session)
+            self.assertEqual([], reloads)
+            menu_sdl.MenuSdlSession.refresh_cache_counts(session)
+        finally:
+            menu_sdl.time.monotonic = original_monotonic
+
+        self.assertEqual([True], reloads)
+
+    def test_queue_status_tells_when_the_next_batch_runs(self) -> None:
+        session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
+        session.storage = object()
+        session.queued_count = 0
+        self.assertIsNone(menu_sdl.MenuSdlSession.read_queue_status(session))
+
+        session.queued_count = 158
+        with patch.object(menu_sdl.cache_queue.drain_lock, "held_elsewhere", return_value=True):
+            self.assertEqual(
+                "CACHING NOW", menu_sdl.MenuSdlSession.read_queue_status(session)
+            )
+
+        with patch.object(menu_sdl.cache_queue.drain_lock, "held_elsewhere", return_value=False), \
+                patch.object(menu_sdl, "current_millis", return_value=1_000), \
+                patch.object(menu_sdl, "format_clock_time", lambda millis: f"at {millis}"):
+            with patch.object(menu_sdl.cache_budget, "next_available_at", return_value=5_000):
+                self.assertEqual("NEXT BATCH: at 5000", menu_sdl.MenuSdlSession.read_queue_status(session))
+            with patch.object(menu_sdl.cache_budget, "next_available_at", return_value=1_000):
+                self.assertEqual("NEXT BATCH: SOON", menu_sdl.MenuSdlSession.read_queue_status(session))
+
+    def test_cache_counts_are_not_polled_during_other_views(self) -> None:
+        session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
+        session.view = "cache_progress"
+        session.read_cache_counts = lambda: self.fail("must not poll")
+
+        menu_sdl.MenuSdlSession.refresh_cache_counts(session)
+
+    def test_clear_cache_returns_to_the_top_of_the_list(self) -> None:
+        session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
+        session.storage = object()
+        session.clear_cache_return_view = "cached_games"
+        session.view_positions = {"cached_games": (42, 30)}
+        session.selected_index = 1
+        session.scroll_offset = 0
+        session.refresh_cached_games = lambda: None
+        original_clear = menu_sdl.clear_cached_games
+        try:
+            menu_sdl.clear_cached_games = lambda _storage: None
+
+            menu_sdl.MenuSdlSession.clear_cache_and_return(session)
+        finally:
+            menu_sdl.clear_cached_games = original_clear
+
+        self.assertEqual("cached_games", session.view)
+        self.assertEqual((0, 0), (session.selected_index, session.scroll_offset))
+        self.assertNotIn("cached_games", session.view_positions)
+
+    def test_bulk_run_within_one_window_is_cached_right_away(self) -> None:
+        session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
+        session.storage = object()
+        runs = []
+        original_estimate = menu_sdl.estimate_queue_for_paths
+        try:
+            menu_sdl.estimate_queue_for_paths = lambda _storage, paths: (
+                menu_sdl.cache_queue.estimate_queue(len(paths), 0, 100, 0)
+            )
+
+            menu_sdl.MenuSdlSession.start_bulk_run(session, [Path("a.nes")] * 100, "file_browser", runs.append)
+        finally:
+            menu_sdl.estimate_queue_for_paths = original_estimate
+
+        self.assertEqual([True], runs)
+
+    def test_large_bulk_run_is_confirmed_then_left_to_the_background(self) -> None:
+        session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
+        session.storage = object()
+        session.reset_selection = lambda: None
+        session.selected_index = 0
+        runs = []
+        original_estimate = menu_sdl.estimate_queue_for_paths
+        try:
+            menu_sdl.estimate_queue_for_paths = lambda _storage, paths: (
+                menu_sdl.cache_queue.estimate_queue(len(paths), 0, 100, 0)
+            )
+
+            menu_sdl.MenuSdlSession.start_bulk_run(session, [Path("a.nes")] * 250, "file_browser", runs.append)
+            self.assertEqual("queue_confirm", session.view)
+            self.assertEqual([], runs)
+
+            menu_sdl.MenuSdlSession.activate_queue_confirm_selected(session)
+        finally:
+            menu_sdl.estimate_queue_for_paths = original_estimate
+
+        self.assertEqual([False], runs)
+
     def test_update_cache_progress_uses_current_item_status_line(self) -> None:
         session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
 
         progress = type(
             "Progress",
             (),
-            {"scanned": 1, "total": 3, "current_label": "Pokemon Red"},
+            {"scanned": 1, "total": 3, "current_label": "Pokemon Red", "phase": "caching"},
         )()
 
         menu_sdl.MenuSdlSession.update_cache_progress(session, progress)

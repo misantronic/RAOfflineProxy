@@ -606,7 +606,7 @@ show_cached_games_view() {
                 ;;
             74)
                 if [ "$MAIN_ONLINE" -eq 1 ]; then
-                    run_smart_cache_flow "$APP_MAX_CACHED_GAMES" || true
+                    run_smart_cache_flow "" || true
                     if ! cached_games_reload; then
                         stty "$saved_tty" < /dev/tty
                         drain_tty "$saved_tty"
@@ -1073,7 +1073,7 @@ render_cached_games_help() {
 render_cached_games_full() {
     printf '\033[2J\033[H'
     printf 'RAOfflineProxy > Cached games\033[K\n\n'
-    printf '%s / %s games cached\033[K\n\n' "$CACHED_GAMES_COUNT" "$APP_MAX_CACHED_GAMES"
+    printf '%s games cached\033[K\n\n' "$CACHED_GAMES_COUNT"
     render_cached_games_list
     render_cached_games_help
 }

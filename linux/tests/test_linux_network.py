@@ -7,12 +7,14 @@ from email.message import Message
 
 from linux.raofflineproxy import config
 from linux.raofflineproxy import network
+from linux.raofflineproxy import rate_limit
 
 
 class LinuxNetworkTests(unittest.TestCase):
     def tearDown(self) -> None:
         network.reset_retroachievements_reachability_for_tests()
         network.reset_request_throttle_for_tests()
+        rate_limit.reset_for_tests()
         os.environ.pop("RAOFFLINEPROXY_CA_FILE", None)
         os.environ.pop("SSL_CERT_FILE", None)
 
@@ -319,6 +321,55 @@ class LinuxNetworkTests(unittest.TestCase):
             network.urllib.request.urlopen = original_urlopen
             network.time.sleep = original_sleep
             network._request_throttle.wait = original_wait
+
+    def test_http_get_in_background_pauses_on_429_without_retrying(self) -> None:
+        original_urlopen = network.urllib.request.urlopen
+        original_wait = network._request_throttle.wait
+        attempts = []
+        try:
+
+            def fake_urlopen(_request, timeout=0, context=None):
+                attempts.append(timeout)
+                headers = Message()
+                headers["Retry-After"] = "1200"
+                raise urllib.error.HTTPError(
+                    url="https://retroachievements.org/dorequest.php?r=patch",
+                    code=429,
+                    msg="Too Many Requests",
+                    hdrs=headers,
+                    fp=io.BytesIO(b""),
+                )
+
+            network.urllib.request.urlopen = fake_urlopen
+            network._request_throttle.wait = lambda action=None: None
+
+            with rate_limit.background():
+                with self.assertRaises(urllib.error.HTTPError):
+                    network.http_get(
+                        "https://retroachievements.org/dorequest.php?r=patch",
+                        "RetroArch/1.20.0",
+                    )
+                with self.assertRaises(rate_limit.RateLimitedError):
+                    network.http_get(
+                        "https://retroachievements.org/dorequest.php?r=patch",
+                        "RetroArch/1.20.0",
+                    )
+
+            self.assertEqual(len(attempts), 1)
+            paused_until = rate_limit.paused_until()
+            self.assertIsNotNone(paused_until)
+            self.assertGreaterEqual(
+                paused_until - rate_limit.current_millis(), 1_190_000
+            )
+        finally:
+            network.urllib.request.urlopen = original_urlopen
+            network._request_throttle.wait = original_wait
+
+    def test_rate_limit_pause_lasts_at_least_ten_minutes(self) -> None:
+        rate_limit.on_rate_limited(5_000, now=1_000)
+
+        self.assertEqual(rate_limit.paused_until(now=1_000), 1_000 + rate_limit.RATE_LIMIT_PAUSE_MS)
+        self.assertIsNone(rate_limit.paused_until(now=1_000 + rate_limit.RATE_LIMIT_PAUSE_MS))
 
     def test_configured_ssl_context_uses_explicit_ca_file(self) -> None:
         os.environ["RAOFFLINEPROXY_CA_FILE"] = "/tmp/test-ca.pem"

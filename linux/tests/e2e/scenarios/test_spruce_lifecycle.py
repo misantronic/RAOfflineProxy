@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from linux.tests.e2e.scenarios._miyoo_common import MiyooLifecycle
@@ -45,6 +47,21 @@ class TestSpruceLifecycle(MiyooLifecycle):
 
 
 class TestSpruceSpecific:
+    def test_cache_rom_json_is_what_spruce_parses(self, installed):
+        """spruce's raproxyCacheRom.sh reads "message" from the last line, strips "Cached " and
+        looks that title up in cached-games to find the game id."""
+        result = installed.cli.run("cache-rom --path %s --json" % installed.rom, check=True)
+
+        payload = json.loads(result.stdout.strip().splitlines()[-1])
+        assert payload["success"] is True
+        assert payload["queued"] is False
+        assert payload["message"].startswith("Cached ")
+        title = payload["message"][len("Cached "):]
+        listing = installed.cli.run("cached-games", check=True).stdout.splitlines()
+        assert any(
+            line.startswith(title + " (") and line.endswith("##GAMEID:1447") for line in listing
+        )
+
     def test_detects_spruce_and_not_onion(self, installed):
         """spruce reuses Onion's App/ layout, so the version files are the only
         thing separating them."""
