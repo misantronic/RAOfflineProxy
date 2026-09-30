@@ -179,6 +179,28 @@ class TestCaching:
         assert installed.ra.actions() == []
         assert installed.cli.cached_game_count() == 0
 
+    def test_cache_roms_reports_each_rom_and_a_summary(self, installed):
+        # The ES fork's "cache all displayed games" parses these lines, so their format is a
+        # contract.
+        rom_dir = installed.device.rom_dir
+        unknown_rom = "%s/not-on-ra.7z" % rom_dir
+        paths_file = "/tmp/raofflineproxy-paths.txt"
+        installed.container.exec(
+            "cp %s %s && printf '%%s\\n' %s %s %s/missing.7z > %s"
+            % (installed.rom, unknown_rom, installed.rom, unknown_rom, rom_dir, paths_file),
+            check=True,
+            user=installed.device.run_as,
+        )
+
+        result = installed.cli.run("cache-roms --paths-file %s" % paths_file, check=True)
+
+        lines = result.stdout.strip().splitlines()
+        assert "OK 1/3 mslug.7z" in lines
+        assert "FAIL 2/3 not-on-ra.7z: No RetroAchievements match" in lines
+        assert "FAIL 3/3 missing.7z: not found" in lines
+        assert lines[-1] == "DONE cached=1 failed=2 queued=0"
+        assert installed.cli.cached_game_count() == 1
+
     def test_launching_a_game_online_caches_it(self, installed):
         installed.cli.run("start-proxy", check=True)
         responses = installed.emulator.boot_sequence(USER, TOKEN, MSLUG_HASH)
