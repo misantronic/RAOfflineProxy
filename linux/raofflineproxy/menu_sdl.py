@@ -57,8 +57,9 @@ from .retroarch_cfg import (
     revert_retroarch_cfg,
 )
 from .image_cache import shutdown_image_downloads
-from . import cache_keys, cache_queue
+from . import cache_budget, cache_keys, cache_queue
 from .rom_browser import (
+    format_clock_time,
     AddRomResult,
     add_rom_to_cache,
     cached_unlock_badge_paths,
@@ -92,7 +93,7 @@ from .smart_cache import (
     smart_cache_paths,
 )
 from .state import load_patch_state, save_patch_state
-from .storage import Storage
+from .storage import Storage, current_millis
 from . import storage_corruption
 from .update import (
     download_knulli_update_installer,
@@ -979,7 +980,10 @@ class MenuSdlSession:
             if queued <= 0:
                 return f"CACHED: {len(self.cached_games)}"
             status = f"CACHED: {len(self.cached_games)} | QUEUED: {queued}"
-            return status if running else f"{status} (PAUSED, PROXY STOPPED)"
+            if not running:
+                return f"{status} (PAUSED, PROXY STOPPED)"
+            queue_status = getattr(self, "queue_status", None)
+            return f"{status} | {queue_status}" if queue_status else status
         if self.view == "queue_confirm":
             return self.queue_confirm_text or ""
         if self.view == "pending_awards":
@@ -1771,6 +1775,7 @@ class MenuSdlSession:
         self.cache_counts = self.read_cache_counts()
         self.cached_games = list_cached_games(self.storage)
         self.queued_count = self.cache_counts[1]
+        self.queue_status = self.read_queue_status()
         self.pending_awards = list_pending_awards(self.storage)
         self.preview_surface = None
         self.preview_game_id = None
@@ -1795,6 +1800,18 @@ class MenuSdlSession:
         self.cache_counts_checked_at = now
         if self.read_cache_counts() != getattr(self, "cache_counts", None):
             self.refresh_cached_games()
+        elif self.view == "cached_games":
+            self.queue_status = self.read_queue_status()
+
+    def read_queue_status(self) -> str | None:
+        if getattr(self, "queued_count", 0) <= 0:
+            return None
+        if cache_queue.drain_lock.held_elsewhere():
+            return "CACHING IN THE BACKGROUND"
+        next_batch_at = cache_budget.next_available_at(self.storage)
+        if next_batch_at > current_millis():
+            return f"NEXT BATCH: {format_clock_time(next_batch_at)}"
+        return "NEXT BATCH: SOON"
 
     def refresh_pending_awards(self) -> None:
         self.pending_awards = list_pending_awards(self.storage)

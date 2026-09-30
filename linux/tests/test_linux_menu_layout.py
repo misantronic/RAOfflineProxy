@@ -174,6 +174,11 @@ class MenuLayoutTests(unittest.TestCase):
             menu_sdl.MenuSdlSession.status_text(session, running=False),
             "CACHED: 5 | QUEUED: 158 (PAUSED, PROXY STOPPED)",
         )
+        session.queue_status = "NEXT BATCH: 23:05"
+        self.assertEqual(
+            menu_sdl.MenuSdlSession.status_text(session, running=True),
+            "CACHED: 5 | QUEUED: 158 | NEXT BATCH: 23:05",
+        )
 
     def test_game_actions_status_includes_cached_unlock_count(self) -> None:
         session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
@@ -1401,6 +1406,26 @@ class MenuLayoutTests(unittest.TestCase):
             menu_sdl.time.monotonic = original_monotonic
 
         self.assertEqual([True], reloads)
+
+    def test_queue_status_tells_when_the_next_batch_runs(self) -> None:
+        session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
+        session.storage = object()
+        session.queued_count = 0
+        self.assertIsNone(menu_sdl.MenuSdlSession.read_queue_status(session))
+
+        session.queued_count = 158
+        with patch.object(menu_sdl.cache_queue.drain_lock, "held_elsewhere", return_value=True):
+            self.assertEqual(
+                "CACHING IN THE BACKGROUND", menu_sdl.MenuSdlSession.read_queue_status(session)
+            )
+
+        with patch.object(menu_sdl.cache_queue.drain_lock, "held_elsewhere", return_value=False), \
+                patch.object(menu_sdl, "current_millis", return_value=1_000), \
+                patch.object(menu_sdl, "format_clock_time", lambda millis: f"at {millis}"):
+            with patch.object(menu_sdl.cache_budget, "next_available_at", return_value=5_000):
+                self.assertEqual("NEXT BATCH: at 5000", menu_sdl.MenuSdlSession.read_queue_status(session))
+            with patch.object(menu_sdl.cache_budget, "next_available_at", return_value=1_000):
+                self.assertEqual("NEXT BATCH: SOON", menu_sdl.MenuSdlSession.read_queue_status(session))
 
     def test_cache_counts_are_not_polled_during_other_views(self) -> None:
         session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
