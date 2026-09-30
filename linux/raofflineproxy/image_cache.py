@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import shutil
+import threading
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -11,6 +13,7 @@ from .config import CONFIG_DIR
 
 _IMAGE_DOWNLOAD_POOL_SIZE = 4
 _image_download_executor = ThreadPoolExecutor(max_workers=_IMAGE_DOWNLOAD_POOL_SIZE)
+_inline_downloads = threading.local()
 
 LOGGER = logging.getLogger("raofflineproxy")
 IMAGE_CACHE_DIR = CONFIG_DIR / "image_cache"
@@ -193,7 +196,36 @@ def schedule_image_download(
     user_agent: str,
     game_id: int | None = None,
 ) -> None:
+    collected = getattr(_inline_downloads, "items", None)
+    if collected is not None:
+        collected.append((url, image_path, user_agent, game_id))
+        return
     _image_download_executor.submit(download_static_image, url, image_path, user_agent, game_id)
+
+
+@contextlib.contextmanager
+def images_downloaded_inline():
+    """Downloads the images a game schedules on this thread before the block returns, 4 at a
+    time, instead of handing them to the shared background executor.
+
+    Bulk caching goes through here: dozens of badges per game queued behind each other on the
+    executor pile up into a backlog that keeps a handheld busy for hours after the batch ended.
+    """
+    previous = getattr(_inline_downloads, "items", None)
+    collected: list[tuple[str, str, str, int | None]] = []
+    _inline_downloads.items = collected
+    try:
+        yield
+    finally:
+        _inline_downloads.items = previous
+    pending: dict[str, tuple[str, str, str, int | None]] = {}
+    for item in collected:
+        if item[1] not in pending and resolve_cached_static_asset(item[1]) is None:
+            pending[item[1]] = item
+    if not pending:
+        return
+    with ThreadPoolExecutor(max_workers=_IMAGE_DOWNLOAD_POOL_SIZE) as pool:
+        list(pool.map(lambda item: download_static_image(*item), pending.values()))
 
 
 def shutdown_image_downloads() -> None:

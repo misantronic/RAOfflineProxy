@@ -13,7 +13,7 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler
 from urllib.parse import urlsplit
 
-from . import cache_keys, log_uploader, storage_corruption
+from . import cache_budget, cache_keys, cache_queue, log_uploader, rate_limit, storage_corruption
 from .auth import resolve_credentials
 from .boot import adopt_listen_socket
 from .award_signing import sign_award
@@ -56,6 +56,7 @@ from .rom_cache import (
     refresh_game_patch,
 )
 from .last_played import LAST_PLAYED_ACTIONS, load_recently_played_game_ids, record_game_played
+from .rom_browser import DrainResult, DrainStop, drain_cache_queue, format_clock_time
 from .state import save_online_state
 from .storage import Storage, current_millis, migrate_user_case_in_cache_keys
 from .utils import (
@@ -80,6 +81,7 @@ FAKE_OFFLINE_SUCCESS_ACTIONS = {"ping", "postactivity"}
 REFRESH_PLAYED_WINDOW_DAYS = 7
 ONLINE_REFRESH_IDLE_DELAY_SECONDS = 5 * 60
 REFRESH_PLAYED_WINDOW_MS = REFRESH_PLAYED_WINDOW_DAYS * 24 * 60 * 60 * 1000
+CACHE_QUEUE_POLL_SECONDS = 60
 ALWAYS_TRY_UPSTREAM_ACTIONS = {"login", "login2"}
 
 
@@ -1045,6 +1047,9 @@ class PeriodicRefresh(threading.Thread):
             )
             if credentials is None:
                 continue
+            if rate_limit.paused_until() is not None:
+                LOGGER.info("Periodic refresh skipped; RetroAchievements asked to slow down")
+                continue
             if not self.wait_until_idle():
                 continue
             patch_entries = self.server.storage.get_all_cache_by_prefix(
@@ -1060,7 +1065,8 @@ class PeriodicRefresh(threading.Thread):
                 len(patch_entries),
                 REFRESH_PLAYED_WINDOW_DAYS,
             )
-            self.refresh_games(due_game_ids, credentials, user_agent)
+            with rate_limit.background():
+                self.refresh_games(due_game_ids, credentials, user_agent)
             before = current_millis() - (self.cache_ttl_seconds * 1000)
             self.server.storage.evict_cache_older_than(before)
 
@@ -1079,24 +1085,88 @@ class PeriodicRefresh(threading.Thread):
             if self.server.activity.idle_delay_seconds() > 0:
                 LOGGER.info("Periodic refresh paused; proxy became active")
                 break
-            refresh_game_patch(
-                game_id,
-                credentials,
-                user_agent,
-                self.server.storage,
-                self.server.config_data,
-                cache_images=image_caching_enabled(self.server.config_data),
-            )
-            cache_unlocks(
-                game_id,
-                credentials,
-                user_agent,
-                self.server.config_data,
-                self.server.storage,
-            )
-            cache_session(game_id, credentials, self.server.storage)
-            refreshed += 1
+            try:
+                refresh_game_patch(
+                    game_id,
+                    credentials,
+                    user_agent,
+                    self.server.storage,
+                    self.server.config_data,
+                    cache_images=image_caching_enabled(self.server.config_data),
+                )
+                cache_unlocks(
+                    game_id,
+                    credentials,
+                    user_agent,
+                    self.server.config_data,
+                    self.server.storage,
+                )
+                cache_session(game_id, credentials, self.server.storage)
+                refreshed += 1
+            except Exception as exc:
+                LOGGER.warning("Periodic refresh failed for game %s: %s", game_id, exc)
+            if rate_limit.paused_until() is not None:
+                LOGGER.warning("Periodic refresh stopped; RetroAchievements answered 429")
+                break
         return refreshed
+
+
+class CacheQueueWorker(threading.Thread):
+    """Drains the caching queue in later budget windows while the proxy runs, is online and
+    idle, so it never competes with gameplay. It polls rather than sleeping until the next
+    window: a handheld's suspend stops the monotonic clock that Event.wait counts on."""
+
+    def __init__(
+        self, server: ProxyRuntimeServer, poll_seconds: float = CACHE_QUEUE_POLL_SECONDS
+    ):
+        super().__init__(daemon=True)
+        self.server = server
+        self.poll_seconds = poll_seconds
+        self.stop_event = threading.Event()
+
+    def stop(self) -> None:
+        self.stop_event.set()
+
+    def run(self) -> None:
+        while not self.stop_event.wait(self.poll_seconds):
+            try:
+                self.process_once()
+            except Exception:
+                LOGGER.exception("Cache queue round failed")
+
+    def can_work(self) -> bool:
+        return (
+            not cache_queue.bulk_run_active()
+            and self.server.activity.idle_delay_seconds() <= 0
+            and self.server.is_online()
+        )
+
+    def process_once(self) -> DrainResult | None:
+        storage = self.server.storage
+        if cache_queue.count(storage) == 0:
+            return None
+        now = current_millis()
+        if cache_budget.next_available_at(storage, now) > now or not self.can_work():
+            return None
+        user_agent = self_user_agent()
+        credentials = resolve_credentials(storage, self.server.config_data, user_agent)
+        if credentials is None:
+            return None
+        result = drain_cache_queue(
+            storage,
+            self.server.config_data,
+            credentials,
+            user_agent,
+            should_pause=lambda: self.stop_event.is_set() or not self.can_work(),
+        )
+        if result.stop is not DrainStop.BUSY:
+            LOGGER.info(
+                "Cache queue: processed %d, %d left, next window at %s",
+                result.cached,
+                cache_queue.count(storage),
+                format_clock_time(cache_budget.next_available_at(storage)),
+            )
+        return result
 
 
 def due_refresh_game_ids(patch_entries: list[dict], recently_played: set[int]) -> list[int]:
@@ -1141,6 +1211,7 @@ def run_proxy_service(
     ensure_ra_proxy_chained(config_data)
     connectivity_monitor = ConnectivityMonitor(server)
     periodic_refresh = PeriodicRefresh(server)
+    cache_queue_worker = CacheQueueWorker(server)
 
     try:
         serving_thread = threading.Thread(
@@ -1158,6 +1229,7 @@ def run_proxy_service(
             retry_storage_corruption_report()
         connectivity_monitor.start()
         periodic_refresh.start()
+        cache_queue_worker.start()
 
         if stop_event is None:
             serving_thread.join()
@@ -1170,6 +1242,7 @@ def run_proxy_service(
     finally:
         connectivity_monitor.stop()
         periodic_refresh.stop()
+        cache_queue_worker.stop()
         stop_ra_proxy_chain()
         server.server_close()
         storage.close()

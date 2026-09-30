@@ -9,6 +9,7 @@ from unittest import mock
 
 from linux.raofflineproxy import config
 from linux.raofflineproxy import main
+from linux.raofflineproxy import rom_browser
 from linux.raofflineproxy import smart_cache
 from linux.raofflineproxy import storage
 
@@ -412,7 +413,7 @@ class LinuxSmartCacheTests(unittest.TestCase):
             finally:
                 store.close()
 
-    def test_should_offer_smart_cache_caps_candidates_to_cache_limit(self) -> None:
+    def test_should_offer_smart_cache_counts_every_uncached_history_entry(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             db_path = root / "test.sqlite3"
@@ -424,7 +425,7 @@ class LinuxSmartCacheTests(unittest.TestCase):
             cfg_path.write_text("# cfg\n", encoding="utf-8")
 
             items = []
-            for index in range(smart_cache.SMART_CACHE_LIMIT + 37):
+            for index in range(137):
                 rom_path = rom_root / f"game-{index}.gb"
                 rom_path.write_bytes(b"rom")
                 items.append({"path": str(rom_path)})
@@ -443,7 +444,7 @@ class LinuxSmartCacheTests(unittest.TestCase):
                 )
 
                 self.assertTrue(status.found_history)
-                self.assertEqual(status.total_candidates, smart_cache.SMART_CACHE_LIMIT)
+                self.assertEqual(status.total_candidates, 137)
             finally:
                 store.close()
 
@@ -529,46 +530,6 @@ class LinuxSmartCacheTests(unittest.TestCase):
 
             self.assertEqual(result, history_path)
 
-    def test_run_smart_cache_paces_between_candidates(self) -> None:
-        with tempfile.TemporaryDirectory() as temp_dir:
-            root = Path(temp_dir)
-            db_path = root / "test.sqlite3"
-            cfg_path = root / "retroarch.cfg"
-            history_path = root / "playlists" / "content_history.lpl"
-            rom_one = root / "roms" / "tetris.gb"
-            rom_two = root / "roms" / "zelda.gbc"
-            rom_one.parent.mkdir(parents=True)
-            history_path.parent.mkdir(parents=True)
-            cfg_path.write_text("# cfg\n", encoding="utf-8")
-            rom_one.write_bytes(b"one")
-            rom_two.write_bytes(b"two")
-            history_path.write_text(
-                json.dumps({"items": [{"path": str(rom_one)}, {"path": str(rom_two)}]}),
-                encoding="utf-8",
-            )
-            store = storage.Storage(database_path=db_path)
-            original_add_rom_to_cache = smart_cache.add_rom_to_cache
-            original_sleep = smart_cache.time.sleep
-            sleeps = []
-            try:
-                smart_cache.add_rom_to_cache = lambda _path, _store, _config: type(
-                    "Result", (), {"success": True, "already_cached": False}
-                )()
-                smart_cache.time.sleep = lambda seconds: sleeps.append(seconds)
-
-                result = smart_cache.run_smart_cache(
-                    store,
-                    {"retroarch_cfg": str(cfg_path)},
-                    limit=25,
-                )
-
-                self.assertEqual(result.cached, 2)
-                self.assertEqual(sleeps, [smart_cache.SMART_CACHE_DELAY_SECONDS])
-            finally:
-                smart_cache.add_rom_to_cache = original_add_rom_to_cache
-                smart_cache.time.sleep = original_sleep
-                store.close()
-
     def test_main_smart_cache_status_outputs_json(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -595,46 +556,6 @@ class LinuxSmartCacheTests(unittest.TestCase):
             self.assertEqual(
                 stdout.getvalue().strip(),
                 '{"found_history":true,"total_candidates":1}',
-            )
-
-    def test_main_smart_cache_status_caps_total_candidates(self) -> None:
-        with tempfile.TemporaryDirectory() as temp_dir:
-            root = Path(temp_dir)
-            cfg_path = root / "retroarch.cfg"
-            rom_root = root / "roms"
-            history_path = root / "playlists" / "content_history.lpl"
-            cfg_path.write_text("# cfg\n", encoding="utf-8")
-            rom_root.mkdir(parents=True)
-            history_path.parent.mkdir(parents=True)
-
-            items = []
-            for index in range(smart_cache.SMART_CACHE_LIMIT + 37):
-                rom_path = rom_root / f"game-{index}.gb"
-                rom_path.write_bytes(b"rom")
-                items.append({"path": str(rom_path)})
-
-            history_path.write_text(
-                json.dumps({"items": items}),
-                encoding="utf-8",
-            )
-
-            stdout = StringIO()
-            with mock.patch("sys.argv", ["raofflineproxy", "smart-cache-status"]):
-                with mock.patch.object(
-                    main, "load_config", return_value={"retroarch_cfg": str(cfg_path)}
-                ):
-                    with mock.patch("sys.stdout", stdout):
-                        main.main()
-
-            self.assertEqual(
-                stdout.getvalue().strip(),
-                json.dumps(
-                    {
-                        "found_history": True,
-                        "total_candidates": smart_cache.SMART_CACHE_LIMIT,
-                    },
-                    separators=(",", ":"),
-                ),
             )
 
     def test_main_smart_cache_status_excludes_history_entries_already_cached_by_path(
@@ -691,7 +612,6 @@ class LinuxSmartCacheTests(unittest.TestCase):
             def fake_run_smart_cache(
                 _storage,
                 _config_data,
-                _limit,
                 should_abort=None,
                 on_progress=None,
             ):
@@ -708,8 +628,8 @@ class LinuxSmartCacheTests(unittest.TestCase):
                     scanned=2,
                     total=2,
                     cached=1,
-                    skipped=1,
-                    limit_reached=False,
+                    skipped=0,
+                    queued=1,
                 )
 
             with mock.patch("sys.argv", ["raofflineproxy", "run-smart-cache"]):
@@ -733,52 +653,14 @@ class LinuxSmartCacheTests(unittest.TestCase):
             lines = stdout.getvalue().strip().splitlines()
             self.assertEqual(
                 lines[0],
-                '{"type":"progress","scanned":1,"total":2,"cached":0,"current_label":"tetris.gb"}',
+                '{"type":"progress","phase":"caching","scanned":1,"total":2,"cached":0,"current_label":"tetris.gb"}',
             )
             self.assertEqual(
                 lines[1],
-                '{"type":"result","scanned":2,"total":2,"cached":1,"skipped":1,"limit_reached":false}',
+                '{"type":"result","scanned":2,"total":2,"cached":1,"skipped":0,"queued":1}',
             )
 
-    def test_run_smart_cache_progress_reports_current_item_before_cache(self) -> None:
-        with tempfile.TemporaryDirectory() as temp_dir:
-            root = Path(temp_dir)
-            db_path = root / "test.sqlite3"
-            cfg_path = root / "retroarch.cfg"
-            history_path = root / "playlists" / "content_history.lpl"
-            rom_one = root / "roms" / "tetris.gb"
-            rom_one.parent.mkdir(parents=True)
-            history_path.parent.mkdir(parents=True)
-            cfg_path.write_text("# cfg\n", encoding="utf-8")
-            rom_one.write_bytes(b"one")
-            history_path.write_text(
-                json.dumps({"items": [{"path": str(rom_one)}]}),
-                encoding="utf-8",
-            )
-            store = storage.Storage(database_path=db_path)
-            original_add_rom_to_cache = smart_cache.add_rom_to_cache
-            progress_updates = []
-            try:
-                smart_cache.add_rom_to_cache = lambda _path, _store, _config: type(
-                    "Result", (), {"success": True, "already_cached": False}
-                )()
-
-                smart_cache.run_smart_cache(
-                    store,
-                    {"retroarch_cfg": str(cfg_path)},
-                    limit=25,
-                    on_progress=lambda progress: progress_updates.append(progress),
-                )
-
-                self.assertEqual(len(progress_updates), 1)
-                self.assertEqual(progress_updates[0].cached, 0)
-                self.assertEqual(progress_updates[0].scanned, 1)
-                self.assertEqual(progress_updates[0].current_label, "tetris.gb")
-            finally:
-                smart_cache.add_rom_to_cache = original_add_rom_to_cache
-                store.close()
-
-    def test_run_smart_cache_skips_paths_already_cached_by_source_rom_path(self) -> None:
+    def test_run_smart_cache_hashes_only_paths_not_cached_by_source_rom_path(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             db_path = root / "test.sqlite3"
@@ -799,30 +681,34 @@ class LinuxSmartCacheTests(unittest.TestCase):
                 encoding="utf-8",
             )
             store = storage.Storage(database_path=db_path)
-            original_add_rom_to_cache = smart_cache.add_rom_to_cache
-            scanned_paths = []
+            hashed_paths = []
+            progress_updates = []
             try:
                 store.upsert_cache(
                     "patch:10701:misantronic",
                     '{"Success":true,"PatchData":{"Title":"Tetris"}}',
                     source_rom_path="/gb/tetris.gb",
                 )
-                smart_cache.add_rom_to_cache = lambda path, _store, _config: (
-                    scanned_paths.append(path),
-                    type("Result", (), {"success": True, "already_cached": False})(),
-                )[1]
-
-                result = smart_cache.run_smart_cache(
-                    store,
-                    {"retroarch_cfg": str(cfg_path)},
-                    limit=25,
-                )
+                with mock.patch.object(
+                    smart_cache, "resolve_credentials", lambda *_args: {"user": "u", "token": "t"}
+                ), mock.patch.object(
+                    rom_browser,
+                    "hash_candidates_for_manual_cache",
+                    lambda path: hashed_paths.append(path) or [],
+                ):
+                    result = smart_cache.run_smart_cache(
+                        store,
+                        {"retroarch_cfg": str(cfg_path)},
+                        on_progress=progress_updates.append,
+                    )
 
                 self.assertEqual(result.scanned, 1)
-                self.assertEqual(result.cached, 1)
-                self.assertEqual(scanned_paths, [uncached_rom])
+                self.assertEqual(hashed_paths, [uncached_rom])
+                self.assertEqual(
+                    [(update.phase, update.scanned, update.current_label) for update in progress_updates],
+                    [(smart_cache.PHASE_HASHING, 1, "zelda.gbc")],
+                )
             finally:
-                smart_cache.add_rom_to_cache = original_add_rom_to_cache
                 store.close()
 
 

@@ -140,7 +140,7 @@ class MenuLayoutTests(unittest.TestCase):
             "PROXY: STOPPED OFFLINE, LOGIN REQUIRED",
         )
 
-    def test_cached_games_status_shows_count_out_of_max(self) -> None:
+    def test_cached_games_status_shows_count_and_queue(self) -> None:
         session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
         session.view = "cached_games"
         session.cached_games = [
@@ -153,7 +153,16 @@ class MenuLayoutTests(unittest.TestCase):
 
         self.assertEqual(
             menu_sdl.MenuSdlSession.status_text(session, running=False),
-            "CACHED: 5 / 100",
+            "CACHED: 5",
+        )
+        session.queued_count = 158
+        self.assertEqual(
+            menu_sdl.MenuSdlSession.status_text(session, running=True),
+            "CACHED: 5 | QUEUED: 158",
+        )
+        self.assertEqual(
+            menu_sdl.MenuSdlSession.status_text(session, running=False),
+            "CACHED: 5 | QUEUED: 158 (PAUSED, PROXY STOPPED)",
         )
 
     def test_game_actions_status_includes_cached_unlock_count(self) -> None:
@@ -873,14 +882,18 @@ class MenuLayoutTests(unittest.TestCase):
         session.view = "smart_cache_prompt"
         session.reset_selection = lambda: setattr(session, "reset_called", True)
 
-        original_load_content_history_paths = menu_sdl.load_content_history_paths
+        original_smart_cache_paths = menu_sdl.smart_cache_paths
+        original_estimate = menu_sdl.estimate_queue_for_paths
         original_run_smart_cache = menu_sdl.run_smart_cache
         original_thread = menu_sdl.threading.Thread
         try:
-            menu_sdl.load_content_history_paths = lambda _config: [
+            menu_sdl.smart_cache_paths = lambda _storage, _config: [
                 Path("/roms/tetris.gb"),
                 Path("/roms/zelda.gbc"),
             ]
+            menu_sdl.estimate_queue_for_paths = lambda _storage, paths: (
+                menu_sdl.cache_queue.estimate_queue(len(paths), 0, 100, 0)
+            )
             menu_sdl.run_smart_cache = lambda *_args, **_kwargs: (_ for _ in ()).throw(
                 AssertionError("worker should not run in this test")
             )
@@ -899,11 +912,12 @@ class MenuLayoutTests(unittest.TestCase):
 
             self.assertEqual(session.view, "cache_progress")
             self.assertEqual(session.cache_progress_title, "Smart Cache")
-            self.assertEqual(session.cache_progress_text, "Caching 1/2: tetris.gb")
+            self.assertEqual(session.cache_progress_text, "Hashing 1/2: tetris.gb")
             self.assertEqual(session.cache_return_view, "main")
             self.assertTrue(session.thread_started)
         finally:
-            menu_sdl.load_content_history_paths = original_load_content_history_paths
+            menu_sdl.smart_cache_paths = original_smart_cache_paths
+            menu_sdl.estimate_queue_for_paths = original_estimate
             menu_sdl.run_smart_cache = original_run_smart_cache
             menu_sdl.threading.Thread = original_thread
 
@@ -913,12 +927,12 @@ class MenuLayoutTests(unittest.TestCase):
         progress = type(
             "Progress",
             (),
-            {"scanned": 2, "total": 5, "current_label": "Zelda.gbc"},
+            {"scanned": 2, "total": 5, "current_label": "Zelda.gbc", "phase": "hashing"},
         )()
 
         menu_sdl.MenuSdlSession.update_smart_cache_progress(session, progress)
 
-        self.assertEqual(session.cache_progress_text, "Caching 2/5: Zelda.gbc")
+        self.assertEqual(session.cache_progress_text, "Hashing 2/5: Zelda.gbc")
 
     def test_activate_game_actions_selected_uses_back_index_after_unlock_titles(
         self,
@@ -1313,7 +1327,7 @@ class MenuLayoutTests(unittest.TestCase):
         progress = type(
             "Progress",
             (),
-            {"scanned": 1, "total": 3, "current_label": "Pokemon Red"},
+            {"scanned": 1, "total": 3, "current_label": "Pokemon Red", "phase": "caching"},
         )()
 
         menu_sdl.MenuSdlSession.update_cache_progress(session, progress)

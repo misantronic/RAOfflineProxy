@@ -56,9 +56,9 @@ from .retroarch_cfg import (
     revert_retroarch_cfg,
 )
 from .image_cache import shutdown_image_downloads
+from . import cache_queue
 from .rom_browser import (
     AddRomResult,
-    MAX_CACHED_GAMES,
     add_rom_to_cache,
     cached_unlock_badge_paths,
     cached_unlock_count,
@@ -81,11 +81,14 @@ from .knulli_service import (
     stop_service,
 )
 from .smart_cache import (
-    SMART_CACHE_LIMIT,
-    load_content_history_paths,
+    PHASE_HASHING,
+    cache_completion_message,
+    estimate_queue_for_paths,
+    queue_confirm_message,
     run_folder_cache,
     run_smart_cache,
     should_offer_smart_cache,
+    smart_cache_paths,
 )
 from .state import load_patch_state, save_patch_state
 from .storage import Storage
@@ -428,7 +431,7 @@ def log_menu_sdl(message: str) -> None:
 
 
 def single_cache_completion_message(result: AddRomResult, aborted: bool) -> str:
-    if not result.success:
+    if not result.success or result.queued:
         return result.message
     cached = 0 if result.already_cached else 1
     prefix = "Aborted: scanned" if aborted else "Scanned"
@@ -534,6 +537,10 @@ class MenuSdlSession:
         self.message: tuple[str, float] | None = None
         self.storage = Storage()
         self.cached_games = []
+        self.queued_count = 0
+        self.queue_confirm_text: str | None = None
+        self.queue_confirm_action = None
+        self.queue_confirm_return_view = "cached_games"
         self.pending_awards = []
         self.active_game = None
         self.active_pending_award = None
@@ -773,6 +780,9 @@ class MenuSdlSession:
         if self.view == "clear_cache_confirm":
             return ["YES", "NO"]
 
+        if self.view == "queue_confirm":
+            return ["Continue", "Cancel"]
+
         if self.view == "cache_progress":
             return ["Back"] if getattr(self, "cache_completed", False) else ["Abort"]
 
@@ -893,6 +903,8 @@ class MenuSdlSession:
             return "Update Available"
         if self.view == "clear_cache_confirm":
             return "Clear Cache?"
+        if self.view == "queue_confirm":
+            return "Cache in the background?"
         if self.view == "cache_progress":
             return self.cache_progress_title or "Caching"
         if self.view == "send_logs_confirm":
@@ -956,7 +968,13 @@ class MenuSdlSession:
                 return "Press the button labeled B"
             return "Controller setup complete"
         if self.view == "cached_games":
-            return f"CACHED: {len(self.cached_games)} / {MAX_CACHED_GAMES}"
+            queued = getattr(self, "queued_count", 0)
+            if queued <= 0:
+                return f"CACHED: {len(self.cached_games)}"
+            status = f"CACHED: {len(self.cached_games)} | QUEUED: {queued}"
+            return status if running else f"{status} (PAUSED, PROXY STOPPED)"
+        if self.view == "queue_confirm":
+            return self.queue_confirm_text or ""
         if self.view == "pending_awards":
             return f"PENDING: {len(self.pending_awards)}"
         if self.view == "pending_award_actions":
@@ -1033,6 +1051,8 @@ class MenuSdlSession:
             if self.view == "smart_cache_prompt":
                 return None
             if self.view == "clear_cache_confirm":
+                return self.confirm_cancel_hint("confirm", "cancel")
+            if self.view == "queue_confirm":
                 return self.confirm_cancel_hint("confirm", "cancel")
             if self.view == "cache_progress":
                 return None
@@ -1188,6 +1208,10 @@ class MenuSdlSession:
 
         if self.view == "clear_cache_confirm":
             self.activate_clear_cache_confirm_selected()
+            return
+
+        if self.view == "queue_confirm":
+            self.activate_queue_confirm_selected()
             return
 
         if self.view == "update_prompt":
@@ -1423,6 +1447,39 @@ class MenuSdlSession:
         self.restore_view_position(self.clear_cache_return_view)
         if self.view == "cached_games":
             self.refresh_cached_games()
+
+    def confirm_large_queue(self, paths: list[Path], return_view: str, action) -> bool:
+        """Asks before a bulk run that would grow the queue above one budget window; returns
+        False when the run has to wait for the answer."""
+        estimate = estimate_queue_for_paths(self.storage, paths)
+        if not estimate.needs_confirmation:
+            return True
+        self.queue_confirm_text = queue_confirm_message(estimate)
+        self.queue_confirm_action = action
+        self.queue_confirm_return_view = return_view
+        self.view = "queue_confirm"
+        self.reset_selection()
+        return False
+
+    def activate_queue_confirm_selected(self) -> None:
+        if self.selected_index != 0:
+            self.cancel_queue_confirm()
+            return
+        action = self.queue_confirm_action
+        self.queue_confirm_action = None
+        self.queue_confirm_text = None
+        if action is not None:
+            action()
+
+    def cancel_queue_confirm(self) -> None:
+        self.queue_confirm_action = None
+        self.queue_confirm_text = None
+        self.view = self.queue_confirm_return_view
+        if self.view == "file_browser" and self.browser_dir is not None:
+            self.set_browser_dir(self.browser_dir, restore=True)
+        elif self.view == "main":
+            self.restore_view_position("main")
+        self.message = ("Caching cancelled", time.monotonic() + 1.5)
 
     def clear_cache_and_return(self) -> None:
         clear_cached_games(self.storage)
@@ -1702,6 +1759,7 @@ class MenuSdlSession:
 
     def refresh_cached_games(self) -> None:
         self.cached_games = list_cached_games(self.storage)
+        self.queued_count = cache_queue.count(self.storage)
         self.pending_awards = list_pending_awards(self.storage)
         self.preview_surface = None
         self.preview_game_id = None
@@ -1760,10 +1818,19 @@ class MenuSdlSession:
         current_dir = self.browser_dir
         cache_paths = list_scannable_files_recursive(current_dir)
         self.save_browser_position()
+        if not self.confirm_large_queue(
+            cache_paths,
+            "file_browser",
+            lambda: self.run_folder_cache_for(current_dir, cache_paths),
+        ):
+            return
+        self.run_folder_cache_for(current_dir, cache_paths)
+
+    def run_folder_cache_for(self, current_dir: Path, cache_paths: list[Path]) -> None:
         self.cache_progress_title = f"Caching: {current_dir.name}"
         if cache_paths:
             self.cache_progress_text = (
-                f"Caching 1/{len(cache_paths)}: {cache_paths[0].name}"
+                f"Hashing 1/{len(cache_paths)}: {cache_paths[0].name}"
             )
         else:
             self.cache_progress_text = "Preparing cache..."
@@ -1791,10 +1858,8 @@ class MenuSdlSession:
                         "No ROM files in this folder",
                         time.monotonic() + ERROR_SECONDS,
                     )
-                    self.cache_completion_message = (
-                        "Aborted: scanned 0, cached 0, skipped 0"
-                        if self.cache_abort_requested
-                        else "Scanned 0, cached 0, skipped 0"
+                    self.cache_completion_message = cache_completion_message(
+                        result, self.cache_abort_requested
                     )
                     self.cache_completed = True
                 else:
@@ -1802,10 +1867,8 @@ class MenuSdlSession:
                         f"Folder cache complete: {result.cached} / {result.total}",
                         time.monotonic() + 1.5,
                     )
-                    self.cache_completion_message = (
-                        f"Aborted: scanned {result.scanned}, cached {result.cached}, skipped {result.skipped}"
-                        if self.cache_abort_requested
-                        else f"Scanned {result.scanned}, cached {result.cached}, skipped {result.skipped}"
+                    self.cache_completion_message = cache_completion_message(
+                        result, self.cache_abort_requested
                     )
                     self.cache_completed = True
             except Exception as exc:
@@ -1823,8 +1886,9 @@ class MenuSdlSession:
         self.cache_worker_thread.start()
 
     def update_cache_progress(self, progress) -> None:
+        verb = "Hashing" if progress.phase == PHASE_HASHING else "Caching"
         self.cache_progress_text = (
-            f"Caching {progress.scanned}/{progress.total}: {progress.current_label}"
+            f"{verb} {progress.scanned}/{progress.total}: {progress.current_label}"
         )
 
     def finish_cache_progress(self) -> None:
@@ -1915,6 +1979,10 @@ class MenuSdlSession:
             self.restore_view_position(self.clear_cache_return_view)
             if self.view == "cached_games":
                 self.refresh_cached_games()
+            return
+
+        if self.view == "queue_confirm":
+            self.cancel_queue_confirm()
             return
 
         if self.view == "update_prompt":
@@ -2348,13 +2416,20 @@ class MenuSdlSession:
         if self.smart_cache_in_progress:
             return
 
-        history_paths = load_content_history_paths(self.config_data)
-        total_candidates = min(len(history_paths), SMART_CACHE_LIMIT)
+        history_paths = smart_cache_paths(self.storage, self.config_data)
+        return_view = "main" if self.view == "smart_cache_prompt" else self.view
+        if not self.confirm_large_queue(
+            history_paths, return_view, lambda: self.run_smart_cache_for(history_paths)
+        ):
+            return
+        self.run_smart_cache_for(history_paths)
+
+    def run_smart_cache_for(self, history_paths: list[Path]) -> None:
         self.smart_cache_in_progress = True
         self.cache_progress_title = "Smart Cache"
-        if total_candidates > 0:
+        if history_paths:
             self.cache_progress_text = (
-                f"Caching 1/{total_candidates}: {history_paths[0].name}"
+                f"Hashing 1/{len(history_paths)}: {history_paths[0].name}"
             )
         else:
             self.cache_progress_text = "Preparing cache..."
@@ -2374,14 +2449,11 @@ class MenuSdlSession:
                 result = run_smart_cache(
                     self.storage,
                     self.config_data,
-                    SMART_CACHE_LIMIT,
                     should_abort=lambda: self.cache_abort_requested,
                     on_progress=self.update_smart_cache_progress,
                 )
-                self.cache_completion_message = (
-                    f"Aborted: scanned {result.scanned}, cached {result.cached}, skipped {result.skipped}"
-                    if self.cache_abort_requested
-                    else f"Scanned {result.scanned}, cached {result.cached}, skipped {result.skipped}"
+                self.cache_completion_message = cache_completion_message(
+                    result, self.cache_abort_requested
                 )
                 self.cache_completed = True
             except Exception as exc:
@@ -2396,9 +2468,7 @@ class MenuSdlSession:
         self.smart_cache_thread.start()
 
     def update_smart_cache_progress(self, progress) -> None:
-        self.cache_progress_text = (
-            f"Caching {progress.scanned}/{progress.total}: {progress.current_label}"
-        )
+        self.update_cache_progress(progress)
 
     def refresh_main_menu_state(self, force: bool = False) -> None:
         if not hasattr(self, "main_state_refreshed_at"):

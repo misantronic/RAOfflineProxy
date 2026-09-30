@@ -1289,51 +1289,6 @@ class LinuxRomBrowserTests(unittest.TestCase):
                 rom_browser.cache_game = original_cache_game
                 store.close()
 
-    def test_add_rom_to_cache_respects_hundred_game_limit(self) -> None:
-        with tempfile.TemporaryDirectory() as temp_dir:
-            root = Path(temp_dir)
-            db_path = root / "test.sqlite3"
-            rom_path = root / "tetris.gb"
-            rom_path.write_bytes(b"rom")
-            store = storage.Storage(database_path=db_path)
-            original_resolve_credentials = rom_browser.resolve_credentials
-            original_hash_rom_candidates = rom_browser.hash_rom_candidates
-            original_fetch_game_id = rom_browser.fetch_game_id
-            original_cache_game = rom_browser.cache_game
-            try:
-                for game_id in range(1, 101):
-                    store.upsert_cache(
-                        cache_keys.patch(game_id, "misantronic"),
-                        json.dumps(
-                            {
-                                "Success": True,
-                                "PatchData": {"Title": f"Game {game_id}"},
-                            },
-                            separators=(",", ":"),
-                        ),
-                    )
-
-                rom_browser.resolve_credentials = lambda _store, _config, _ua: {
-                    "user": "misantronic",
-                    "token": "token",
-                }
-                rom_browser.hash_rom_candidates = lambda _path: ["abcd"]
-                rom_browser.fetch_game_id = (
-                    lambda _hash, _credentials, _user_agent, _config_data, _store: 10701
-                )
-                rom_browser.cache_game = lambda *args: None
-
-                result = rom_browser.add_rom_to_cache(rom_path, store, {})
-
-                self.assertFalse(result.success)
-                self.assertEqual(result.message, "Cache limit reached: 100 / 100")
-            finally:
-                rom_browser.resolve_credentials = original_resolve_credentials
-                rom_browser.hash_rom_candidates = original_hash_rom_candidates
-                rom_browser.fetch_game_id = original_fetch_game_id
-                rom_browser.cache_game = original_cache_game
-                store.close()
-
     def test_remove_cached_game_deletes_related_cache_entries(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             db_path = Path(temp_dir) / "test.sqlite3"
@@ -1514,7 +1469,7 @@ class LinuxRomBrowserTests(unittest.TestCase):
 
         self.assertEqual(stdout.getvalue().strip(), "Removed cached game 10701")
 
-    def test_run_folder_cache_caches_only_listed_files(self) -> None:
+    def test_run_folder_cache_hashes_only_listed_files(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             db_path = root / "test.sqlite3"
@@ -1522,25 +1477,22 @@ class LinuxRomBrowserTests(unittest.TestCase):
             (root / "tetris.gb").write_bytes(b"gb")
             (root / "mario.gba").write_bytes(b"gba")
             store = storage.Storage(database_path=db_path)
-            original_add_rom_to_cache = smart_cache.add_rom_to_cache
+            hashed_paths = []
             try:
-                cached_paths = []
-
-                def fake_add_rom_to_cache(path, _storage, _config_data):
-                    cached_paths.append(path.name)
-                    return rom_browser.AddRomResult(True, f"Cached {path.name}")
-
-                smart_cache.add_rom_to_cache = fake_add_rom_to_cache
-
-                result = smart_cache.run_folder_cache(store, {}, root)
+                with mock.patch.object(
+                    smart_cache, "resolve_credentials", lambda *_args: {"user": "u", "token": "t"}
+                ), mock.patch.object(
+                    rom_browser,
+                    "hash_candidates_for_manual_cache",
+                    lambda path: hashed_paths.append(path.name) or [],
+                ):
+                    result = smart_cache.run_folder_cache(store, {}, root)
 
                 self.assertEqual(result.total, 2)
                 self.assertEqual(result.scanned, 2)
-                self.assertEqual(result.cached, 2)
-                self.assertEqual(result.skipped, 0)
-                self.assertEqual(cached_paths, ["mario.gba", "tetris.gb"])
+                self.assertEqual(result.skipped, 2)
+                self.assertEqual(hashed_paths, ["mario.gba", "tetris.gb"])
             finally:
-                smart_cache.add_rom_to_cache = original_add_rom_to_cache
                 store.close()
 
     def test_run_folder_cache_returns_empty_result_for_no_files(self) -> None:
@@ -1568,29 +1520,26 @@ class LinuxRomBrowserTests(unittest.TestCase):
             rom_path.parent.mkdir(parents=True)
             rom_path.write_bytes(b"gb")
             store = storage.Storage(database_path=db_path)
-            original_add_rom_to_cache = smart_cache.add_rom_to_cache
+            hashed_paths = []
             try:
                 store.upsert_cache(
                     cache_keys.patch(10701, "misantronic"),
                     '{"Success":true,"PatchData":{"Title":"Tetris"}}',
                     source_rom_path="/gb/tetris.gb",
                 )
-                cached_paths = []
-
-                def fake_add_rom_to_cache(path, _storage, _config_data):
-                    cached_paths.append(path)
-                    return rom_browser.AddRomResult(True, f"Cached {path.name}")
-
-                smart_cache.add_rom_to_cache = fake_add_rom_to_cache
-
-                result = smart_cache.run_folder_cache(store, {}, rom_path.parent)
+                with mock.patch.object(
+                    smart_cache, "resolve_credentials", lambda *_args: {"user": "u", "token": "t"}
+                ), mock.patch.object(
+                    rom_browser,
+                    "hash_candidates_for_manual_cache",
+                    lambda path: hashed_paths.append(path) or [],
+                ):
+                    result = smart_cache.run_folder_cache(store, {}, rom_path.parent)
 
                 self.assertEqual(result.total, 1)
                 self.assertEqual(result.scanned, 1)
-                self.assertEqual(result.cached, 1)
-                self.assertEqual(cached_paths, [rom_path])
+                self.assertEqual(hashed_paths, [rom_path])
             finally:
-                smart_cache.add_rom_to_cache = original_add_rom_to_cache
                 store.close()
 
     def test_main_cache_rom_prints_result_message(self) -> None:
@@ -1642,7 +1591,7 @@ class LinuxRomBrowserTests(unittest.TestCase):
                             2,
                             2,
                             0,
-                            False,
+                            0,
                         ),
                     ):
                         with mock.patch("sys.stdout", stdout):
@@ -1650,7 +1599,7 @@ class LinuxRomBrowserTests(unittest.TestCase):
 
             self.assertEqual(
                 stdout.getvalue().strip(),
-                '{"type":"result","scanned":2,"total":2,"cached":2,"skipped":0,"limit_reached":false}',
+                '{"type":"result","scanned":2,"total":2,"cached":2,"skipped":0,"queued":0}',
             )
 
     def test_main_service_status_prints_service_line(self) -> None:

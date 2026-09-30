@@ -1,0 +1,483 @@
+from __future__ import annotations
+
+import contextlib
+import json
+import tempfile
+import types
+import unittest
+from io import StringIO
+from pathlib import Path
+from unittest import mock
+
+from linux.raofflineproxy import (
+    cache_budget,
+    cache_keys,
+    cache_queue,
+    main,
+    proxy_service,
+    rate_limit,
+    rom_browser,
+    smart_cache,
+    storage,
+)
+from linux.raofflineproxy.cache_budget import (
+    CACHE_BUDGET_LIMIT,
+    CACHE_BUDGET_WINDOW_MS,
+    BudgetWindow,
+)
+from linux.raofflineproxy.cache_queue import QueuedRom
+from linux.raofflineproxy.rom_browser import DrainStop
+
+CREDENTIALS = {"user": "misantronic", "token": "token"}
+PATCH = '{"Success":true,"PatchData":{"Title":"%s"}}'
+NOW = 1_800_000_000_000
+
+
+class BudgetWindowTests(unittest.TestCase):
+    def test_counts_games_until_the_limit(self) -> None:
+        window = BudgetWindow().charge(NOW, games=CACHE_BUDGET_LIMIT - 1)
+
+        self.assertEqual(1, window.remaining(NOW + 1))
+        self.assertEqual(0, window.charge(NOW + 1, games=1).remaining(NOW + 2))
+
+    def test_resets_after_the_window(self) -> None:
+        window = BudgetWindow().charge(NOW, games=CACHE_BUDGET_LIMIT)
+
+        self.assertEqual(NOW + CACHE_BUDGET_WINDOW_MS, window.next_available_at(NOW + 1))
+        self.assertEqual(CACHE_BUDGET_LIMIT, window.remaining(NOW + CACHE_BUDGET_WINDOW_MS))
+
+    def test_clock_jumping_backwards_starts_a_fresh_window(self) -> None:
+        window = BudgetWindow().charge(NOW, games=CACHE_BUDGET_LIMIT)
+
+        self.assertEqual(CACHE_BUDGET_LIMIT, window.remaining(NOW - 1))
+
+    def test_pause_holds_an_open_window_and_outlives_it(self) -> None:
+        paused_until = NOW + 2 * CACHE_BUDGET_WINDOW_MS
+        window = BudgetWindow(window_start=NOW, used=1, paused_until=paused_until)
+
+        self.assertEqual(0, window.remaining(NOW + 1))
+        self.assertEqual(0, window.remaining(NOW + CACHE_BUDGET_WINDOW_MS + 1))
+        self.assertEqual(paused_until, window.next_available_at(NOW + 1))
+        self.assertEqual(CACHE_BUDGET_LIMIT, window.remaining(paused_until))
+
+    def test_ends_at_is_the_later_of_window_end_and_pause(self) -> None:
+        window = BudgetWindow(window_start=NOW, used=5)
+
+        self.assertEqual(NOW + CACHE_BUDGET_WINDOW_MS, window.ends_at(NOW + 1))
+
+    def test_json_round_trip_and_garbage(self) -> None:
+        window = BudgetWindow(window_start=NOW, used=7, paused_until=NOW + 5)
+
+        self.assertEqual(window, BudgetWindow.from_json(window.to_json()))
+        self.assertEqual(BudgetWindow(), BudgetWindow.from_json("not json"))
+        self.assertEqual(BudgetWindow(), BudgetWindow.from_json(None))
+
+
+class QueueModelTests(unittest.TestCase):
+    def test_queued_rom_json_round_trip(self) -> None:
+        rom = QueuedRom(["ABCD", "ef01"], "/nes/Mario.nes", "Mario.nes", NOW, attempts=1)
+
+        self.assertEqual(rom, QueuedRom.from_json(rom.to_json()))
+        self.assertEqual("cachequeue:abcd", rom.key)
+        self.assertIsNone(QueuedRom.from_json('{"hashes":[]}'))
+
+    def test_failed_attempts_drop_the_rom_after_three(self) -> None:
+        rom = QueuedRom(["abcd"], None, "a", NOW)
+
+        second = rom.after_failed_attempt()
+        third = second.after_failed_attempt()
+
+        self.assertEqual(2, third.attempts)
+        self.assertIsNone(third.after_failed_attempt())
+
+    def test_estimate_confirms_only_above_one_window(self) -> None:
+        small = cache_queue.estimate_queue(candidates=150, already_known=40, budget_remaining=100, queued_now=0)
+        large = cache_queue.estimate_queue(candidates=250, already_known=0, budget_remaining=100, queued_now=0)
+        rescan = cache_queue.estimate_queue(candidates=250, already_known=250, budget_remaining=100, queued_now=500)
+
+        self.assertFalse(small.needs_confirmation)
+        self.assertEqual((100, 150, 150, 60), (large.cached_now, large.newly_queued, large.queued_after, large.eta_minutes))
+        self.assertTrue(large.needs_confirmation)
+        self.assertFalse(rescan.needs_confirmation)
+
+    def test_eta_text(self) -> None:
+        self.assertEqual("30 minutes", smart_cache.format_eta(30))
+        self.assertEqual("2 h 30 min", smart_cache.format_eta(150))
+
+
+class QueueTestCase(unittest.TestCase):
+    def setUp(self) -> None:
+        self._temp_dir = tempfile.TemporaryDirectory()
+        self.root = Path(self._temp_dir.name)
+        self.store = storage.Storage(database_path=self.root / "test.sqlite3")
+        self.game_ids: dict[str, int | None] = {}
+        self.lookups: list[str] = []
+        self.cached: list[int] = []
+        self.fail_cache_for: set[int] = set()
+        rate_limit.reset_for_tests()
+        self._patches = contextlib.ExitStack()
+        self._patches.enter_context(mock.patch.object(rom_browser, "resolve_credentials", lambda *_args: CREDENTIALS))
+        self._patches.enter_context(mock.patch.object(smart_cache, "resolve_credentials", lambda *_args: CREDENTIALS))
+        self._patches.enter_context(
+            mock.patch.object(rom_browser, "hash_candidates_for_manual_cache", lambda path: [path.stem])
+        )
+        self._patches.enter_context(mock.patch.object(rom_browser, "fetch_game_id", self.fake_fetch_game_id))
+        self._patches.enter_context(mock.patch.object(rom_browser, "cache_game", self.fake_cache_game))
+        self._patches.enter_context(mock.patch.object(rom_browser, "apply_scan_batch_cooldown", lambda _requested: False))
+
+    def tearDown(self) -> None:
+        self._patches.close()
+        self.store.close()
+        self._temp_dir.cleanup()
+        rate_limit.reset_for_tests()
+
+    def fake_fetch_game_id(self, hash_value, _credentials, _user_agent, _config_data, store):
+        self.lookups.append(hash_value)
+        game_id = self.game_ids.get(hash_value)
+        store.upsert_cache(cache_keys.game_id(hash_value), json.dumps({"Success": True, "GameID": game_id or 0}))
+        return game_id
+
+    def fake_cache_game(self, game_id, _hash, credentials, _ua, store, _config, cache_images=True):
+        if game_id in self.fail_cache_for:
+            raise RuntimeError("network down")
+        self.cached.append(game_id)
+        store.upsert_cache(cache_keys.patch(game_id, credentials["user"]), PATCH % f"Game {game_id}")
+
+    def roms(self, *names: str) -> list[Path]:
+        paths = []
+        for name in names:
+            path = self.root / "roms" / f"{name}.nes"
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(name.encode())
+            paths.append(path)
+        return paths
+
+    def queue(self, *names: str) -> list[str]:
+        keys = []
+        for index, name in enumerate(names):
+            rom = QueuedRom([name], f"/roms/{name}.nes", f"{name}.nes", NOW + index)
+            self.store.upsert_cache(rom.key, rom.to_json(), cached_at=NOW + index, source_rom_path=rom.source_rom_path)
+            keys.append(rom.key)
+        return keys
+
+    def use_budget(self, games: int) -> None:
+        cache_budget.save(self.store, BudgetWindow(window_start=cache_budget.current_millis(), used=games))
+
+    def drain(self, **kwargs) -> rom_browser.DrainResult:
+        return rom_browser.drain_cache_queue(self.store, {}, CREDENTIALS, "ua", **kwargs)
+
+
+class DrainTests(QueueTestCase):
+    def test_caches_oldest_first_and_charges_only_cached_games(self) -> None:
+        self.game_ids.update({"b": 2, "a": 1})
+        self.queue("a", "unknown", "b")
+
+        result = self.drain()
+
+        self.assertEqual(DrainStop.EMPTY, result.stop)
+        self.assertEqual([1, 2], self.cached)
+        self.assertEqual((2, 1), (result.cached, result.no_match))
+        self.assertEqual(2, cache_budget.load(self.store).used)
+        self.assertEqual(0, cache_queue.count(self.store))
+
+    def test_stops_when_the_window_is_used_up(self) -> None:
+        self.game_ids.update({"a": 1, "b": 2})
+        self.queue("a", "b")
+        self.use_budget(CACHE_BUDGET_LIMIT - 1)
+
+        result = self.drain()
+
+        self.assertEqual(DrainStop.BUDGET_EXHAUSTED, result.stop)
+        self.assertEqual([1], self.cached)
+        self.assertEqual(1, cache_queue.count(self.store))
+        self.assertIsNotNone(result.next_attempt_at)
+
+    def test_known_answers_cost_nothing(self) -> None:
+        self.store.upsert_cache(cache_keys.game_id("miss"), '{"Success":true,"GameID":0}')
+        self.store.upsert_cache(cache_keys.game_id("have"), '{"Success":true,"GameID":7}')
+        self.store.upsert_cache(cache_keys.patch(7, "misantronic"), PATCH % "Seven")
+        self.queue("miss", "have")
+        self.use_budget(CACHE_BUDGET_LIMIT)
+
+        result = self.drain()
+
+        self.assertEqual(DrainStop.EMPTY, result.stop)
+        self.assertEqual([], self.lookups)
+        self.assertEqual(0, cache_queue.count(self.store))
+
+    def test_batch_time_limit_pauses_until_the_window_ends(self) -> None:
+        self.game_ids["a"] = 1
+        self.queue("a")
+        clock = iter([NOW, NOW + cache_budget.CACHE_BATCH_MAX_MS, NOW + cache_budget.CACHE_BATCH_MAX_MS])
+
+        with mock.patch.object(rom_browser, "current_millis", lambda: next(clock)):
+            result = self.drain()
+
+        self.assertEqual(DrainStop.BUDGET_EXHAUSTED, result.stop)
+        self.assertEqual([], self.cached)
+        self.assertGreaterEqual(cache_budget.load(self.store).paused_until, result.next_attempt_at)
+
+    def test_rate_limit_stops_and_persists_the_pause(self) -> None:
+        self.game_ids.update({"a": 1, "b": 2})
+        self.queue("a", "b")
+
+        def rate_limited_cache_game(*_args, **_kwargs):
+            rate_limit.on_rate_limited(None)
+            raise RuntimeError("429")
+
+        with mock.patch.object(rom_browser, "cache_game", rate_limited_cache_game):
+            result = self.drain()
+
+        self.assertEqual(DrainStop.RATE_LIMITED, result.stop)
+        self.assertEqual(2, cache_queue.count(self.store))
+        self.assertEqual(0, cache_queue.oldest(self.store).attempts)
+        self.assertEqual(result.next_attempt_at, cache_budget.load(self.store).paused_until)
+
+    def test_failure_keeps_the_place_and_counts_an_attempt(self) -> None:
+        self.game_ids.update({"a": 1, "b": 2})
+        self.fail_cache_for.add(1)
+        self.queue("a", "b")
+
+        result = self.drain()
+
+        self.assertEqual(DrainStop.FAILED, result.stop)
+        oldest = cache_queue.oldest(self.store)
+        self.assertEqual(("a", 1), (oldest.hashes[0], oldest.attempts))
+
+    def test_auth_rejection_stops_without_counting_an_attempt(self) -> None:
+        self.game_ids["a"] = 1
+        self.queue("a")
+
+        def rejected(*_args, **_kwargs):
+            raise rom_browser.CacheGameAuthError("401")
+
+        with mock.patch.object(rom_browser, "cache_game", rejected):
+            result = self.drain()
+
+        self.assertEqual(DrainStop.AUTH_REJECTED, result.stop)
+        self.assertEqual(0, cache_queue.oldest(self.store).attempts)
+
+    def test_keys_limit_the_drain_to_one_run(self) -> None:
+        self.game_ids.update({"old": 1, "new": 2})
+        self.queue("old")
+        keys = self.queue("new")
+
+        self.drain(keys=keys)
+
+        self.assertEqual([2], self.cached)
+        self.assertEqual(1, cache_queue.count(self.store))
+
+    def test_busy_while_another_caller_drains(self) -> None:
+        self.queue("a")
+
+        with cache_queue.drain_lock.hold():
+            result = self.drain()
+
+        self.assertEqual(DrainStop.BUSY, result.stop)
+
+
+class AddRomTests(QueueTestCase):
+    def test_caches_right_away_within_the_budget(self) -> None:
+        self.game_ids["tetris"] = 10
+        (rom,) = self.roms("tetris")
+
+        result = rom_browser.add_rom_to_cache(rom, self.store, {})
+
+        self.assertEqual((True, False, "Cached Game 10"), (result.success, result.queued, result.message))
+        self.assertEqual(0, cache_queue.count(self.store))
+        self.assertEqual(1, cache_budget.load(self.store).used)
+
+    def test_queues_when_the_budget_is_used_up(self) -> None:
+        self.game_ids["tetris"] = 10
+        self.use_budget(CACHE_BUDGET_LIMIT)
+        (rom,) = self.roms("tetris")
+
+        result = rom_browser.add_rom_to_cache(rom, self.store, {})
+
+        self.assertTrue(result.success)
+        self.assertTrue(result.queued)
+        self.assertTrue(result.message.startswith("Queued tetris.nes: caching continues at "))
+        self.assertEqual(1, cache_queue.count(self.store))
+        self.assertEqual([], self.lookups)
+
+    def test_failure_leaves_nothing_queued(self) -> None:
+        self.game_ids["tetris"] = 10
+        self.fail_cache_for.add(10)
+        (rom,) = self.roms("tetris")
+
+        result = rom_browser.add_rom_to_cache(rom, self.store, {})
+
+        self.assertFalse(result.success)
+        self.assertEqual("Caching failed: network down", result.message)
+        self.assertEqual(0, cache_queue.count(self.store))
+
+
+class BulkRunTests(QueueTestCase):
+    def test_hashes_everything_then_caches_the_window(self) -> None:
+        self.game_ids.update({"a": 1, "b": 2, "c": 3})
+        paths = self.roms("a", "b", "c", "unknown")
+        self.use_budget(CACHE_BUDGET_LIMIT - 2)
+        progress = []
+
+        result = smart_cache.run_cache_paths(self.store, {}, paths, on_progress=progress.append)
+
+        self.assertEqual((4, 2, 2, 0), (result.scanned, result.cached, result.queued, result.skipped))
+        phases = [update.phase for update in progress]
+        self.assertEqual([smart_cache.PHASE_HASHING] * 4, phases[:4])
+        self.assertEqual({smart_cache.PHASE_CACHING}, set(phases[4:]))
+        self.assertEqual("cachequeue:c", cache_queue.oldest(self.store).key)
+
+    def test_already_cached_and_unknown_roms_count_as_skipped(self) -> None:
+        self.store.upsert_cache(cache_keys.game_id("a"), '{"Success":true,"GameID":1}')
+        self.store.upsert_cache(cache_keys.patch(1, "misantronic"), PATCH % "A")
+        self.game_ids["b"] = 2
+        paths = self.roms("a", "b", "c")
+
+        result = smart_cache.run_cache_paths(self.store, {}, paths)
+
+        self.assertEqual((3, 1, 0, 2), (result.scanned, result.cached, result.queued, result.skipped))
+
+    def test_abort_removes_what_the_run_queued(self) -> None:
+        self.game_ids.update({"a": 1, "b": 2})
+        self.queue("earlier")
+        self.use_budget(CACHE_BUDGET_LIMIT)
+        paths = self.roms("a", "b")
+        hashed = []
+
+        def abort() -> bool:
+            return len(hashed) >= 2
+
+        with mock.patch.object(
+            rom_browser,
+            "hash_candidates_for_manual_cache",
+            lambda path: hashed.append(path) or [path.stem],
+        ):
+            smart_cache.run_cache_paths(self.store, {}, paths, should_abort=abort)
+
+        self.assertEqual(1, cache_queue.count(self.store))
+        self.assertEqual("cachequeue:earlier", cache_queue.oldest(self.store).key)
+
+    def test_requires_a_login(self) -> None:
+        with mock.patch.object(smart_cache, "resolve_credentials", lambda *_args: None):
+            with self.assertRaises(RuntimeError):
+                smart_cache.run_cache_paths(self.store, {}, self.roms("a"))
+
+    def test_cache_roms_prints_a_line_per_rom(self) -> None:
+        self.game_ids.update({"a": 1, "b": 2})
+        paths = self.roms("unknown", "a", "b")
+        paths_file = self.root / "paths.txt"
+        paths_file.write_text("\n".join([*map(str, paths), str(self.root / "missing.nes")]))
+        self.use_budget(CACHE_BUDGET_LIMIT - 1)
+        stdout = StringIO()
+
+        with mock.patch("sys.argv", ["raofflineproxy", "cache-roms", "--paths-file", str(paths_file)]), \
+                mock.patch.object(main, "load_config", return_value={}), \
+                mock.patch.object(main, "Storage", return_value=self.store), \
+                mock.patch.object(self.store, "close"), \
+                mock.patch("sys.stdout", stdout):
+            main.main()
+
+        lines = stdout.getvalue().strip().splitlines()
+        self.assertEqual(
+            [
+                "FAIL 4/4 missing.nes: not found",
+                "FAIL 1/4 unknown.nes: No RetroAchievements match",
+                "OK 2/4 a.nes",
+                "QUEUED 3/4 b.nes",
+                "DONE cached=1 failed=2 queued=1",
+            ],
+            lines,
+        )
+
+
+class StorageRulesTests(QueueTestCase):
+    def test_clear_cache_drops_queue_and_budget(self) -> None:
+        self.queue("a")
+        self.use_budget(3)
+
+        self.store.clear_cache()
+
+        self.assertEqual(0, cache_queue.count(self.store))
+        self.assertIsNone(self.store.get_cache(cache_keys.CACHE_BUDGET))
+
+    def test_eviction_keeps_the_queue(self) -> None:
+        self.queue("a")
+
+        self.store.evict_cache_older_than(NOW + 10**12)
+
+        self.assertEqual(1, cache_queue.count(self.store))
+
+    def test_enqueue_is_deduplicated_by_hash(self) -> None:
+        rom = QueuedRom(["abcd"], None, "a", NOW)
+
+        self.assertTrue(cache_queue.enqueue(self.store, rom))
+        self.assertFalse(cache_queue.enqueue(self.store, rom))
+        self.assertEqual(1, cache_queue.count(self.store))
+
+
+class WorkerTests(QueueTestCase):
+    def worker(self, idle: bool = True, online: bool = True) -> proxy_service.CacheQueueWorker:
+        server = types.SimpleNamespace(
+            storage=self.store,
+            config_data={},
+            activity=types.SimpleNamespace(idle_delay_seconds=lambda: 0 if idle else 60),
+            is_online=lambda: online,
+        )
+        return proxy_service.CacheQueueWorker(server)
+
+    def run_once(self, worker: proxy_service.CacheQueueWorker):
+        with mock.patch.object(proxy_service, "resolve_credentials", lambda *_args: CREDENTIALS):
+            return worker.process_once()
+
+    def test_drains_when_idle_and_online(self) -> None:
+        self.game_ids["a"] = 1
+        self.queue("a")
+
+        result = self.run_once(self.worker())
+
+        self.assertEqual(DrainStop.EMPTY, result.stop)
+        self.assertEqual([1], self.cached)
+
+    def test_waits_while_the_proxy_is_busy_or_offline(self) -> None:
+        self.queue("a")
+
+        self.assertIsNone(self.run_once(self.worker(idle=False)))
+        self.assertIsNone(self.run_once(self.worker(online=False)))
+
+    def test_waits_for_the_next_window(self) -> None:
+        self.queue("a")
+        self.use_budget(CACHE_BUDGET_LIMIT)
+
+        self.assertIsNone(self.run_once(self.worker()))
+
+    def test_stands_down_during_a_bulk_run(self) -> None:
+        self.queue("a")
+
+        with mock.patch.object(proxy_service.cache_queue, "bulk_run_active", lambda: True):
+            self.assertIsNone(self.run_once(self.worker()))
+
+
+class RefreshRateLimitTests(QueueTestCase):
+    def test_refresh_stops_on_429(self) -> None:
+        server = types.SimpleNamespace(
+            storage=self.store,
+            config_data={},
+            activity=types.SimpleNamespace(idle_delay_seconds=lambda: 0),
+        )
+        refresh = proxy_service.PeriodicRefresh(server)
+        calls = []
+
+        def rate_limited_patch(game_id, *_args, **_kwargs):
+            calls.append(game_id)
+            rate_limit.on_rate_limited(None)
+            raise RuntimeError("429")
+
+        with mock.patch.object(proxy_service, "refresh_game_patch", rate_limited_patch):
+            refreshed = refresh.refresh_games([1, 2, 3], CREDENTIALS, "ua")
+
+        self.assertEqual(0, refreshed)
+        self.assertEqual([1], calls)
+
+
+if __name__ == "__main__":
+    unittest.main()

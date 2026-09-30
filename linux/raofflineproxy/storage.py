@@ -40,6 +40,7 @@ _EVICTION_EXEMPT_PREFIXES = (
     cache_keys.PREFIX_UNLOCKS,
     cache_keys.PREFIX_STARTSESSION,
     cache_keys.PREFIX_GAMEID,
+    cache_keys.PREFIX_CACHE_QUEUE,
 )
 
 class Storage:
@@ -378,6 +379,73 @@ class Storage:
                 ]
         return sorted(matches, key=lambda item: item.get("cachedAt", 0), reverse=True)
 
+    def cache_keys_by_prefix(self, prefix: str) -> list[str]:
+        if self._use_sqlite:
+            assert self._connection is not None
+            with self._lock:
+                rows = self._connection.execute(
+                    "SELECT cacheKey FROM api_cache WHERE cacheKey LIKE ?",
+                    (f"{prefix}%",),
+                ).fetchall()
+            return [str(row[0]) for row in rows]
+
+        with self._lock:
+            with self._json_file_lock(exclusive=False):
+                self._reload_json_state_unlocked()
+                assert self._json_state is not None
+                return [
+                    item["cacheKey"]
+                    for item in self._json_state["api_cache"]
+                    if item["cacheKey"].startswith(prefix)
+                ]
+
+    def count_cache_by_prefix(self, prefix: str) -> int:
+        if self._use_sqlite:
+            assert self._connection is not None
+            with self._lock:
+                row = self._connection.execute(
+                    "SELECT COUNT(*) FROM api_cache WHERE cacheKey LIKE ?",
+                    (f"{prefix}%",),
+                ).fetchone()
+            return int(row[0])
+
+        with self._lock:
+            with self._json_file_lock(exclusive=False):
+                self._reload_json_state_unlocked()
+                assert self._json_state is not None
+                return sum(
+                    1
+                    for item in self._json_state["api_cache"]
+                    if item["cacheKey"].startswith(prefix)
+                )
+
+    def oldest_cache_by_prefix(self, prefix: str) -> dict | None:
+        if self._use_sqlite:
+            assert self._connection is not None
+            with self._lock:
+                row = self._connection.execute(
+                    "SELECT * FROM api_cache WHERE cacheKey LIKE ? ORDER BY firstCachedAt, id LIMIT 1",
+                    (f"{prefix}%",),
+                ).fetchone()
+            return row_to_dict(row)
+
+        with self._lock:
+            with self._json_file_lock(exclusive=False):
+                self._reload_json_state_unlocked()
+                assert self._json_state is not None
+                matches = [
+                    item
+                    for item in self._json_state["api_cache"]
+                    if item["cacheKey"].startswith(prefix)
+                ]
+                if not matches:
+                    return None
+                oldest = min(
+                    matches,
+                    key=lambda item: (item.get("firstCachedAt", 0), item.get("id", 0)),
+                )
+                return dict(oldest)
+
     def delete_cache_by_prefix(self, prefix: str) -> None:
         if self._use_sqlite:
             assert self._connection is not None
@@ -460,7 +528,10 @@ class Storage:
                        OR cacheKey LIKE 'startsession:%'
                        OR cacheKey LIKE 'gameid:%'
                        OR cacheKey LIKE 'lastplayed:%'
-                    """
+                       OR cacheKey LIKE 'cachequeue:%'
+                       OR cacheKey = ?
+                    """,
+                    (cache_keys.CACHE_BUDGET,),
                 )
                 self._connection.commit()
             self._after_cache_mutation(None)
@@ -482,6 +553,8 @@ class Storage:
                         or item["cacheKey"].startswith(cache_keys.PREFIX_STARTSESSION)
                         or item["cacheKey"].startswith(cache_keys.PREFIX_GAMEID)
                         or item["cacheKey"].startswith(cache_keys.PREFIX_LAST_PLAYED)
+                        or item["cacheKey"].startswith(cache_keys.PREFIX_CACHE_QUEUE)
+                        or item["cacheKey"] == cache_keys.CACHE_BUDGET
                     )
                 ]
                 self._write_json_state_unlocked()
@@ -505,6 +578,7 @@ class Storage:
                       AND cacheKey NOT LIKE 'unlocks:%'
                       AND cacheKey NOT LIKE 'startsession:%'
                       AND cacheKey NOT LIKE 'gameid:%'
+                      AND cacheKey NOT LIKE 'cachequeue:%'
                     """,
                     (before, cache_keys.USER_AGENT),
                 )
