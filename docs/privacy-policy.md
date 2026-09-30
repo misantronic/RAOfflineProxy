@@ -1,13 +1,13 @@
 # Privacy Policy
 
-**Last updated: July 25, 2026**
+**Last updated: September 30, 2026**
 
 RAOfflineProxy ("the app") is a local proxy tool for Android that enables offline RetroAchievements support with supported emulators such as RetroArch, Dolphin, PPSSPP, and ARMSX2. This privacy policy explains what data is handled by the app, how it is stored, and when it is transmitted.
 
 ## Summary
 
-- The app does **not** collect, store, or transmit any data to its developer, except what is necessary to process a voluntary donation you choose to make (see [Donations](#donations)).
-- The app does **not** contain ads, analytics, or crash reporting SDKs.
+- The app does **not** collect, store, or transmit any data to its developer, except anonymous usage statistics **if you opt in** (see [Anonymous usage statistics](#anonymous-usage-statistics)) and what is necessary to process a voluntary donation you choose to make (see [Donations](#donations)).
+- The app does **not** contain ads, third-party analytics, or crash reporting SDKs.
 - Aside from donations, all data handled by the app stays on your device or is sent directly to [RetroAchievements.org](https://retroachievements.org) on your behalf: the same requests your emulator would have made itself.
 - If you choose to support development via the in-app donation dialog, payment details are handled entirely by Stripe and never reach the app developer or the app's local storage. An optional email address may be sent to a developer-operated backend solely to process the donation.
 - The website (`raofflineproxy.com`) uses Google Analytics to measure page traffic.
@@ -41,6 +41,25 @@ The app caches the `User-Agent` header sent by the emulator (for example an `rch
 ### Game icon images
 
 Game badge and icon images are downloaded from RetroAchievements and stored in local app storage for display in the UI. They are never transmitted elsewhere.
+
+### Anonymous usage statistics
+
+On first start after setup, the app asks whether you want to share anonymous usage statistics. Nothing is collected or sent unless you agree, and you can turn it off at any time in Settings (this also deletes the statistics collected on your device since the last report).
+
+If you opt in, the app sends one small report per day to a backend operated by the app developer (an AWS Lambda function storing into AWS DynamoDB, region eu-central-1). A report contains:
+
+- An anonymous ID, see below
+- App version, device model (for example "AYN Thor"), Android version and which emulators are enabled
+- Rounded ranges of how many games are cached or queued, how old the oldest queued game is, and how many offline awards are pending (for example "100-249", never exact lists)
+- Counters since the last report: how many requests the app sent to RetroAchievements (split by emulator traffic, award sync, background caching and app actions), the busiest 30-minute window, and how many requests failed or were rate-limited, plus how many caching batches ran and how long they took
+
+The report never contains your RetroAchievements username, password, token, game titles, game IDs, ROM hashes or achievements.
+
+**How the anonymous ID works:** your username is turned into a one-way hash on your device, so the readable username never leaves it. The backend then re-keys that hash with a random secret that exists for one calendar month only and is deleted shortly after the month ends. The stored ID lets the developer count each person once per month (even across several devices), but once the month's secret is deleted nobody, including the developer, can link that month's IDs to a username or to other months.
+
+Your IP address is not stored or logged. Usage records are deleted automatically after about 13 months. Because they cannot be linked back to you, individual records cannot be looked up or deleted on request; turning the setting off stops all future reports.
+
+The statistics are used only to understand how many people use the app on which devices, whether features like bulk caching work, and how much load the app puts on RetroAchievements.
 
 ### Donations
 
@@ -78,6 +97,13 @@ For its core functionality, the app transmits data only to `retroachievements.or
 | ROM MD5 hash | When scanning ROM files |
 | ECDSA public key | Attached to flushed award requests for chain verification |
 | Seconds-since-unlock offset | Attached to flushed award requests |
+
+If you opted in to anonymous usage statistics:
+
+| Data | Sent to | When |
+|---|---|---|
+| Anonymous ID, app version, device model, Android version, enabled emulators | Developer's backend | At most once a day |
+| Rounded cache/queue sizes, request and caching counters | Developer's backend | At most once a day |
 
 The only other data transmission happens if you choose to make a donation:
 
