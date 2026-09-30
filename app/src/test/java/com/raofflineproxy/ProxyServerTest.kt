@@ -256,6 +256,15 @@ class ProxyServerTest {
     }
 
     @Test
+    fun filterWarningAchievementFromPatchResponse_isStableOnItsOwnOutput() {
+        // The app-start compaction only rewrites a cached patch when this changes it, so an
+        // already compacted patch must come back byte for byte.
+        val body = """{"Success":true,"PatchData":{"ID":1,"Title":"A/B","ImageIcon":"/Images/1.png","Achievements":[{"ID":101000001,"Flags":3},{"ID":5,"Title":"x","Flags":3}]}}"""
+        val once = filterWarningAchievementFromPatchResponse(body)
+        assertEquals(once, filterWarningAchievementFromPatchResponse(once))
+    }
+
+    @Test
     fun filterWarningAchievementFromPatchResponse_noopWhenNoPatchData() {
         val body = """{"Success":false,"Error":"not found"}"""
         assertEquals(body, filterWarningAchievementFromPatchResponse(body))

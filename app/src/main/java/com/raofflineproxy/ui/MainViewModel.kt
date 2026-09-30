@@ -2454,6 +2454,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             val normalized = runCatching {
                 normalizeCachedResponse("patch", "", "", entry.responseBody)
             }.getOrNull() ?: return@forEach
+            if (normalized == entry.responseBody) return@forEach
             db.cacheDao().upsert(
                 entry.copy(
                     responseBody = normalized,
