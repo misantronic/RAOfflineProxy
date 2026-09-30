@@ -6,6 +6,7 @@ import sys
 import threading
 import traceback
 import time
+from collections import OrderedDict
 from pathlib import Path
 
 from .batocera_conf import (
@@ -151,6 +152,10 @@ GROUP_GAP = 14
 MAIN_MENU_STATE_REFRESH_SECONDS = 1.0
 CACHE_COUNTS_REFRESH_SECONDS = 5.0
 PREVIEW_RETRY_SECONDS = 2.0
+# Scrolling past a game loads nothing: decoding a cover or starting its download on the
+# Miyoo's single core would stall every step of the scroll.
+PREVIEW_SETTLE_SECONDS = 0.5
+PREVIEW_SURFACE_CACHE_SIZE = 48
 KNULLI_FONT_CANDIDATES = [
     "DejaVu Sans Mono",
     "Monospace",
@@ -2072,17 +2077,11 @@ class MenuSdlSession:
             self.achievement_preview_title = None
             return
 
-        if (
-            self.preview_game_id != game.game_id or self.preview_surface is None
-        ) and self.should_load_preview(game.game_id):
-            self.preview_surface = self.load_game_preview_surface(game)
+        if self.preview_game_id != game.game_id or self.preview_surface is None:
+            self.preview_surface = self.cached_or_settled_preview(game)
             self.preview_game_id = (
                 game.game_id if self.preview_surface is not None else None
             )
-            self.preview_failed_game_id = (
-                game.game_id if self.preview_surface is None else None
-            )
-            self.preview_failed_at = time.monotonic()
 
         if self.preview_surface is None:
             return
@@ -2099,6 +2098,36 @@ class MenuSdlSession:
             centery=preview_rect.centery,
         )
         self.surface.blit(achievement_surface, award_rect)
+
+    def cached_or_settled_preview(self, game):
+        cache = self.preview_surface_cache()
+        if game.game_id in cache:
+            cache.move_to_end(game.game_id)
+            return cache[game.game_id]
+
+        now = time.monotonic()
+        if getattr(self, "preview_candidate_id", None) != game.game_id:
+            self.preview_candidate_id = game.game_id
+            self.preview_candidate_since = now
+        if now - self.preview_candidate_since < PREVIEW_SETTLE_SECONDS:
+            return None
+        if not self.should_load_preview(game.game_id):
+            return None
+
+        surface = self.load_game_preview_surface(game)
+        if surface is None:
+            self.preview_failed_game_id = game.game_id
+            self.preview_failed_at = now
+            return None
+        cache[game.game_id] = surface
+        while len(cache) > PREVIEW_SURFACE_CACHE_SIZE:
+            cache.popitem(last=False)
+        return surface
+
+    def preview_surface_cache(self) -> OrderedDict:
+        if not hasattr(self, "_preview_surface_cache"):
+            self._preview_surface_cache = OrderedDict()
+        return self._preview_surface_cache
 
     def should_load_preview(self, game_id: int) -> bool:
         if getattr(self, "preview_failed_game_id", None) != game_id:

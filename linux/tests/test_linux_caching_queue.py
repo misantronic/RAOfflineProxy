@@ -11,6 +11,7 @@ from unittest import mock
 
 from linux.raofflineproxy import (
     cache_budget,
+    image_cache,
     cache_keys,
     cache_queue,
     main,
@@ -111,6 +112,24 @@ class QueueModelTests(unittest.TestCase):
     def test_eta_text(self) -> None:
         self.assertEqual("30 minutes", smart_cache.format_eta(30))
         self.assertEqual("2 h 30 min", smart_cache.format_eta(150))
+
+
+class ImageDownloadTests(unittest.TestCase):
+    def test_an_image_is_downloaded_once_while_pending(self) -> None:
+        submitted = []
+
+        with mock.patch.object(
+            image_cache._image_download_executor,
+            "submit",
+            lambda fn, *args: submitted.append(args),
+        ):
+            image_cache.schedule_image_download("https://x/Images/1.png", "/Images/1.png", "ua")
+            image_cache.schedule_image_download("https://x/Images/1.png", "/Images/1.png", "ua")
+
+        self.assertEqual(1, len(submitted))
+        with mock.patch.object(image_cache, "download_static_image", lambda *_args: None):
+            image_cache._download_pending_image(*submitted[0])
+        self.assertNotIn("/Images/1.png", image_cache._pending_downloads)
 
 
 class QueueTestCase(unittest.TestCase):
@@ -282,6 +301,40 @@ class DrainTests(QueueTestCase):
             result = self.drain()
 
         self.assertEqual(DrainStop.BUSY, result.stop)
+
+
+class CoverTests(QueueTestCase):
+    def cache_with_icon(self, config: dict) -> list:
+        self.game_ids["a"] = 1
+        self.queue("a")
+        downloads = []
+
+        def cache_game_with_icon(game_id, _hash, credentials, _ua, store, _config, cache_images=True):
+            store.upsert_cache(
+                cache_keys.patch(game_id, credentials["user"]),
+                '{"Success":true,"PatchData":{"Title":"A","ImageIcon":"/Images/000123.png"}}',
+            )
+
+        with mock.patch.object(rom_browser, "cache_game", cache_game_with_icon), \
+                mock.patch.object(rom_browser, "resolve_cached_static_asset", lambda _path: None), \
+                mock.patch.object(rom_browser, "download_static_image", lambda *args: downloads.append(args[1:])):
+            rom_browser.drain_cache_queue(self.store, config, CREDENTIALS, "ua")
+        return downloads
+
+    def test_cover_is_saved_while_caching_when_images_are_off(self) -> None:
+        downloads = self.cache_with_icon({"cache_images": False})
+
+        self.assertEqual(1, len(downloads))
+        self.assertEqual("/Images/000123.png", downloads[0][0])
+        self.assertEqual(1, downloads[0][2])
+
+    def test_cover_comes_with_the_images_when_image_caching_is_on(self) -> None:
+        self.assertEqual([], self.cache_with_icon({"cache_images": True}))
+
+    def test_cover_already_on_the_card_is_not_downloaded_again(self) -> None:
+        with mock.patch.object(rom_browser, "resolve_cached_static_asset", lambda _path: Path("/x.png")), \
+                mock.patch.object(rom_browser, "download_static_image", lambda *_args: self.fail("downloaded")):
+            rom_browser.cache_game_icon(1, '{"PatchData":{"ImageIcon":"/Images/1.png"}}', "ua")
 
 
 class AddRomTests(QueueTestCase):

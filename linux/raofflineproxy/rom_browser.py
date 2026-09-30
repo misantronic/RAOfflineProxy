@@ -19,6 +19,7 @@ from .image_cache import (
     STATIC_DIR,
     clear_all_cached_images,
     delete_cached_images_for_game,
+    download_static_image,
     extract_image_path,
     game_image_dir,
     images_downloaded_inline,
@@ -854,9 +855,25 @@ def cache_queued_rom(
         return QueuedRomOutcome.FAILED, game_id, f"Caching failed: {exc}"
 
     remember_source_rom_path(storage, game_id, credentials["user"], rom.source_rom_path)
-    if storage.get_cache(cache_keys.patch(game_id, credentials["user"])) is None:
+    patch_entry = storage.get_cache(cache_keys.patch(game_id, credentials["user"]))
+    if patch_entry is None:
         return QueuedRomOutcome.FAILED, game_id, "Caching failed: patch data was not stored"
+    if not image_caching_enabled(config_data):
+        cache_game_icon(game_id, patch_entry["responseBody"], proxy_user_agent(user_agent))
     return QueuedRomOutcome.CACHED, game_id, ""
+
+
+def cache_game_icon(game_id: int, patch_body: str, user_agent: str) -> None:
+    """Saves the cover the menu shows even where badge images are not cached (Onion): fetching
+    it here, while the batch runs anyway, keeps the download off the menu's single core."""
+    try:
+        patch_data = json.loads(patch_body).get("PatchData") or {}
+    except Exception:
+        return
+    image_path = extract_image_path(patch_data.get("ImageIcon") or "")
+    if image_path is None or resolve_cached_static_asset(image_path) is not None:
+        return
+    download_static_image(f"{RA_MEDIA_HOST}{image_path}", image_path, user_agent, game_id)
 
 
 def window_progress_total(cached_before: int, queued_including_current: int, games_left: int) -> int:

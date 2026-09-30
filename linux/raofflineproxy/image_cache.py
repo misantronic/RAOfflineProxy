@@ -3,7 +3,9 @@ from __future__ import annotations
 import contextlib
 import json
 import logging
+import os
 import shutil
+import sys
 import threading
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
@@ -12,8 +14,26 @@ from pathlib import Path
 from .config import CONFIG_DIR
 
 _IMAGE_DOWNLOAD_POOL_SIZE = 4
-_image_download_executor = ThreadPoolExecutor(max_workers=_IMAGE_DOWNLOAD_POOL_SIZE)
+_LOWEST_PRIORITY = 19
+
+
+def _lower_thread_priority() -> None:
+    """Image downloads are best-effort, and a TLS handshake costs a handheld's single core
+    hundreds of milliseconds: at the lowest priority it never stalls the menu or the proxy."""
+    if not sys.platform.startswith("linux"):
+        return
+    try:
+        os.setpriority(os.PRIO_PROCESS, threading.get_native_id(), _LOWEST_PRIORITY)
+    except (AttributeError, OSError):
+        pass
+
+
+_image_download_executor = ThreadPoolExecutor(
+    max_workers=_IMAGE_DOWNLOAD_POOL_SIZE, initializer=_lower_thread_priority
+)
 _inline_downloads = threading.local()
+_pending_downloads: set[str] = set()
+_pending_downloads_lock = threading.Lock()
 
 LOGGER = logging.getLogger("raofflineproxy")
 IMAGE_CACHE_DIR = CONFIG_DIR / "image_cache"
@@ -200,7 +220,19 @@ def schedule_image_download(
     if collected is not None:
         collected.append((url, image_path, user_agent, game_id))
         return
-    _image_download_executor.submit(download_static_image, url, image_path, user_agent, game_id)
+    with _pending_downloads_lock:
+        if image_path in _pending_downloads:
+            return
+        _pending_downloads.add(image_path)
+    _image_download_executor.submit(_download_pending_image, url, image_path, user_agent, game_id)
+
+
+def _download_pending_image(url: str, image_path: str, user_agent: str, game_id: int | None) -> None:
+    try:
+        download_static_image(url, image_path, user_agent, game_id)
+    finally:
+        with _pending_downloads_lock:
+            _pending_downloads.discard(image_path)
 
 
 @contextlib.contextmanager
@@ -224,7 +256,9 @@ def images_downloaded_inline():
             pending[item[1]] = item
     if not pending:
         return
-    with ThreadPoolExecutor(max_workers=_IMAGE_DOWNLOAD_POOL_SIZE) as pool:
+    with ThreadPoolExecutor(
+        max_workers=_IMAGE_DOWNLOAD_POOL_SIZE, initializer=_lower_thread_priority
+    ) as pool:
         list(pool.map(lambda item: download_static_image(*item), pending.values()))
 
 

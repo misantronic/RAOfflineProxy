@@ -13,6 +13,16 @@ class DummyFont:
         return self._height
 
 
+class FakePreviewSurface:
+    def get_rect(self, **_kwargs):
+        return type("Rect", (), {"left": 0, "centery": 0})()
+
+
+class FakeScreen:
+    def blit(self, *_args) -> None:
+        pass
+
+
 class MenuLayoutTests(unittest.TestCase):
     def test_clear_cache_confirm_labels_show_yes_no(self) -> None:
         session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
@@ -1216,7 +1226,10 @@ class MenuLayoutTests(unittest.TestCase):
         loads = []
         session.load_game_preview_surface = lambda g: loads.append(g.game_id)
 
+        settled = 100.0 + menu_sdl.PREVIEW_SETTLE_SECONDS
         with patch.object(menu_sdl.time, "monotonic", return_value=100.0):
+            menu_sdl.MenuSdlSession.render_game_preview(session)
+        with patch.object(menu_sdl.time, "monotonic", return_value=settled):
             for _ in range(60):
                 menu_sdl.MenuSdlSession.render_game_preview(session)
         self.assertEqual(loads, [7])
@@ -1224,10 +1237,55 @@ class MenuLayoutTests(unittest.TestCase):
         with patch.object(
             menu_sdl.time,
             "monotonic",
-            return_value=100.0 + menu_sdl.PREVIEW_RETRY_SECONDS,
+            return_value=settled + menu_sdl.PREVIEW_RETRY_SECONDS,
         ):
             menu_sdl.MenuSdlSession.render_game_preview(session)
         self.assertEqual(loads, [7, 7])
+
+    def test_render_game_preview_loads_nothing_while_scrolling(self) -> None:
+        session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
+        games = [type("Game", (), {"title": f"G{i}", "game_id": i})() for i in range(1, 11)]
+        current = {"game": games[0]}
+        session.preview_target_game = lambda: current["game"]
+        session.preview_surface = None
+        session.preview_game_id = None
+        loads = []
+        session.load_game_preview_surface = lambda g: loads.append(g.game_id) or FakePreviewSurface()
+        session.surface = FakeScreen()
+        session.width = 640
+        session.current_achievement_preview_surface = lambda: None
+
+        for step, game in enumerate(games):
+            current["game"] = game
+            with patch.object(menu_sdl.time, "monotonic", return_value=100.0 + step * 0.1):
+                menu_sdl.MenuSdlSession.render_game_preview(session)
+        self.assertEqual(loads, [])
+
+        with patch.object(menu_sdl.time, "monotonic", return_value=110.0):
+            menu_sdl.MenuSdlSession.render_game_preview(session)
+        self.assertEqual(loads, [10])
+
+    def test_render_game_preview_reuses_decoded_images(self) -> None:
+        session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
+        tetris = type("Game", (), {"title": "Tetris", "game_id": 7})()
+        zelda = type("Game", (), {"title": "Zelda", "game_id": 8})()
+        current = {"game": tetris}
+        session.preview_target_game = lambda: current["game"]
+        session.preview_surface = None
+        session.preview_game_id = None
+        loads = []
+        session.load_game_preview_surface = lambda g: loads.append(g.game_id) or FakePreviewSurface()
+        session.surface = FakeScreen()
+        session.width = 640
+        session.current_achievement_preview_surface = lambda: None
+
+        for game, start in ((tetris, 100.0), (zelda, 110.0), (tetris, 120.0)):
+            current["game"] = game
+            for now in (start, start + 1.0):
+                with patch.object(menu_sdl.time, "monotonic", return_value=now):
+                    menu_sdl.MenuSdlSession.render_game_preview(session)
+
+        self.assertEqual(loads, [7, 8])
 
     def test_activate_cached_games_selected_starts_smart_cache_from_second_item(self) -> None:
         session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
