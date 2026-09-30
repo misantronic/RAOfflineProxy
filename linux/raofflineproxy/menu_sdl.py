@@ -1807,7 +1807,7 @@ class MenuSdlSession:
         if getattr(self, "queued_count", 0) <= 0:
             return None
         if cache_queue.drain_lock.held_elsewhere():
-            return "CACHING IN THE BACKGROUND"
+            return "CACHING NOW"
         next_batch_at = cache_budget.next_available_at(self.storage)
         if next_batch_at > current_millis():
             return f"NEXT BATCH: {format_clock_time(next_batch_at)}"

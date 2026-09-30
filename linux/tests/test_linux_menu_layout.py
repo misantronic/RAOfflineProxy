@@ -1416,7 +1416,7 @@ class MenuLayoutTests(unittest.TestCase):
         session.queued_count = 158
         with patch.object(menu_sdl.cache_queue.drain_lock, "held_elsewhere", return_value=True):
             self.assertEqual(
-                "CACHING IN THE BACKGROUND", menu_sdl.MenuSdlSession.read_queue_status(session)
+                "CACHING NOW", menu_sdl.MenuSdlSession.read_queue_status(session)
             )
 
         with patch.object(menu_sdl.cache_queue.drain_lock, "held_elsewhere", return_value=False), \
