@@ -258,11 +258,11 @@ class CachedGamesFragment : Fragment() {
         val batch = when {
             state.queueCachingNow -> getString(R.string.cached_games_queue_caching_now)
             nextBatchAt == null -> return counter
-            nextBatchAt > System.currentTimeMillis() -> getString(
+            state.nextQueueBatchDue -> getString(R.string.cached_games_queue_next_batch_soon)
+            else -> getString(
                 R.string.cached_games_queue_next_batch,
                 DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(nextBatchAt))
             )
-            else -> getString(R.string.cached_games_queue_next_batch_soon)
         }
         return getString(R.string.cached_games_counter_with_queue_status, counter, batch)
     }

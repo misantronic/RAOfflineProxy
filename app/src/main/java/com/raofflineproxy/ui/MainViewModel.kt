@@ -93,6 +93,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flowOn
@@ -110,6 +111,7 @@ import org.json.JSONObject
 import kotlin.time.Duration.Companion.milliseconds
 
 private const val TOKEN_VALIDATION_COOLDOWN_MS = 60_000L
+private const val QUEUE_BATCH_DUE_CHECK_MS = 30_000L
 
 enum class AuthState { Unknown, Valid, Invalid }
 
@@ -166,6 +168,7 @@ data class MainUiState(
     val scanProgress: String? = null,
     val queuedRomCount: Int = 0,
     val nextQueueBatchAt: Long? = null,
+    val nextQueueBatchDue: Boolean = false,
     val queueCachingNow: Boolean = false,
     val pendingQueueConfirmation: QueueEstimate? = null,
     val flushInProgress: Boolean = false,
@@ -257,8 +260,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             combine(CachingNotifications.nextQueueBatchAt, CachingNotifications.queueProgress) { at, progress ->
                 at to (progress != null)
-            }.collect { (at, cachingNow) ->
-                _state.value = _state.value.copy(nextQueueBatchAt = at, queueCachingNow = cachingNow)
+            }.collectLatest { (at, cachingNow) ->
+                publishNextQueueBatch(at, cachingNow)
+                // Checked in slices on the wall clock: a single delay would stop while the device
+                // sleeps and leave a time on screen that has already passed.
+                while (at != null && System.currentTimeMillis() < at) {
+                    delay(minOf(at - System.currentTimeMillis(), QUEUE_BATCH_DUE_CHECK_MS))
+                }
+                publishNextQueueBatch(at, cachingNow)
             }
         }
 
@@ -1382,6 +1391,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             }
             _state.value = _state.value.copy(cfgIsPatched = patched)
         }
+    }
+
+    private fun publishNextQueueBatch(at: Long?, cachingNow: Boolean) {
+        _state.value = _state.value.copy(
+            nextQueueBatchAt = at,
+            nextQueueBatchDue = at != null && System.currentTimeMillis() >= at,
+            queueCachingNow = cachingNow
+        )
     }
 
     fun resolveQueueConfirmation(accepted: Boolean) {

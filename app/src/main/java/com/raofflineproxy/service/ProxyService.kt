@@ -239,7 +239,22 @@ class ProxyService : Service() {
             } finally {
                 CacheQueueWakeLock.release()
             }
-            withTimeoutOrNull(waitMs.milliseconds) { cacheQueueWake.receive() }
+            awaitNextCacheQueueRound(System.currentTimeMillis() + waitMs)
+        }
+    }
+
+    /** Waits until [until] on the wall clock, or until something wakes the queue. Coroutine timers
+     *  count monotonic time, which stops while the device sleeps, so one long wait started the next
+     *  batch late by however long the device had slept. Short slices catch up within a minute of
+     *  the device being awake; while it sleeps, [CacheQueueAlarm] wakes it. */
+    private suspend fun awaitNextCacheQueueRound(until: Long) {
+        while (true) {
+            val remaining = until - System.currentTimeMillis()
+            if (remaining <= 0) return
+            val woken = withTimeoutOrNull(minOf(remaining, CACHE_QUEUE_POLL_MS).milliseconds) {
+                cacheQueueWake.receive()
+            }
+            if (woken != null) return
         }
     }
 
