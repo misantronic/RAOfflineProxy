@@ -17,28 +17,18 @@ const MAX_EMULATORS = 20;
 const COUNTER_MAX = 10_000_000;
 const CLIENT_ID_PATTERN = /^[0-9a-f]{64}$/;
 const BUILD_PATTERN = /^[a-z0-9]{1,16}$/;
-const GAUGE_PATTERN = /^[0-9a-z<+-]{1,12}$/i;
+const GAUGE_VALUE_PATTERN = /^[0-9a-z<+-]{1,12}$/i;
 const PLATFORMS = new Set(['android', 'linux']);
-const GAUGE_KEYS = ['cached_games', 'queued_games', 'oldest_queued', 'pending_awards'];
-const COUNTER_KEYS = [
-    'requests_emulator',
-    'requests_award_sync',
-    'requests_background',
-    'requests_app',
-    'max_requests_per_window',
-    'failures_network',
-    'failures_server',
-    'rate_limited',
-    'batches',
-    'batches_time_limited',
-    'batch_ms_total',
-    'queue_cached',
-    'queue_no_match',
-    'queue_emptied',
-    'queue_failed'
-];
-// The busiest window is a maximum, not a sum, so several pings on one day must not add up.
-const MAX_COUNTERS = new Set(['max_requests_per_window']);
+// New metrics only need a name in one of these families, no backend deploy. The fixed prefixes
+// also keep client keys from ever overwriting core attributes such as uid, device or ttl.
+const GAUGE_KEY_PATTERN = /^(cached|queued|oldest|pending|feature|emulator|setting)(_[a-z0-9]+){1,6}$/;
+const COUNTER_KEY_PATTERN = /^(requests|failures|queue|batch|batches|rate|feature|emulator|max)(_[a-z0-9]+){0,6}$/;
+const KEY_MAX_LENGTH = 64;
+const MAX_GAUGE_KEYS = 30;
+const MAX_COUNTER_KEYS = 100;
+// A max_* counter holds a maximum, not a sum, so several pings on one day must not add up.
+const MAX_COUNTER_PREFIX = 'max_';
+const VERSION_MAX = 1000;
 
 const ddb = new DynamoDBClient({ region: REGION });
 const monthSecrets = new Map<string, Uint8Array>();
@@ -52,6 +42,8 @@ interface UsagePing {
     appVersion: string;
     build: string;
     emulators: string[];
+    schemaVersion: number;
+    consentVersion: number;
     gauges: Record<string, string>;
     counters: Record<string, number>;
 }
@@ -68,26 +60,35 @@ function text(value: unknown, fallback = 'unknown'): string {
     return cleaned.length > 0 ? cleaned : fallback;
 }
 
+function entries(raw: unknown, keyPattern: RegExp, maxKeys: number): [string, unknown][] {
+    if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return [];
+    return Object.entries(raw as Record<string, unknown>)
+        .filter(([key]) => key.length <= KEY_MAX_LENGTH && keyPattern.test(key))
+        .slice(0, maxKeys);
+}
+
 function parseGauges(raw: unknown): Record<string, string> {
     const gauges: Record<string, string> = {};
-    if (typeof raw !== 'object' || raw === null) return gauges;
-    for (const key of GAUGE_KEYS) {
-        const value = (raw as Record<string, unknown>)[key];
-        if (typeof value === 'string' && GAUGE_PATTERN.test(value)) gauges[key] = value;
+    for (const [key, value] of entries(raw, GAUGE_KEY_PATTERN, MAX_GAUGE_KEYS)) {
+        if (typeof value === 'string' && GAUGE_VALUE_PATTERN.test(value)) gauges[key] = value;
     }
     return gauges;
 }
 
 function parseCounters(raw: unknown): Record<string, number> {
     const counters: Record<string, number> = {};
-    if (typeof raw !== 'object' || raw === null) return counters;
-    for (const key of COUNTER_KEYS) {
-        const value = (raw as Record<string, unknown>)[key];
+    for (const [key, value] of entries(raw, COUNTER_KEY_PATTERN, MAX_COUNTER_KEYS)) {
         if (typeof value === 'number' && Number.isInteger(value) && value > 0) {
             counters[key] = Math.min(value, COUNTER_MAX);
         }
     }
     return counters;
+}
+
+function version(value: unknown, fallback: number): number {
+    return typeof value === 'number' && Number.isInteger(value) && value >= 0 && value <= VERSION_MAX
+        ? value
+        : fallback;
 }
 
 function parsePing(rawBody: string): UsagePing | null {
@@ -112,6 +113,8 @@ function parsePing(rawBody: string): UsagePing | null {
         emulators: Array.isArray(body.emulators)
             ? body.emulators.map((value: unknown) => text(value, '')).filter(Boolean).slice(0, MAX_EMULATORS)
             : [],
+        schemaVersion: version(body.schema_version, 1),
+        consentVersion: version(body.consent_version, 0),
         gauges: parseGauges(body.gauges),
         counters: parseCounters(body.counters)
     };
@@ -179,7 +182,8 @@ async function recordMonth(pk: string, sk: string, uid: string, ping: UsagePing,
             UpdateExpression:
                 'SET #uid = :uid, #platform = :platform, #device = :device, #os = :os, #osVersion = :osVersion, ' +
                 '#appVersion = :appVersion, #build = :build, #emulators = :emulators, #lastSeen = :day, ' +
-                '#firstSeen = if_not_exists(#firstSeen, :day), #ttl = :ttl',
+                '#firstSeen = if_not_exists(#firstSeen, :day), #schemaVersion = :schemaVersion, ' +
+                '#consentVersion = :consentVersion, #ttl = :ttl',
             ExpressionAttributeNames: {
                 '#uid': 'uid',
                 '#platform': 'platform',
@@ -191,6 +195,8 @@ async function recordMonth(pk: string, sk: string, uid: string, ping: UsagePing,
                 '#emulators': 'emulators',
                 '#lastSeen': 'last_seen',
                 '#firstSeen': 'first_seen',
+                '#schemaVersion': 'schema_version',
+                '#consentVersion': 'consent_version',
                 '#ttl': 'ttl'
             },
             ExpressionAttributeValues: {
@@ -203,6 +209,8 @@ async function recordMonth(pk: string, sk: string, uid: string, ping: UsagePing,
                 ':build': { S: ping.build },
                 ':emulators': { L: ping.emulators.map((name) => ({ S: name })) },
                 ':day': { S: day },
+                ':schemaVersion': { N: String(ping.schemaVersion) },
+                ':consentVersion': { N: String(ping.consentVersion) },
                 ':ttl': { N: String(ttl) }
             }
         })
@@ -215,6 +223,7 @@ async function recordDay(pk: string, sk: string, uid: string, ping: UsagePing, t
         '#platform': 'platform',
         '#device': 'device',
         '#appVersion': 'app_version',
+        '#schemaVersion': 'schema_version',
         '#ttl': 'ttl'
     };
     const values: Record<string, AttributeValue> = {
@@ -222,9 +231,17 @@ async function recordDay(pk: string, sk: string, uid: string, ping: UsagePing, t
         ':platform': { S: ping.platform },
         ':device': { S: ping.device },
         ':appVersion': { S: ping.appVersion },
+        ':schemaVersion': { N: String(ping.schemaVersion) },
         ':ttl': { N: String(ttl) }
     };
-    const sets = ['#uid = :uid', '#platform = :platform', '#device = :device', '#appVersion = :appVersion', '#ttl = :ttl'];
+    const sets = [
+        '#uid = :uid',
+        '#platform = :platform',
+        '#device = :device',
+        '#appVersion = :appVersion',
+        '#schemaVersion = :schemaVersion',
+        '#ttl = :ttl'
+    ];
     const adds: string[] = [];
 
     for (const [key, value] of Object.entries(ping.gauges)) {
@@ -235,7 +252,7 @@ async function recordDay(pk: string, sk: string, uid: string, ping: UsagePing, t
     for (const [key, value] of Object.entries(ping.counters)) {
         names[`#c_${key}`] = key;
         values[`:c_${key}`] = { N: String(value) };
-        if (MAX_COUNTERS.has(key)) {
+        if (key.startsWith(MAX_COUNTER_PREFIX)) {
             sets.push(`#c_${key} = :c_${key}`);
         } else {
             adds.push(`#c_${key} :c_${key}`);
