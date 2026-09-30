@@ -1,0 +1,10 @@
+{
+    "name": "raop-usage-ping",
+    "version": "0.0.1",
+    "scripts": {
+        "typecheck": "tsc --noEmit"
+    },
+    "dependencies": {
+        "@aws-sdk/client-dynamodb": "^3.1141.0"
+    }
+}

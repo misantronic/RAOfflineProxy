@@ -3,6 +3,7 @@ import * as cdk from 'aws-cdk-lib';
 import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as iam from 'aws-cdk-lib/aws-iam';
+import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import * as apigwv2 from 'aws-cdk-lib/aws-apigatewayv2';
 import * as apigwv2_integrations from 'aws-cdk-lib/aws-apigatewayv2-integrations';
 import { Construct } from 'constructs';
@@ -188,6 +189,39 @@ export class RaopSupportLogsStack extends cdk.Stack {
             memorySize: 256
         });
 
+        // Anonymous usage pings. Rows expire via TTL after ~13 months; the per-month HMAC secret
+        // rows (pk "secret") expire shortly after their month ends, which makes old IDs unlinkable.
+        const usageTable = new dynamodb.Table(this, 'UsageTable', {
+            tableName: 'raop-usage',
+            partitionKey: { name: 'pk', type: dynamodb.AttributeType.STRING },
+            sortKey: { name: 'sk', type: dynamodb.AttributeType.STRING },
+            billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+            timeToLiveAttribute: 'ttl',
+            removalPolicy: cdk.RemovalPolicy.RETAIN
+        });
+
+        const usagePingRole = new iam.Role(this, 'UsagePingLambdaRole', {
+            roleName: 'raop-usage-ping-lambda-role',
+            assumedBy: new iam.ServicePrincipal('lambda.amazonaws.com'),
+            managedPolicies: [
+                iam.ManagedPolicy.fromAwsManagedPolicyName('service-role/AWSLambdaBasicExecutionRole')
+            ]
+        });
+        usageTable.grant(usagePingRole, 'dynamodb:GetItem', 'dynamodb:PutItem', 'dynamodb:UpdateItem');
+
+        const usagePingFn = new lambda.Function(this, 'UsagePingFn', {
+            functionName: 'raop-usage-ping',
+            runtime: lambda.Runtime.NODEJS_24_X,
+            handler: 'index.handler',
+            role: usagePingRole,
+            code: lambda.Code.fromAsset(
+                path.join(LAMBDA_DIR, 'raop-usage-ping', 'dist', 'raop-usage-ping.zip')
+            ),
+            environment: { TABLE_NAME: usageTable.tableName },
+            timeout: cdk.Duration.seconds(10),
+            memorySize: 256
+        });
+
         // Throttle the whole API (both routes) so a scripted flood of /support/submit can't
         // spam Discord. Applied as an in-place override to the implicitly-created default
         // stage rather than replacing it, so the already-live /logs/request-upload route
@@ -197,6 +231,14 @@ export class RaopSupportLogsStack extends cdk.Stack {
         defaultStage?.addPropertyOverride('DefaultRouteSettings', {
             ThrottlingBurstLimit: 5,
             ThrottlingRateLimit: 2
+        });
+        // Every opted-in install pings once a day, so this route needs more headroom than the
+        // support routes. A throttled ping is simply retried on the next app start.
+        defaultStage?.addPropertyOverride('RouteSettings', {
+            'POST /usage/ping': {
+                ThrottlingBurstLimit: 50,
+                ThrottlingRateLimit: 20
+            }
         });
 
         api.addRoutes({
@@ -271,6 +313,14 @@ export class RaopSupportLogsStack extends cdk.Stack {
             methods: [apigwv2.HttpMethod.POST],
             integration: paymentIntegration
         });
+
+        const usagePingRoutes = api.addRoutes({
+            path: '/usage/ping',
+            methods: [apigwv2.HttpMethod.POST],
+            integration: new apigwv2_integrations.HttpLambdaIntegration('UsagePingIntegration', usagePingFn)
+        });
+        // The stage's RouteSettings reference this route by key, so it has to exist first.
+        usagePingRoutes.forEach((route) => defaultStage?.node.addDependency(route));
 
         new cdk.CfnOutput(this, 'SupportLogsApiUrl', {
             value: api.apiEndpoint,
