@@ -3,6 +3,8 @@ import * as cdk from 'aws-cdk-lib';
 import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as iam from 'aws-cdk-lib/aws-iam';
+import * as logs from 'aws-cdk-lib/aws-logs';
+import * as budgets from 'aws-cdk-lib/aws-budgets';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import * as events from 'aws-cdk-lib/aws-events';
 import * as eventsTargets from 'aws-cdk-lib/aws-events-targets';
@@ -221,7 +223,8 @@ export class RaopSupportLogsStack extends cdk.Stack {
             ),
             environment: { TABLE_NAME: usageTable.tableName },
             timeout: cdk.Duration.seconds(10),
-            memorySize: 256
+            memorySize: 256,
+            logRetention: logs.RetentionDays.ONE_MONTH
         });
 
         // Bakes the aggregated usage stats into raofflineproxy.com/stats.html once a day. The site
@@ -263,7 +266,8 @@ export class RaopSupportLogsStack extends cdk.Stack {
                 PAGE_KEY: STATS_PAGE_KEY
             },
             timeout: cdk.Duration.seconds(60),
-            memorySize: 512
+            memorySize: 512,
+            logRetention: logs.RetentionDays.ONE_MONTH
         });
 
         new events.Rule(this, 'UsageStatsPageSchedule', {
@@ -271,6 +275,50 @@ export class RaopSupportLogsStack extends cdk.Stack {
             description: 'Rebuild raofflineproxy.com/stats.html at the end of each UTC day',
             schedule: events.Schedule.cron({ minute: '55', hour: '23' }),
             targets: [new eventsTargets.LambdaFunction(statsPageFn)]
+        });
+
+        // The whole account normally costs cents; anything near this means abuse (e.g. a flood of the
+        // public /usage/ping or support routes) or a misconfiguration. Budgets only warns, it never
+        // stops anything.
+        const MONTHLY_BUDGET_USD = 5;
+        const BUDGET_ALERT_EMAIL = 'david.skx@posteo.de';
+        const budgetSubscribers = [{ subscriptionType: 'EMAIL', address: BUDGET_ALERT_EMAIL }];
+        new budgets.CfnBudget(this, 'MonthlyCostBudget', {
+            budget: {
+                budgetName: 'raop-monthly-cost',
+                budgetType: 'COST',
+                timeUnit: 'MONTHLY',
+                budgetLimit: { amount: MONTHLY_BUDGET_USD, unit: 'USD' }
+            },
+            notificationsWithSubscribers: [
+                {
+                    notification: {
+                        notificationType: 'ACTUAL',
+                        comparisonOperator: 'GREATER_THAN',
+                        threshold: 80,
+                        thresholdType: 'PERCENTAGE'
+                    },
+                    subscribers: budgetSubscribers
+                },
+                {
+                    notification: {
+                        notificationType: 'ACTUAL',
+                        comparisonOperator: 'GREATER_THAN',
+                        threshold: 100,
+                        thresholdType: 'PERCENTAGE'
+                    },
+                    subscribers: budgetSubscribers
+                },
+                {
+                    notification: {
+                        notificationType: 'FORECASTED',
+                        comparisonOperator: 'GREATER_THAN',
+                        threshold: 100,
+                        thresholdType: 'PERCENTAGE'
+                    },
+                    subscribers: budgetSubscribers
+                }
+            ]
         });
 
         // Throttle the whole API (both routes) so a scripted flood of /support/submit can't
