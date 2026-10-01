@@ -44,12 +44,12 @@ Game badge and icon images are downloaded from RetroAchievements and stored in l
 
 ### Anonymous usage statistics
 
-On first start after setup, the app asks whether you want to share anonymous usage statistics. Nothing is collected or sent unless you agree, and you can turn it off at any time in Settings (this also deletes the statistics collected on your device since the last report).
+On first start after setup, the app asks whether you want to share anonymous usage statistics. Nothing is collected or sent unless you agree, and you can turn it off at any time: in Settings on Android, or with "Disable usage stats" in the main menu of the Linux handheld app (this also deletes the statistics collected on your device since the last report).
 
 If you opt in, the app sends one small report per day to a backend operated by the app developer (an AWS Lambda function storing into AWS DynamoDB, region eu-central-1). A report contains:
 
 - An anonymous ID, see below
-- App version, device model (for example "AYN Thor"), Android version and which emulators are enabled
+- App version, device model (for example "AYN Thor"), Android version and which emulators are enabled. On Linux handhelds: the firmware name and version (for example "ROCKNIX"), the device model and which emulators the proxy is set up for
 - Rounded ranges of how many games are cached or queued, how old the oldest queued game is, and how many offline awards are pending (for example "100-249", never exact lists)
 - Counters since the last report: how many requests the app sent to RetroAchievements (split by emulator traffic, award sync, background caching and app actions), the busiest 30-minute window, and how many requests failed or were rate-limited, plus how many caching batches ran and how long they took
 
