@@ -28,6 +28,9 @@ class UsageStatsChecks:
 
     EXPECTED_OS = ""
 
+    def grant_consent(self, installed) -> None:
+        installed.update_config({"usage_stats_consent": True, "usage_stats_consent_version": 1})
+
     def test_reports_only_with_consent(self, installed):
         installed.update_config(
             {"usage_report_url": "http://127.0.0.1:8181/usage/ping", "usage_stats_consent": None}
@@ -39,7 +42,7 @@ class UsageStatsChecks:
         time.sleep(FIRST_REPORT_WAIT_SECONDS)
         assert installed.ra.usage_pings() == [], "reported without consent"
 
-        installed.update_config({"usage_stats_consent": True, "usage_stats_consent_version": 1})
+        self.grant_consent(installed)
         installed.cli.run("stop-proxy")
         installed.cli.run("start-proxy", check=True)
         installed.emulator.boot_sequence(USER, TOKEN, MSLUG_HASH)

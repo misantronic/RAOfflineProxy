@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import json
 import tempfile
 import unittest
+from io import StringIO
 from pathlib import Path
 from unittest import mock
 
-from linux.raofflineproxy import usage_report, usage_stats
+from linux.raofflineproxy import main, usage_report, usage_stats
 
 DAY_MS = 24 * 60 * 60 * 1000
 WINDOW_MS = usage_stats.WINDOW_MS
@@ -223,6 +225,49 @@ class ReportTests(UsageIsolation):
         self.assertEqual(payload["gauges"]["cached_games"], "100-249")
         self.assertEqual(payload["schema_version"], 1)
         self.assertEqual(payload["consent_version"], 1)
+
+
+class CliTests(UsageIsolation):
+    """The commands spruce's own UI uses to ask for consent, since spruce has no menu of ours."""
+
+    def cli(self, *args: str) -> str:
+        stdout = StringIO()
+        with mock.patch("sys.argv", ["raofflineproxy", *args]), mock.patch.object(
+            main, "load_config", lambda: dict(self.config)
+        ), mock.patch.object(main, "configure_logging", lambda: None), mock.patch("sys.stdout", stdout):
+            main.main()
+        return stdout.getvalue().strip()
+
+    def test_status_is_unanswered_until_the_user_decides(self) -> None:
+        self.assertEqual(self.cli("usage-stats-status"), "unanswered")
+
+    def test_enable_and_disable(self) -> None:
+        self.assertEqual(self.cli("enable-usage-stats"), "Usage stats enabled")
+        self.assertEqual(self.cli("usage-stats-status"), "enabled")
+        self.assertEqual(self.config["usage_stats_consent_version"], usage_stats.USAGE_STATS_CONSENT_VERSION)
+        self.assertEqual(self.cli("disable-usage-stats"), "Usage stats disabled")
+        self.assertEqual(self.cli("usage-stats-status"), "disabled")
+
+    def test_disable_deletes_collected_counters(self) -> None:
+        self.cli("enable-usage-stats")
+        usage_stats.record_request(usage_stats.SOURCE_EMULATOR, 200)
+        usage_stats.flush()
+        self.cli("disable-usage-stats")
+        self.assertEqual(usage_stats.snapshot(), {})
+
+    def test_json_status_carries_the_prompt_texts(self) -> None:
+        status = json.loads(self.cli("usage-stats-status", "--json"))
+        self.assertIsNone(status["consent"])
+        self.assertEqual(status["consent_version"], usage_stats.USAGE_STATS_CONSENT_VERSION)
+        self.assertEqual(status["title"], usage_stats.CONSENT_TITLE)
+        self.assertEqual(status["accept"], "Share statistics")
+        self.assertEqual(status["decline"], "No thanks")
+        self.assertIn("Never sent", status["message"])
+        self.assertTrue(status["privacy_policy_url"].startswith("https://"))
+
+    def test_consent_for_an_older_version_reads_as_unanswered(self) -> None:
+        self.config.update({"usage_stats_consent": True, "usage_stats_consent_version": 0})
+        self.assertEqual(self.cli("usage-stats-status"), "unanswered")
 
 
 class PureHelperTests(unittest.TestCase):

@@ -35,6 +35,19 @@ HTTP_TOO_MANY_REQUESTS = 429
 # imported from there so network.py can use this module without pulling in storage.
 WINDOW_MS = 30 * 60 * 1000
 
+# Shared by the SDL menu and the CLI (usage-stats-status --json), so frontends that bring their
+# own UI, like spruce, ask with the same wording.
+CONSENT_TITLE = "Help improve RAOfflineProxy"
+CONSENT_ACCEPT = "Share statistics"
+CONSENT_DECLINE = "No thanks"
+CONSENT_MESSAGE = (
+    "Sharing anonymous statistics once a day would really help me understand how many people "
+    "use RAOfflineProxy and how well caching works.\n\n"
+    "Sent: app version, device, OS, cache numbers.\n"
+    "Never sent: username, password, achievements."
+)
+PRIVACY_POLICY_URL = "https://raofflineproxy.com/privacy-policy.html"
+
 SOURCE_EMULATOR = "emulator"
 SOURCE_AWARD_SYNC = "award_sync"
 SOURCE_BACKGROUND = "background"
@@ -83,6 +96,26 @@ def load_consent(config_data: Optional[dict] = None) -> Optional[bool]:
         return None
     version = data.get(CONFIG_KEY_CONSENT_VERSION)
     return resolve_consent(granted, version if isinstance(version, int) else 0)
+
+
+def consent_status(config_data: Optional[dict] = None) -> dict:
+    """What a frontend needs to show the consent prompt itself: consent is None while the user
+    hasn't answered, or agreed to an older consent version and has to be asked again."""
+    return {
+        "consent": load_consent(config_data),
+        "consent_version": USAGE_STATS_CONSENT_VERSION,
+        "title": CONSENT_TITLE,
+        "message": CONSENT_MESSAGE,
+        "accept": CONSENT_ACCEPT,
+        "decline": CONSENT_DECLINE,
+        "privacy_policy_url": PRIVACY_POLICY_URL,
+    }
+
+
+def consent_status_label(consent: Optional[bool]) -> str:
+    if consent is None:
+        return "unanswered"
+    return "enabled" if consent else "disabled"
 
 
 def save_consent(granted: bool) -> None:

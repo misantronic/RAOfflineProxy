@@ -19,6 +19,7 @@ from .config import (
     running_on_onion,
 )
 from .darkos_service import systemd_install_service
+from . import usage_stats
 from .log_uploader import onion_os_version, onion_version_supported
 from .platform import (
     disable_autostart,
@@ -261,6 +262,9 @@ def main() -> None:
             "enable-autostart",
             "disable-autostart",
             "autostart-status",
+            "enable-usage-stats",
+            "disable-usage-stats",
+            "usage-stats-status",
             "cached-games",
             "cached-games-count",
             "cached-unlock-titles",
@@ -457,6 +461,24 @@ def main() -> None:
 
         if args.command == "autostart-status":
             print("enabled" if is_autostart_enabled(config_data) else "disabled")
+            return
+
+        if args.command == "enable-usage-stats":
+            usage_stats.save_consent(True)
+            print("Usage stats enabled")
+            return
+
+        if args.command == "disable-usage-stats":
+            usage_stats.save_consent(False)
+            print("Usage stats disabled")
+            return
+
+        if args.command == "usage-stats-status":
+            status = usage_stats.consent_status(config_data)
+            if args.as_json:
+                print(json.dumps(status, separators=(",", ":")))
+            else:
+                print(usage_stats.consent_status_label(status["consent"]))
             return
 
         if args.command == "cached-games":
