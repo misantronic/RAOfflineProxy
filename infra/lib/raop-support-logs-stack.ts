@@ -4,6 +4,7 @@ import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as logs from 'aws-cdk-lib/aws-logs';
+import * as ssm from 'aws-cdk-lib/aws-ssm';
 import * as budgets from 'aws-cdk-lib/aws-budgets';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import * as events from 'aws-cdk-lib/aws-events';
@@ -281,8 +282,11 @@ export class RaopSupportLogsStack extends cdk.Stack {
         // public /usage/ping or support routes) or a misconfiguration. Budgets only warns, it never
         // stops anything.
         const MONTHLY_BUDGET_USD = 5;
-        const BUDGET_ALERT_EMAIL = 'david.skx@posteo.de';
-        const budgetSubscribers = [{ subscriptionType: 'EMAIL', address: BUDGET_ALERT_EMAIL }];
+        // The recipient lives in SSM (create it once, outside this public repo); CloudFormation
+        // resolves it at deploy time, so the address appears neither in code nor in the template.
+        const BUDGET_ALERT_EMAIL_PARAM = '/raop/budget/alert-email';
+        const budgetAlertEmail = ssm.StringParameter.valueForStringParameter(this, BUDGET_ALERT_EMAIL_PARAM);
+        const budgetSubscribers = [{ subscriptionType: 'EMAIL', address: budgetAlertEmail }];
         new budgets.CfnBudget(this, 'MonthlyCostBudget', {
             budget: {
                 budgetName: 'raop-monthly-cost',
