@@ -19,7 +19,7 @@ skip, and only the harness self-tests in `test_harness.py` run.
 The harness builds what it installs, unless the APKs are already there:
 
 ```bash
-./gradlew :app:assembleE2e :e2e-stub-emulator:assembleRetroarchDebug :e2e-stub-emulator:assembleFlycastDebug
+./gradlew :app:assembleE2e :e2e-stub-emulator:assembleRetroarchDebug :e2e-stub-emulator:assembleFlycastDebug :e2e-automation-client:assembleDebug
 ```
 
 - `RAOP_ANDROID_E2E_REBUILD=1` forces a rebuild.
@@ -35,6 +35,7 @@ validated. The app treats an unvalidated network as offline.
 | --- | --- |
 | `e2e` build type (`app/build.gradle.kts`) | debug build with `RA_HOST` and `RA_MEDIA_HOST` set to `http://10.0.2.2:8181` (the emulator's alias for the host loopback) and cleartext allowed to that address. Override with `-Pe2eRaHost=...` |
 | `e2e-stub-emulator/` | two tiny APKs. `com.retroarch` only has to be installed for detection. `com.flycast.emulator` implements the host-override broadcast receiver and records the host it was sent to `files/host_override` |
+| `e2e-automation-client/` | holds the control permission and calls `ProxyConfigProvider` (`start`, `stop`, `status`) when sent a broadcast, standing in for automation apps like SleepManager |
 | `harness/fake_ra_host.py` | the Linux fake RA server, run in-process on the host. Control is direct state access, so it keeps working while the device is in airplane mode |
 | `harness/rcheevos_host.py` | the Linux rcheevos request replay, sent from the host through `adb forward tcp:18080 tcp:8080` |
 | `harness/ui.py` | taps views by resource id from a `uiautomator dump`, so start and stop go through the real `MainViewModel` path |

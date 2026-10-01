@@ -1,14 +1,18 @@
 package com.raofflineproxy.service
 
 import android.content.Context
+import android.util.Log
 import com.raofflineproxy.ProxyConfigProvider
 import com.raofflineproxy.data.AppDatabase
 import com.raofflineproxy.proxy.CacheQueue
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
+
+private const val TAG = "RAProxy/StatusChanges"
 
 private data class StatusInputs(
     val runtime: ServiceRuntime,
@@ -33,6 +37,8 @@ internal fun observeProxyStatusChanges(context: Context, scope: CoroutineScope) 
         }
             .distinctUntilChanged()
             .drop(1)
+            // Runs in every process start, so a failure here must never take the app down.
+            .catch { error -> Log.w(TAG, "Status change notifications stopped", error) }
             .collect { ProxyConfigProvider.notifyStatusChanged(app) }
     }
 }

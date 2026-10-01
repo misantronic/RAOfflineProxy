@@ -129,7 +129,7 @@ class ProxyService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-        runningInProcess = true
+        synchronized(runtimeLock) { runningInProcess = true }
         publishRuntime()
         db = AppDatabase.getInstance(this)
         awardFlusher = AwardFlusher(this, db)
@@ -411,8 +411,10 @@ class ProxyService : Service() {
         } else {
             revertPatchedCfgIfNeeded()
         }
-        runningInProcess = false
-        _runtime.value = ServiceRuntime()
+        synchronized(runtimeLock) {
+            runningInProcess = false
+            _runtime.value = ServiceRuntime()
+        }
         CacheQueueAlarm.cancel(this)
         CacheQueueWakeLock.release()
         proxyServer.stop()
@@ -506,7 +508,8 @@ class ProxyService : Service() {
         publishRuntime()
     }
 
-    private fun publishRuntime() {
+    // Runs on worker threads too: the lock keeps a late publish from undoing onDestroy's reset.
+    private fun publishRuntime() = synchronized(runtimeLock) {
         if (!runningInProcess) return
         _runtime.value = ServiceRuntime(running = true, online = isServerReachable(), queueLoginBlocked = queueLoginBlocked)
     }
@@ -649,6 +652,7 @@ class ProxyService : Service() {
         @Volatile
         private var runningInProcess = false
         private val cacheQueueWake = Channel<Unit>(Channel.CONFLATED)
+        private val runtimeLock = Any()
         private val _runtime = MutableStateFlow(ServiceRuntime())
 
         /** What the running service knows that other components can't work out for themselves. */

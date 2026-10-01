@@ -9,6 +9,7 @@ GRADLE_TASKS = (
     ":app:assembleE2e",
     ":e2e-stub-emulator:assembleRetroarchDebug",
     ":e2e-stub-emulator:assembleFlycastDebug",
+    ":e2e-automation-client:assembleDebug",
 )
 
 
@@ -17,9 +18,12 @@ class Apks:
     app: Path
     retroarch_stub: Path
     flycast_stub: Path
+    automation_client: Path
 
     def all(self) -> tuple:
-        return (self.app, self.retroarch_stub, self.flycast_stub)
+        # The client last: Android only grants it the app's control permission when the app
+        # that defines it is already installed.
+        return (self.app, self.retroarch_stub, self.flycast_stub, self.automation_client)
 
 
 def default_apks(repo_root: Path) -> Apks:
@@ -31,6 +35,13 @@ def default_apks(repo_root: Path) -> Apks:
         ),
         retroarch_stub=stub_outputs / "retroarch" / "debug" / "e2e-stub-emulator-retroarch-debug.apk",
         flycast_stub=stub_outputs / "flycast" / "debug" / "e2e-stub-emulator-flycast-debug.apk",
+        automation_client=repo_root
+        / "e2e-automation-client"
+        / "build"
+        / "outputs"
+        / "apk"
+        / "debug"
+        / "e2e-automation-client-debug.apk",
     )
 
 
