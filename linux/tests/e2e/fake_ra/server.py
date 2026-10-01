@@ -110,6 +110,16 @@ class RaHandler(_JsonHandler):
             self.send_payload(200, PIXEL_PNG, "image/png")
             return
 
+        # Stands in for the usage-stats backend so suites can check what a report contains.
+        if method == "POST" and path == "/usage/ping":
+            try:
+                self.state.record_usage_ping(json.loads(body))
+            except ValueError:
+                self.send_json(400, {"error": "invalid_ping"})
+                return
+            self.send_payload(204, b"", "text/plain")
+            return
+
         if not path.startswith("/dorequest.php"):
             self.send_payload(404, b"", "text/plain")
             return
@@ -416,6 +426,8 @@ class CtlHandler(_JsonHandler):
                     200,
                     {"unlocks": {str(g): sorted(e) for g, e in games.items()}},
                 )
+        elif route == "/_ctl/usage-pings":
+            self.send_json(200, {"pings": self.state.usage_pings})
         elif route == "/_ctl/score":
             record = self.state.find_user(params.get("u") or "")
             self.send_json(200, {"score": record["score"] if record else 0})

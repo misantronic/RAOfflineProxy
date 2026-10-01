@@ -13,7 +13,7 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler
 from urllib.parse import urlsplit
 
-from . import cache_budget, cache_keys, cache_queue, log_uploader, rate_limit, storage_corruption
+from . import cache_budget, cache_keys, cache_queue, log_uploader, rate_limit, storage_corruption, usage_report, usage_stats
 from .auth import resolve_credentials
 from .boot import adopt_listen_socket
 from .award_signing import sign_award
@@ -756,10 +756,14 @@ class ProxyRuntimeServer(ThreadingTCPServer):
     ) -> tuple[str, int, str, bytes, str | None, str | None]:
         url = f"{upstream_host(self.config_data)}{path}"
         request_headers = build_forward_headers(headers)
+        counted = path.startswith("/dorequest.php")
         try:
             if method == "POST":
                 status, reason, response_body = http_post(
-                    url, raw_body, request_headers
+                    url,
+                    raw_body,
+                    request_headers,
+                    usage_source=usage_stats.SOURCE_EMULATOR if counted else None,
                 )
                 response_bytes_body = response_body.encode("utf-8")
                 content_type = "application/json"
@@ -769,9 +773,13 @@ class ProxyRuntimeServer(ThreadingTCPServer):
                 request = urllib.request.Request(
                     url, headers=request_headers, method="GET"
                 )
+                responded = False
                 try:
                     with urllib.request.urlopen(request, timeout=15) as response:
                         status = response.status
+                        responded = True
+                        if counted:
+                            usage_stats.record_request(usage_stats.SOURCE_EMULATOR, status)
                         reason = response.reason
                         response_bytes_body = read_response_bytes(response)
                         content_type = response_content_type(response)
@@ -784,6 +792,8 @@ class ProxyRuntimeServer(ThreadingTCPServer):
                 except Exception as error:
                     if hasattr(error, "read"):
                         status = getattr(error, "code", 500)
+                        if counted:
+                            usage_stats.record_request(usage_stats.SOURCE_EMULATOR, status)
                         reason = getattr(
                             error, "reason", canonical_reason_phrase(status)
                         )
@@ -796,6 +806,8 @@ class ProxyRuntimeServer(ThreadingTCPServer):
                         else:
                             response_body = ""
                     else:
+                        if counted and not responded:
+                            usage_stats.record_request(usage_stats.SOURCE_EMULATOR, None)
                         raise
 
             if 200 <= status < 300:
@@ -1111,6 +1123,33 @@ class PeriodicRefresh(threading.Thread):
         return refreshed
 
 
+class UsageReporter(threading.Thread):
+    """Checks shortly after start and then every 15 minutes, so a device whose proxy autostarts
+    and whose menu is never opened still reports once per UTC day."""
+
+    def __init__(
+        self,
+        server: ProxyRuntimeServer,
+        initial_delay_seconds: int = 60,
+        interval_seconds: int = 15 * 60,
+    ):
+        super().__init__(daemon=True)
+        self.server = server
+        self.initial_delay_seconds = initial_delay_seconds
+        self.interval_seconds = interval_seconds
+        self.stop_event = threading.Event()
+
+    def stop(self) -> None:
+        self.stop_event.set()
+
+    def run(self) -> None:
+        delay = self.initial_delay_seconds
+        while not self.stop_event.wait(delay):
+            delay = self.interval_seconds
+            if self.server.is_online():
+                usage_report.report_if_due(self.server.storage)
+
+
 class CacheQueueWorker(threading.Thread):
     """Drains the caching queue in later budget windows while the proxy runs, is online and
     idle, so it never competes with gameplay. It polls rather than sleeping until the next
@@ -1212,6 +1251,7 @@ def run_proxy_service(
     connectivity_monitor = ConnectivityMonitor(server)
     periodic_refresh = PeriodicRefresh(server)
     cache_queue_worker = CacheQueueWorker(server)
+    usage_reporter = UsageReporter(server)
 
     try:
         serving_thread = threading.Thread(
@@ -1230,6 +1270,7 @@ def run_proxy_service(
         connectivity_monitor.start()
         periodic_refresh.start()
         cache_queue_worker.start()
+        usage_reporter.start()
 
         if stop_event is None:
             serving_thread.join()
@@ -1243,6 +1284,8 @@ def run_proxy_service(
         connectivity_monitor.stop()
         periodic_refresh.stop()
         cache_queue_worker.stop()
+        usage_reporter.stop()
+        usage_stats.flush()
         stop_ra_proxy_chain()
         server.server_close()
         storage.close()

@@ -49,7 +49,7 @@ android {
             matchingFallbacks += listOf("debug")
             buildConfigField("String", "RA_HOST", "\"$e2eRaHost\"")
             buildConfigField("String", "RA_MEDIA_HOST", "\"$e2eRaHost\"")
-            buildConfigField("String", "USAGE_STATS_URL", "\"\"")
+            buildConfigField("String", "USAGE_STATS_URL", "\"$e2eRaHost/usage/ping\"")
         }
     }
 

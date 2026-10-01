@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import pytest
+from linux.tests.e2e.scenarios._usage_stats_common import UsageStatsChecks
 
 USER = "testuser"
 TOKEN = "tok-testuser-000000000001"
@@ -258,3 +259,7 @@ class TestUninstall:
         cfg = installed.container.read_file(installed.device.retroarch_cfg)
         assert cfg_value(cfg, HARDCORE_KEY) == "true"
         assert cfg_value(cfg, CUSTOM_HOST_KEY) == ""
+
+
+class TestUsageStats(UsageStatsChecks):
+    EXPECTED_OS = "dArkOS"

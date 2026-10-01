@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import pytest
+from linux.tests.e2e.scenarios._usage_stats_common import UsageStatsChecks
 
 USER = "testuser"
 TOKEN = "tok-testuser-000000000001"
@@ -330,3 +331,7 @@ class TestUninstall:
         assert cfg_value(container.read_file(device.batocera_conf), SYS_HARDCORE_KEY) == "1"
         assert ini_value(container.read_file(device.ppsspp_ini), PPSSPP_HARDCORE_KEY) == "True"
         assert ini_value(container.read_file(device.dolphin_ini), DOLPHIN_HARDCORE_KEY) == "True"
+
+
+class TestUsageStats(UsageStatsChecks):
+    EXPECTED_OS = "ROCKNIX"

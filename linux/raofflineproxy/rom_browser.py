@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urljoin
 
-from . import cache_budget, cache_keys, cache_queue, rate_limit
+from . import cache_budget, cache_keys, cache_queue, rate_limit, usage_stats
 from .auth import resolve_credentials
 from .cache_queue import QueuedRom
 from .config import FALLBACK_USER_AGENT, RA_MEDIA_HOST, image_caching_enabled, upstream_host
@@ -109,6 +109,7 @@ class DrainResult:
     no_match: int
     stop: DrainStop
     next_attempt_at: int | None = None
+    time_limited: bool = False
 
 
 @dataclass
@@ -709,11 +710,18 @@ def _drain_locked(
     cached = 0
     no_match = 0
     requested = 0
-    stop_at = current_millis() + cache_budget.CACHE_BATCH_MAX_MS
+    started_at = current_millis()
+    stop_at = started_at + cache_budget.CACHE_BATCH_MAX_MS
     known_game_ids = cached_game_ids(storage)
 
-    def result(stop: DrainStop, next_attempt_at: int | None = None) -> DrainResult:
-        return DrainResult(cached, no_match, stop, next_attempt_at)
+    def result(
+        stop: DrainStop, next_attempt_at: int | None = None, time_limited: bool = False
+    ) -> DrainResult:
+        drained = DrainResult(cached, no_match, stop, next_attempt_at, time_limited)
+        usage_stats.record_batch(
+            cached, no_match, stop.value, time_limited, current_millis() - started_at
+        )
+        return drained
 
     def rate_limited() -> DrainResult | None:
         until = rate_limit.paused_until()
@@ -747,7 +755,7 @@ def _drain_locked(
             window_end = cache_budget.window_ends_at(storage)
             cache_budget.pause_until(storage, window_end)
             LOGGER.info("Cache queue: batch time limit reached, rest waits for the next window")
-            return result(DrainStop.BUDGET_EXHAUSTED, window_end)
+            return result(DrainStop.BUDGET_EXHAUSTED, window_end, time_limited=True)
         rom = next_rom()
         if rom is None:
             return result(DrainStop.EMPTY)

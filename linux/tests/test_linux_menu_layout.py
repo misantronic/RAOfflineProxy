@@ -232,6 +232,7 @@ class MenuLayoutTests(unittest.TestCase):
     def test_root_labels_show_cached_count_and_hide_empty_pending_awards(self) -> None:
         session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
         session.view = "main"
+        session.usage_consent_seen = True
         session.cached_games = [
             type("Game", (), {"title": "Tetris", "game_id": 10701})()
         ]
@@ -565,6 +566,7 @@ class MenuLayoutTests(unittest.TestCase):
     def test_refresh_main_menu_state_checks_update_only_on_force(self) -> None:
         session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
         session.view = "main"
+        session.usage_consent_seen = True
         session.main_state_refreshed_at = 0.0
         session.main_update_available = False
         session.main_update_version = None
@@ -612,6 +614,7 @@ class MenuLayoutTests(unittest.TestCase):
     def test_refresh_main_menu_state_rechecks_update_when_forced_again(self) -> None:
         session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
         session.view = "main"
+        session.usage_consent_seen = True
         session.main_state_refreshed_at = 0.0
         session.main_update_available = False
         session.main_update_version = None
@@ -1754,6 +1757,7 @@ class SupportMeTests(unittest.TestCase):
     def test_support_me_appears_in_main_labels(self) -> None:
         session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
         session.view = "main"
+        session.usage_consent_seen = True
         session.cached_games = []
         session.pending_awards = []
         session.storage = object()

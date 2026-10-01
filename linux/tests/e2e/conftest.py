@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import time
 from pathlib import Path
@@ -118,6 +119,9 @@ class DeviceSession:
         return result
 
     def point_at_fake_ra(self) -> None:
+        self.update_config({"upstream_host": "http://127.0.0.1:%d" % FAKE_RA_PORT})
+
+    def update_config(self, values: dict) -> None:
         config_path = self.device.config_dir + "/config.json"
         self.container.exec(
             "mkdir -p %s" % self.device.config_dir,
@@ -131,9 +135,9 @@ class DeviceSession:
             "python3 - <<'RAOP_PY'\n"
             "import json\n"
             "data = json.loads(%r)\n"
-            "data['upstream_host'] = 'http://127.0.0.1:%d'\n"
+            "data.update(json.loads(%r))\n"
             "open(%r, 'w').write(json.dumps(data))\n"
-            "RAOP_PY" % (existing, FAKE_RA_PORT, config_path),
+            "RAOP_PY" % (existing, json.dumps(values), config_path),
             check=True,
             user=self.device.run_as,
         )

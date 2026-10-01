@@ -5,6 +5,7 @@ import json
 import pytest
 
 from linux.tests.e2e.scenarios._miyoo_common import MiyooLifecycle
+from linux.tests.e2e.scenarios._usage_stats_common import UsageStatsChecks
 
 SPRUCE_VERSION_FILE = "/mnt/SDCARD/spruce/spruce"
 RA_CONFIG_DIR = "/mnt/SDCARD/Saves/ra-configs"
@@ -136,3 +137,7 @@ class TestSpruceSpecific:
         assert patched != original
         assert "autostart-launch.sh" in patched
         assert patched.startswith("#!")
+
+
+class TestUsageStats(UsageStatsChecks):
+    EXPECTED_OS = "spruce"

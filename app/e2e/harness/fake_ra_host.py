@@ -57,3 +57,6 @@ class HostFakeRa:
 
     def clear_journal(self) -> None:
         self.state.clear_journal()
+
+    def usage_pings(self) -> list:
+        return list(self.state.usage_pings)

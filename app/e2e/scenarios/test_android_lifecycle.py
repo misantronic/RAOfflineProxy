@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import time
+
 import pytest
 
 from app.e2e.harness.session import (
@@ -169,3 +171,36 @@ class TestOffline:
         assert flushed["params"].get("h", "0") == "0"
         assert "RAOfflineProxy/" in flushed["userAgent"]
 
+
+class TestUsageStats:
+    def test_nothing_is_reported_without_consent(self, running):
+        running.emulator.boot_sequence(USER, TOKEN, MSLUG_HASH)
+        time.sleep(3)
+        running.relaunch()
+        time.sleep(20)
+        assert running.ra.usage_pings() == [], "reported without consent"
+
+    def test_report_after_consent_contains_no_account_data(self, android):
+        android.seed_usage_consent()
+        android.launch()
+        android.start_proxy()
+        android.wait_until_online()
+        android.emulator.boot_sequence(USER, TOKEN, MSLUG_HASH)
+        # Counters are written with SharedPreferences.apply(); give it a moment before the
+        # force-stop in relaunch().
+        time.sleep(3)
+        android.relaunch()
+
+        pings = wait_until(android.ra.usage_pings, timeout=60, message="usage report")
+        assert len(pings) == 1, pings
+        ping = pings[0]
+        assert ping["platform"] == "android"
+        assert ping["os"] == "Android"
+        assert ping["build"] == "e2e"
+        assert ping["schema_version"] == 1
+        assert ping["consent_version"] == 1
+        assert len(ping["client_id"]) == 64
+        assert USER not in str(ping).lower(), "username leaked into the report"
+        assert TOKEN not in str(ping), "token leaked into the report"
+        assert ping["counters"].get("requests_emulator", 0) >= 1, ping["counters"]
+        assert ping["gauges"]["cached_games"] != "0", ping["gauges"]

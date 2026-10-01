@@ -12,7 +12,7 @@ import urllib.request
 from pathlib import Path
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
-from . import rate_limit
+from . import rate_limit, usage_stats
 from .config import FALLBACK_USER_AGENT, upstream_host
 from .utils import proxy_user_agent
 
@@ -300,15 +300,22 @@ def http_get(url: str, user_agent: str) -> str:
             },
             method="GET",
         )
+        usage_source = (
+            usage_stats.SOURCE_BACKGROUND if rate_limit.in_background() else usage_stats.SOURCE_APP
+        )
 
         try:
             with urllib.request.urlopen(
                 request, timeout=10, context=configured_ssl_context()
             ) as response:
+                if action is not None:
+                    usage_stats.record_request(usage_source, getattr(response, "status", 200))
                 body = read_response_bytes(response)
                 mark_retroachievements_reachable()
                 return decode_response_body(body, response_content_type(response))
         except urllib.error.HTTPError as error:
+            if action is not None:
+                usage_stats.record_request(usage_source, error.code)
             if error.code >= 500:
                 mark_retroachievements_unreachable()
             else:
@@ -343,6 +350,8 @@ def http_get(url: str, user_agent: str) -> str:
             )
             raise
         except urllib.error.URLError as error:
+            if action is not None:
+                usage_stats.record_request(usage_source, None)
             mark_retroachievements_unreachable()
             LOGGER.warning(
                 "GET connection failed reason=%s url=%s",
@@ -421,7 +430,10 @@ def retry_after_seconds(error: urllib.error.HTTPError, attempt: int) -> float:
 
 
 def http_post(
-    url: str, body: str, headers: dict[str, str] | None = None
+    url: str,
+    body: str,
+    headers: dict[str, str] | None = None,
+    usage_source: str | None = None,
 ) -> tuple[int, str, str]:
     request_headers = {
         "Content-Type": "application/x-www-form-urlencoded",
@@ -441,6 +453,8 @@ def http_post(
         with urllib.request.urlopen(
             request, timeout=15, context=configured_ssl_context()
         ) as response:
+            if usage_source is not None:
+                usage_stats.record_request(usage_source, getattr(response, "status", 200))
             response_body = read_response_bytes(response)
             mark_retroachievements_reachable()
             return (
@@ -449,6 +463,8 @@ def http_post(
                 decode_response_body(response_body, response_content_type(response)),
             )
     except urllib.error.HTTPError as error:
+        if usage_source is not None:
+            usage_stats.record_request(usage_source, error.code)
         response_body = error.read()
         if error.code >= 500:
             mark_retroachievements_unreachable()
@@ -466,6 +482,8 @@ def http_post(
             decode_response_body(response_body, error.headers.get("Content-Type")),
         )
     except urllib.error.URLError as error:
+        if usage_source is not None:
+            usage_stats.record_request(usage_source, None)
         mark_retroachievements_unreachable()
         LOGGER.warning(
             "POST connection failed reason=%s url=%s",
