@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import contextlib
+import http.client
 import json
 import logging
 import os
@@ -8,10 +9,12 @@ import shutil
 import sys
 import threading
 import urllib.request
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, wait
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from .config import CONFIG_DIR
+from .network import configured_ssl_context
 
 _IMAGE_DOWNLOAD_POOL_SIZE = 4
 _LOWEST_PRIORITY = 19
@@ -31,6 +34,13 @@ def _lower_thread_priority() -> None:
 _image_download_executor = ThreadPoolExecutor(
     max_workers=_IMAGE_DOWNLOAD_POOL_SIZE, initializer=_lower_thread_priority
 )
+# Long-lived on purpose: each worker keeps its HTTPS connection to the media server between
+# games, see _fetch_image.
+_inline_download_executor = ThreadPoolExecutor(
+    max_workers=_IMAGE_DOWNLOAD_POOL_SIZE, initializer=_lower_thread_priority
+)
+_thread_connections = threading.local()
+_HTTP_OK = 200
 _inline_downloads = threading.local()
 _pending_downloads: set[str] = set()
 _pending_downloads_lock = threading.Lock()
@@ -183,15 +193,9 @@ def download_static_image(
         target = STATIC_DIR / clean_path
         if not target.exists():
             target.parent.mkdir(parents=True, exist_ok=True)
-            request = urllib.request.Request(
-                url,
-                headers={"User-Agent": user_agent, "Accept-Encoding": "identity"},
-                method="GET",
-            )
             tmp = target.with_suffix(target.suffix + ".tmp")
             try:
-                with urllib.request.urlopen(request, timeout=10) as response:
-                    tmp.write_bytes(response.read())
+                tmp.write_bytes(_fetch_image(url, user_agent))
                 tmp.rename(target)
                 tmp = None
             finally:
@@ -208,6 +212,63 @@ def download_static_image(
                 icon_file.write_bytes(target.read_bytes())
     except Exception as exc:
         LOGGER.debug("Failed to cache image path=%s: %s", image_path, exc)
+
+
+def _fetch_image(url: str, user_agent: str) -> bytes:
+    """Reuses one HTTPS connection per thread and host. A game has dozens of badges, and a TLS
+    handshake per image costs a handheld's CPU far more than the image itself (~400 ms on a
+    Miyoo Mini). Anything other than a plain 200 goes through urllib, which follows redirects."""
+    parts = urlsplit(url)
+    if parts.scheme != "https":
+        return _fetch_with_urllib(url, user_agent)
+    path = parts.path + (f"?{parts.query}" if parts.query else "")
+    headers = {"User-Agent": user_agent, "Accept-Encoding": "identity"}
+    for attempt in range(2):
+        connection = _thread_connection(parts.netloc)
+        try:
+            connection.request("GET", path, headers=headers)
+            response = connection.getresponse()
+            body = response.read()
+        except (http.client.HTTPException, OSError):
+            # A connection the server closed while idle only shows up on the next request.
+            _drop_thread_connection(parts.netloc)
+            if attempt > 0:
+                raise
+            continue
+        if response.will_close:
+            _drop_thread_connection(parts.netloc)
+        if response.status != _HTTP_OK:
+            return _fetch_with_urllib(url, user_agent)
+        return body
+    raise OSError(f"could not fetch {url}")
+
+
+def _fetch_with_urllib(url: str, user_agent: str) -> bytes:
+    request = urllib.request.Request(
+        url,
+        headers={"User-Agent": user_agent, "Accept-Encoding": "identity"},
+        method="GET",
+    )
+    with urllib.request.urlopen(request, timeout=10, context=configured_ssl_context()) as response:
+        return response.read()
+
+
+def _thread_connection(host: str) -> http.client.HTTPSConnection:
+    connections = getattr(_thread_connections, "by_host", None)
+    if connections is None:
+        connections = _thread_connections.by_host = {}
+    connection = connections.get(host)
+    if connection is None:
+        connection = connections[host] = http.client.HTTPSConnection(
+            host, timeout=10, context=configured_ssl_context()
+        )
+    return connection
+
+
+def _drop_thread_connection(host: str) -> None:
+    connection = getattr(_thread_connections, "by_host", {}).pop(host, None)
+    if connection is not None:
+        connection.close()
 
 
 def schedule_image_download(
@@ -256,10 +317,7 @@ def images_downloaded_inline():
             pending[item[1]] = item
     if not pending:
         return
-    with ThreadPoolExecutor(
-        max_workers=_IMAGE_DOWNLOAD_POOL_SIZE, initializer=_lower_thread_priority
-    ) as pool:
-        list(pool.map(lambda item: download_static_image(*item), pending.values()))
+    wait([_inline_download_executor.submit(download_static_image, *item) for item in pending.values()])
 
 
 def shutdown_image_downloads() -> None:
@@ -276,6 +334,7 @@ def shutdown_image_downloads() -> None:
     finish, but each carries its own timeout.
     """
     _image_download_executor.shutdown(wait=False, cancel_futures=True)
+    _inline_download_executor.shutdown(wait=False, cancel_futures=True)
 
 
 def resolve_cached_static_asset(path: str) -> Path | None:

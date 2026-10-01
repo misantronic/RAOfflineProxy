@@ -64,3 +64,45 @@ class LinuxEsExportTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class IncrementalCachedIdsTests(unittest.TestCase):
+    def test_new_game_is_added_without_rescanning_the_library(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            ids_file = root / "cached_game_ids.txt"
+            ids_file.write_text("515\n")
+            with (
+                mock.patch.object(es_export, "CACHED_IDS_FILE", ids_file),
+                mock.patch.object(es_export, "CONFIG_DIR", root),
+                mock.patch.object(
+                    es_export, "collect_cached_game_ids", side_effect=AssertionError("rescanned")
+                ),
+            ):
+                store = storage.Storage(database_path=root / "test.sqlite3")
+                try:
+                    store.upsert_cache("patch:10701:misantronic", "patch")
+                    store.upsert_cache("patch:10701:misantronic", "patch again")
+                    store.upsert_cache("achievementsets:hash:misantronic", '{"GameId":42}')
+                finally:
+                    store.close()
+
+            self.assertEqual("42\n515\n10701\n", ids_file.read_text())
+
+    def test_missing_list_is_rebuilt_from_the_library(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            ids_file = root / "cached_game_ids.txt"
+            with (
+                mock.patch.object(es_export, "CACHED_IDS_FILE", ids_file),
+                mock.patch.object(es_export, "CONFIG_DIR", root),
+            ):
+                store = storage.Storage(database_path=root / "test.sqlite3")
+                try:
+                    store.upsert_cache("patch:7:misantronic", "patch")
+                    ids_file.unlink()
+                    store.upsert_cache("patch:8:misantronic", "patch")
+                finally:
+                    store.close()
+
+            self.assertEqual("7\n8\n", ids_file.read_text())
