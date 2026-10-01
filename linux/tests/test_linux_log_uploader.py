@@ -219,7 +219,7 @@ class LinuxLogUploaderTests(unittest.TestCase):
             )
             stack.enter_context(mock.patch.object(log_uploader.ppsspp_cfg, "is_ppsspp_patched", return_value=False))
 
-            metadata = log_uploader._upload_metadata()
+            metadata = log_uploader.device_metadata()
 
             self.assertEqual(
                 metadata,
@@ -249,7 +249,7 @@ class LinuxLogUploaderTests(unittest.TestCase):
             )
             stack.enter_context(os_release)
 
-            metadata = log_uploader._upload_metadata()
+            metadata = log_uploader.device_metadata()
 
             self.assertEqual(metadata["os"], "ROCKNIX")
             self.assertEqual(metadata["os_version"], "20250517")
@@ -266,7 +266,7 @@ class LinuxLogUploaderTests(unittest.TestCase):
             )
             stack.enter_context(mock.patch.object(log_uploader.ppsspp_cfg, "is_ppsspp_patched", return_value=False))
 
-            metadata = log_uploader._upload_metadata()
+            metadata = log_uploader.device_metadata()
 
             self.assertNotIn("emulator", metadata)
             self.assertEqual(metadata["os"], "Onion")
@@ -285,7 +285,7 @@ class LinuxLogUploaderTests(unittest.TestCase):
             )
             stack.enter_context(mock.patch.object(log_uploader.ppsspp_cfg, "is_ppsspp_patched", return_value=True))
 
-            metadata = log_uploader._upload_metadata()
+            metadata = log_uploader.device_metadata()
 
             self.assertEqual(metadata["emulator"], ["PPSSPP"])
 
@@ -301,7 +301,7 @@ class LinuxLogUploaderTests(unittest.TestCase):
             )
             stack.enter_context(mock.patch.object(log_uploader.ppsspp_cfg, "is_ppsspp_patched", return_value=True))
 
-            metadata = log_uploader._upload_metadata()
+            metadata = log_uploader.device_metadata()
 
             self.assertEqual(metadata["emulator"], ["RetroArch", "PPSSPP"])
 
@@ -407,7 +407,7 @@ class LinuxLogUploaderTests(unittest.TestCase):
             )
             stack.enter_context(mock.patch.object(log_uploader.ppsspp_cfg, "is_ppsspp_patched", return_value=False))
 
-            metadata = log_uploader._upload_metadata()
+            metadata = log_uploader.device_metadata()
 
             self.assertEqual(metadata["os"], "Knulli")
             self.assertEqual(metadata["os_version"], "42 2025/05/24 18:15:00")

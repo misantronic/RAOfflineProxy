@@ -57,7 +57,7 @@ from .retroarch_cfg import (
     revert_retroarch_cfg,
 )
 from .image_cache import shutdown_image_downloads
-from . import cache_budget, cache_keys, cache_queue
+from . import cache_budget, cache_keys, cache_queue, usage_report, usage_stats
 from .rom_browser import (
     format_clock_time,
     AddRomResult,
@@ -186,6 +186,21 @@ ASSETS_DIR = Path(__file__).resolve().parent / "assets"
 SUPPORT_SUBTITLE = "Free & open source, made in my spare time"
 SUPPORT_DESCRIPTION = "If it's been useful to you, a small donation helps keep it going. Thank you!"
 SUPPORT_DONATE_URL = "https://raofflineproxy.com/donate.html"
+USAGE_CONSENT_TITLE = "Help improve RAOfflineProxy"
+USAGE_CONSENT_ACCEPT = "Share statistics"
+USAGE_CONSENT_DECLINE = "No thanks"
+# Kept short on purpose: on 640x480 (Miyoo Mini) anything longer pushes the two choices under
+# the hint line.
+USAGE_CONSENT_TEXT = (
+    "Sharing anonymous statistics once a day would really help me understand how many people "
+    "use RAOfflineProxy and how well caching works.\n\n"
+    "Sent: app version, device, OS, cache numbers.\n"
+    "Never sent: username, password, achievements.\n"
+    "Turn off anytime in the main menu.\n"
+    "Details: raofflineproxy.com/privacy-policy.html"
+)
+USAGE_STATS_ENABLE_LABEL = "Enable usage stats"
+USAGE_STATS_DISABLE_LABEL = "Disable usage stats"
 # Monthly-only: Stripe can't combine a customer-chosen amount with a
 # recurring price, so unlike one-time (any amount), monthly is a fixed set
 # of preset tiers, each its own Payment Link/QR image.
@@ -797,6 +812,9 @@ class MenuSdlSession:
         if self.view == "update_prompt":
             return ["Download and install", "Later"]
 
+        if self.view == "usage_consent":
+            return [USAGE_CONSENT_ACCEPT, USAGE_CONSENT_DECLINE]
+
         if self.view == "send_logs_confirm":
             return ["YES", "NO"]
 
@@ -850,6 +868,11 @@ class MenuSdlSession:
                 if self.main_autostart_enabled
                 else "Enable autostart"
             )
+        labels.append(
+            USAGE_STATS_DISABLE_LABEL
+            if getattr(self, "main_usage_consent", None) is True
+            else USAGE_STATS_ENABLE_LABEL
+        )
         if (
             ((self.is_knulli_platform() or running_on_darkos()) and not service_mode)
             or running_on_muos()
@@ -909,6 +932,8 @@ class MenuSdlSession:
             return "Add ROM"
         if self.view == "update_prompt":
             return "Update Available"
+        if self.view == "usage_consent":
+            return USAGE_CONSENT_TITLE
         if self.view == "clear_cache_confirm":
             return "Clear Cache?"
         if self.view == "queue_confirm":
@@ -1020,6 +1045,8 @@ class MenuSdlSession:
                 if self.main_update_version is not None
                 else "A new version is available."
             )
+        if self.view == "usage_consent":
+            return USAGE_CONSENT_TEXT
         if self.view == "send_logs_confirm":
             return "Send logs for support?"
         if self.view == "send_logs_progress":
@@ -1069,6 +1096,8 @@ class MenuSdlSession:
                 return None
             if self.view == "update_prompt":
                 return self.confirm_cancel_hint("install", None)
+            if self.view == "usage_consent":
+                return self.confirm_cancel_hint("choose", "decide later")
             if self.view == "send_logs_confirm":
                 return self.confirm_cancel_hint("confirm", "cancel")
             if self.view == "send_logs_progress":
@@ -1229,6 +1258,10 @@ class MenuSdlSession:
             self.activate_update_prompt_selected()
             return
 
+        if self.view == "usage_consent":
+            self.activate_usage_consent_selected()
+            return
+
         if self.view == "send_logs_confirm":
             self.activate_send_logs_confirm_selected()
             return
@@ -1282,6 +1315,10 @@ class MenuSdlSession:
         config_data = getattr(self, "config_data", {})
         if selected_label.startswith(("Enable autostart", "Disable autostart")):
             self.toggle_autostart(config_data)
+            return
+
+        if selected_label in (USAGE_STATS_ENABLE_LABEL, USAGE_STATS_DISABLE_LABEL):
+            self.set_usage_consent(selected_label == USAGE_STATS_ENABLE_LABEL)
             return
 
         if selected_label.startswith("Cached games"):
@@ -2036,6 +2073,10 @@ class MenuSdlSession:
             self.dismiss_update_prompt()
             return
 
+        if self.view == "usage_consent":
+            self.dismiss_usage_consent()
+            return
+
         if self.view == "cache_progress":
             return
 
@@ -2566,6 +2607,12 @@ class MenuSdlSession:
             self.main_update_asset_url = None
         if not hasattr(self, "main_update_dialog_seen"):
             self.main_update_dialog_seen = False
+        if not hasattr(self, "main_usage_consent"):
+            self.main_usage_consent = None
+        if not hasattr(self, "usage_consent_seen"):
+            self.usage_consent_seen = False
+        if not hasattr(self, "usage_report_started"):
+            self.usage_report_started = False
         if not hasattr(self, "storage_corruption_active"):
             self.storage_corruption_active = False
         if not hasattr(self, "storage_corruption_notice_seen"):
@@ -2589,6 +2636,7 @@ class MenuSdlSession:
         self.main_running = self.read_proxy_running()
         self.main_online = online_check(self.config_data)
         self.main_logged_in = self.is_logged_in(self.config_data)
+        self.main_usage_consent = usage_stats.load_consent(self.config_data)
         self.main_service_mode = service_mode_active()
         if self.main_service_mode:
             self.main_autostart_supported = True
@@ -2627,7 +2675,52 @@ class MenuSdlSession:
             self.view = "update_prompt"
             self.reset_selection()
 
+        self.maybe_show_usage_consent()
+        self.maybe_start_usage_report()
         self.maybe_show_storage_corruption_notice()
+
+    def maybe_show_usage_consent(self) -> None:
+        if (
+            self.usage_consent_seen
+            or self.view != "main"
+            or not self.main_logged_in
+            or self.main_usage_consent is not None
+        ):
+            return
+        self.usage_consent_seen = True
+        self.save_view_position("main")
+        self.view = "usage_consent"
+        self.reset_selection()
+
+    def maybe_start_usage_report(self) -> None:
+        if self.usage_report_started or not self.main_online or self.main_usage_consent is not True:
+            return
+        self.usage_report_started = True
+        threading.Thread(
+            target=usage_report.report_if_due, args=(self.storage,), daemon=True
+        ).start()
+
+    def activate_usage_consent_selected(self) -> None:
+        self.set_usage_consent(self.selected_index == 0)
+        self.dismiss_usage_consent()
+
+    def dismiss_usage_consent(self) -> None:
+        self.view = "main"
+        self.restore_view_position("main")
+
+    def set_usage_consent(self, granted: bool) -> None:
+        try:
+            usage_stats.save_consent(granted)
+        except Exception as exc:
+            log_action_failure("set_usage_consent", exc)
+            self.message = (f"Saving failed: {exc}", time.monotonic() + ERROR_SECONDS)
+            return
+        self.main_usage_consent = granted
+        self.usage_report_started = False
+        self.message = (
+            ("Usage stats enabled, thank you!" if granted else "Usage stats disabled"),
+            time.monotonic() + 1.2,
+        )
 
     def maybe_show_storage_corruption_notice(self) -> None:
         if self.storage_corruption_notice_seen or self.view != "main":

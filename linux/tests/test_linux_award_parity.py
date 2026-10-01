@@ -490,7 +490,7 @@ class LinuxAwardParityTests(unittest.TestCase):
         try:
             captured = {}
 
-            def fake_http_post(_url, body, headers=None):
+            def fake_http_post(_url, body, headers=None, **_kwargs):
                 captured["body"] = body
                 return 200, "OK", '{"Success":true}'
 
