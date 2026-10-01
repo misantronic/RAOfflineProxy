@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import pytest
+from linux.tests.e2e.scenarios._usage_stats_common import UsageStatsChecks
 
 USER = "testuser"
 TOKEN = "tok-testuser-000000000001"
@@ -327,3 +328,7 @@ class TestUninstall:
         )
         installed.uninstall()
         assert not installed.container.exists(THEME_ICON)
+
+
+class TestUsageStats(UsageStatsChecks):
+    EXPECTED_OS = "muOS"

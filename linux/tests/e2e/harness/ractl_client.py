@@ -90,3 +90,6 @@ class FakeRaControl:
 
     def clear_journal(self) -> None:
         self._call("POST", "/_ctl/clear-journal", {})
+
+    def usage_pings(self) -> list:
+        return self._call("GET", "/_ctl/usage-pings")["pings"]

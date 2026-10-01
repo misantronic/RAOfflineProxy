@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 
 from linux.tests.e2e.scenarios._miyoo_common import MiyooLifecycle
+from linux.tests.e2e.scenarios._usage_stats_common import UsageStatsChecks
 
 ONION_VERSION_FILE = "/mnt/SDCARD/.tmp_update/onionVersion/version.txt"
 CHECKOFF_SCRIPT = "/mnt/SDCARD/.tmp_update/checkoff/raofflineproxy.sh"
@@ -60,3 +61,7 @@ class TestOnionSpecific:
         assert version.startswith("v4.4.0")
         installed.cli.run("start-proxy", check=True)
         assert installed.cli.service_running()
+
+
+class TestUsageStats(UsageStatsChecks):
+    EXPECTED_OS = "Onion"

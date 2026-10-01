@@ -75,6 +75,7 @@ class RaState:
         self.enforce_user_agent = True
         self.journal: list[dict] = []
         self.violations: list[dict] = []
+        self.usage_pings: list[dict] = []
         self._load_fixtures()
         self._restore()
 
@@ -230,7 +231,12 @@ class RaState:
                 }
             )
 
+    def record_usage_ping(self, payload: dict) -> None:
+        with self._lock:
+            self.usage_pings.append(payload)
+
     def clear_journal(self) -> None:
         with self._lock:
             self.journal = []
             self.violations = []
+            self.usage_pings = []

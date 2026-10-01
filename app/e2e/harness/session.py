@@ -38,7 +38,8 @@ PROXY_TOGGLE_LABEL = "tv_proxy_label"
 
 # Update checks, the smart-cache prompt and the usage-stats consent would reach
 # the internet or pop a dialog over the proxy toggle; the support button only
-# adds noise to dumps.
+# adds noise to dumps. Declined consent also keeps every other scenario from
+# reporting usage stats to the fake server.
 SEEDED_PREFS = """<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
 <map>
     <boolean name="app_update_check_enabled" value="false" />
@@ -48,6 +49,13 @@ SEEDED_PREFS = """<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
 </map>
 """
 
+# The same seed with usage stats agreed to (consent version 1), for the scenario
+# that checks what a report contains.
+CONSENTED_PREFS = SEEDED_PREFS.replace(
+    '<boolean name="usage_stats_consent" value="false" />',
+    '<boolean name="usage_stats_consent" value="true" />\n'
+    '    <int name="usage_stats_consent_version" value="1" />',
+)
 
 def retroarch_cfg(hardcore: bool, custom_host: str = "") -> str:
     return (
@@ -107,6 +115,15 @@ class AndroidSession:
         self.device.lock_landscape()
         self.ui.wait_for_landscape()
         self.wait_for_proxy_toggle(START_LABEL, timeout=90)
+
+    def seed_usage_consent(self) -> None:
+        self.device.force_stop(APP_PACKAGE)
+        self.device.write_app_file(APP_PACKAGE, PREFS_FILE, CONSENTED_PREFS)
+
+    def relaunch(self) -> None:
+        """A fresh app start, which is one of the usage report's triggers."""
+        self.device.force_stop(APP_PACKAGE)
+        self.device.launch(MAIN_ACTIVITY)
 
     def teardown(self) -> None:
         self.device.set_airplane_mode(False)

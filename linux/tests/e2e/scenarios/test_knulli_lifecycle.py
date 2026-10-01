@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import pytest
+from linux.tests.e2e.scenarios._usage_stats_common import UsageStatsChecks
 
 USER = "testuser"
 TOKEN = "tok-testuser-000000000001"
@@ -289,3 +290,7 @@ class TestUninstall:
 
         conf = installed.container.read_file(installed.device.batocera_conf)
         assert conf_value(conf, "global.retroachievements.hardcore") == "1"
+
+
+class TestUsageStats(UsageStatsChecks):
+    EXPECTED_OS = "Knulli"

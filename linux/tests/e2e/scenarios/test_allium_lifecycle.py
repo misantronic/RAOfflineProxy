@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 
 from linux.tests.e2e.scenarios._miyoo_common import MiyooLifecycle
+from linux.tests.e2e.scenarios._usage_stats_common import UsageStatsChecks
 
 OTA_ARCHIVE = "/mnt/SDCARD/allium-ota.zip"
 
@@ -50,3 +51,7 @@ class TestAlliumSpecific:
         hook = installed.container.read_file(installed.device.boot_hook)
         assert OTA_ARCHIVE in hook
         assert '[ ! -f "%s" ]' % OTA_ARCHIVE in hook
+
+
+class TestUsageStats(UsageStatsChecks):
+    EXPECTED_OS = "Allium"

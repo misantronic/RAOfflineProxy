@@ -106,7 +106,13 @@ the cross-compiled hasher loading and hashing on the target arch, start/stop
 with config patch and revert, hardcore disabled and restored (including the
 already-off pre-state), autostart on/off and `boot-reconcile`, manual cache and
 clear, online launch caching, hardcore award refused and never forwarded, the
-offline award queue-and-flush cycle, and offline reads from cache.
+offline award queue-and-flush cycle, offline reads from cache, and usage
+statistics (`_usage_stats_common.py`): no report without consent, and with
+consent exactly one report from the service's own reporter thread, carrying the
+detected firmware name and emulator counters but no username or token. The
+fake server stands in for the usage backend at `POST /usage/ping`
+(`/_ctl/usage-pings` lists what it received); the app is pointed there through
+the `usage_report_url` config key, like `upstream_host`.
 
 | device | arch | install shape | tests |
 | --- | --- | --- | --- |
