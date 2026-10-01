@@ -61,6 +61,8 @@ Your IP address is not stored or logged. Usage records are deleted automatically
 
 The statistics are used only to understand how many people use the app on which devices, whether features like bulk caching work, and how much load the app puts on RetroAchievements.
 
+Aggregated numbers from these statistics (for example how many people use the app per month, on which devices, and how many requests reach RetroAchievements per day) are published at [raofflineproxy.com/stats.html](https://raofflineproxy.com/stats.html) and updated daily. The page never shows individual reports or IDs, and devices or firmwares used by fewer than three people are only shown as "Other".
+
 ### Donations
 
 The app includes an optional "Support development" dialog for making a voluntary one-time or monthly donation. This feature is entirely optional and is not used for any core app functionality.

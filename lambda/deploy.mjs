@@ -10,7 +10,8 @@ const ALL_LAMBDAS = [
     'raop-log-upload',
     'raop-support-report',
     'raop-support-payment',
-    'raop-usage-ping'
+    'raop-usage-ping',
+    'raop-usage-stats-page'
 ];
 
 function deployToRegion(name, region, zipPath) {
