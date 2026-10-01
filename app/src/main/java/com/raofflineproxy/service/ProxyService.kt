@@ -43,6 +43,7 @@ import com.raofflineproxy.proxy.loadUserAgent
 import com.raofflineproxy.proxy.refreshCachedGameOfflineBundle
 import com.raofflineproxy.proxy.RefreshNotificationMode
 import com.raofflineproxy.proxy.DrainStop
+import com.raofflineproxy.usage.UsageReporter
 import com.raofflineproxy.proxy.drainCacheQueue
 import com.raofflineproxy.ui.Emulator
 import com.raofflineproxy.ui.broadcastNotPatchedResult
@@ -334,6 +335,7 @@ class ProxyService : Service() {
         while (true) {
             delay(REFRESH_INTERVAL_MS.milliseconds)
             if (!isServerReachable()) continue
+            UsageReporter.reportIfDue(this, db)
             RateLimitBackoff.pausedUntil()?.let { until ->
                 Log.i(TAG, "Periodic refresh skipped; RetroAchievements rate-limited us until ${java.text.DateFormat.getTimeInstance().format(java.util.Date(until))}")
                 continue

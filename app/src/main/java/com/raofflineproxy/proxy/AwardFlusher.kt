@@ -8,6 +8,8 @@ import com.raofflineproxy.R
 import com.raofflineproxy.RA_HOST
 import com.raofflineproxy.RequestFailureNotifier
 import com.raofflineproxy.data.AppDatabase
+import com.raofflineproxy.usage.RaRequestSource
+import com.raofflineproxy.usage.executeCounted
 import com.raofflineproxy.data.CacheKeys
 import com.raofflineproxy.data.PendingAward
 import com.raofflineproxy.data.PENDING_AWARD_STATUS_DELETED
@@ -521,7 +523,7 @@ class AwardFlusher(
             Log.d(TAG, "→ RA POST body: ${redactFormBody(body)}")
 
             throttleRetroAchievementsApiRequest("POST awardachievement")
-            sharedHttpClient.newCall(request).execute().use { resp ->
+            sharedHttpClient.newCall(request).executeCounted(RaRequestSource.AwardSync).use { resp ->
                 val responseBody = resp.body.string()
 
                 Log.d(TAG, "← RA ${resp.code} for ${redactTokens(award.queryString)} (${responseBody.length} bytes)")

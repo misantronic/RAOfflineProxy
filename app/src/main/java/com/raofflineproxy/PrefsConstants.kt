@@ -60,6 +60,11 @@ object PrefsConstants {
     const val KEY_APP_UPDATE_LAST_PROMPTED_AT = "app_update_last_prompted_at"
     const val KEY_HIDE_SUPPORT_BUTTON = "hide_support_button"
     const val KEY_SHOW_LOCKED_ACHIEVEMENTS = "show_locked_achievements"
+    const val KEY_USAGE_STATS_CONSENT = "usage_stats_consent"
+    const val KEY_USAGE_STATS_CONSENT_VERSION = "usage_stats_consent_version"
+    // Bump when the usage report starts collecting a new kind of data, so users who agreed to the
+    // old scope are asked again. Users who declined are not asked again.
+    const val USAGE_STATS_CONSENT_VERSION = 1
     private const val KEY_LAST_SEEN_VERSION_CODE = "last_seen_version_code"
     private const val KEY_AVAILABLE_APP_UPDATE = "available_app_update"
 
@@ -335,6 +340,26 @@ object PrefsConstants {
     fun saveShowLockedAchievementsEnabled(context: Context, enabled: Boolean) {
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .edit { putBoolean(KEY_SHOW_LOCKED_ACHIEVEMENTS, enabled) }
+    }
+
+    fun loadUsageStatsConsent(context: Context): Boolean? {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val granted = if (prefs.contains(KEY_USAGE_STATS_CONSENT)) prefs.getBoolean(KEY_USAGE_STATS_CONSENT, false) else null
+        return resolveUsageStatsConsent(granted, prefs.getInt(KEY_USAGE_STATS_CONSENT_VERSION, 0))
+    }
+
+    fun resolveUsageStatsConsent(
+        granted: Boolean?,
+        grantedVersion: Int,
+        currentVersion: Int = USAGE_STATS_CONSENT_VERSION
+    ): Boolean? = if (granted == true && grantedVersion < currentVersion) null else granted
+
+    fun saveUsageStatsConsent(context: Context, granted: Boolean) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit {
+                putBoolean(KEY_USAGE_STATS_CONSENT, granted)
+                putInt(KEY_USAGE_STATS_CONSENT_VERSION, USAGE_STATS_CONSENT_VERSION)
+            }
     }
 
     fun resetHideSupportButtonOnAppUpdate(context: Context, currentVersionCode: Long) {

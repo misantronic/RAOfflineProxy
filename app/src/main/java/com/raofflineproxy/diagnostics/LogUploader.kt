@@ -1,11 +1,8 @@
 package com.raofflineproxy.diagnostics
 
 import android.content.Context
-import android.os.Build
 import android.util.Log
-import com.raofflineproxy.BuildConfig
 import com.raofflineproxy.sharedHttpClient
-import com.raofflineproxy.ui.loadEmulatorSupport
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -94,24 +91,6 @@ object LogUploader {
             Log.e(TAG, "submitSupportRequest failed: ${error.message}", error)
         }
 
-    private data class DeviceInfo(
-        val device: String,
-        val osVersion: String,
-        val appVersion: String,
-        val enabledEmulators: List<String>
-    )
-
-    private fun deviceInfo(context: Context): DeviceInfo {
-        val enabledEmulators = loadEmulatorSupport(context).enabled.map { it.displayName }
-
-        return DeviceInfo(
-            device = "${Build.MANUFACTURER} ${Build.MODEL}".trim(),
-            osVersion = androidVersionLabel(),
-            appVersion = BuildConfig.VERSION_NAME,
-            enabledEmulators = enabledEmulators
-        )
-    }
-
     // Submitted alongside the log so the support form can skip asking for this again once the
     // user provides a Log ID. Best-effort: any field that can't be determined is just omitted.
     private fun uploadMetadata(context: Context): JSONObject {
@@ -126,9 +105,6 @@ object LogUploader {
             }
         }
     }
-
-    private fun androidVersionLabel(): String =
-        Build.VERSION.RELEASE?.takeIf { it.isNotBlank() } ?: Build.VERSION.SDK_INT.toString()
 
     private fun zipLogs(content: String): ByteArray {
         val buffer = ByteArrayOutputStream()

@@ -60,6 +60,7 @@ class MainActivity : AppCompatActivity() {
     private var activeSnackbarKind: ActiveSnackbarKind? = null
     private var suppressNextDismissCallback = false
     private var activeSafGrantTarget: SafGrantTarget? = null
+    private var usageStatsDialogShown = false
     private var attemptedGenericAllFilesAccess = false
     private var pendingQuit = false
     private val shizukuPermissionListener = Shizuku.OnRequestPermissionResultListener { requestCode, grantResult ->
@@ -253,6 +254,7 @@ class MainActivity : AppCompatActivity() {
                 requestStartProxy()
             }
             viewModel.checkForAppUpdate()
+            viewModel.reportUsageStatsIfDue()
         } else {
             syncNavigationUi()
         }
@@ -278,6 +280,10 @@ class MainActivity : AppCompatActivity() {
                     }
                 } else {
                     activeSafGrantTarget = null
+                }
+                if (state.hasLoginCredentials && state.usageStatsConsent == null && !usageStatsDialogShown) {
+                    usageStatsDialogShown = true
+                    showUsageStatsConsentDialog()
                 }
 
                 if (pendingQuit && !state.proxyRunning && !state.proxyToggleInProgress) {
@@ -693,6 +699,32 @@ class MainActivity : AppCompatActivity() {
         }
 
         dialog.setCanceledOnTouchOutside(false)
+        dialog.show()
+    }
+
+    private fun showUsageStatsConsentDialog() {
+        val dialog = AlertDialog.Builder(this)
+            .setTitle(R.string.usage_stats_dialog_title)
+            .setMessage(R.string.usage_stats_dialog_message)
+            .setPositiveButton(R.string.usage_stats_dialog_accept) { _, _ ->
+                viewModel.setUsageStatsConsent(true)
+            }
+            .setNegativeButton(R.string.usage_stats_dialog_decline) { _, _ ->
+                viewModel.setUsageStatsConsent(false)
+            }
+            .setNeutralButton(R.string.btn_privacy_policy, null)
+            .setCancelable(false)
+            .create()
+
+        dialog.setOnShowListener {
+            val positiveButton = dialog.getButton(AlertDialog.BUTTON_POSITIVE)
+            // Declining must look exactly as prominent as accepting for the consent to be valid.
+            dialog.getButton(AlertDialog.BUTTON_NEGATIVE).setTextColor(positiveButton.textColors)
+            dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener {
+                openUrl(getString(R.string.privacy_policy_url))
+            }
+        }
+
         dialog.show()
     }
 

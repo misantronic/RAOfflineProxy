@@ -39,6 +39,7 @@
     </queries>
 
     <application
+        android:name=".RAOfflineProxyApplication"
         android:allowBackup="true"
         android:fullBackupContent="@xml/backup_rules"
         android:dataExtractionRules="@xml/data_extraction_rules"

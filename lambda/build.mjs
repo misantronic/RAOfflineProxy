@@ -9,7 +9,8 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const packages = [
     'raop-log-upload',
     'raop-support-report',
-    'raop-support-payment'
+    'raop-support-payment',
+    'raop-usage-ping'
 ];
 
 async function buildPackage(name) {

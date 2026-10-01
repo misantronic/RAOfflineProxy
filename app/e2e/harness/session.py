@@ -36,13 +36,15 @@ STOP_LABEL = "Stop proxy"
 PROXY_TOGGLE = "action_proxy_root"
 PROXY_TOGGLE_LABEL = "tv_proxy_label"
 
-# Update checks and the smart-cache prompt would reach the internet or pop a
-# dialog over the proxy toggle; the support button only adds noise to dumps.
+# Update checks, the smart-cache prompt and the usage-stats consent would reach
+# the internet or pop a dialog over the proxy toggle; the support button only
+# adds noise to dumps.
 SEEDED_PREFS = """<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
 <map>
     <boolean name="app_update_check_enabled" value="false" />
     <boolean name="enable_smart_caching" value="false" />
     <boolean name="hide_support_button" value="true" />
+    <boolean name="usage_stats_consent" value="false" />
 </map>
 """
 

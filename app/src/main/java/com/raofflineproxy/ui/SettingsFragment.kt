@@ -42,6 +42,7 @@ class SettingsFragment : Fragment() {
         val cbAppUpdateCheck = view.findViewById<SwitchCompat>(R.id.cb_app_update_check)
         val cbHideSupportButton = view.findViewById<SwitchCompat>(R.id.cb_hide_support_button)
         val cbShowLockedAchievements = view.findViewById<SwitchCompat>(R.id.cb_show_locked_achievements)
+        val cbUsageStats = view.findViewById<SwitchCompat>(R.id.cb_usage_stats)
         val btnManageSubscription = view.findViewById<Button>(R.id.btn_manage_subscription)
         val rowProxyPort = view.findViewById<View>(R.id.row_proxy_port)
         val tvProxyPortValue = view.findViewById<TextView>(R.id.tv_proxy_port_value)
@@ -69,6 +70,10 @@ class SettingsFragment : Fragment() {
         cbShowLockedAchievements.setOnCheckedChangeListener { _, isChecked ->
             if (syncingState) return@setOnCheckedChangeListener
             viewModel.setShowLockedAchievementsEnabled(isChecked)
+        }
+        cbUsageStats.setOnCheckedChangeListener { _, isChecked ->
+            if (syncingState) return@setOnCheckedChangeListener
+            viewModel.setUsageStatsConsent(isChecked)
         }
 
         btnManageSubscription.setOnClickListener {
@@ -162,6 +167,9 @@ class SettingsFragment : Fragment() {
                 }
                 if (cbShowLockedAchievements.isChecked != state.showLockedAchievements) {
                     cbShowLockedAchievements.isChecked = state.showLockedAchievements
+                }
+                if (cbUsageStats.isChecked != (state.usageStatsConsent == true)) {
+                    cbUsageStats.isChecked = state.usageStatsConsent == true
                 }
                 tvProxyPortValue.text = state.proxyPort.toString()
                 rowProxyPort.isEnabled = !state.proxyRunning

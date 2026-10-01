@@ -304,6 +304,12 @@
     <string name="setting_app_update_check_caption">Checks for new app versions on startup</string>
     <string name="setting_hide_support_button_label">Hide "Support me"-button</string>
     <string name="setting_hide_support_button_caption">Hides the donation button on the home screen</string>
+    <string name="setting_usage_stats_label">Share anonymous usage statistics</string>
+    <string name="setting_usage_stats_caption">Sends device model, app version and cache sync numbers once a day. Your username is never sent.</string>
+    <string name="usage_stats_dialog_title">Help improve RAOfflineProxy</string>
+    <string name="usage_stats_dialog_message">Sharing anonymous statistics once a day would really help me understand how many people use RAOfflineProxy and how well caching works on their devices.\n\nSent: app version, device model, enabled emulators, and caching numbers (game counts, request counts, errors).\nNever sent: your username, password or achievements.\n\nYou can turn this off anytime in Settings.</string>
+    <string name="usage_stats_dialog_accept">Share statistics</string>
+    <string name="usage_stats_dialog_decline">No thanks</string>
     <string name="setting_show_locked_achievements_label">Show locked achievements</string>
     <string name="setting_show_locked_achievements_caption">Includes achievements you haven\'t unlocked yet in the achievements list</string>
     <string name="setting_autostart_caption">Starts the proxy automatically when the system boots</string>

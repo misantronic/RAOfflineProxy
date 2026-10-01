@@ -5,7 +5,8 @@
     "workspaces": [
         "raop-log-upload",
         "raop-support-report",
-        "raop-support-payment"
+        "raop-support-payment",
+        "raop-usage-ping"
     ],
     "scripts": {
         "build": "node build.mjs",
