@@ -98,6 +98,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -260,6 +261,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             }
         }
         viewModelScope.launch { mirrorBackgroundQueueProgress() }
+        viewModelScope.launch { mirrorExternalProxyToggles() }
         viewModelScope.launch {
             combine(CachingNotifications.nextQueueBatchAt, CachingNotifications.queueProgress) { at, progress ->
                 at to (progress != null)
@@ -1464,6 +1466,19 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Shows the proxy service's background queue run in the same progress snackbar as a bulk
      *  run started from the app. A bulk run keeps the worker idle, so the two never overlap. */
+    /** Other apps can start and stop the proxy through [com.raofflineproxy.ProxyConfigProvider];
+     *  only transitions count, the initial state comes from [recoverPatchedCfgIfProxyStopped]. */
+    private suspend fun mirrorExternalProxyToggles() {
+        ProxyService.runtime
+            .map { it.running }
+            .distinctUntilChanged()
+            .drop(1)
+            .collect { running ->
+                if (_state.value.proxyToggleInProgress || _state.value.proxyRunning == running) return@collect
+                _state.value = _state.value.copy(proxyRunning = running, cfgIsPatched = null)
+            }
+    }
+
     private suspend fun mirrorBackgroundQueueProgress() {
         val app = getApplication<Application>()
         var showing = false

@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="com.raofflineproxy.permission.CONTROL_PROXY" />
+
+    <queries>
+        <provider android:authorities="com.raofflineproxy.config" />
+    </queries>
+
+    <application android:label="RAOfflineProxy E2E automation client">
+        <receiver
+            android:name=".ControlReceiver"
+            android:exported="true" />
+    </application>
+
+</manifest>

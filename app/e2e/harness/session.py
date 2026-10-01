@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import re
 import time
 
@@ -13,6 +14,10 @@ MAIN_ACTIVITY = APP_PACKAGE + "/.ui.MainActivity"
 PROXY_SERVICE = ".service.ProxyService"
 PROXY_NOTIFICATION_ID = 1
 PREFS_FILE = "shared_prefs/ra_proxy_prefs.xml"
+
+CONFIG_URI = "content://%s.config" % APP_PACKAGE
+CLIENT_RECEIVER = "com.raofflineproxy.e2e.client/.ControlReceiver"
+CONTROL_OUTPUT = re.compile(r'-> result=(\S+) status=(\{.*\})"')
 
 FLYCAST_PACKAGE = "com.flycast.emulator"
 FLYCAST_HOST_OVERRIDE_FILE = "files/host_override"
@@ -73,6 +78,15 @@ def cfg_value(content: str, key: str) -> str | None:
         r'^\s*%s\s*=\s*"(.*)"\s*$' % re.escape(key), content or "", re.MULTILINE
     )
     return match.group(1) if match else None
+
+
+def parse_control_output(output: str) -> tuple:
+    """(result, status) from the automation client's broadcast result."""
+    match = CONTROL_OUTPUT.search(output)
+    if match is None:
+        raise AssertionError("unexpected automation client output: %s" % output.strip())
+    result = None if match.group(1) == "null" else match.group(1)
+    return result, json.loads(match.group(2))
 
 
 def wait_until(predicate, timeout: float, interval: float = 1.0, message: str = "condition"):
@@ -201,3 +215,23 @@ class AndroidSession:
     def go_online(self, timeout: float = 180.0) -> None:
         self.device.set_airplane_mode(False)
         self.wait_until_online(timeout)
+
+    def control(self, method: str) -> tuple:
+        """Calls the provider from the automation client, which holds the control permission."""
+        output = self.device.adb.shell(
+            "am broadcast -n %s --es method %s" % (CLIENT_RECEIVER, method), timeout=120
+        ).stdout
+        return parse_control_output(output)
+
+    def status(self) -> dict:
+        return self.control("status")[1]
+
+    def shell_control(self, method: str) -> str:
+        """Calls the provider from the shell, which lacks the control permission."""
+        result = self.device.adb.shell(
+            "content call --uri %s --method %s" % (CONFIG_URI, method), check=False
+        )
+        return result.stdout + result.stderr
+
+    def prefs(self) -> str:
+        return self.device.read_app_file(APP_PACKAGE, PREFS_FILE) or ""

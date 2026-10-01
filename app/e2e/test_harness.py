@@ -9,7 +9,7 @@ import pytest
 from app.e2e.harness.device import AndroidDevice
 from app.e2e.harness.diagnostics import artifact_dir, capture
 from app.e2e.harness.fake_ra_host import HostFakeRa
-from app.e2e.harness.session import PROXY_VALUE, cfg_value, retroarch_cfg
+from app.e2e.harness.session import PROXY_VALUE, cfg_value, parse_control_output, retroarch_cfg
 from app.e2e.harness.ui import Ui
 
 NOTIFICATION_DUMP = """\
@@ -55,6 +55,29 @@ def test_cfg_value_reads_quoted_values():
     assert cfg_value(content, "cheevos_hardcore_mode_enable") == "true"
     assert cfg_value(content, "cheevos_custom_host") == PROXY_VALUE
     assert cfg_value(content, "missing_key") is None
+
+
+def test_control_output_yields_result_and_status():
+    output = (
+        'Broadcasting: Intent { flg=0x400000 cmp=com.raofflineproxy.e2e.client/.ControlReceiver (has extras) }\n'
+        'Broadcast completed: result=0, data="start -> result=ok status={"version":1,"running":true,'
+        '"queue":{"count":0,"state":"idle","nextWindowAt":null}}"\n'
+    )
+    result, status = parse_control_output(output)
+    assert result == "ok"
+    assert status["running"] is True
+    assert status["queue"]["nextWindowAt"] is None
+
+
+def test_control_output_without_result_is_none():
+    output = 'Broadcast completed: result=0, data="status -> result=null status={"version":1}"\n'
+    assert parse_control_output(output) == (None, {"version": 1})
+
+
+def test_control_output_rejects_errors():
+    output = 'Broadcast completed: result=0, data="stop -> error=SecurityException: denied"\n'
+    with pytest.raises(AssertionError):
+        parse_control_output(output)
 
 
 def test_notification_is_matched_by_package_and_id():
