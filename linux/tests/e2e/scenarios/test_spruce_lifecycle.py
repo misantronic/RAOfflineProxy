@@ -141,3 +141,13 @@ class TestSpruceSpecific:
 
 class TestUsageStats(UsageStatsChecks):
     EXPECTED_OS = "spruce"
+
+    def grant_consent(self, installed) -> None:
+        # spruce has no menu of ours: its own UI asks and stores the answer through the CLI.
+        output = installed.cli.run("usage-stats-status --json", check=True).stdout
+        status = json.loads(output.strip().splitlines()[-1])
+        assert status["consent"] is None
+        assert status["accept"] == "Share statistics"
+        installed.cli.run("enable-usage-stats", check=True)
+        status_line = installed.cli.run("usage-stats-status", check=True).stdout.strip().splitlines()[-1]
+        assert status_line == "enabled"

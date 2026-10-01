@@ -45,6 +45,23 @@ rewrites it whole on any settings change, so an edit from outside is lost.
 `start-proxy`, `stop-proxy`, `cache-rom --path <rom>`. spruce sources `common.sh` in a
 subshell for the environment, so resolving the interpreter stays this app's business.
 
+### Usage statistics consent
+
+spruce has no menu of this app, so it has to ask itself. Nothing is counted or sent until it
+does.
+
+| Command | Output |
+| --- | --- |
+| `usage-stats-status` | `unanswered`, `enabled` or `disabled` |
+| `usage-stats-status --json` | `{"consent": null\|true\|false, "consent_version", "title", "message", "accept", "decline", "privacy_policy_url"}` |
+| `enable-usage-stats` | stores the agreement with the current consent version |
+| `disable-usage-stats` | stores the decline and deletes the counters collected so far |
+
+Ask when `consent` is `null`, using the returned texts and the two choices with equal
+prominence. `null` also comes back after a consent-version bump, when a user who agreed has to
+be asked again; a decline is never asked again. The proxy service sends the daily report itself
+once consent is stored; spruce only needs to keep a way to turn it off in its settings.
+
 ## Build
 
 ```

@@ -186,18 +186,15 @@ ASSETS_DIR = Path(__file__).resolve().parent / "assets"
 SUPPORT_SUBTITLE = "Free & open source, made in my spare time"
 SUPPORT_DESCRIPTION = "If it's been useful to you, a small donation helps keep it going. Thank you!"
 SUPPORT_DONATE_URL = "https://raofflineproxy.com/donate.html"
-USAGE_CONSENT_TITLE = "Help improve RAOfflineProxy"
-USAGE_CONSENT_ACCEPT = "Share statistics"
-USAGE_CONSENT_DECLINE = "No thanks"
+USAGE_CONSENT_TITLE = usage_stats.CONSENT_TITLE
+USAGE_CONSENT_ACCEPT = usage_stats.CONSENT_ACCEPT
+USAGE_CONSENT_DECLINE = usage_stats.CONSENT_DECLINE
 # Kept short on purpose: on 640x480 (Miyoo Mini) anything longer pushes the two choices under
 # the hint line.
 USAGE_CONSENT_TEXT = (
-    "Sharing anonymous statistics once a day would really help me understand how many people "
-    "use RAOfflineProxy and how well caching works.\n\n"
-    "Sent: app version, device, OS, cache numbers.\n"
-    "Never sent: username, password, achievements.\n"
-    "Turn off anytime in the main menu.\n"
-    "Details: raofflineproxy.com/privacy-policy.html"
+    usage_stats.CONSENT_MESSAGE
+    + "\nTurn off anytime in the main menu.\n"
+    + "Details: raofflineproxy.com/privacy-policy.html"
 )
 USAGE_STATS_ENABLE_LABEL = "Enable usage stats"
 USAGE_STATS_DISABLE_LABEL = "Disable usage stats"
