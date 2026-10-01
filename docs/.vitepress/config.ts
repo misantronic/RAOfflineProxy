@@ -57,6 +57,7 @@ export default defineConfig({
           { text: 'Pending Awards', link: '/pending-awards' },
           { text: 'Anti-Tamper Hash Chain', link: '/hash-chain' },
           { text: 'Settings & Auto-start', link: '/settings' },
+          { text: 'Automation API', link: '/automation-api' },
           { text: 'Caveats', link: '/caveats' }
         ],
       },

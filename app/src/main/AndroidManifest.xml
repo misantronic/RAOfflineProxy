@@ -17,6 +17,12 @@
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"
         tools:ignore="RequestInstallPackagesPolicy" />
 
+    <permission
+        android:name="${applicationId}.permission.CONTROL_PROXY"
+        android:label="@string/permission_control_proxy_label"
+        android:description="@string/permission_control_proxy_description"
+        android:protectionLevel="normal" />
+
     <queries>
         <package android:name="com.retroarch.aarch64" />
         <package android:name="com.retroarch" />

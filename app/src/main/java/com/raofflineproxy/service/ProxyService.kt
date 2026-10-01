@@ -21,6 +21,7 @@ import android.util.Log
 import androidx.annotation.RequiresPermission
 import androidx.core.content.edit
 import com.raofflineproxy.PrefsConstants
+import com.raofflineproxy.ProxyConfigProvider
 import com.raofflineproxy.R
 import com.raofflineproxy.hasValidatedInternet
 import com.raofflineproxy.isValidatedNetwork
@@ -45,19 +46,15 @@ import com.raofflineproxy.proxy.RefreshNotificationMode
 import com.raofflineproxy.proxy.DrainStop
 import com.raofflineproxy.usage.UsageReporter
 import com.raofflineproxy.proxy.drainCacheQueue
-import com.raofflineproxy.ui.Emulator
-import com.raofflineproxy.ui.broadcastNotPatchedResult
-import com.raofflineproxy.ui.configNotPatchedResult
-import com.raofflineproxy.ui.loadConfigSafUri
-import com.raofflineproxy.ui.requireConfigOverride
-import com.raofflineproxy.ui.revertBroadcastCfg
-import com.raofflineproxy.ui.revertConfigCfg
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
@@ -91,6 +88,11 @@ class ProxyService : Service() {
     private var refreshJob: Job? = null
     private var cacheQueueJob: Job? = null
     private var cacheQueueRejectedToken: String? = null
+    @Volatile private var queueLoginBlocked = false
+        set(value) {
+            field = value
+            publishRuntime()
+        }
     private var cachingObserverJob: Job? = null
     @Volatile private var queuedCount = 0
     @Volatile private var nextQueueWindowAt: Long? = null
@@ -128,6 +130,7 @@ class ProxyService : Service() {
     override fun onCreate() {
         super.onCreate()
         runningInProcess = true
+        publishRuntime()
         db = AppDatabase.getInstance(this)
         awardFlusher = AwardFlusher(this, db)
         proxyServer = ProxyServer(
@@ -263,12 +266,14 @@ class ProxyService : Service() {
      *  long to wait before looking again while the device stays awake. */
     private suspend fun processCacheQueue(): Long {
         if (CacheQueue.count(db) == 0) {
+            queueLoginBlocked = false
             CacheQueueAlarm.cancel(this)
             return CACHE_QUEUE_POLL_MS
         }
         if (!canWorkOnCacheQueue()) return deferCacheQueueWhileActive()
-        val credentials = loadLoginCredentials(db) ?: return CACHE_QUEUE_POLL_MS
-        if (credentials.token == cacheQueueRejectedToken) return CACHE_QUEUE_POLL_MS
+        val credentials = loadLoginCredentials(db)
+        queueLoginBlocked = credentials == null || credentials.token == cacheQueueRejectedToken
+        if (credentials == null || queueLoginBlocked) return CACHE_QUEUE_POLL_MS
         val userAgent = proxyUserAgent(loadUserAgent(db))
         CacheQueueWakeLock.hold(this)
         val result = try {
@@ -286,7 +291,10 @@ class ProxyService : Service() {
         } finally {
             CachingNotifications.reportQueue(null)
         }
-        if (result.stop == DrainStop.AuthRejected) cacheQueueRejectedToken = credentials.token
+        if (result.stop == DrainStop.AuthRejected) {
+            cacheQueueRejectedToken = credentials.token
+            queueLoginBlocked = true
+        }
         val nextAttemptAt = result.nextAttemptAt
         nextQueueWindowAt = nextAttemptAt
         updateNotification()
@@ -404,6 +412,7 @@ class ProxyService : Service() {
             revertPatchedCfgIfNeeded()
         }
         runningInProcess = false
+        _runtime.value = ServiceRuntime()
         CacheQueueAlarm.cancel(this)
         CacheQueueWakeLock.release()
         proxyServer.stop()
@@ -494,6 +503,12 @@ class ProxyService : Service() {
     private fun updateNotification() {
         getSystemService(NotificationManager::class.java)
             .notify(NOTIFICATION_ID, buildNotification())
+        publishRuntime()
+    }
+
+    private fun publishRuntime() {
+        if (!runningInProcess) return
+        _runtime.value = ServiceRuntime(running = true, online = isServerReachable(), queueLoginBlocked = queueLoginBlocked)
     }
 
     private fun onGameActivity(activity: GameActivity) {
@@ -625,58 +640,7 @@ class ProxyService : Service() {
         if (cfgCleanupAttempted) return
 
         cfgCleanupAttempted = true
-        val prefs = getSharedPreferences(PrefsConstants.PREFS_NAME, MODE_PRIVATE)
-        if (prefs.getBoolean(PrefsConstants.KEY_SKIP_NEXT_CFG_REVERT, false)) {
-            prefs.edit { remove(PrefsConstants.KEY_SKIP_NEXT_CFG_REVERT) }
-            Log.i(TAG, "Skipping RetroArch cfg revert; UI already handled it")
-            return
-        }
-
-        val configResults = Emulator.SHIZUKU_MANAGED.associateWith { emulator ->
-            val config = requireConfigOverride(emulator)
-            if (prefs.getBoolean(emulator.patchedThisRunPrefsKey, false)) {
-                revertConfigCfg(
-                    context = this,
-                    emulator = emulator,
-                    treeUri = loadConfigSafUri(this, emulator),
-                    restoreHardcore = prefs.getBoolean(config.hardcoreWasEnabledPrefsKey, false)
-                )
-            } else {
-                configNotPatchedResult(emulator)
-            }
-        }
-        val broadcastResults = Emulator.BROADCAST_MANAGED.associateWith { emulator ->
-            if (prefs.getBoolean(emulator.patchedThisRunPrefsKey, false)) {
-                revertBroadcastCfg(this, emulator)
-            } else {
-                broadcastNotPatchedResult(emulator)
-            }
-        }
-
-        configResults.forEach { (emulator, result) ->
-            if (!result.success || result.copyBackPath != null) return@forEach
-            prefs.edit {
-                remove(requireConfigOverride(emulator).hardcoreWasEnabledPrefsKey)
-                remove(emulator.patchedThisRunPrefsKey)
-            }
-            Log.i(TAG, "${emulator.displayName} config reverted during service shutdown")
-        }
-        broadcastResults.forEach { (emulator, result) ->
-            if (!result.success) return@forEach
-            prefs.edit { remove(emulator.patchedThisRunPrefsKey) }
-            Log.i(TAG, "${emulator.displayName} host override reverted during service shutdown")
-        }
-
-        val failedConfig = configResults.values.firstOrNull { !it.success || it.copyBackPath != null }
-        val failedBroadcast = broadcastResults.values.firstOrNull { !it.success }
-        val reason = when {
-            failedConfig != null -> failedConfig.copyBackPath
-                ?.let { "${failedConfig.message} copyBackPath=$it" }
-                ?: failedConfig.message
-            failedBroadcast != null -> failedBroadcast.message
-            else -> return
-        }
-        Log.w(TAG, "Failed to revert emulator config during service shutdown: $reason")
+        revertPatchedEmulatorConfigs(this)
     }
 
     companion object {
@@ -685,6 +649,10 @@ class ProxyService : Service() {
         @Volatile
         private var runningInProcess = false
         private val cacheQueueWake = Channel<Unit>(Channel.CONFLATED)
+        private val _runtime = MutableStateFlow(ServiceRuntime())
+
+        /** What the running service knows that other components can't work out for themselves. */
+        val runtime: StateFlow<ServiceRuntime> = _runtime.asStateFlow()
 
         fun isRunningInProcess(): Boolean = runningInProcess
 
@@ -706,6 +674,7 @@ class ProxyService : Service() {
         private fun setShouldKeepRunning(context: Context, shouldRun: Boolean) {
             context.getSharedPreferences(PrefsConstants.PREFS_NAME, MODE_PRIVATE)
                 .edit { putBoolean(PrefsConstants.KEY_PROXY_SHOULD_BE_RUNNING, shouldRun) }
+            ProxyConfigProvider.notifyStatusChanged(context)
         }
 
         fun scheduleRestart(context: Context, delayMs: Long = RESTART_DELAY_MS) {
@@ -749,3 +718,9 @@ class ProxyService : Service() {
         }
     }
 }
+
+data class ServiceRuntime(
+    val running: Boolean = false,
+    val online: Boolean = false,
+    val queueLoginBlocked: Boolean = false
+)
