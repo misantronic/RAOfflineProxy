@@ -10,7 +10,7 @@ LINUX_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 DIST_DIR="${SCRIPT_DIR}/dist"
 BUILD_DIR="${DIST_DIR}/raofflineproxy-spruce-app"
 APP_DIR="${BUILD_DIR}/App/RAOfflineProxy"
-APP_VERSION="${RAOFFLINEPROXY_APP_VERSION:-1.13.0-alpha1}"
+APP_VERSION="${RAOFFLINEPROXY_APP_VERSION:-2.0.0-alpha1}"
 ZIP_NAME="RAOfflineProxy-Spruce-v${APP_VERSION}.zip"
 
 TARGET="arm-linux-gnueabihf.2.17" OUT_DIR="${SCRIPT_DIR}/native/armv7" \
