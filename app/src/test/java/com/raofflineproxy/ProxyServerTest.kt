@@ -952,6 +952,35 @@ class ProxyServerTest {
     }
 
     @Test
+    fun buildAchievementGameIds_subsetUsesItsOwnSetGameId() {
+        val entry = CacheEntry(
+            cacheKey = CacheKeys.achievementSets("abc123", "user"),
+            responseBody = """{"GameId":100,"Sets":[""" +
+                """{"GameId":100,"Achievements":[{"ID":1}]},""" +
+                """{"GameId":200,"Achievements":[{"ID":2}]}]}"""
+        )
+        val result = buildAchievementGameIds(
+            patchEntries = emptyList(),
+            achievementsetsEntries = listOf(entry)
+        )
+        assertEquals(100, result[1])
+        assertEquals(200, result[2])
+    }
+
+    @Test
+    fun buildAchievementGameIds_setWithoutGameId_fallsBackToTopLevelGameId() {
+        val entry = CacheEntry(
+            cacheKey = CacheKeys.achievementSets("abc123", "user"),
+            responseBody = """{"GameId":100,"Sets":[{"Achievements":[{"ID":1}]}]}"""
+        )
+        val result = buildAchievementGameIds(
+            patchEntries = emptyList(),
+            achievementsetsEntries = listOf(entry)
+        )
+        assertEquals(100, result[1])
+    }
+
+    @Test
     fun buildAchievementGameIds_achievementsetsWithoutSets_mapsAchievementToGame() {
         val result = buildAchievementGameIds(
             patchEntries = emptyList(),
