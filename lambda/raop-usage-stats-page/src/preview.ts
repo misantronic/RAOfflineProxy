@@ -1,7 +1,6 @@
 import { readFileSync, writeFileSync } from 'fs';
-import { aggregate } from './aggregate';
 import { unmarshalRow } from './index';
-import { renderPage } from './render';
+import { renderPage, statsViews } from './render';
 
 // Renders the page from a saved scan, e.g.
 // aws dynamodb scan --table-name raop-usage --profile kumo-admin > scan.json
@@ -13,5 +12,5 @@ if (!input) {
 }
 const items = JSON.parse(readFileSync(input, 'utf-8')).Items ?? [];
 const rows = items.map(unmarshalRow).filter((row: Record<string, unknown>) => row.pk !== 'secret');
-writeFileSync(output, renderPage(aggregate(rows, now ? new Date(now) : new Date())));
+writeFileSync(output, renderPage(statsViews(rows, now ? new Date(now) : new Date())));
 console.log(`Wrote ${output} from ${rows.length} rows`);

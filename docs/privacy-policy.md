@@ -61,7 +61,7 @@ Your IP address is not stored or logged. Usage records are deleted automatically
 
 The statistics are used only to understand how many people use the app on which devices, whether features like bulk caching work, and how much load the app puts on RetroAchievements.
 
-Aggregated numbers from these statistics (for example how many people use the app per month, on which devices, and how many requests reach RetroAchievements per day) are published at [raofflineproxy.com/stats.html](https://raofflineproxy.com/stats.html) and updated daily. The page never shows individual reports or IDs, and devices or firmwares used by fewer than three people are only shown as "Other".
+Aggregated numbers from these statistics (for example how many people use the app per month, on which devices, and how many requests reach RetroAchievements per day) are published at [raofflineproxy.com/stats.html](https://raofflineproxy.com/stats.html) and updated daily. The page never shows individual reports or IDs. It lists the six most used devices and the six most used Android and firmware versions by name, even if only one person uses one of them; beyond those, a device or version used by only one person is shown as "Other".
 
 ### Donations
 

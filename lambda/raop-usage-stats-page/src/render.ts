@@ -1,4 +1,4 @@
-import { Count, DailyLoad, REQUEST_SOURCES, StatsModel } from './aggregate';
+import { aggregate, Count, DailyLoad, MIN_SHOWN, PLATFORMS, REQUEST_SOURCES, Row, StatsModel } from './aggregate';
 
 interface Series {
     name: string;
@@ -184,7 +184,23 @@ function dailyColumns(daily: DailyLoad[], series: Series[]): string {
     );
 }
 
-export function renderPage(model: StatsModel): string {
+export type ViewKey = 'all' | 'android' | 'linux';
+
+export interface StatsView {
+    key: ViewKey;
+    label: string;
+    model: StatsModel;
+}
+
+export function statsViews(rows: Row[], now: Date): StatsView[] {
+    return [
+        { key: 'all', label: 'All', model: aggregate(rows, now) },
+        ...PLATFORMS.map((platform) => ({ key: platform.key, label: platform.label, model: aggregate(rows, now, platform.key) }))
+    ];
+}
+
+function renderPanel(view: StatsView): string {
+    const model = view.model;
     const daily = model.daily;
     const requestSeries: Series[] = REQUEST_SOURCES.map((source, index) => ({
         name: source.label,
@@ -197,13 +213,12 @@ export function renderPage(model: StatsModel): string {
     ];
     const totalBatches = daily.reduce((sum, day) => sum + day.batches, 0);
     const timeLimited = daily.reduce((sum, day) => sum + day.batchesTimeLimited, 0);
-    const generated = new Date(model.generatedAt);
-    const generatedLabel = `${shortDate(model.today)}, ${String(generated.getUTCHours()).padStart(2, '0')}:${String(
-        generated.getUTCMinutes()
-    ).padStart(2, '0')} UTC`;
+    const month = longMonth(model.month);
+    const firmwareTitle =
+        view.key === 'android' ? 'Android versions' : view.key === 'linux' ? 'Firmware' : 'Android and firmware versions';
 
     const tiles = [
-        tile('People this month', formatNumber(model.peopleThisMonth), longMonth(model.month)),
+        tile('People this month', formatNumber(model.peopleThisMonth), month),
         tile('Active today', formatNumber(model.peopleToday), shortDate(model.today)),
         tile('Devices this month', formatNumber(model.devicesThisMonth), 'one person can use several'),
         tile('Requests to RA', formatNumber(model.requestsLast30Days), 'last 30 days'),
@@ -243,13 +258,51 @@ export function renderPage(model: StatsModel): string {
             dailyColumns(daily, [{ name: 'Games cached', color: '--series-1', values: daily.map((day) => day.queueCached) }]),
             true
         ),
-        card('Platforms', `People, ${longMonth(model.month)}`, barList(model.platforms)),
-        card('Devices', `People, ${longMonth(model.month)} · fewer than 3 people are grouped as Other`, barList(model.devices)),
-        card('Android and firmware versions', `People, ${longMonth(model.month)}`, barList(model.firmwares)),
-        card('App versions', `People, ${longMonth(model.month)}`, barList(model.appVersions)),
-        card('Enabled emulators', `Share of devices, ${longMonth(model.month)}`, barList(model.emulators, formatPercent, 1)),
-        card('Library size', 'Devices by number of cached games, latest report this month', barList(model.libraries))
+        view.key === 'all' ? card('Platforms', `People, ${month}`, barList(model.platforms)) : '',
+        card(
+            'Devices',
+            `People, ${month} · beyond the ${MIN_SHOWN} most used, devices used by only one person are grouped as Other`,
+            barList(model.devices)
+        ),
+        card(
+            firmwareTitle,
+            `People, ${month} · beyond the ${MIN_SHOWN} most used, versions used by only one person are grouped as Other`,
+            barList(model.firmwares)
+        ),
+        card('Enabled emulators', `Share of devices, ${month}`, barList(model.emulators, formatPercent, 1)),
+        card('Library size', 'Devices by number of cached games, latest report this month', barList(model.libraries)),
+        card('App versions', `People, ${month}`, barList(model.appVersions))
     ].join('');
+
+    return `<div class="tiles">${tiles}</div><div class="grid">${cards}</div>`;
+}
+
+/** One static page with a tab per view; "all" comes first and is shown by default. */
+export function renderPage(views: StatsView[]): string {
+    const first = views[0].model;
+    const generated = new Date(first.generatedAt);
+    const generatedLabel = `${shortDate(first.today)}, ${String(generated.getUTCHours()).padStart(2, '0')}:${String(
+        generated.getUTCMinutes()
+    ).padStart(2, '0')} UTC`;
+
+    const tabs = views
+        .map(
+            (view, index) =>
+                `<button type="button" role="tab" id="tab-${view.key}" aria-controls="panel-${view.key}" aria-selected="${
+                    index === 0
+                }" tabindex="${index === 0 ? 0 : -1}" data-view="${view.key}">${escapeHtml(view.label)}<span class="count">${formatNumber(
+                    view.model.peopleThisMonth
+                )}</span></button>`
+        )
+        .join('');
+    const panels = views
+        .map(
+            (view, index) =>
+                `<section role="tabpanel" id="panel-${view.key}" aria-labelledby="tab-${view.key}"${
+                    index === 0 ? '' : ' hidden'
+                }>${renderPanel(view)}</section>`
+        )
+        .join('');
 
     return `<!doctype html>
 <html lang="en">
@@ -269,12 +322,13 @@ export function renderPage(model: StatsModel): string {
 <h1>Usage statistics</h1>
 <p class="lede">Anonymous, opt-in statistics from the Android and Linux apps. Only people who agreed to share are counted, so real usage is higher. Updated daily · last update ${escapeHtml(generatedLabel)}.</p>
 </header>
-<div class="tiles">${tiles}</div>
-<div class="grid">${cards}</div>
+<div class="tabs" role="tablist" aria-label="Platform">${tabs}</div>
+<p class="tab-note">Counters show people this month. Someone using both platforms counts once in All and once in each platform tab.</p>
+${panels}
 <footer>How this data is collected: <a href="/privacy-policy.html#anonymous-usage-statistics">privacy policy</a>.</footer>
 </main>
 <div class="tooltip" role="status" hidden></div>
-<script>${TOOLTIP_SCRIPT}</script>
+<script>${TOOLTIP_SCRIPT}${TABS_SCRIPT}</script>
 </body>
 </html>
 `;
@@ -289,7 +343,14 @@ a{color:var(--brand)}
 .home{display:inline-flex;align-items:center;gap:10px;font-weight:600;text-decoration:none;color:var(--text-primary)}
 h1{margin:16px 0 4px;font-size:28px;line-height:1.2;color:var(--brand)}
 .lede{margin:0;color:var(--text-secondary);max-width:70ch}
-.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin:24px 0}
+.tabs{display:flex;flex-wrap:wrap;gap:8px;margin:24px 0 6px}
+.tabs button{display:inline-flex;align-items:center;gap:8px;font:inherit;font-weight:600;color:var(--text-secondary);background:var(--surface-1);border:1px solid var(--border);border-radius:999px;padding:6px 14px;cursor:pointer}
+.tabs button:hover{color:var(--text-primary)}
+.tabs button[aria-selected="true"]{color:var(--text-primary);border-color:var(--brand);box-shadow:inset 0 0 0 1px var(--brand)}
+.tabs button:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+.tabs .count{font-variant-numeric:tabular-nums;font-weight:600;font-size:12px;color:var(--text-primary);background:var(--border);border-radius:999px;padding:1px 8px}
+.tab-note{margin:0;color:var(--muted);font-size:12px}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin:16px 0 24px}
 .tile,.card{background:var(--surface-1);border:1px solid var(--border);border-radius:12px}
 .tile{padding:14px 16px}
 .tile-label{color:var(--text-secondary);font-size:13px}
@@ -323,6 +384,12 @@ line.base{stroke:var(--axis)}
 footer{margin-top:24px;color:var(--text-secondary);font-size:13px}
 .tooltip{position:fixed;z-index:10;pointer-events:none;background:var(--surface-1);color:var(--text-primary);border:1px solid var(--border);border-radius:8px;padding:6px 10px;font-size:13px;box-shadow:0 4px 16px rgba(0,0,0,.16);max-width:320px}
 @media (max-width:520px){h1{font-size:23px}.tile-value{font-size:24px}.bar-row{grid-template-columns:minmax(0,8rem) 1fr auto}.tick{font-size:20px}.tick.minor{display:none}}
+`;
+
+// Tab switching with the selection kept in the URL hash (stats.html#linux), arrow keys between
+// tabs as the ARIA tabs pattern expects.
+const TABS_SCRIPT = `
+(function(){var tabs=[].slice.call(document.querySelectorAll('[role=tab]'));function select(key,focus){var found=tabs.some(function(t){return t.dataset.view===key;});if(!found)key=tabs[0].dataset.view;tabs.forEach(function(t){var on=t.dataset.view===key;t.setAttribute('aria-selected',on);t.tabIndex=on?0:-1;document.getElementById(t.getAttribute('aria-controls')).hidden=!on;if(on&&focus)t.focus();});}tabs.forEach(function(t,i){t.addEventListener('click',function(){select(t.dataset.view);history.replaceState(null,'','#'+t.dataset.view);});t.addEventListener('keydown',function(e){var d=e.key==='ArrowRight'?1:e.key==='ArrowLeft'?-1:0;if(!d)return;e.preventDefault();var next=tabs[(i+d+tabs.length)%tabs.length];select(next.dataset.view,true);history.replaceState(null,'','#'+next.dataset.view);});});select(location.hash.slice(1));window.addEventListener('hashchange',function(){select(location.hash.slice(1));});})();
 `;
 
 const TOOLTIP_SCRIPT = `

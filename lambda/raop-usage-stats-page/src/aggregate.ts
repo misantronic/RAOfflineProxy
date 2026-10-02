@@ -1,8 +1,16 @@
 export type Row = Record<string, unknown>;
 
 // Devices and firmwares used by fewer people are folded into "Other" on the public page, so a
-// rare device can't single out its owner.
-export const MIN_GROUP_SIZE = 3;
+// device only one person uses can't single out its owner. The most used ones are always listed,
+// so the charts say something even while most devices have a single user.
+export const MIN_GROUP_SIZE = 2;
+export const MIN_SHOWN = 6;
+
+export type Platform = 'android' | 'linux';
+export const PLATFORMS: { key: Platform; label: string }[] = [
+    { key: 'android', label: 'Android' },
+    { key: 'linux', label: 'Linux' }
+];
 export const DAILY_WINDOW_DAYS = 30;
 export const MONTHLY_WINDOW_MONTHS = 12;
 
@@ -116,9 +124,15 @@ function peopleCounts(rows: Row[], labelOf: (row: Row) => string): Count[] {
         .sort((a, b) => b.value - a.value || a.label.localeCompare(b.label));
 }
 
-export function foldSmallGroups(counts: Count[], minSize: number = MIN_GROUP_SIZE): Count[] {
-    const kept = counts.filter((count) => count.value >= minSize);
-    const other = counts.filter((count) => count.value < minSize).reduce((sum, count) => sum + count.value, 0);
+/** Keeps the first minShown entries (counts are sorted, most people first) and any further entry
+ *  with at least minSize people; everything else becomes "Other". */
+export function foldKeepingTop(
+    counts: Count[],
+    minShown: number = MIN_SHOWN,
+    minSize: number = MIN_GROUP_SIZE
+): Count[] {
+    const kept = counts.filter((count, index) => index < minShown || count.value >= minSize);
+    const other = counts.filter((count) => !kept.includes(count)).reduce((sum, count) => sum + count.value, 0);
     return other > 0 ? [...kept, { label: 'Other', value: other }] : kept;
 }
 
@@ -152,8 +166,10 @@ function dailyLoad(date: string, rows: Row[]): DailyLoad {
     };
 }
 
-/** Only release rows ("month#…", "day#…") count; dev builds ("dev#…") and secrets are skipped. */
-export function aggregate(rows: Row[], now: Date): StatsModel {
+/** Only release rows ("month#…", "day#…") count; dev builds ("dev#…") and secrets are skipped.
+ *  With a platform, only that platform's rows count. */
+export function aggregate(rows: Row[], now: Date, platform?: Platform): StatsModel {
+    if (platform) rows = rows.filter((row) => row.platform === platform);
     const today = now.toISOString().slice(0, 10);
     const month = today.slice(0, 7);
     const monthRows = rows.filter((row) => partition(row).startsWith('month#'));
@@ -201,8 +217,8 @@ export function aggregate(rows: Row[], now: Date): StatsModel {
         monthly,
         daily,
         platforms: peopleCounts(currentMonth, (row) => (row.platform === 'linux' ? 'Linux' : 'Android')),
-        devices: foldSmallGroups(peopleCounts(currentMonth, (row) => deviceLabel(text(row, 'device')))),
-        firmwares: foldSmallGroups(peopleCounts(currentMonth, firmwareLabel)),
+        devices: foldKeepingTop(peopleCounts(currentMonth, (row) => deviceLabel(text(row, 'device')))),
+        firmwares: foldKeepingTop(peopleCounts(currentMonth, firmwareLabel)),
         appVersions: peopleCounts(currentMonth, (row) => text(row, 'app_version')),
         emulators: [...emulatorCounts.entries()]
             .map(([label, value]) => ({ label, value: devicesWithEmulators ? value / devicesWithEmulators : 0 }))

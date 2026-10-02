@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { aggregate, deviceLabel, firmwareLabel, foldSmallGroups, Row } from './aggregate';
-import { escapeHtml, niceScale, renderPage } from './render';
+import { aggregate, deviceLabel, firmwareLabel, foldKeepingTop, Row } from './aggregate';
+import { escapeHtml, niceScale, renderPage, statsViews } from './render';
 
 const NOW = new Date('2026-10-20T23:55:00Z');
 
@@ -36,20 +36,43 @@ test('firmware labels keep Android versions and group Linux builds by name', () 
     assert.equal(firmwareLabel({ os: 'Knulli', os_version: 'scarab 2026/05/11 00:09' }), 'Knulli');
 });
 
-test('groups smaller than three people fold into Other', () => {
+test('the six most used are always listed, the rest needs two people', () => {
+    const counts = [5, 3, 2, 1, 1, 1, 1, 1].map((value, index) => ({ label: `D${index}`, value }));
     assert.deepEqual(
-        foldSmallGroups([
-            { label: 'AYN Thor', value: 6 },
-            { label: 'Retroid Pocket Nova', value: 3 },
-            { label: 'RG40XX-V', value: 1 },
-            { label: 'Odin2 Portal', value: 1 }
-        ]),
-        [
-            { label: 'AYN Thor', value: 6 },
-            { label: 'Retroid Pocket Nova', value: 3 },
-            { label: 'Other', value: 2 }
-        ]
+        foldKeepingTop(counts).map((c) => [c.label, c.value]),
+        [['D0', 5], ['D1', 3], ['D2', 2], ['D3', 1], ['D4', 1], ['D5', 1], ['Other', 2]]
     );
+    const popular = [4, 4, 3, 3, 2, 2, 2, 1].map((value, index) => ({ label: `D${index}`, value }));
+    assert.deepEqual(
+        foldKeepingTop(popular).map((c) => [c.label, c.value]),
+        [['D0', 4], ['D1', 4], ['D2', 3], ['D3', 3], ['D4', 2], ['D5', 2], ['D6', 2], ['Other', 1]]
+    );
+});
+
+test('a platform view only counts that platform', () => {
+    const rows = [
+        monthRow('a', 'AYN Thor'),
+        monthRow('b', 'AYN Thor'),
+        { ...monthRow('b', 'RG40XX-H'), platform: 'linux', os: 'Knulli', sk: 'b#linux#RG40XX-H' },
+        dayRow('2026-10-20', 'a', 'AYN Thor', { requests_emulator: 5 }),
+        { ...dayRow('2026-10-20', 'b', 'RG40XX-H', { requests_emulator: 7 }), platform: 'linux' }
+    ];
+    const [all, android, linux] = statsViews(rows, NOW);
+    assert.deepEqual([all.key, android.key, linux.key], ['all', 'android', 'linux']);
+    assert.equal(all.model.peopleThisMonth, 2);
+    assert.equal(android.model.peopleThisMonth, 2);
+    assert.equal(linux.model.peopleThisMonth, 1);
+    assert.equal(linux.model.requestsLast30Days, 7);
+    assert.equal(android.model.requestsLast30Days, 5);
+    assert.deepEqual(linux.model.firmwares, [{ label: 'Knulli', value: 1 }], 'within the six most used, a single-person firmware is listed');
+});
+
+test('the page has one tab per view with All selected by default', () => {
+    const html = renderPage(statsViews([monthRow('a', 'AYN Thor')], NOW));
+    assert.match(html, /id="tab-all"[^>]*aria-selected="true"/);
+    assert.match(html, /id="tab-android"[^>]*aria-selected="false"/);
+    assert.match(html, /id="panel-linux"[^>]*hidden/);
+    assert.ok(!/id="panel-all"[^>]*hidden/.test(html));
 });
 
 test('people are counted once per month even with several devices', () => {
@@ -67,8 +90,9 @@ test('people are counted once per month even with several devices', () => {
     assert.equal(model.devicesThisMonth, 5);
     assert.deepEqual(model.devices, [
         { label: 'AYN Thor', value: 3 },
-        { label: 'Other', value: 2 }
-    ]);
+        { label: 'Retroid Pocket Flip2', value: 1 },
+        { label: 'RG40XX-V', value: 1 }
+    ], 'within the six most used devices, single-person devices are listed');
     assert.deepEqual(model.platforms, [
         { label: 'Android', value: 3 },
         { label: 'Linux', value: 1 }
@@ -129,11 +153,11 @@ test('library size uses the latest report per device this month', () => {
 });
 
 test('the page renders with no data and escapes labels', () => {
-    const html = renderPage(aggregate([monthRow('a', '<script>x</script>')], NOW));
+    const html = renderPage(statsViews([monthRow('a', '<script>x</script>')], NOW));
     assert.ok(html.startsWith('<!doctype html>'));
     assert.ok(!html.includes('<script>x</script>'));
     assert.equal(escapeHtml('a&"<'), 'a&amp;&quot;&lt;');
-    assert.ok(renderPage(aggregate([], NOW)).includes('No data yet.'));
+    assert.ok(renderPage(statsViews([], NOW)).includes('No data yet.'));
 });
 
 test('axis ticks land on whole, round values', () => {

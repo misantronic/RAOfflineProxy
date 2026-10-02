@@ -1,7 +1,7 @@
 import { AttributeValue, DynamoDBClient, ScanCommand } from '@aws-sdk/client-dynamodb';
 import { PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
-import { aggregate, Row } from './aggregate';
-import { renderPage } from './render';
+import { Row } from './aggregate';
+import { renderPage, statsViews } from './render';
 
 const REGION = process.env.AWS_REGION ?? 'eu-central-1';
 const TABLE = process.env.TABLE_NAME ?? 'raop-usage';
@@ -50,7 +50,7 @@ async function loadRows(): Promise<Row[]> {
 
 export const handler = async (): Promise<{ rows: number; key: string }> => {
     const rows = await loadRows();
-    const html = renderPage(aggregate(rows, new Date()));
+    const html = renderPage(statsViews(rows, new Date()));
     await s3.send(
         new PutObjectCommand({
             Bucket: BUCKET,
