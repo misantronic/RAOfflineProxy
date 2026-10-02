@@ -63,6 +63,12 @@ export interface StatsModel {
 // Chip vendors and OEMs whose name only precedes the real brand ("Moorechip Retroid Pocket 5").
 const STRIPPED_PREFIXES = ['QUALCOMM ', 'MediaTek ', 'Rockchip ', 'Moorechip ', 'unknown '];
 
+// Manufacturers spell their own name differently from device to device ("ayn Odin3" next to
+// "AYN Thor"). Matched case-insensitively on the first word; unknown brands stay as reported.
+const BRAND_SPELLINGS: Record<string, string> = Object.fromEntries(
+    ['AYN', 'AYANEO', 'Anbernic', 'Retroid', 'Samsung', 'Google', 'MANGMI'].map((brand) => [brand.toLowerCase(), brand])
+);
+
 function text(row: Row, key: string): string {
     const value = row[key];
     return typeof value === 'string' && value.length > 0 ? value : 'unknown';
@@ -74,7 +80,8 @@ function num(row: Row, key: string): number {
 }
 
 /** Android reports "<manufacturer> <model>", and some models repeat the manufacturer
- *  ("AYN AYN Thor"), or the manufacturer is a chip vendor or OEM ("QUALCOMM AYANEO Pocket MICRO 2"). */
+ *  ("AYN AYN Thor"), or the manufacturer is a chip vendor or OEM ("QUALCOMM AYANEO Pocket MICRO 2").
+ *  The manufacturer's own spelling is normalized so one device isn't split by capitalization. */
 export function deviceLabel(raw: string): string {
     let label = raw.trim().replace(/\s+/g, ' ');
     for (const prefix of STRIPPED_PREFIXES) {
@@ -86,7 +93,9 @@ export function deviceLabel(raw: string): string {
     if (rest.length > 0 && rest[0].toLowerCase() === first.toLowerCase()) {
         label = rest.join(' ');
     }
-    return label;
+    const [brand, ...model] = label.split(' ');
+    const spelling = BRAND_SPELLINGS[brand.toLowerCase()];
+    return spelling && model.length > 0 ? [spelling, ...model].join(' ') : label;
 }
 
 /** "Android 13" stays as it is; Linux firmwares are grouped by name, not by build string. */

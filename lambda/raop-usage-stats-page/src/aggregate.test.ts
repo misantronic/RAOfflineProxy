@@ -31,6 +31,24 @@ test('device labels drop repeated manufacturers and chip vendors', () => {
     assert.equal(deviceLabel('MY354'), 'MY354');
 });
 
+test('device labels use the manufacturer\'s usual spelling', () => {
+    assert.equal(deviceLabel('ayn Odin3'), 'AYN Odin3');
+    assert.equal(deviceLabel('ayn AYN Thor'), 'AYN Thor');
+    assert.equal(deviceLabel('samsung SM-S928B'), 'Samsung SM-S928B');
+    assert.equal(deviceLabel('retroid Pocket 6'), 'Retroid Pocket 6');
+    assert.equal(deviceLabel('Google Pixel 3a'), 'Google Pixel 3a');
+    assert.equal(deviceLabel('Unheard Of 9'), 'Unheard Of 9');
+    assert.equal(deviceLabel('ayn'), 'ayn', 'a lone word is a model name, not a brand');
+});
+
+test('differently spelled brands count as one device', () => {
+    const model = aggregate(
+        [monthRow('a', 'AYN Odin3'), monthRow('b', 'ayn Odin3'), monthRow('c', 'AYN AYN Odin3')],
+        NOW
+    );
+    assert.deepEqual(model.devices, [{ label: 'AYN Odin3', value: 3 }]);
+});
+
 test('firmware labels keep Android versions and group Linux builds by name', () => {
     assert.equal(firmwareLabel({ os: 'Android', os_version: '14' }), 'Android 14');
     assert.equal(firmwareLabel({ os: 'Knulli', os_version: 'scarab 2026/05/11 00:09' }), 'Knulli');
