@@ -164,11 +164,15 @@ class QueueTestCase(unittest.TestCase):
         store.upsert_cache(cache_keys.game_id(hash_value), json.dumps({"Success": True, "GameID": game_id or 0}))
         return game_id
 
-    def fake_cache_game(self, game_id, _hash, credentials, _ua, store, _config, cache_images=True):
+    def fake_cache_game(self, game_id, _hash, credentials, _ua, store, _config, cache_images=True, source_rom_path=None):
         if game_id in self.fail_cache_for:
             raise RuntimeError("network down")
         self.cached.append(game_id)
-        store.upsert_cache(cache_keys.patch(game_id, credentials["user"]), PATCH % f"Game {game_id}")
+        store.upsert_cache(
+            cache_keys.patch(game_id, credentials["user"]),
+            PATCH % f"Game {game_id}",
+            source_rom_path=source_rom_path,
+        )
 
     def roms(self, *names: str) -> list[Path]:
         paths = []
@@ -206,6 +210,18 @@ class DrainTests(QueueTestCase):
         self.assertEqual((2, 1), (result.cached, result.no_match))
         self.assertEqual(2, cache_budget.load(self.store).used)
         self.assertEqual(0, cache_queue.count(self.store))
+
+    def test_the_rom_path_is_stored_with_the_game_data(self) -> None:
+        self.game_ids["a"] = 1
+        self.queue("a")
+
+        with mock.patch.object(
+            rom_browser, "remember_source_rom_path", side_effect=AssertionError("rewrote the game")
+        ):
+            self.drain()
+
+        # Setting the path afterwards read and rewrote the whole stored game: 1 to 3 s each.
+        self.assertEqual("/roms/a.nes", self.store.get_cache(cache_keys.patch(1, "misantronic"))["sourceRomPath"])
 
     def test_stops_when_the_window_is_used_up(self) -> None:
         self.game_ids.update({"a": 1, "b": 2})
@@ -309,7 +325,7 @@ class CoverTests(QueueTestCase):
         self.queue("a")
         downloads = []
 
-        def cache_game_with_icon(game_id, _hash, credentials, _ua, store, _config, cache_images=True):
+        def cache_game_with_icon(game_id, _hash, credentials, _ua, store, _config, cache_images=True, source_rom_path=None):
             store.upsert_cache(
                 cache_keys.patch(game_id, credentials["user"]),
                 '{"Success":true,"PatchData":{"Title":"A","ImageIcon":"/Images/000123.png"}}',

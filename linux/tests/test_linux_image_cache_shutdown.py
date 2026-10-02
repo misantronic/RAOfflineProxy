@@ -1,3 +1,4 @@
+import os
 import subprocess
 import sys
 import time
@@ -119,3 +120,78 @@ class ImageConnectionReuseTests(unittest.TestCase):
             self.assertEqual(b"redirected", self.image_cache._fetch_image("https://media.example/Badge/1.png", "ua"))
 
         urllib_fetch.assert_called_once()
+
+
+@unittest.skipUnless(hasattr(os, "getpriority") and sys.platform.startswith("linux"), "needs Linux thread priorities")
+class ImageDownloadPriorityTests(unittest.TestCase):
+    @staticmethod
+    def thread_priority() -> int:
+        import threading
+
+        return os.getpriority(os.PRIO_PROCESS, threading.get_native_id())
+
+    def test_batch_downloads_run_at_normal_priority_and_lazy_ones_at_the_lowest(self) -> None:
+        from linux.raofflineproxy import image_cache
+
+        main_priority = self.thread_priority()
+        batch = image_cache._inline_download_executor.submit(self.thread_priority).result(timeout=10)
+        lazy = image_cache._image_download_executor.submit(self.thread_priority).result(timeout=10)
+
+        # A batch waits for its images, so lowest-priority threads made bulk caching 4x slower
+        # whenever the menu was redrawing; only the menu's own fire-and-forget covers yield.
+        self.assertEqual(main_priority, batch)
+        self.assertGreater(lazy, main_priority)
+
+
+class ShardedStaticImagesTests(unittest.TestCase):
+    def setUp(self) -> None:
+        import tempfile
+
+        from linux.raofflineproxy import image_cache
+
+        self.image_cache = image_cache
+        self._temp_dir = tempfile.TemporaryDirectory()
+        self.static = Path(self._temp_dir.name) / "static"
+        self._original = image_cache.STATIC_DIR
+        image_cache.STATIC_DIR = self.static
+
+    def tearDown(self) -> None:
+        self.image_cache.STATIC_DIR = self._original
+        self._temp_dir.cleanup()
+
+    def test_badges_spread_over_many_folders(self) -> None:
+        folders = {
+            self.image_cache.sharded_static_path(f"Badge/{number}.png").parent.name
+            for number in range(250_000, 251_000)
+        }
+
+        # One folder per kind made a batch slower with every cached game on an SD card.
+        self.assertGreater(len(folders), 200)
+        for folder in folders:
+            self.assertEqual(2, len(folder))
+
+    def test_a_download_lands_in_its_shard_folder(self) -> None:
+        from unittest import mock
+
+        with mock.patch.object(self.image_cache, "_fetch_image", return_value=b"png"):
+            self.image_cache.download_static_image("https://media/Badge/123456.png", "/Badge/123456.png", "ua")
+
+        expected = self.image_cache.sharded_static_path("Badge/123456.png")
+        self.assertEqual(b"png", expected.read_bytes())
+        self.assertEqual(expected, self.image_cache.resolve_cached_static_asset("/Badge/123456.png"))
+        self.assertFalse((self.static / "Badge" / "123456.png").exists())
+
+    def test_images_cached_before_sharding_are_still_found_and_not_downloaded_again(self) -> None:
+        from unittest import mock
+
+        legacy = self.static / "Badge" / "777.png"
+        legacy.parent.mkdir(parents=True)
+        legacy.write_bytes(b"old")
+
+        with mock.patch.object(self.image_cache, "_fetch_image", side_effect=AssertionError("downloaded")):
+            self.image_cache.download_static_image("https://media/Badge/777.png", "/Badge/777.png", "ua")
+
+        self.assertEqual(legacy, self.image_cache.resolve_cached_static_asset("/Badge/777.png"))
+
+    def test_a_missing_image_is_not_found(self) -> None:
+        self.assertIsNone(self.image_cache.resolve_cached_static_asset("/Badge/404.png"))

@@ -9,6 +9,7 @@ import shutil
 import sys
 import threading
 import urllib.request
+import zlib
 from concurrent.futures import ThreadPoolExecutor, wait
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -35,10 +36,9 @@ _image_download_executor = ThreadPoolExecutor(
     max_workers=_IMAGE_DOWNLOAD_POOL_SIZE, initializer=_lower_thread_priority
 )
 # Long-lived on purpose: each worker keeps its HTTPS connection to the media server between
-# games, see _fetch_image.
-_inline_download_executor = ThreadPoolExecutor(
-    max_workers=_IMAGE_DOWNLOAD_POOL_SIZE, initializer=_lower_thread_priority
-)
+# games, see _fetch_image. Normal priority: a batch waits for these downloads, and on a busy
+# handheld (the menu redraws while it runs) lowest-priority threads made it 4x slower.
+_inline_download_executor = ThreadPoolExecutor(max_workers=_IMAGE_DOWNLOAD_POOL_SIZE)
 _thread_connections = threading.local()
 _HTTP_OK = 200
 _inline_downloads = threading.local()
@@ -49,12 +49,25 @@ LOGGER = logging.getLogger("raofflineproxy")
 IMAGE_CACHE_DIR = CONFIG_DIR / "image_cache"
 GAMES_DIR = IMAGE_CACHE_DIR / "games"
 STATIC_DIR = IMAGE_CACHE_DIR / "static"
+STATIC_SHARDS = 256
 
 IMAGE_PATH_PREFIXES = ("/Badge/", "/Images/", "/UserPic/")
 
 
 def game_image_dir(game_id: int) -> Path:
     return GAMES_DIR / str(game_id)
+
+
+def sharded_static_path(clean_path: str) -> Path:
+    """Where a static image is stored: Badge/123.png lives in Badge/<shard>/123.png.
+
+    Creating a file gets slower the more files its folder holds on a handheld's SD card
+    (1 ms in an empty folder, 24 ms at 6000 files, measured on a KNULLI device), and one Badge
+    folder collects hundreds of files per cached game, so a batch slowed down with every game
+    and spent most of its time waiting for images. The shard is a hash of the file name."""
+    folder, _, name = clean_path.rpartition("/")
+    shard = f"{zlib.crc32(name.encode('utf-8')) % STATIC_SHARDS:02x}"
+    return STATIC_DIR / folder / shard / name
 
 
 def extract_image_path(url: str) -> str | None:
@@ -190,7 +203,7 @@ def download_static_image(
     """
     try:
         clean_path = image_path.lstrip("/").split("?", 1)[0]
-        target = STATIC_DIR / clean_path
+        target = resolve_cached_static_asset(clean_path) or sharded_static_path(clean_path)
         if not target.exists():
             target.parent.mkdir(parents=True, exist_ok=True)
             tmp = target.with_suffix(target.suffix + ".tmp")
@@ -338,10 +351,13 @@ def shutdown_image_downloads() -> None:
 
 
 def resolve_cached_static_asset(path: str) -> Path | None:
-    """Returns the cached static image file for path, or None if not yet downloaded."""
+    """Returns the cached static image file for path, or None if not yet downloaded. Images
+    cached before the shard folders existed are still found where they were saved."""
     clean_path = path.lstrip("/").split("?", 1)[0]
-    asset = STATIC_DIR / clean_path
-    return asset if asset.is_file() else None
+    for asset in (sharded_static_path(clean_path), STATIC_DIR / clean_path):
+        if asset.is_file():
+            return asset
+    return None
 
 
 def resolve_cached_game_icon_path(game_id: int) -> Path | None:

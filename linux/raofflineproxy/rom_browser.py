@@ -16,7 +16,6 @@ from .auth import resolve_credentials
 from .cache_queue import QueuedRom
 from .config import FALLBACK_USER_AGENT, RA_MEDIA_HOST, image_caching_enabled, upstream_host
 from .image_cache import (
-    STATIC_DIR,
     clear_all_cached_images,
     delete_cached_images_for_game,
     download_static_image,
@@ -856,16 +855,18 @@ def cache_queued_rom(
                 storage,
                 config_data,
                 cache_images=image_caching_enabled(config_data),
+                source_rom_path=rom.source_rom_path,
             )
     except CacheGameAuthError as exc:
         return QueuedRomOutcome.AUTH_REJECTED, game_id, f"Caching failed: {exc}"
     except Exception as exc:
         return QueuedRomOutcome.FAILED, game_id, f"Caching failed: {exc}"
 
-    remember_source_rom_path(storage, game_id, credentials["user"], rom.source_rom_path)
     patch_entry = storage.get_cache(cache_keys.patch(game_id, credentials["user"]))
     if patch_entry is None:
         return QueuedRomOutcome.FAILED, game_id, "Caching failed: patch data was not stored"
+    if rom.source_rom_path and patch_entry.get("sourceRomPath") != rom.source_rom_path:
+        remember_source_rom_path(storage, game_id, credentials["user"], rom.source_rom_path)
     if not image_caching_enabled(config_data):
         cache_game_icon(game_id, patch_entry["responseBody"], proxy_user_agent(user_agent))
     return QueuedRomOutcome.CACHED, game_id, ""
@@ -1175,8 +1176,8 @@ def cached_unlock_badge_paths(storage: Storage, game_id: int) -> dict[str, Path]
         badge_name = achievement.get("BadgeName")
         if not isinstance(badge_name, str) or not badge_name:
             continue
-        badge_path = STATIC_DIR / "Badge" / f"{badge_name}.png"
-        if badge_path.exists():
+        badge_path = resolve_cached_static_asset(f"/Badge/{badge_name}.png")
+        if badge_path is not None:
             result[title] = badge_path
     return result
 

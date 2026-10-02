@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import contextlib
+import importlib
 import json
 import logging
 import os
+import sys
 import threading
 import time
 from pathlib import Path
@@ -19,10 +21,29 @@ except ModuleNotFoundError:
 
 LOGGER = logging.getLogger("raofflineproxy")
 
-try:
-    import sqlite3
-except ModuleNotFoundError:
-    sqlite3 = None
+VENDORED_SQLITE_DIR = Path(__file__).resolve().parent.parent / "vendor" / "sqlite"
+
+
+def _import_sqlite3(module_name: str = "sqlite3"):
+    """The firmware's own sqlite3 wins. Some (KNULLI) ship a Python without it, so the bundle
+    carries one as a last resort, appended after the standard library so it never shadows a
+    working one."""
+    try:
+        return importlib.import_module(module_name)
+    except ImportError:
+        pass
+    if not VENDORED_SQLITE_DIR.is_dir():
+        return None
+    sys.path.append(str(VENDORED_SQLITE_DIR))
+    try:
+        return importlib.import_module(module_name)
+    except ImportError as exc:
+        sys.path.remove(str(VENDORED_SQLITE_DIR))
+        logging.getLogger("raofflineproxy").warning("Bundled sqlite3 does not load: %s", exc)
+        return None
+
+
+sqlite3 = _import_sqlite3()
 
 JSON_STORE_FILE = DATABASE_FILE.with_suffix(".json")
 
@@ -62,8 +83,13 @@ class Storage:
             )
             self._connection.row_factory = sqlite3.Row
             self._initialize_sqlite()
+            self._import_legacy_json()
         else:
             self._initialize_json()
+
+    @property
+    def backend(self) -> str:
+        return "sqlite" if self._use_sqlite else "json"
 
     def close(self) -> None:
         with self._lock:
@@ -128,6 +154,110 @@ class Storage:
                     "ALTER TABLE pending_awards ADD COLUMN status TEXT NOT NULL DEFAULT 'pending'"
                 )
             self._connection.commit()
+
+    def _import_legacy_json(self) -> None:
+        """Takes over the JSON store a device used while it had no sqlite3, once. Each write to
+        that store rewrote the whole file, so it also gets slower with every cached game.
+        Cached games and pending awards are copied in one transaction, the counts are checked,
+        and only then is the file renamed (kept as a backup, never deleted)."""
+        if not self._json_path.exists():
+            return
+        assert self._connection is not None
+        with self._lock:
+            with self._json_file_lock(exclusive=True):
+                if not self._json_path.exists():
+                    return
+                try:
+                    with self._json_path.open(encoding="utf-8") as handle:
+                        data = json.load(handle)
+                    if not isinstance(data, dict):
+                        raise ValueError(f"Invalid JSON storage file: {self._json_path}")
+                except OSError as exc:
+                    LOGGER.error("Cannot read %s for the sqlite import: %s", self._json_path, exc)
+                    return
+                except ValueError as exc:
+                    LOGGER.error("Storage file %s is corrupt (%s)", self._json_path, exc)
+                    self._quarantine_corrupt_json_unlocked(str(exc))
+                    return
+
+                entries = [
+                    item
+                    for item in data.get("api_cache", [])
+                    if isinstance(item, dict) and item.get("cacheKey") is not None
+                ]
+                awards = [
+                    item
+                    for item in data.get("pending_awards", [])
+                    if isinstance(item, dict) and item.get("achievementId") is not None
+                ]
+                try:
+                    with self._connection:
+                        self._connection.executemany(
+                            """
+                            INSERT OR IGNORE INTO api_cache(
+                                cacheKey, responseBody, sourceRomPath, cachedAt, firstCachedAt
+                            ) VALUES(?, ?, ?, ?, ?)
+                            """,
+                            [
+                                (
+                                    item["cacheKey"],
+                                    item.get("responseBody") or "",
+                                    item.get("sourceRomPath"),
+                                    int(item.get("cachedAt") or 0),
+                                    int(item.get("firstCachedAt") or item.get("cachedAt") or 0),
+                                )
+                                for item in entries
+                            ],
+                        )
+                        self._connection.executemany(
+                            """
+                            INSERT OR IGNORE INTO pending_awards(
+                                achievementId, queryString, requestBody, userAgent, queuedAt,
+                                retryCount, lastError, status, payloadHash, prevHash,
+                                signature, signedAt
+                            ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            """,
+                            [
+                                (
+                                    item["achievementId"],
+                                    item.get("queryString") or "",
+                                    item.get("requestBody") or "",
+                                    item.get("userAgent") or "",
+                                    int(item.get("queuedAt") or 0),
+                                    int(item.get("retryCount") or 0),
+                                    item.get("lastError"),
+                                    item.get("status") or PENDING_AWARD_STATUS_PENDING,
+                                    item.get("payloadHash") or "",
+                                    item.get("prevHash") or "",
+                                    item.get("signature") or "",
+                                    int(item.get("signedAt") or 0),
+                                )
+                                for item in awards
+                            ],
+                        )
+                        cached = self._connection.execute("SELECT COUNT(*) FROM api_cache").fetchone()[0]
+                        pending = self._connection.execute("SELECT COUNT(*) FROM pending_awards").fetchone()[0]
+                        if cached < len({item["cacheKey"] for item in entries}) or pending < len(
+                            {item["achievementId"] for item in awards}
+                        ):
+                            raise sqlite3.DatabaseError("sqlite import is missing rows")
+                except sqlite3.Error as exc:
+                    LOGGER.error("Importing %s into sqlite failed, keeping it: %s", self._json_path, exc)
+                    return
+
+                backup = self._json_path.with_name(f"{self._json_path.name}.migrated-{current_millis()}")
+                try:
+                    self._json_path.replace(backup)
+                except OSError as exc:
+                    LOGGER.error("Imported %s but could not rename it: %s", self._json_path, exc)
+                    return
+                LOGGER.info(
+                    "Imported %d cache entries and %d pending awards from %s into sqlite",
+                    len(entries),
+                    len(awards),
+                    self._json_path.name,
+                )
+        es_export.export_cached_game_ids(self)
 
     def _initialize_json(self) -> None:
         with self._lock:

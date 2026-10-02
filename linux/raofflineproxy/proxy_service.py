@@ -1247,6 +1247,7 @@ def run_proxy_service(
         proxy_host(config_data),
         proxy_port(config_data),
     )
+    LOGGER.info("Storage backend: %s", storage.backend)
     ensure_ra_proxy_chained(config_data)
     connectivity_monitor = ConnectivityMonitor(server)
     periodic_refresh = PeriodicRefresh(server)

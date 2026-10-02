@@ -246,7 +246,7 @@ class AlreadyCachedTests(StorageTestCase):
     def add_rom(self, rom_path: Path) -> tuple[rom_browser.AddRomResult, list]:
         downloads = []
 
-        def fake_cache_game(game_id, _hash, credentials, _ua, cache_store, _config, cache_images=True):
+        def fake_cache_game(game_id, _hash, credentials, _ua, cache_store, _config, cache_images=True, source_rom_path=None):
             downloads.append(game_id)
             cache_store.upsert_cache(cache_keys.patch(game_id, credentials["user"]), self.PATCH)
 
