@@ -229,7 +229,8 @@ class Storage:
             self._upsert_cache_sqlite(cache_key, response_body, source_rom_path, now)
         else:
             self._upsert_cache_json(cache_key, response_body, source_rom_path, now)
-        self._after_cache_mutation(cache_key)
+        if es_export.key_affects_cached_game_ids(cache_key):
+            es_export.add_cached_game_id(self, cache_key, response_body)
 
     def _after_cache_mutation(self, *affected_keys: str | None) -> None:
         if any(es_export.key_affects_cached_game_ids(key) for key in affected_keys):
