@@ -575,6 +575,22 @@ class LinuxAwardParityTests(unittest.TestCase):
                 server.server_close()
                 store.close()
 
+    def test_build_achievement_game_ids_uses_each_sets_own_game_id(self) -> None:
+        payload = {
+            "Success": True,
+            "GameId": 100,
+            "Sets": [
+                {"Type": "core", "GameId": 100, "Achievements": [{"ID": 1}]},
+                {"Type": "bonus", "GameId": 200, "Achievements": [{"ID": 2}]},
+            ],
+        }
+
+        game_ids = rom_cache.build_achievement_game_ids(
+            [], [{"responseBody": json.dumps(payload)}]
+        )
+
+        self.assertEqual(game_ids, {1: 100, 2: 200})
+
     def test_queue_award_skips_cached_already_unlocked_from_achievementsets(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             store = storage.Storage(database_path=Path(temp_dir) / "test.sqlite3")

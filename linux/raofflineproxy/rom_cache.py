@@ -338,13 +338,17 @@ def merge_start_session_unlock_ids(
     return merged_ids
 
 
-def _iter_achievementsets_achievements(payload: dict):
+def _iter_achievementsets_achievements(payload: dict, default_game_id: int):
     direct = payload.get("Achievements")
     if isinstance(direct, dict):
-        yield from (a for a in direct.values() if isinstance(a, dict))
+        for achievement in direct.values():
+            if isinstance(achievement, dict):
+                yield default_game_id, achievement
         return
     if isinstance(direct, list):
-        yield from (a for a in direct if isinstance(a, dict))
+        for achievement in direct:
+            if isinstance(achievement, dict):
+                yield default_game_id, achievement
         return
     sets = payload.get("Sets")
     if not isinstance(sets, list):
@@ -353,8 +357,14 @@ def _iter_achievementsets_achievements(payload: dict):
         if not isinstance(achievement_set, dict):
             continue
         achievements = achievement_set.get("Achievements")
-        if isinstance(achievements, list):
-            yield from (a for a in achievements if isinstance(a, dict))
+        if not isinstance(achievements, list):
+            continue
+        set_game_id = achievement_set.get("GameId")
+        if not isinstance(set_game_id, int) or set_game_id <= 0:
+            set_game_id = default_game_id
+        for achievement in achievements:
+            if isinstance(achievement, dict):
+                yield set_game_id, achievement
 
 
 def build_achievement_game_ids(
@@ -393,10 +403,12 @@ def build_achievement_game_ids(
         if not isinstance(game_id, int) or game_id <= 0:
             continue
 
-        for achievement in _iter_achievementsets_achievements(payload):
+        for achievement_game_id, achievement in _iter_achievementsets_achievements(
+            payload, game_id
+        ):
             achievement_id = achievement.get("ID")
             if isinstance(achievement_id, int) and achievement_id > 0:
-                achievement_game_ids.setdefault(achievement_id, game_id)
+                achievement_game_ids.setdefault(achievement_id, achievement_game_id)
 
     return achievement_game_ids
 
