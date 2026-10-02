@@ -137,6 +137,7 @@ def refresh_game_patch(
     storage: Storage,
     config_data: dict,
     cache_images: bool = True,
+    source_rom_path: str | None = None,
 ) -> str | None:
     url = build_api_url(
         upstream_host(config_data),
@@ -164,7 +165,11 @@ def refresh_game_patch(
     payload = filter_warning_achievement_from_patch_payload(payload)
     response_body = json.dumps(payload, separators=(",", ":"))
 
-    storage.upsert_cache(cache_keys.patch(game_id, credentials["user"]), response_body)
+    storage.upsert_cache(
+        cache_keys.patch(game_id, credentials["user"]),
+        response_body,
+        source_rom_path=source_rom_path,
+    )
 
     if cache_images:
         proxy_base_url = f"http://{proxy_host(config_data)}:{proxy_port(config_data)}"
@@ -449,7 +454,10 @@ def cache_game(
     storage: Storage,
     config_data: dict,
     cache_images: bool = True,
+    source_rom_path: str | None = None,
 ) -> None:
+    """source_rom_path is stored with the game data in the same write: setting it afterwards
+    meant reading and rewriting the whole stored game just to change one field."""
     patch_body = refresh_game_patch(
         game_id,
         credentials,
@@ -457,6 +465,7 @@ def cache_game(
         storage,
         config_data,
         cache_images=cache_images,
+        source_rom_path=source_rom_path,
     )
     if patch_body is None:
         raise CacheGameError("patch failed")

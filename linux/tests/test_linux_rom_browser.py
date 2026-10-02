@@ -365,6 +365,7 @@ class LinuxRomBrowserTests(unittest.TestCase):
                     cache_store,
                     _config_data,
                     cache_images=True,
+                    source_rom_path=None,
                 ):
                     self.assertEqual(hash_value, "abcd")
                     cache_store.upsert_cache(
@@ -437,6 +438,7 @@ class LinuxRomBrowserTests(unittest.TestCase):
                     cache_store,
                     _config_data,
                     cache_images=True,
+                    source_rom_path=None,
                 ):
                     cache_store.upsert_cache(
                         cache_keys.patch(game_id, credentials["user"]),
@@ -604,6 +606,7 @@ class LinuxRomBrowserTests(unittest.TestCase):
                     cache_store,
                     _config_data,
                     cache_images=True,
+                    source_rom_path=None,
                 ):
                     self.assertEqual(hash_value, "5f397a1e588cfe96b4aa4bab7a5b1d44")
                     cache_store.upsert_cache(
@@ -1200,6 +1203,7 @@ class LinuxRomBrowserTests(unittest.TestCase):
                     cache_store,
                     _config_data,
                     cache_images=True,
+                    source_rom_path=None,
                 ):
                     self.assertEqual(hash_value, "primary")
                     cache_store.upsert_cache(
@@ -1258,6 +1262,7 @@ class LinuxRomBrowserTests(unittest.TestCase):
                     cache_store,
                     _config_data,
                     cache_images=True,
+                    source_rom_path=None,
                 ):
                     self.assertEqual(game_id, 10701)
                     self.assertEqual(hash_value, "3e399fdc568d0a0e140a5a277a5c32f3")
