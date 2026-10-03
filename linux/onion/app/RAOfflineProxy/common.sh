@@ -1,7 +1,7 @@
 #!/bin/sh
 
 APP_DIR=/mnt/SDCARD/App/RAOfflineProxy
-APP_VERSION=v2.0.0-alpha1
+APP_VERSION=v2.0.0-alpha2
 APP_DATA_DIR="$APP_DIR/data"
 APP_RUNTIME_DIR="$APP_DIR/runtime"
 APP_PACKAGE_DIR="$APP_DIR/app"
