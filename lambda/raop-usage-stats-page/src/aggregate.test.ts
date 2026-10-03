@@ -28,7 +28,7 @@ test('device labels drop repeated manufacturers and chip vendors', () => {
     assert.equal(deviceLabel('AYN AYN Thor'), 'AYN Thor');
     assert.equal(deviceLabel('QUALCOMM AYANEO Pocket MICRO 2'), 'AYANEO Pocket MICRO 2');
     assert.equal(deviceLabel('Moorechip Retroid Pocket Nova'), 'Retroid Pocket Nova');
-    assert.equal(deviceLabel('MY354'), 'MY354');
+    assert.equal(deviceLabel('Retroid Pocket Nova'), 'Retroid Pocket Nova');
 });
 
 test('device labels use the manufacturer\'s usual spelling', () => {
@@ -39,6 +39,40 @@ test('device labels use the manufacturer\'s usual spelling', () => {
     assert.equal(deviceLabel('Google Pixel 3a'), 'Google Pixel 3a');
     assert.equal(deviceLabel('Unheard Of 9'), 'Unheard Of 9');
     assert.equal(deviceLabel('ayn'), 'ayn', 'a lone word is a model name, not a brand');
+});
+
+test('Linux hardware identifiers get a readable name', () => {
+    assert.equal(deviceLabel('MY354'), 'Miyoo Mini Plus');
+    assert.equal(deviceLabel('MY283'), 'Miyoo Mini');
+    assert.equal(deviceLabel('TUI-BRICK'), 'Trimui Brick');
+    assert.equal(deviceLabel('sun50iw10'), 'Trimui Smart Pro / Brick (sun50iw10)');
+    assert.equal(deviceLabel('AnbernicXX720480NoStick'), 'Anbernic 720x480 (no stick)');
+    assert.equal(deviceLabel('AnbernicXX640480'), 'Anbernic 640x480');
+    assert.equal(deviceLabel('RG35XX-H'), 'Anbernic RG35XX-H');
+    assert.equal(deviceLabel('rg40xx-v'), 'Anbernic RG40XX-V');
+});
+
+test('unknown hardware identifiers stay as reported', () => {
+    assert.equal(deviceLabel('MY999'), 'MY999');
+    assert.equal(deviceLabel('Anbernic RG DS'), 'Anbernic RG DS');
+    assert.equal(deviceLabel('Anbernic RG556'), 'Anbernic RG556');
+    assert.equal(deviceLabel('RGB30'), 'RGB30', 'a name that only starts like an RG model but is not one');
+    assert.equal(deviceLabel('LENOVO TB323FU'), 'Lenovo TB323FU');
+    assert.equal(deviceLabel('motorola moto g34 5G'), 'Motorola moto g34 5G');
+});
+
+test('the same Anbernic model from Knulli and muOS is one device', () => {
+    const linux = (uid: string, device: string, os: string): Row => ({
+        ...monthRow(uid, device),
+        platform: 'linux',
+        os,
+        sk: `${uid}#linux#${device}`
+    });
+    const model = aggregate(
+        [linux('a', 'Anbernic RG40XX-V', 'Knulli'), linux('b', 'Anbernic RG40XX-V', 'Knulli'), linux('c', 'RG40XX-V', 'muOS')],
+        NOW
+    );
+    assert.deepEqual(model.devices, [{ label: 'Anbernic RG40XX-V', value: 3 }]);
 });
 
 test('differently spelled brands count as one device', () => {
@@ -108,8 +142,8 @@ test('people are counted once per month even with several devices', () => {
     assert.equal(model.devicesThisMonth, 5);
     assert.deepEqual(model.devices, [
         { label: 'AYN Thor', value: 3 },
-        { label: 'Retroid Pocket Flip2', value: 1 },
-        { label: 'RG40XX-V', value: 1 }
+        { label: 'Anbernic RG40XX-V', value: 1 },
+        { label: 'Retroid Pocket Flip2', value: 1 }
     ], 'within the six most used devices, single-person devices are listed');
     assert.deepEqual(model.platforms, [
         { label: 'Android', value: 3 },

@@ -66,8 +66,34 @@ const STRIPPED_PREFIXES = ['QUALCOMM ', 'MediaTek ', 'Rockchip ', 'Moorechip ', 
 // Manufacturers spell their own name differently from device to device ("ayn Odin3" next to
 // "AYN Thor"). Matched case-insensitively on the first word; unknown brands stay as reported.
 const BRAND_SPELLINGS: Record<string, string> = Object.fromEntries(
-    ['AYN', 'AYANEO', 'Anbernic', 'Retroid', 'Samsung', 'Google', 'MANGMI'].map((brand) => [brand.toLowerCase(), brand])
+    ['AYN', 'AYANEO', 'Anbernic', 'Retroid', 'Samsung', 'Google', 'MANGMI', 'Lenovo', 'Motorola'].map((brand) => [
+        brand.toLowerCase(),
+        brand
+    ])
 );
+
+// Linux handhelds report their own hardware identifiers, often without a brand, so the same device
+// shows up under several names. Keys are lowercase; anything not listed stays as reported.
+const HARDWARE_ALIASES: Record<string, string> = {
+    'tui-brick': 'Trimui Brick',
+    // The Allwinner A133 chip: what Knulli reports on Trimui devices without a devicetree model.
+    sun50iw10: 'Trimui Smart Pro / Brick (sun50iw10)',
+    // Onion's own model codes (/tmp/deviceModel).
+    my283: 'Miyoo Mini',
+    my354: 'Miyoo Mini Plus'
+};
+
+/** spruce's platform IDs name a screen layout, not a model ("AnbernicXX720480NoStick"), so they
+ *  are shown as that and never guessed into a model. muOS reports Anbernic boards without the
+ *  brand ("RG35XX-H"), which would otherwise split from Knulli's "Anbernic RG35XX-H". */
+function knownHardware(label: string): string | undefined {
+    const alias = HARDWARE_ALIASES[label.toLowerCase()];
+    if (alias) return alias;
+    const spruce = /^AnbernicXX(\d{3})(\d{3})(NoStick)?$/.exec(label);
+    if (spruce) return `Anbernic ${spruce[1]}x${spruce[2]}${spruce[3] ? ' (no stick)' : ''}`;
+    if (/^RG\d/i.test(label)) return `Anbernic ${label.toUpperCase()}`;
+    return undefined;
+}
 
 function text(row: Row, key: string): string {
     const value = row[key];
@@ -93,6 +119,8 @@ export function deviceLabel(raw: string): string {
     if (rest.length > 0 && rest[0].toLowerCase() === first.toLowerCase()) {
         label = rest.join(' ');
     }
+    const hardware = knownHardware(label);
+    if (hardware) return hardware;
     const [brand, ...model] = label.split(' ');
     const spelling = BRAND_SPELLINGS[brand.toLowerCase()];
     return spelling && model.length > 0 ? [spelling, ...model].join(' ') : label;
