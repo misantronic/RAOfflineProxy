@@ -52,7 +52,7 @@
     <string name="home_emulators_label">Enabled Emulators</string>
     <string name="home_manual_setup_warning">With your Android version (%1$s), automatic emulator setup will most likely not work on this device. Please consider using Manual Emulator Setup instead. Android builds can differ, so you can still try Start proxy with automatic setup if you want.</string>
     <string name="home_shizuku_info">You are running the proxy through Shizuku.</string>
-    <string name="home_no_emulator_warning">No supported emulator was found. Install RetroArch, Dolphin, PPSSPP, ARMSX2, Flycast, WatermelonDS, Mupen64Plus, EmuCoreX, ARMSX1, or NetherSX2 to use RAOfflineProxy.</string>
+    <string name="home_no_emulator_warning">No supported emulator was found. Install RetroArch, Dolphin, PPSSPP, ARMSX2, Flycast, WatermelonDS, Mupen64Plus, EmuCoreX, ARMSX1, NetherSX2, or SeedlessDS to use RAOfflineProxy.</string>
     <string name="home_go_to_cached_games">Cached Games</string>
     <string name="btn_support_development">💛 Support me</string>
     <string name="support_dialog_title">💛 Support RAOfflineProxy</string>
@@ -83,6 +83,7 @@
     <string name="emulator_emucorex">EmuCoreX</string>
     <string name="emulator_armsx1">ARMSX1</string>
     <string name="emulator_nethersx2">NetherSX2</string>
+    <string name="emulator_seedlessds">SeedlessDS</string>
     <string name="emulator_toggle_icon_cd">Installed emulator icon</string>
     <string name="emulator_selector_caret">▼</string>
     <string name="emulator_selector_cd">Enabled emulators, tap to change</string>
@@ -149,6 +150,8 @@
     <string name="armsx1_patch_success">ARMSX1 patched successfully.</string>
     <string name="armsx1_patch_error_unavailable">Could not patch ARMSX1 automatically. Make sure a supported ARMSX1 build is installed and try again.</string>
     <string name="nethersx2_patch_success">NetherSX2 patched successfully.</string>
+    <string name="seedlessds_patch_success">SeedlessDS patched successfully.</string>
+    <string name="seedlessds_patch_error_unavailable">Could not patch SeedlessDS automatically. Make sure a supported SeedlessDS build is installed and try again.</string>
     <string name="nethersx2_patch_error_unavailable">Could not patch NetherSX2 automatically. Make sure a supported NetherSX2 build is installed and try again.</string>
     <!-- CFG revert messages -->
     <string name="revert_already_reverted">Already reverted — no changes needed.</string>
@@ -182,6 +185,8 @@
     <string name="armsx1_revert_success">ARMSX1 reverted successfully.</string>
     <string name="armsx1_revert_error_unavailable">Could not revert ARMSX1 automatically. Reopen the app and try again.</string>
     <string name="nethersx2_revert_success">NetherSX2 reverted successfully.</string>
+    <string name="seedlessds_revert_success">SeedlessDS reverted successfully.</string>
+    <string name="seedlessds_revert_error_unavailable">Could not revert SeedlessDS automatically. Reopen the app and try again.</string>
     <string name="nethersx2_revert_error_unavailable">Could not revert NetherSX2 automatically. Reopen the app and try again.</string>
 
     <!-- Flush messages -->
