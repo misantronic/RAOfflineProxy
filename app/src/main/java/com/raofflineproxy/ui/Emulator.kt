@@ -18,6 +18,8 @@ internal const val UI_MUPEN64_PACKAGE = "org.mupen64plusae.v3.alpha"
 internal const val UI_MUPEN64_DEBUG_PACKAGE = "org.mupen64plusae.v3.alpha.debug"
 internal const val UI_EMUCOREX_PACKAGE = "com.sbro.emucorex"
 internal const val UI_NETHERSX2_PACKAGE = "xyz.aethersx2.android"
+internal const val UI_SEEDLESSDS_PACKAGE = "com.seedlessds.app"
+internal const val UI_SEEDLESSDS_DEBUG_PACKAGE = "com.seedlessds.app.debug"
 
 internal class ConfigOverride(
     // Wire identifier for the Shizuku user service, which runs in its own process and dispatches
@@ -212,6 +214,20 @@ enum class Emulator(
             defaultReceiverClass = "xyz.aethersx2.android.RetroAchievementsHostOverrideReceiver",
             // NetherSX2 binary-patches the host into libemucore.so and expects it without a scheme.
             hostValue = ::proxyValue
+        )
+    ),
+    SeedlessDs(
+        displayName = "SeedlessDS",
+        labelRes = R.string.emulator_seedlessds,
+        enabledPrefsKey = PrefsConstants.KEY_ENABLE_SEEDLESSDS,
+        patchedThisRunPrefsKey = PrefsConstants.KEY_SEEDLESSDS_PATCHED_THIS_RUN,
+        packageCandidates = listOf(UI_SEEDLESSDS_PACKAGE, UI_SEEDLESSDS_DEBUG_PACKAGE),
+        broadcastOverride = BroadcastOverride(
+            patchSuccessRes = R.string.seedlessds_patch_success,
+            patchErrorRes = R.string.seedlessds_patch_error_unavailable,
+            revertSuccessRes = R.string.seedlessds_revert_success,
+            revertErrorRes = R.string.seedlessds_revert_error_unavailable,
+            defaultReceiverClass = "com.seedlessds.app.ra.RaHostOverrideReceiver"
         )
     );
 

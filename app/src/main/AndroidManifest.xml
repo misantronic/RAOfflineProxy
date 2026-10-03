@@ -41,6 +41,8 @@
         <package android:name="com.sbro.emucorex" />
         <package android:name="com.nanodata.armsx" />
         <package android:name="xyz.aethersx2.android" />
+        <package android:name="com.seedlessds.app" />
+        <package android:name="com.seedlessds.app.debug" />
         <package android:name="moe.shizuku.privileged.api" />
     </queries>
 

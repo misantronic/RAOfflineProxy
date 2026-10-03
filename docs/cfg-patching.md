@@ -34,7 +34,7 @@ PPSSPP supports two patching paths depending on the installed build. RAOfflinePr
 
 == Other Emulators
 
-**ARMSX1**, **ARMSX2**, **Flycast**, **WatermelonDS**, **Mupen64Plus AE**, **EmuCoreX**, and **NetherSX2** all expose a RetroAchievements host-override broadcast receiver. To redirect achievement traffic to the local proxy, RAOfflineProxy sends a targeted broadcast to the installed package instead of editing a config file:
+**ARMSX1**, **ARMSX2**, **Flycast**, **WatermelonDS**, **Mupen64Plus AE**, **EmuCoreX**, **NetherSX2**, and **SeedlessDS** all expose a RetroAchievements host-override broadcast receiver. To redirect achievement traffic to the local proxy, RAOfflineProxy sends a targeted broadcast to the installed package instead of editing a config file:
 
 - The RetroAchievements host override is set to the proxy on your device
 - The emulator writes the change to its own configuration and applies it on the next game load
