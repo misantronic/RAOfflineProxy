@@ -119,7 +119,6 @@ class CachedGamesFragment : Fragment() {
             onAdd = {
                 addRomLauncher.launch(createAddRomIntent())
             },
-            onRefresh = viewModel::refreshGames,
             onClear = {
                 AlertDialog.Builder(requireContext())
                     .setTitle(R.string.clear_cache_confirm_title)
@@ -174,7 +173,6 @@ class CachedGamesFragment : Fragment() {
                         smartCacheEnabled = smartCacheEnabled,
                         showSmartCache = showSmartCache,
                         scanEnabled = scanEnabled,
-                        refreshEnabled = actionsEnabled && state.cachedGames.isNotEmpty(),
                         clearEnabled = state.cachedGames.isNotEmpty() && !state.scanInProgress,
                         showNoCachedGames = state.cachedGames.isEmpty(),
                         statusText = statusText
