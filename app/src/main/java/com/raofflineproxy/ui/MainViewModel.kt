@@ -14,7 +14,6 @@ import androidx.core.content.edit
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.raofflineproxy.BuildConfig
-import com.raofflineproxy.applyScanBatchCooldown
 import com.raofflineproxy.buildApiUrl
 import com.raofflineproxy.PrefsConstants
 import com.raofflineproxy.R
@@ -68,9 +67,6 @@ import com.raofflineproxy.proxy.httpGet
 import com.raofflineproxy.proxy.loginAndCacheToken
 import com.raofflineproxy.proxy.loadLoginCredentials
 import com.raofflineproxy.proxy.deleteCachedGamesData
-import com.raofflineproxy.proxy.loadCachedGameRefreshTargets
-import com.raofflineproxy.proxy.refreshCachedGameOfflineBundle
-import com.raofflineproxy.proxy.RefreshNotificationMode
 import com.raofflineproxy.proxy.runSmartCache
 import com.raofflineproxy.proxy.loadUserAgent
 import com.raofflineproxy.proxy.compactCachedRawResponse
@@ -135,7 +131,6 @@ sealed interface MainUiEvent {
 
 private sealed interface PendingCredentialAction {
     data object SmartCache : PendingCredentialAction
-    data object RefreshGames : PendingCredentialAction
     data class AddRom(val uris: List<Uri>) : PendingCredentialAction
     data class ScanRoms(val treeUri: Uri) : PendingCredentialAction
 }
@@ -1708,42 +1703,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         _state.value = _state.value.copy(cachedGames = remaining)
     }
 
-    fun refreshGames() {
-        val app = getApplication<Application>()
-        viewModelScope.launch {
-            val credentials = requireCredentials(PendingCredentialAction.RefreshGames) ?: return@launch
-            val refreshTargets = withContext(Dispatchers.IO) { loadCachedGameRefreshTargets(db) }
-            val startingMessage = str(R.string.refresh_progress, 0, refreshTargets.size)
-            _state.value = _state.value.copy(scanInProgress = true, scanProgress = startingMessage)
-            SnackbarManager.showProgress(startingMessage)
-            val userAgent = withContext(Dispatchers.IO) { proxyUserAgent(loadUserAgent(db)) }
-            withContext(Dispatchers.IO) {
-                for ((index, target) in refreshTargets.withIndex()) {
-                    applyScanBatchCooldown(index, "RAProxy/Refresh")
-                    val title = _state.value.cachedGames.firstOrNull { it.gameId == target.gameId.toString() }?.title
-                        ?: target.gameId.toString()
-                    val progressMessage = str(R.string.refresh_progress_named, index + 1, refreshTargets.size, title)
-                    _state.value = _state.value.copy(scanProgress = progressMessage)
-                    SnackbarManager.showProgress(progressMessage)
-                    refreshCachedGameOfflineBundle(
-                        context = app,
-                        target = target,
-                        creds = credentials,
-                        userAgent = userAgent,
-                        db = db,
-                        notificationMode = RefreshNotificationMode.Foreground
-                    )
-                }
-            }
-            _state.value = _state.value.copy(
-                scanInProgress = false,
-                scanProgress = null
-            )
-            SnackbarManager.showProgress(null)
-            SnackbarManager.showMessage(str(R.string.refresh_complete, refreshTargets.size), SnackbarDuration.Indefinite)
-        }
-    }
-
     private var smartCacheJob: Job? = null
 
     fun cancelSmartCache() {
@@ -2290,7 +2249,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             pendingCredentialAction = null
             when (action) {
                 PendingCredentialAction.SmartCache -> startSmartCache()
-                PendingCredentialAction.RefreshGames -> refreshGames()
                 is PendingCredentialAction.AddRom -> addRom(action.uris)
                 is PendingCredentialAction.ScanRoms -> scanRoms(action.treeUri)
                 null -> Unit

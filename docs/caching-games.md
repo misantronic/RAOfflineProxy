@@ -104,12 +104,13 @@ The **Cached Games** screen shows a list of all games currently saved. For each 
 
 ## Refreshing Cache
 
-Tap the **refresh icon** to re-fetch data for all cached games while online. This updates achievement lists and your unlock counts.
+Cached games are kept up to date automatically:
 
-The proxy also runs an **automatic background refresh every 60 minutes** while the service is running and you are online. To keep the load on the RetroAchievements servers low, it only covers games you **played in the last 7 days**, and it waits until the proxy has been idle for 5 minutes, so it does not run while you are playing.
+- **Launching a game while online** fetches its latest achievements and unlocks.
+- The proxy runs an **automatic background refresh every 60 minutes** while the service is running and you are online. To keep the load on the RetroAchievements servers low, it only covers games you **played in the last 7 days**, and it waits until the proxy has been idle for 5 minutes, so it does not run while you are playing.
 
-::: tip Refresh before going offline
-Games you have not played recently are not refreshed in the background. If you unlocked achievements on another device, tap the **refresh icon** before you disconnect so your offline unlock state is current. Launching a game while online also fetches its latest unlocks.
+::: tip Before going offline with a game you have not played lately
+A game you have not launched recently keeps the data from when it was cached. If you unlocked achievements on another device, launch the game once while online before you disconnect, so your offline unlock state is current.
 :::
 
 ## Cache Expiration

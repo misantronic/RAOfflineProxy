@@ -243,11 +243,6 @@
     <string name="app_update_allow_installs_message">To install the update directly, allow RAOfflineProxy to install apps. You will be taken to the system settings screen.</string>
     <string name="app_update_allow_installs_open_settings">Open settings</string>
 
-    <!-- Refresh messages -->
-    <string name="refresh_progress">Refreshing %1$d/%2$d…</string>
-    <string name="refresh_progress_named">Refreshing %1$d/%2$d: %3$s</string>
-    <string name="refresh_complete">Refreshed %d game(s).</string>
-
     <!-- Clear cache/database -->
     <string name="cache_cleared">Cache cleared.</string>
     <string name="permissions_cleared">Permissions cleared.</string>
@@ -327,7 +322,7 @@
     <!-- Cached games header -->
     <string name="cached_games_scan_hint">Go online and make sure RAOfflineProxy has imported your RetroAchievements credentials to manage cached games.</string>
 
-    <string name="cached_games_offline_hint">Go online to add, scan, or refresh cached games.</string>
+    <string name="cached_games_offline_hint">Go online to add or scan games.</string>
     <string name="cached_games_counter">%1$d cached</string>
     <string name="cached_games_counter_queued">%1$d cached · %2$d queued</string>
     <string name="cached_games_counter_with_queue_status">%1$s · %2$s</string>
@@ -342,7 +337,6 @@
     <string name="queue_confirm_continue">Continue</string>
     <string name="queue_eta_minutes">%1$d minutes</string>
     <string name="queue_eta_hours">%1$d h %2$d min</string>
-    <string name="cached_games_refresh">Refresh games</string>
     <string name="cached_games_smart_cache">Start Smart Cache</string>
     <string name="cached_games_add_rom">Add ROM</string>
     <string name="cached_games_scan_folder">Scan ROM folder</string>
