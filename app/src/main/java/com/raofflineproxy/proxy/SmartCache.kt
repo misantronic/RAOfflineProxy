@@ -663,7 +663,9 @@ private fun queryArmsxRomLibrary(context: Context, authority: String, emulator: 
                     } else {
                         null
                     }
-                    if (lastPlayed == null || lastPlayed < cutoff) {
+                    // ARMSX stamps last-played per serial, and PS1 discs carry none. The provider
+                    // only returns the recently played list, so a missing stamp still means recent.
+                    if (lastPlayed != null && lastPlayed < cutoff) {
                         continue
                     }
 

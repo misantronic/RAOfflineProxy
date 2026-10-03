@@ -44,11 +44,16 @@ Smart Cache can use recent activity from:
 - **RetroArch** recent history
 - **Dolphin** recent GameCube and Wii save data
 - **PPSSPP** recent games list
+- **ARMSX1** (0.1.5 or newer) and **ARMSX2** (2.6.7 or newer) recently played list
 
 If Smart Cache does not find anything new, it simply finishes without adding more games.
 
-::: warning ARMSX1, ARMSX2, and Flycast are not Smart Cache sources
-**ARMSX1**, **ARMSX2**, and **Flycast** do not expose a recent-games list that the app can read. To cache games from these emulators, use **Scan ROM Folder** or **Add Individual ROM(s)** instead.
+::: info ARMSX1 and ARMSX2 ask for permission once
+The first time Smart Cache reads from ARMSX1 or ARMSX2, the emulator asks whether RAOfflineProxy may access its recently played games. Tap **Allow**. If you decline, Smart Cache skips that emulator until you turn sharing back on in the emulator's app settings.
+:::
+
+::: warning Flycast is not a Smart Cache source
+**Flycast** does not expose a recent-games list that the app can read. To cache Flycast games, use **Scan ROM Folder** or **Add Individual ROM(s)** instead.
 :::
 
 ### Scan ROM Folder
