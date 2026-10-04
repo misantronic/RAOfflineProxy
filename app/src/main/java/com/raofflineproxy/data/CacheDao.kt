@@ -74,8 +74,8 @@ interface CacheDao {
     @Query("SELECT id, cacheKey, sourceRomPath, cachedAt, firstCachedAt FROM api_cache WHERE cacheKey LIKE :prefix || '%'")
     suspend fun getAllSummariesByPrefix(prefix: String): List<CacheEntrySummary>
 
-    suspend fun getAllByPrefix(prefix: String): List<CacheEntry> =
-        getAllSummariesByPrefix(prefix).mapNotNull { entry -> entry.withResponseBody(this) }
+    @Query("SELECT cacheKey FROM api_cache WHERE cacheKey LIKE :prefix || '%'")
+    suspend fun getKeysByPrefix(prefix: String): List<String>
 
     @Query("DELETE FROM api_cache WHERE cacheKey LIKE :prefix || '%'")
     suspend fun deleteByKeyPrefix(prefix: String)
@@ -98,9 +98,18 @@ interface CacheDao {
     suspend fun updateCacheKey(oldKey: String, newKey: String)
 }
 
+// Bodies of a whole prefix never sit in memory together: thousands of cached games would exceed
+// the app's heap, so each entry is loaded only while [action] runs.
+internal suspend inline fun CacheDao.forEachEntryByPrefix(prefix: String, action: (CacheEntry) -> Unit) {
+    for (summary in getAllSummariesByPrefix(prefix)) {
+        summary.withResponseBody(this)?.let { entry -> action(entry) }
+    }
+}
+
 private const val RESPONSE_BODY_CHUNK_SIZE = 32_768
 
-private suspend fun CacheEntrySummary.withResponseBody(cacheDao: CacheDao): CacheEntry? {
+@PublishedApi
+internal suspend fun CacheEntrySummary.withResponseBody(cacheDao: CacheDao): CacheEntry? {
     val responseBody = buildString {
         var sqliteOffset = 1
         while (true) {

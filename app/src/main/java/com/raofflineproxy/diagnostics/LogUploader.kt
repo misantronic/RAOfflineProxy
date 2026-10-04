@@ -19,7 +19,7 @@ private const val TAG = "RAProxy/LogUploader"
 object LogUploader {
 
     fun uploadLogs(context: Context): Result<String> = runCatching {
-        val zipBytes = zipLogs(LogExporter.captureRecentLogs())
+        val zipBytes = zipLogs(CrashReport.describe(context) + "\n" + LogExporter.captureRecentLogs())
 
         val requestUploadResponse = sharedHttpClient.newCall(
             Request.Builder()

@@ -18,7 +18,7 @@ data class CachedGame(
     val cachedAt: Long,
     val imageIconUrl: String?,
     val unlockedCount: Int = 0,
+    val unlockedListedCount: Int = 0,
     val pendingAwardCount: Int = 0,
-    val totalAchievements: Int = 0,
-    val achievements: List<CachedAchievement> = emptyList()
+    val totalAchievements: Int = 0
 )
