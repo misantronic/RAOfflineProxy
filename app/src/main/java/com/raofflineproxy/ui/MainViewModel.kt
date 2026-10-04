@@ -432,9 +432,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             val anyPatched = retroArchPatched || dolphinPatched || ppssppPatched || anyBroadcastPatched
             val proxyRunning = ProxyService.isRunning(app)
             val prefs = app.getSharedPreferences(PrefsConstants.PREFS_NAME, Context.MODE_PRIVATE)
-            val retroArchPatchedThisRun = prefs.getBoolean(PrefsConstants.KEY_RETROARCH_PATCHED_THIS_RUN, false)
-            val dolphinPatchedThisRun = prefs.getBoolean(PrefsConstants.KEY_DOLPHIN_PATCHED_THIS_RUN, false)
-            val ppssppPatchedThisRun = prefs.getBoolean(PrefsConstants.KEY_PPSSPP_PATCHED_THIS_RUN, false)
+            val retroArchPatchedThisRun = prefs.isPatchedThisRun(Emulator.RetroArch)
+            val dolphinPatchedThisRun = prefs.isPatchedThisRun(Emulator.Dolphin)
+            val ppssppPatchedThisRun = prefs.isPatchedThisRun(Emulator.Ppsspp)
 
             if (!proxyRunning && shouldKeepRunning) {
                 ProxyService.start(app)
@@ -457,7 +457,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             }
 
             val retroArchResult = if (retroArchPatchedThisRun || retroArchPatched) {
-                val restoreHardcore = prefs.getBoolean(PrefsConstants.KEY_RETROARCH_HARDCORE_WAS_ENABLED, false)
+                val restoreHardcore = prefs.hardcoreWasEnabled(Emulator.RetroArch)
                 withContext(Dispatchers.IO) {
                     revertRetroArchCfg(app, retroArchTreeUri, restoreHardcore)
                 }
@@ -467,7 +467,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             val retroArchRevertedTarget = retroArchResult.success && retroArchResult.copyBackPath == null
 
             val dolphinResult = if (dolphinPatchedThisRun || dolphinPatched) {
-                val restoreDolphinHardcore = prefs.getBoolean(PrefsConstants.KEY_DOLPHIN_HARDCORE_WAS_ENABLED, false)
+                val restoreDolphinHardcore = prefs.hardcoreWasEnabled(Emulator.Dolphin)
                 withContext(Dispatchers.IO) {
                     revertDolphinCfg(app, dolphinTreeUri, restoreDolphinHardcore)
                 }
@@ -477,7 +477,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             val dolphinRevertedTarget = dolphinResult.success && dolphinResult.copyBackPath == null
 
             val ppssppResult = if (ppssppPatchedThisRun || ppssppPatched) {
-                val restorePpssppHardcore = prefs.getBoolean(PrefsConstants.KEY_PPSSPP_HARDCORE_WAS_ENABLED, false)
+                val restorePpssppHardcore = prefs.hardcoreWasEnabled(Emulator.Ppsspp)
                 withContext(Dispatchers.IO) {
                     revertPpssppCfg(app, ppssppTreeUri, restorePpssppHardcore)
                 }
@@ -490,24 +490,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             val failedBroadcastRevert = broadcastResults.values.firstOrNull { !it.success }
 
             if (retroArchRevertedTarget) {
-                prefs.edit {
-                    remove(PrefsConstants.KEY_RETROARCH_HARDCORE_WAS_ENABLED)
-                    remove(PrefsConstants.KEY_RETROARCH_PATCHED_THIS_RUN)
-                }
+                prefs.clearPatchState(Emulator.RetroArch)
             }
 
             if (dolphinRevertedTarget) {
-                prefs.edit {
-                    remove(PrefsConstants.KEY_DOLPHIN_HARDCORE_WAS_ENABLED)
-                    remove(PrefsConstants.KEY_DOLPHIN_PATCHED_THIS_RUN)
-                }
+                prefs.clearPatchState(Emulator.Dolphin)
             }
 
             if (ppssppRevertedTarget) {
-                prefs.edit {
-                    remove(PrefsConstants.KEY_PPSSPP_HARDCORE_WAS_ENABLED)
-                    remove(PrefsConstants.KEY_PPSSPP_PATCHED_THIS_RUN)
-                }
+                prefs.clearPatchState(Emulator.Ppsspp)
             }
 
             val needsSafGrant = retroArchResult.needsSafGrant || dolphinResult.needsSafGrant || ppssppResult.needsSafGrant
@@ -1074,12 +1065,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         SnackbarManager.showError(result.message)
                         return@launch
                     }
-                    prefs.edit {
-                        putBoolean(PrefsConstants.KEY_RETROARCH_HARDCORE_WAS_ENABLED, result.hardcoreWasEnabled)
-                        putBoolean(PrefsConstants.KEY_RETROARCH_PATCHED_THIS_RUN, true)
-                    }
+                    prefs.recordPatched(Emulator.RetroArch, result.hardcoreWasEnabled)
                 } else {
-                    prefs.edit { remove(PrefsConstants.KEY_RETROARCH_PATCHED_THIS_RUN) }
+                    prefs.edit { remove(Emulator.RetroArch.patchedThisRunPrefsKey) }
                 }
 
                 val dolphinStoredCredentials = if (emulatorSupport.isEnabled(Emulator.Dolphin)) {
@@ -1113,13 +1101,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         pendingProxyStart = false
                         return@launch
                     } else if (dolphinResult.success && !dolphinResult.skippedNotInstalled) {
-                        prefs.edit {
-                            putBoolean(PrefsConstants.KEY_DOLPHIN_HARDCORE_WAS_ENABLED, dolphinResult.hardcoreWasEnabled)
-                            putBoolean(PrefsConstants.KEY_DOLPHIN_PATCHED_THIS_RUN, true)
-                        }
+                        prefs.recordPatched(Emulator.Dolphin, dolphinResult.hardcoreWasEnabled)
                     }
                 } else {
-                    prefs.edit { remove(PrefsConstants.KEY_DOLPHIN_PATCHED_THIS_RUN) }
+                    prefs.edit { remove(Emulator.Dolphin.patchedThisRunPrefsKey) }
                 }
 
                 val ppssppResult = if (emulatorSupport.isEnabled(Emulator.Ppsspp)) {
@@ -1148,13 +1133,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         pendingProxyStart = false
                         return@launch
                     } else if (ppssppResult.success && !ppssppResult.skippedNotInstalled) {
-                        prefs.edit {
-                            putBoolean(PrefsConstants.KEY_PPSSPP_HARDCORE_WAS_ENABLED, ppssppResult.hardcoreWasEnabled)
-                            putBoolean(PrefsConstants.KEY_PPSSPP_PATCHED_THIS_RUN, true)
-                        }
+                        prefs.recordPatched(Emulator.Ppsspp, ppssppResult.hardcoreWasEnabled)
                     }
                 } else {
-                    prefs.edit { remove(PrefsConstants.KEY_PPSSPP_PATCHED_THIS_RUN) }
+                    prefs.edit { remove(Emulator.Ppsspp.patchedThisRunPrefsKey) }
                 }
 
                 patchBroadcastEmulators(app, prefs, emulatorSupport)?.let { failure ->
@@ -1264,18 +1246,18 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 val retroArchTreeUri = treeUri ?: loadSafUri()
                 val dolphinTreeUri = loadDolphinSafUri()
                 val ppssppTreeUri = loadPpssppSafUri()
-                val retroArchPatchedThisRun = prefs.getBoolean(PrefsConstants.KEY_RETROARCH_PATCHED_THIS_RUN, false)
+                val retroArchPatchedThisRun = prefs.isPatchedThisRun(Emulator.RetroArch)
                 val result = if (retroArchPatchedThisRun) {
-                    val restoreHardcore = prefs.getBoolean(PrefsConstants.KEY_RETROARCH_HARDCORE_WAS_ENABLED, false)
+                    val restoreHardcore = prefs.hardcoreWasEnabled(Emulator.RetroArch)
                     withContext(Dispatchers.IO) { revertRetroArchCfg(app, retroArchTreeUri, restoreHardcore) }
                 } else {
                     ConfigPatchResult(success = true, message = "RetroArch not patched this run.")
                 }
                 val revertedTarget = result.success && result.copyBackPath == null
 
-                val dolphinPatchedThisRun = prefs.getBoolean(PrefsConstants.KEY_DOLPHIN_PATCHED_THIS_RUN, false)
+                val dolphinPatchedThisRun = prefs.isPatchedThisRun(Emulator.Dolphin)
                 val dolphinResult = if (dolphinPatchedThisRun) {
-                    val restoreDolphinHardcore = prefs.getBoolean(PrefsConstants.KEY_DOLPHIN_HARDCORE_WAS_ENABLED, false)
+                    val restoreDolphinHardcore = prefs.hardcoreWasEnabled(Emulator.Dolphin)
                     withContext(Dispatchers.IO) {
                         revertDolphinCfg(app, dolphinTreeUri, restoreDolphinHardcore)
                     }
@@ -1283,9 +1265,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     ConfigPatchResult(success = true, message = "Dolphin not patched this run.", skippedNotInstalled = true)
                 }
 
-                val ppssppPatchedThisRun = prefs.getBoolean(PrefsConstants.KEY_PPSSPP_PATCHED_THIS_RUN, false)
+                val ppssppPatchedThisRun = prefs.isPatchedThisRun(Emulator.Ppsspp)
                 val ppssppResult = if (ppssppPatchedThisRun) {
-                    val restorePpssppHardcore = prefs.getBoolean(PrefsConstants.KEY_PPSSPP_HARDCORE_WAS_ENABLED, false)
+                    val restorePpssppHardcore = prefs.hardcoreWasEnabled(Emulator.Ppsspp)
                     withContext(Dispatchers.IO) {
                         revertPpssppCfg(app, ppssppTreeUri, restorePpssppHardcore)
                     }
@@ -1298,22 +1280,16 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
                 if (revertedTarget) {
                     prefs.edit {
-                        remove(PrefsConstants.KEY_RETROARCH_HARDCORE_WAS_ENABLED)
-                        remove(PrefsConstants.KEY_RETROARCH_PATCHED_THIS_RUN)
+                        remove(Emulator.RetroArch.hardcoreWasEnabledPrefsKey)
+                        remove(Emulator.RetroArch.patchedThisRunPrefsKey)
                         putBoolean(PrefsConstants.KEY_SKIP_NEXT_CFG_REVERT, true)
                     }
                 }
                 if (dolphinResult.success && dolphinResult.copyBackPath == null) {
-                    prefs.edit {
-                        remove(PrefsConstants.KEY_DOLPHIN_HARDCORE_WAS_ENABLED)
-                        remove(PrefsConstants.KEY_DOLPHIN_PATCHED_THIS_RUN)
-                    }
+                    prefs.clearPatchState(Emulator.Dolphin)
                 }
                 if (ppssppResult.success && ppssppResult.copyBackPath == null) {
-                    prefs.edit {
-                        remove(PrefsConstants.KEY_PPSSPP_HARDCORE_WAS_ENABLED)
-                        remove(PrefsConstants.KEY_PPSSPP_PATCHED_THIS_RUN)
-                    }
+                    prefs.clearPatchState(Emulator.Ppsspp)
                 }
                 ProxyService.stop(app)
 

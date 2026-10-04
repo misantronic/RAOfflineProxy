@@ -9,23 +9,11 @@ import com.raofflineproxy.proxyBase
 import com.raofflineproxy.proxyPort
 import com.raofflineproxy.proxyValue
 
-internal const val UI_ARMSX1_PACKAGE = "com.nanodata.armsx"
-internal const val UI_ARMSX2_LEGACY_PACKAGE = "come.nanodata.armsx2"
-internal const val UI_ARMSX2_PACKAGE = "com.armsx2"
-internal const val UI_FLYCAST_PACKAGE = "com.flycast.emulator"
-internal const val UI_WATERMELONDS_PACKAGE = "me.magnum.melondualds"
-internal const val UI_MUPEN64_PACKAGE = "org.mupen64plusae.v3.alpha"
-internal const val UI_MUPEN64_DEBUG_PACKAGE = "org.mupen64plusae.v3.alpha.debug"
-internal const val UI_EMUCOREX_PACKAGE = "com.sbro.emucorex"
-internal const val UI_NETHERSX2_PACKAGE = "xyz.aethersx2.android"
-internal const val UI_SEEDLESSDS_PACKAGE = "com.seedlessds.app"
-internal const val UI_SEEDLESSDS_DEBUG_PACKAGE = "com.seedlessds.app.debug"
 
 internal class ConfigOverride(
     // Wire identifier for the Shizuku user service, which runs in its own process and dispatches
     // on this string. Both sides read it from here so they cannot drift apart.
     val shizukuKey: String,
-    val hardcoreWasEnabledPrefsKey: String,
     val needsCredentials: Boolean = false,
     val loadSafUri: (Context) -> Uri?,
     val detectHardcoreEnabled: (String) -> Boolean,
@@ -49,8 +37,7 @@ internal class BroadcastOverride(
 enum class Emulator(
     val displayName: String,
     val labelRes: Int,
-    val enabledPrefsKey: String,
-    val patchedThisRunPrefsKey: String,
+    val prefsId: String,
     val packageCandidates: List<String>,
     internal val configOverride: ConfigOverride? = null,
     internal val broadcastOverride: BroadcastOverride? = null
@@ -58,12 +45,10 @@ enum class Emulator(
     RetroArch(
         displayName = "RetroArch",
         labelRes = R.string.emulator_retroarch,
-        enabledPrefsKey = PrefsConstants.KEY_ENABLE_RETROARCH,
-        patchedThisRunPrefsKey = PrefsConstants.KEY_RETROARCH_PATCHED_THIS_RUN,
-        packageCandidates = RETROARCH_PACKAGE_CANDIDATES,
+        prefsId = "retroarch",
+        packageCandidates = listOf("com.retroarch.aarch64", "com.retroarch"),
         configOverride = ConfigOverride(
             shizukuKey = "retroarch",
-            hardcoreWasEnabledPrefsKey = PrefsConstants.KEY_RETROARCH_HARDCORE_WAS_ENABLED,
             loadSafUri = { context -> PrefsConstants.loadSafUri(context) },
             detectHardcoreEnabled = ::detectHardcoreEnabled,
             patch = { context, treeUri, _ -> patchRetroArchCfg(context, treeUri) },
@@ -75,12 +60,15 @@ enum class Emulator(
     Dolphin(
         displayName = "Dolphin",
         labelRes = R.string.emulator_dolphin,
-        enabledPrefsKey = PrefsConstants.KEY_ENABLE_DOLPHIN,
-        patchedThisRunPrefsKey = PrefsConstants.KEY_DOLPHIN_PATCHED_THIS_RUN,
-        packageCandidates = DOLPHIN_PACKAGE_CANDIDATES,
+        prefsId = "dolphin",
+        packageCandidates = listOf(
+            "org.dolphinemu.dolphinemu",
+            "org.dolphinemu.dolphinemu.beta",
+            "org.dolphinemu.dolphinemu.debug",
+            "com.joeyos.dolphinemu"
+        ),
         configOverride = ConfigOverride(
             shizukuKey = "dolphin",
-            hardcoreWasEnabledPrefsKey = PrefsConstants.KEY_DOLPHIN_HARDCORE_WAS_ENABLED,
             needsCredentials = true,
             loadSafUri = { context -> PrefsConstants.loadDolphinSafUri(context) },
             detectHardcoreEnabled = ::detectDolphinHardcoreEnabled,
@@ -93,12 +81,10 @@ enum class Emulator(
     Ppsspp(
         displayName = "PPSSPP",
         labelRes = R.string.emulator_ppsspp,
-        enabledPrefsKey = PrefsConstants.KEY_ENABLE_PPSSPP,
-        patchedThisRunPrefsKey = PrefsConstants.KEY_PPSSPP_PATCHED_THIS_RUN,
-        packageCandidates = UI_PPSSPP_PACKAGE_CANDIDATES,
+        prefsId = "ppsspp",
+        packageCandidates = listOf("org.ppsspp.ppsspp", "org.ppsspp.ppssppgold"),
         configOverride = ConfigOverride(
             shizukuKey = "ppsspp",
-            hardcoreWasEnabledPrefsKey = PrefsConstants.KEY_PPSSPP_HARDCORE_WAS_ENABLED,
             loadSafUri = { context -> PrefsConstants.loadPpssppSafUri(context) },
             detectHardcoreEnabled = ::detectPpssppHardcoreEnabled,
             patch = { context, treeUri, _ -> patchPpssppCfg(context, treeUri) },
@@ -110,9 +96,8 @@ enum class Emulator(
     Armsx1(
         displayName = "ARMSX1",
         labelRes = R.string.emulator_armsx1,
-        enabledPrefsKey = PrefsConstants.KEY_ENABLE_ARMSX1,
-        patchedThisRunPrefsKey = PrefsConstants.KEY_ARMSX1_PATCHED_THIS_RUN,
-        packageCandidates = listOf(UI_ARMSX1_PACKAGE),
+        prefsId = "armsx1",
+        packageCandidates = listOf("com.nanodata.armsx"),
         broadcastOverride = BroadcastOverride(
             patchSuccessRes = R.string.armsx1_patch_success,
             patchErrorRes = R.string.armsx1_patch_error_unavailable,
@@ -128,9 +113,8 @@ enum class Emulator(
     Armsx2(
         displayName = "ARMSX2",
         labelRes = R.string.emulator_armsx2,
-        enabledPrefsKey = PrefsConstants.KEY_ENABLE_ARMSX2,
-        patchedThisRunPrefsKey = PrefsConstants.KEY_ARMSX2_PATCHED_THIS_RUN,
-        packageCandidates = listOf(UI_ARMSX2_LEGACY_PACKAGE, UI_ARMSX2_PACKAGE),
+        prefsId = "armsx2",
+        packageCandidates = listOf("come.nanodata.armsx2", "com.armsx2"),
         broadcastOverride = BroadcastOverride(
             patchSuccessRes = R.string.armsx2_patch_success,
             patchErrorRes = R.string.armsx2_patch_error_unavailable,
@@ -140,16 +124,15 @@ enum class Emulator(
             // legacy line (come.nanodata.armsx2) keeps the upstream kr.co.iefriends path.
             defaultReceiverClass = "kr.co.iefriends.pcsx2.utils.RetroAchievementsHostOverrideReceiver",
             receiverClassByPackage = mapOf(
-                UI_ARMSX2_PACKAGE to "com.armsx2.RetroAchievementsHostOverrideReceiver"
+                "com.armsx2" to "com.armsx2.RetroAchievementsHostOverrideReceiver"
             )
         )
     ),
     Flycast(
         displayName = "Flycast",
         labelRes = R.string.emulator_flycast,
-        enabledPrefsKey = PrefsConstants.KEY_ENABLE_FLYCAST,
-        patchedThisRunPrefsKey = PrefsConstants.KEY_FLYCAST_PATCHED_THIS_RUN,
-        packageCandidates = listOf(UI_FLYCAST_PACKAGE),
+        prefsId = "flycast",
+        packageCandidates = listOf("com.flycast.emulator"),
         broadcastOverride = BroadcastOverride(
             patchSuccessRes = R.string.flycast_patch_success,
             patchErrorRes = R.string.flycast_patch_error_unavailable,
@@ -161,9 +144,8 @@ enum class Emulator(
     WatermelonDs(
         displayName = "WatermelonDS",
         labelRes = R.string.emulator_watermelonds,
-        enabledPrefsKey = PrefsConstants.KEY_ENABLE_WATERMELONDS,
-        patchedThisRunPrefsKey = PrefsConstants.KEY_WATERMELONDS_PATCHED_THIS_RUN,
-        packageCandidates = listOf(UI_WATERMELONDS_PACKAGE),
+        prefsId = "melondualds",
+        packageCandidates = listOf("me.magnum.melondualds"),
         broadcastOverride = BroadcastOverride(
             patchSuccessRes = R.string.watermelonds_patch_success,
             patchErrorRes = R.string.watermelonds_patch_error_unavailable,
@@ -175,9 +157,8 @@ enum class Emulator(
     Mupen64(
         displayName = "Mupen64Plus",
         labelRes = R.string.emulator_mupen64,
-        enabledPrefsKey = PrefsConstants.KEY_ENABLE_MUPEN64,
-        patchedThisRunPrefsKey = PrefsConstants.KEY_MUPEN64_PATCHED_THIS_RUN,
-        packageCandidates = listOf(UI_MUPEN64_PACKAGE, UI_MUPEN64_DEBUG_PACKAGE),
+        prefsId = "mupen64",
+        packageCandidates = listOf("org.mupen64plusae.v3.alpha", "org.mupen64plusae.v3.alpha.debug"),
         broadcastOverride = BroadcastOverride(
             patchSuccessRes = R.string.mupen64_patch_success,
             patchErrorRes = R.string.mupen64_patch_error_unavailable,
@@ -189,9 +170,8 @@ enum class Emulator(
     EmuCoreX(
         displayName = "EmuCoreX",
         labelRes = R.string.emulator_emucorex,
-        enabledPrefsKey = PrefsConstants.KEY_ENABLE_EMUCOREX,
-        patchedThisRunPrefsKey = PrefsConstants.KEY_EMUCOREX_PATCHED_THIS_RUN,
-        packageCandidates = listOf(UI_EMUCOREX_PACKAGE),
+        prefsId = "emucorex",
+        packageCandidates = listOf("com.sbro.emucorex"),
         broadcastOverride = BroadcastOverride(
             patchSuccessRes = R.string.emucorex_patch_success,
             patchErrorRes = R.string.emucorex_patch_error_unavailable,
@@ -203,9 +183,8 @@ enum class Emulator(
     NetherSx2(
         displayName = "NetherSX2",
         labelRes = R.string.emulator_nethersx2,
-        enabledPrefsKey = PrefsConstants.KEY_ENABLE_NETHERSX2,
-        patchedThisRunPrefsKey = PrefsConstants.KEY_NETHERSX2_PATCHED_THIS_RUN,
-        packageCandidates = listOf(UI_NETHERSX2_PACKAGE),
+        prefsId = "nethersx2",
+        packageCandidates = listOf("xyz.aethersx2.android"),
         broadcastOverride = BroadcastOverride(
             patchSuccessRes = R.string.nethersx2_patch_success,
             patchErrorRes = R.string.nethersx2_patch_error_unavailable,
@@ -219,9 +198,8 @@ enum class Emulator(
     SeedlessDs(
         displayName = "SeedlessDS",
         labelRes = R.string.emulator_seedlessds,
-        enabledPrefsKey = PrefsConstants.KEY_ENABLE_SEEDLESSDS,
-        patchedThisRunPrefsKey = PrefsConstants.KEY_SEEDLESSDS_PATCHED_THIS_RUN,
-        packageCandidates = listOf(UI_SEEDLESSDS_PACKAGE, UI_SEEDLESSDS_DEBUG_PACKAGE),
+        prefsId = "seedlessds",
+        packageCandidates = listOf("com.seedlessds.app", "com.seedlessds.app.debug"),
         broadcastOverride = BroadcastOverride(
             patchSuccessRes = R.string.seedlessds_patch_success,
             patchErrorRes = R.string.seedlessds_patch_error_unavailable,
@@ -230,6 +208,10 @@ enum class Emulator(
             defaultReceiverClass = "com.seedlessds.app.ra.RaHostOverrideReceiver"
         )
     );
+
+    val enabledPrefsKey: String get() = "enable_$prefsId"
+    val patchedThisRunPrefsKey: String get() = "${prefsId}_patched_this_run"
+    val hardcoreWasEnabledPrefsKey: String get() = "${prefsId}_hardcore_was_enabled"
 
     companion object {
         // The config-file emulators are exactly the ones the Shizuku user service knows how to

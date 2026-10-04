@@ -12,11 +12,8 @@ import com.raofflineproxy.data.AppDatabase
 import com.raofflineproxy.proxy.hash.RomHashInput
 import com.raofflineproxy.proxy.hash.hashRomCandidates
 import com.raofflineproxy.proxy.hash.hashZipRomCandidates
-import com.raofflineproxy.ui.DOLPHIN_PACKAGE_CANDIDATES
 import com.raofflineproxy.ui.Emulator
 import com.raofflineproxy.ui.EmulatorSupport
-import com.raofflineproxy.ui.RETROARCH_PACKAGE_CANDIDATES
-import com.raofflineproxy.ui.UI_PPSSPP_PACKAGE_CANDIDATES
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -54,7 +51,7 @@ private val RETROARCH_PACKAGE_HISTORY_PATHS = listOf(
 )
 
 private val RETROARCH_PACKAGE_HISTORY_SOURCE_CANDIDATES by lazy {
-    RETROARCH_PACKAGE_CANDIDATES.flatMap { packageName ->
+    Emulator.RetroArch.packageCandidates.flatMap { packageName ->
         listOf(
             "$SMART_CACHE_EXT_STORAGE/Android/data/$packageName/files/content_history.lpl",
             "/storage/emulated/0/Android/data/$packageName/files/content_history.lpl"
@@ -84,7 +81,7 @@ private val RETROARCH_SHARED_LOGS_SOURCE_CANDIDATES by lazy {
     )
 }
 
-private val DOLPHIN_GAMELIST_PATHS = DOLPHIN_PACKAGE_CANDIDATES.map { packageName ->
+private val DOLPHIN_GAMELIST_PATHS = Emulator.Dolphin.packageCandidates.map { packageName ->
     listOf(packageName, "cache", "gamelist.cache")
 } + listOf(
     listOf("cache", "gamelist.cache"),
@@ -92,7 +89,7 @@ private val DOLPHIN_GAMELIST_PATHS = DOLPHIN_PACKAGE_CANDIDATES.map { packageNam
 )
 
 private val DOLPHIN_GAMELIST_SOURCE_CANDIDATES by lazy {
-    DOLPHIN_PACKAGE_CANDIDATES.flatMap { packageName ->
+    Emulator.Dolphin.packageCandidates.flatMap { packageName ->
         listOf(
             "$SMART_CACHE_EXT_STORAGE/Android/data/$packageName/cache/gamelist.cache",
             "/storage/emulated/0/Android/data/$packageName/cache/gamelist.cache"
@@ -103,7 +100,7 @@ private val DOLPHIN_GAMELIST_SOURCE_CANDIDATES by lazy {
     )
 }
 
-private val DOLPHIN_GC_PATHS = DOLPHIN_PACKAGE_CANDIDATES.map { packageName ->
+private val DOLPHIN_GC_PATHS = Emulator.Dolphin.packageCandidates.map { packageName ->
     listOf(packageName, "files", "GC")
 } + listOf(
     listOf("files", "GC"),
@@ -111,7 +108,7 @@ private val DOLPHIN_GC_PATHS = DOLPHIN_PACKAGE_CANDIDATES.map { packageName ->
 )
 
 private val DOLPHIN_GC_SOURCE_CANDIDATES by lazy {
-    DOLPHIN_PACKAGE_CANDIDATES.flatMap { packageName ->
+    Emulator.Dolphin.packageCandidates.flatMap { packageName ->
         listOf(
             "$SMART_CACHE_EXT_STORAGE/Android/data/$packageName/files/GC",
             "/storage/emulated/0/Android/data/$packageName/files/GC"
@@ -122,7 +119,7 @@ private val DOLPHIN_GC_SOURCE_CANDIDATES by lazy {
     )
 }
 
-private val DOLPHIN_WII_DISC_TITLE_PATHS = DOLPHIN_PACKAGE_CANDIDATES.map { packageName ->
+private val DOLPHIN_WII_DISC_TITLE_PATHS = Emulator.Dolphin.packageCandidates.map { packageName ->
     listOf(packageName, "files", "Wii", "title", "00010000")
 } + listOf(
     listOf("files", "Wii", "title", "00010000"),
@@ -132,7 +129,7 @@ private val DOLPHIN_WII_DISC_TITLE_PATHS = DOLPHIN_PACKAGE_CANDIDATES.map { pack
 )
 
 private val DOLPHIN_WII_DISC_TITLE_SOURCE_CANDIDATES by lazy {
-    DOLPHIN_PACKAGE_CANDIDATES.flatMap { packageName ->
+    Emulator.Dolphin.packageCandidates.flatMap { packageName ->
         listOf(
             "$SMART_CACHE_EXT_STORAGE/Android/data/$packageName/files/Wii/title/00010000",
             "/storage/emulated/0/Android/data/$packageName/files/Wii/title/00010000"
@@ -144,7 +141,7 @@ private val DOLPHIN_WII_DISC_TITLE_SOURCE_CANDIDATES by lazy {
 }
 
 private val PPSSPP_RECENTS_PATHS =
-    UI_PPSSPP_PACKAGE_CANDIDATES.map { listOf(it, "files", "SYSTEM", "ppsspp.ini") } + listOf(
+    Emulator.Ppsspp.packageCandidates.map { listOf(it, "files", "SYSTEM", "ppsspp.ini") } + listOf(
         listOf("files", "SYSTEM", "ppsspp.ini"),
         listOf("SYSTEM", "ppsspp.ini")
     )

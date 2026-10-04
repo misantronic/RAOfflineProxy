@@ -24,20 +24,13 @@ internal const val DOLPHIN_GAME_SETTINGS_RELATIVE_PATH = "GameSettings"
 private const val DOLPHIN_GAME_SETTINGS_SECTION = "Achievements.Achievements"
 private const val DOLPHIN_GAME_SETTINGS_KEY = "HardcoreEnabled"
 
-internal val DOLPHIN_PACKAGE_CANDIDATES = listOf(
-    "org.dolphinemu.dolphinemu",
-    "org.dolphinemu.dolphinemu.beta",
-    "org.dolphinemu.dolphinemu.debug",
-    "com.joeyos.dolphinemu"
-)
-
 internal const val DOLPHIN_SET_HOST_OVERRIDE_ACTION_SUFFIX = ".action.SET_RETROACHIEVEMENTS_HOST_OVERRIDE"
 internal const val DOLPHIN_CLEAR_HOST_OVERRIDE_ACTION_SUFFIX = ".action.CLEAR_RETROACHIEVEMENTS_HOST_OVERRIDE"
 internal const val DOLPHIN_HOST_OVERRIDE_EXTRA = "host"
 private const val DOLPHIN_CFG_RELATIVE_PATH = "Config/RetroAchievements.ini"
 
 private val DOLPHIN_SOURCE_CANDIDATES by lazy {
-    DOLPHIN_PACKAGE_CANDIDATES.flatMap { packageName ->
+    Emulator.Dolphin.packageCandidates.flatMap { packageName ->
         listOf(
             "/storage/emulated/0/Android/data/$packageName/files/$DOLPHIN_CFG_RELATIVE_PATH"
         )
@@ -48,7 +41,7 @@ private val DOLPHIN_SOURCE_CANDIDATES by lazy {
 
 internal val DOLPHIN_SHIZUKU_SOURCE_CANDIDATES = DOLPHIN_SOURCE_CANDIDATES
 
-private val DOLPHIN_SAF_CFG_PATHS = DOLPHIN_PACKAGE_CANDIDATES.map { packageName ->
+private val DOLPHIN_SAF_CFG_PATHS = Emulator.Dolphin.packageCandidates.map { packageName ->
     listOf(packageName, "files", "Config", "RetroAchievements.ini")
 } + listOf(
     listOf("files", "Config", "RetroAchievements.ini"),
@@ -57,14 +50,14 @@ private val DOLPHIN_SAF_CFG_PATHS = DOLPHIN_PACKAGE_CANDIDATES.map { packageName
 )
 
 internal val DOLPHIN_GAME_SETTINGS_SOURCE_CANDIDATES by lazy {
-    DOLPHIN_PACKAGE_CANDIDATES.flatMap { packageName ->
+    Emulator.Dolphin.packageCandidates.flatMap { packageName ->
         listOf(
             "/storage/emulated/0/Android/data/$packageName/files/$DOLPHIN_GAME_SETTINGS_RELATIVE_PATH"
         )
     }
 }
 
-private val DOLPHIN_SAF_GAME_SETTINGS_PATHS = DOLPHIN_PACKAGE_CANDIDATES.map { packageName ->
+private val DOLPHIN_SAF_GAME_SETTINGS_PATHS = Emulator.Dolphin.packageCandidates.map { packageName ->
     listOf(packageName, "files", DOLPHIN_GAME_SETTINGS_RELATIVE_PATH)
 } + listOf(
     listOf("files", DOLPHIN_GAME_SETTINGS_RELATIVE_PATH),
@@ -124,12 +117,12 @@ private val DOLPHIN_REVERT_STRINGS = DolphinStrings(
 )
 
 internal fun isDolphinInstalled(context: Context): Boolean =
-    DOLPHIN_PACKAGE_CANDIDATES.any { packageName ->
+    Emulator.Dolphin.packageCandidates.any { packageName ->
         runCatching { context.packageManager.getPackageInfo(packageName, 0) }.isSuccess
     } || DOLPHIN_SOURCE_CANDIDATES.any { File(it).exists() }
 
 private fun resolveInstalledDolphinPackages(context: Context): List<String> =
-    DOLPHIN_PACKAGE_CANDIDATES.filter { packageName ->
+    Emulator.Dolphin.packageCandidates.filter { packageName ->
         runCatching { context.packageManager.getPackageInfo(packageName, 0) }.isSuccess
     }
 
@@ -819,7 +812,7 @@ internal fun isDolphinPatchedContent(content: String, proxyAddress: String): Boo
 fun checkIsDolphinPatched(context: Context, treeUri: Uri?): Boolean {
     if (supportsDolphinBroadcastOverride(context)) {
         return context.getSharedPreferences(PrefsConstants.PREFS_NAME, Context.MODE_PRIVATE)
-            .getBoolean(PrefsConstants.KEY_DOLPHIN_PATCHED_THIS_RUN, false)
+            .getBoolean(Emulator.Dolphin.patchedThisRunPrefsKey, false)
     }
 
     val proxyAddress = proxyValue(context)

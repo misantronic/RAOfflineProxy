@@ -20,8 +20,8 @@ internal const val PPSSPP_CLEAR_HOST_OVERRIDE_ACTION = "org.ppsspp.ppsspp.action
 internal const val PPSSPP_HOST_OVERRIDE_EXTRA = "host"
 
 private val PPSSPP_SAF_ROOT_PATHS = listOf(
-    *UI_PPSSPP_PACKAGE_CANDIDATES.map { listOf(it, "files") }.toTypedArray(),
-    *UI_PPSSPP_PACKAGE_CANDIDATES.map { listOf(it, "files", PPSSPP_PSP_DIR) }.toTypedArray(),
+    *Emulator.Ppsspp.packageCandidates.map { listOf(it, "files") }.toTypedArray(),
+    *Emulator.Ppsspp.packageCandidates.map { listOf(it, "files", PPSSPP_PSP_DIR) }.toTypedArray(),
     listOf("files"),
     listOf("files", PPSSPP_PSP_DIR),
     listOf(PPSSPP_PSP_DIR),
@@ -59,7 +59,7 @@ private val PPSSPP_REVERT_STRINGS = PpssppStrings(
 )
 
 internal fun isPpssppInstalled(context: Context): Boolean =
-    resolveInstalledPackage(context, UI_PPSSPP_PACKAGE_CANDIDATES) != null
+    resolveInstalledPackage(context, Emulator.Ppsspp.packageCandidates) != null
 
 fun patchPpssppCfg(context: Context, treeUri: Uri?): ConfigPatchResult {
     if (!isPpssppInstalled(context)) {
@@ -98,7 +98,7 @@ fun revertPpssppCfg(context: Context, treeUri: Uri?, restoreHardcore: Boolean = 
 fun checkIsPpssppPatched(context: Context, treeUri: Uri?): Boolean {
     if (supportsPpssppBroadcastOverride(context)) {
         val prefs = context.getSharedPreferences(PrefsConstants.PREFS_NAME, Context.MODE_PRIVATE)
-        return prefs.getBoolean(PrefsConstants.KEY_PPSSPP_PATCHED_THIS_RUN, false)
+        return prefs.getBoolean(Emulator.Ppsspp.patchedThisRunPrefsKey, false)
     }
 
     val proxyAddress = proxyValue(context)
@@ -122,7 +122,7 @@ internal fun validatePpssppRoot(context: Context, treeUri: Uri): Boolean {
 }
 
 internal fun supportsPpssppBroadcastOverride(context: Context): Boolean {
-    val packageName = resolveInstalledPackage(context, UI_PPSSPP_PACKAGE_CANDIDATES) ?: return false
+    val packageName = resolveInstalledPackage(context, Emulator.Ppsspp.packageCandidates) ?: return false
     return resolvesPpssppBroadcast(context, packageName, PPSSPP_SET_HOST_OVERRIDE_ACTION)
         && resolvesPpssppBroadcast(context, packageName, PPSSPP_CLEAR_HOST_OVERRIDE_ACTION)
 }
@@ -148,7 +148,7 @@ internal fun detectPpssppHardcoreEnabled(content: String): Boolean =
         ?: false
 
 private fun broadcastPpssppHostOverride(context: Context): ConfigPatchResult? {
-    val packageName = resolveInstalledPackage(context, UI_PPSSPP_PACKAGE_CANDIDATES) ?: return null
+    val packageName = resolveInstalledPackage(context, Emulator.Ppsspp.packageCandidates) ?: return null
     if (!supportsPpssppBroadcastOverride(context)) {
         return null
     }
@@ -166,7 +166,7 @@ private fun broadcastPpssppHostOverride(context: Context): ConfigPatchResult? {
 }
 
 private fun clearPpssppHostOverride(context: Context): ConfigPatchResult? {
-    val packageName = resolveInstalledPackage(context, UI_PPSSPP_PACKAGE_CANDIDATES) ?: return null
+    val packageName = resolveInstalledPackage(context, Emulator.Ppsspp.packageCandidates) ?: return null
     if (!supportsPpssppBroadcastOverride(context)) {
         return null
     }

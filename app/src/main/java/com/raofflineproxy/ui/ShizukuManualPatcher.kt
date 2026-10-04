@@ -149,7 +149,7 @@ internal suspend fun executeShizukuManualPatch(
 internal fun saveShizukuHardcoreWasEnabled(context: Context, flags: Map<Emulator, Boolean>) {
     context.getSharedPreferences(PrefsConstants.PREFS_NAME, Context.MODE_PRIVATE).edit {
         flags.forEach { (emulator, wasEnabled) ->
-            putBoolean(requireConfigOverride(emulator).hardcoreWasEnabledPrefsKey, wasEnabled)
+            putBoolean(emulator.hardcoreWasEnabledPrefsKey, wasEnabled)
         }
     }
 }
@@ -157,14 +157,14 @@ internal fun saveShizukuHardcoreWasEnabled(context: Context, flags: Map<Emulator
 internal fun loadShizukuHardcoreWasEnabled(context: Context): Map<Emulator, Boolean> {
     val prefs = context.getSharedPreferences(PrefsConstants.PREFS_NAME, Context.MODE_PRIVATE)
     return Emulator.SHIZUKU_MANAGED.associateWith { emulator ->
-        prefs.getBoolean(requireConfigOverride(emulator).hardcoreWasEnabledPrefsKey, false)
+        prefs.getBoolean(emulator.hardcoreWasEnabledPrefsKey, false)
     }
 }
 
 internal fun clearShizukuHardcoreWasEnabled(context: Context) {
     context.getSharedPreferences(PrefsConstants.PREFS_NAME, Context.MODE_PRIVATE).edit {
         Emulator.SHIZUKU_MANAGED.forEach {
-            remove(requireConfigOverride(it).hardcoreWasEnabledPrefsKey)
+            remove(it.hardcoreWasEnabledPrefsKey)
         }
     }
 }
@@ -428,7 +428,7 @@ internal fun ppssppIniPathCandidates(
     rootPath: String?,
     rootMode: PrefsConstants.PpssppRootMode
 ): List<String> {
-    val defaultPaths = UI_PPSSPP_PACKAGE_CANDIDATES.map { packageName ->
+    val defaultPaths = Emulator.Ppsspp.packageCandidates.map { packageName ->
         "/storage/emulated/0/Android/data/$packageName/files/$PPSSPP_PSP_DIR/$PPSSPP_SYSTEM_DIR/$PPSSPP_INI_FILE"
     }
     return buildList {
