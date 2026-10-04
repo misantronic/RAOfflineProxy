@@ -133,6 +133,9 @@ private sealed interface PendingCredentialAction {
     data object SmartCache : PendingCredentialAction
     data class AddRom(val uris: List<Uri>) : PendingCredentialAction
     data class ScanRoms(val treeUri: Uri) : PendingCredentialAction
+    data class StartProxy(val treeUri: Uri?) : PendingCredentialAction
+    data class FinishProxyStart(val alreadyRunning: Boolean) : PendingCredentialAction
+    data object ResumeProxy : PendingCredentialAction
 }
 
 data class MainUiState(
@@ -192,6 +195,13 @@ data class MainUiState(
 class MainViewModel(app: Application) : AndroidViewModel(app) {
     private companion object {
         const val APP_UPDATE_CHECK_INTERVAL_MS = 24L * 60L * 60L * 1000L
+
+        // Activities are recreated on every return from Home, so this must outlive the ViewModel.
+        @Volatile
+        var lastPromptedRejectedToken: String? = null
+
+        @Volatile
+        var promptedForMissingCredentials = false
     }
 
     private val application = app
@@ -220,6 +230,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private var smartCacheAllFilesRejectedThisRun = false
     private var pendingAddRomUris = emptyList<Uri>()
     private var pendingCredentialAction: PendingCredentialAction? = null
+    private var credentialsPromptActive = false
     private var lastTokenValidationAttemptAt: Long = 0L
     private var queueConfirmation: CompletableDeferred<Boolean>? = null
     private fun str(resId: Int): String = getApplication<Application>().getString(resId)
@@ -386,6 +397,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val app = getApplication<Application>()
         viewModelScope.launch {
             val shouldKeepRunning = ProxyService.shouldKeepRunning(app)
+            if (shouldKeepRunning && !ProxyService.isRunning(app) &&
+                withContext(Dispatchers.IO) { loadLoginCredentials(db) } == null
+            ) {
+                pendingCredentialAction = PendingCredentialAction.ResumeProxy
+                promptForCredentials()
+                return@launch
+            }
             if (loadManualEmulatorPatchingEnabled()) {
                 val proxyRunning = ProxyService.isRunning(app)
                 if (!proxyRunning) {
@@ -546,7 +564,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val credentials = withContext(Dispatchers.IO) { loadLoginCredentials(db) }
         if (credentials == null) {
             pendingCredentialAction = pendingAction
-            _events.tryEmit(MainUiEvent.PromptCredentialsForCaching)
+            promptForCredentials()
         }
         return credentials
     }
@@ -876,12 +894,49 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    private fun promptForCredentials() {
+        credentialsPromptActive = true
+        _events.tryEmit(MainUiEvent.PromptCredentialsForCaching)
+    }
+
+    fun cancelCredentialsPrompt() {
+        credentialsPromptActive = false
+        val action = pendingCredentialAction
+        pendingCredentialAction = null
+        if (action is PendingCredentialAction.FinishProxyStart || action is PendingCredentialAction.ResumeProxy) {
+            stopProxy()
+        }
+    }
+
+    private fun finishAutoPatchedProxyStart(alreadyRunning: Boolean) {
+        val app = getApplication<Application>()
+        ProxyService.start(app)
+        pendingProxyStart = false
+        _state.value = _state.value.copy(
+            proxyRunning = true,
+            cfgIsPatched = true,
+            needsSafGrant = false,
+            safGrantTarget = null,
+            pendingSafGrantTargets = emptyList(),
+            authState = AuthState.Unknown
+        )
+        if (!alreadyRunning) {
+            SnackbarManager.showMessage(str(R.string.proxy_started_success))
+        }
+        maybeShowSmartCachePrompt()
+        validateToken()
+    }
+
     fun validateToken(force: Boolean = true) {
         viewModelScope.launch {
             val credentials = withContext(Dispatchers.IO) { loadLoginCredentials(db) }
             if (credentials == null) {
                 Log.i("RAProxy/Auth", "validateToken: no cached credentials found")
                 _state.value = _state.value.copy(authState = AuthState.Invalid)
+                if (_state.value.proxyRunning && !credentialsPromptActive && !promptedForMissingCredentials) {
+                    promptedForMissingCredentials = true
+                    promptForCredentials()
+                }
                 return@launch
             }
             if (!_state.value.isOnline) {
@@ -904,6 +959,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 return@launch
             }
             lastTokenValidationAttemptAt = now
+            var rejected = false
             val valid = withContext(Dispatchers.IO) {
                 val userAgent = proxyUserAgent(loadUserAgent(db))
                 val url = buildApiUrl(
@@ -917,9 +973,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 )
                 when (val result = httpGet(url, userAgent)) {
                     is HttpGetResult.Success -> JSONObject(result.body).optBoolean("Success", false)
+                        .also { rejected = !it }
                     is HttpGetResult.Failure -> {
                         val logDetails = result.logMessage("patch", url)
-                        RequestFailureNotifier.report(result.userMessage(getApplication(), "patch"), logDetails)
+                        rejected = result.isAuthRejection
+                        val alreadyPrompted = rejected && credentials.token == lastPromptedRejectedToken
+                        if (!alreadyPrompted) {
+                            RequestFailureNotifier.report(result.userMessage(getApplication(), "patch"), logDetails)
+                        }
                         Log.w("RAProxy/Auth", "validateToken: live check failed — $logDetails")
                         false
                     }
@@ -927,6 +988,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             }
             Log.i("RAProxy/Auth", "validateToken: live patch check valid=$valid")
             _state.value = _state.value.copy(authState = if (valid) AuthState.Valid else AuthState.Invalid)
+            if (rejected && !credentialsPromptActive && credentials.token != lastPromptedRejectedToken) {
+                lastPromptedRejectedToken = credentials.token
+                promptForCredentials()
+            }
         }
     }
     fun startProxy(treeUri: Uri? = null) {
@@ -1028,6 +1093,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     }
                     maybeShowSmartCachePrompt()
                     validateToken()
+                    return@launch
+                }
+
+                val hasCachedCredentials = withContext(Dispatchers.IO) { loadLoginCredentials(db) } != null
+                if (!hasCredentialSource(hasCachedCredentials, emulatorSupport)) {
+                    pendingProxyStart = false
+                    pendingCredentialAction = PendingCredentialAction.StartProxy(treeUri)
+                    promptForCredentials()
                     return@launch
                 }
 
@@ -1154,21 +1227,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     withContext(Dispatchers.IO) { cacheImportedCredentials(credentials) }
                 }
 
-                ProxyService.start(app)
-                pendingProxyStart = false
-                _state.value = _state.value.copy(
-                    proxyRunning = true,
-                    cfgIsPatched = true,
-                    needsSafGrant = false,
-                    safGrantTarget = null,
-                    pendingSafGrantTargets = emptyList(),
-                    authState = AuthState.Unknown
-                )
-                if (!alreadyRunning) {
-                    SnackbarManager.showMessage(str(R.string.proxy_started_success))
+                if (withContext(Dispatchers.IO) { loadLoginCredentials(db) } == null) {
+                    pendingProxyStart = false
+                    pendingCredentialAction = PendingCredentialAction.FinishProxyStart(alreadyRunning)
+                    promptForCredentials()
+                    return@launch
                 }
-                maybeShowSmartCachePrompt()
-                validateToken()
+
+                finishAutoPatchedProxyStart(alreadyRunning)
             } finally {
                 delay(250.milliseconds)
                 _state.value = _state.value.copy(proxyToggleInProgress = false)
@@ -2205,6 +2271,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
             if (loginCredentials == null) {
                 SnackbarManager.showError(str(R.string.manual_credentials_invalid))
+                promptForCredentials()
                 return@launch
             }
 
@@ -2218,12 +2285,16 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 )
             }
 
+            credentialsPromptActive = false
             _state.value = _state.value.copy(hasLoginCredentials = true, authState = AuthState.Unknown)
             validateToken()
 
             val action = pendingCredentialAction
             pendingCredentialAction = null
             when (action) {
+                is PendingCredentialAction.StartProxy -> startProxy(action.treeUri)
+                is PendingCredentialAction.FinishProxyStart -> finishAutoPatchedProxyStart(action.alreadyRunning)
+                PendingCredentialAction.ResumeProxy -> recoverPatchedCfgIfProxyStopped()
                 PendingCredentialAction.SmartCache -> startSmartCache()
                 is PendingCredentialAction.AddRom -> addRom(action.uris)
                 is PendingCredentialAction.ScanRoms -> scanRoms(action.treeUri)
@@ -2491,6 +2562,14 @@ private fun lowercasedUserKey(key: String, prefix: String): String? {
         else -> null
     }
 }
+
+internal fun hasCredentialSource(
+    hasCachedCredentials: Boolean,
+    emulatorSupport: EmulatorSupport
+): Boolean = hasCachedCredentials ||
+    emulatorSupport.isEnabled(Emulator.RetroArch) ||
+    emulatorSupport.isEnabled(Emulator.Dolphin) ||
+    emulatorSupport.isEnabled(Emulator.Ppsspp)
 
 internal fun selectImportedCredentials(
     retroArch: ImportedCredentials?,

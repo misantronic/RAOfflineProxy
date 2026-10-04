@@ -120,6 +120,8 @@ internal sealed interface HttpGetResult {
         val bodySnippet: String? = null,
         val exceptionMessage: String? = null
     ) : HttpGetResult {
+        val isAuthRejection: Boolean get() = kind == "http" && statusCode == 401
+
         fun logMessage(action: String, url: String): String {
             val target = redactTokens(url)
             return when (kind) {
