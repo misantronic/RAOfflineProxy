@@ -27,11 +27,11 @@ class LinuxStorageTests(unittest.TestCase):
 
                 self.assertIsNotNone(store.get_cache("login2::misantronic"))
                 self.assertIsNotNone(store.get_cache("ua::last"))
-                self.assertEqual(store.get_all_cache_by_prefix("patch:"), [])
-                self.assertEqual(store.get_all_cache_by_prefix("achievementsets:"), [])
-                self.assertEqual(store.get_all_cache_by_prefix("unlocks:"), [])
-                self.assertEqual(store.get_all_cache_by_prefix("startsession:"), [])
-                self.assertEqual(store.get_all_cache_by_prefix("gameid:"), [])
+                self.assertEqual(store.cache_keys_by_prefix("patch:"), [])
+                self.assertEqual(store.cache_keys_by_prefix("achievementsets:"), [])
+                self.assertEqual(store.cache_keys_by_prefix("unlocks:"), [])
+                self.assertEqual(store.cache_keys_by_prefix("startsession:"), [])
+                self.assertEqual(store.cache_keys_by_prefix("gameid:"), [])
             finally:
                 store.close()
 

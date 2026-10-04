@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import time
 import urllib.error
 
 from . import cache_keys
 from .config import FALLBACK_USER_AGENT, proxy_host, proxy_port, upstream_host
 from .image_cache import rewrite_image_urls, schedule_image_download
+from .last_played import played_game_ids_newest_first
 from .network import build_api_url, http_get
 from .storage import PENDING_AWARD_STATUS_PENDING, Storage
 from .utils import is_hardcore_request, parse_form_params
@@ -15,6 +17,7 @@ from .utils import is_hardcore_request, parse_form_params
 LOGGER = logging.getLogger("raofflineproxy")
 WARNING_ACHIEVEMENT_ID = 101000001
 RC_ACHIEVEMENT_FLAG_CORE = 3  # rcheevos: official/core achievements only
+LIKELY_RECENT_GAMES = 10
 
 
 class CacheGameError(RuntimeError):
@@ -285,17 +288,34 @@ def merged_unlock_ids(storage: Storage, game_id: int, user: str) -> list[int]:
         except Exception:
             cached_unlock_ids = []
 
-    achievement_game_ids = build_achievement_game_ids(
-        storage.get_all_cache_by_prefix(cache_keys.PREFIX_PATCH),
-        storage.get_all_cache_by_prefix(cache_keys.PREFIX_ACHIEVEMENTSETS),
-    )
+    pending_awards = storage.get_pending_awards()
     return merge_start_session_unlock_ids(
         cached_unlock_ids=cached_unlock_ids,
-        pending_awards=storage.get_pending_awards(),
-        achievement_game_ids=achievement_game_ids,
+        pending_awards=pending_awards,
+        achievement_game_ids=find_achievement_game_ids(
+            storage, pending_unlock_achievement_ids(pending_awards, user), likely_game_id=game_id
+        ),
         game_id=game_id,
         user=user,
     )
+
+
+def pending_unlock_achievement_ids(pending_awards: list[dict], user: str | None = None) -> set[int]:
+    return {
+        int(award.get("achievementId", 0) or 0)
+        for award in pending_awards
+        if is_pending_softcore_unlock(award, user)
+    }
+
+
+def is_pending_softcore_unlock(award: dict, user: str | None = None) -> bool:
+    if award.get("status", PENDING_AWARD_STATUS_PENDING) != PENDING_AWARD_STATUS_PENDING:
+        return False
+    if int(award.get("achievementId", 0) or 0) <= 0:
+        return False
+    if is_hardcore_request(award.get("queryString", ""), award.get("requestBody", "")):
+        return False
+    return user is None or pending_award_user(award) == user
 
 
 def merge_start_session_unlock_ids(
@@ -316,22 +336,11 @@ def merge_start_session_unlock_ids(
         seen_ids.add(achievement_id)
 
     for award in pending_awards:
-        if (
-            award.get("status", PENDING_AWARD_STATUS_PENDING)
-            != PENDING_AWARD_STATUS_PENDING
-        ):
+        if not is_pending_softcore_unlock(award, user):
             continue
 
         achievement_id = int(award.get("achievementId", 0) or 0)
-        if achievement_id <= 0 or achievement_id in seen_ids:
-            continue
-
-        if is_hardcore_request(
-            award.get("queryString", ""), award.get("requestBody", "")
-        ):
-            continue
-
-        if pending_award_user(award) != user:
+        if achievement_id in seen_ids:
             continue
 
         if achievement_game_ids.get(achievement_id) != game_id:
@@ -416,6 +425,46 @@ def build_achievement_game_ids(
                 achievement_game_ids.setdefault(achievement_id, achievement_game_id)
 
     return achievement_game_ids
+
+
+def find_achievement_game_ids(
+    storage: Storage, achievement_ids, likely_game_id: int | None = None
+) -> dict[int, int]:
+    """Maps only the given achievements and stops once all are found, parsing only bodies that
+    mention one of them: the full map reads and parses every cached game. Pending awards almost
+    always belong to the game being played or one played recently, so their patches are checked
+    before the whole library, which on an SD card takes half a minute for 1000 games."""
+    wanted = {achievement_id for achievement_id in achievement_ids if achievement_id > 0}
+    found: dict[int, int] = {}
+    if not wanted:
+        return found
+
+    mentions_wanted = achievement_id_pattern(wanted)
+    for prefix in likely_first_prefixes(storage, likely_game_id):
+        for entry in storage.iter_cache_by_prefix(prefix):
+            if not mentions_wanted.search(entry["responseBody"]):
+                continue
+            if prefix == cache_keys.PREFIX_ACHIEVEMENTSETS:
+                entry_game_ids = build_achievement_game_ids([], [entry])
+            else:
+                entry_game_ids = build_achievement_game_ids([entry])
+            for achievement_id in wanted.intersection(entry_game_ids):
+                found.setdefault(achievement_id, entry_game_ids[achievement_id])
+            if len(found) == len(wanted):
+                return found
+    return found
+
+
+def likely_first_prefixes(storage: Storage, likely_game_id: int | None = None) -> list[str]:
+    likely_game_ids = [likely_game_id] if likely_game_id is not None else []
+    likely_game_ids += played_game_ids_newest_first(storage)[:LIKELY_RECENT_GAMES]
+    prefixes = [cache_keys.patch_prefix(game_id) for game_id in dict.fromkeys(likely_game_ids)]
+    return prefixes + [cache_keys.PREFIX_PATCH, cache_keys.PREFIX_ACHIEVEMENTSETS]
+
+
+def achievement_id_pattern(achievement_ids) -> re.Pattern:
+    alternatives = "|".join(str(achievement_id) for achievement_id in sorted(achievement_ids))
+    return re.compile(rf'"ID"\s*:\s*(?:{alternatives})(?![0-9])')
 
 
 def pending_award_user(award: dict) -> str | None:

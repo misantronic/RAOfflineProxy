@@ -8,10 +8,11 @@ import os
 import sys
 import threading
 import time
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
-from . import cache_keys, es_export, storage_corruption
+from . import cache_keys, es_export, game_meta, storage_corruption
 from .config import DATABASE_FILE, ensure_config_dir
 
 try:
@@ -20,6 +21,10 @@ except ModuleNotFoundError:
     fcntl = None
 
 LOGGER = logging.getLogger("raofflineproxy")
+GAME_META_INDEX_BATCH = 50
+INSERT_GAME_META = (
+    "INSERT OR REPLACE INTO cached_game_meta(cacheKey, gameId, title, imagePath) VALUES(?, ?, ?, ?)"
+)
 
 VENDORED_SQLITE_DIR = Path(__file__).resolve().parent.parent / "vendor" / "sqlite"
 
@@ -83,6 +88,7 @@ class Storage:
             )
             self._connection.row_factory = sqlite3.Row
             self._initialize_sqlite()
+            self._index_missing_game_meta()
             self._import_legacy_json()
         else:
             self._initialize_json()
@@ -130,6 +136,21 @@ class Storage:
                     signature TEXT NOT NULL DEFAULT '',
                     signedAt INTEGER NOT NULL DEFAULT 0
                 );
+                CREATE TABLE IF NOT EXISTS cached_game_meta (
+                    cacheKey TEXT PRIMARY KEY,
+                    gameId INTEGER,
+                    title TEXT,
+                    imagePath TEXT
+                );
+                CREATE INDEX IF NOT EXISTS cached_game_meta_game_id ON cached_game_meta(gameId);
+                CREATE TRIGGER IF NOT EXISTS cached_game_meta_delete AFTER DELETE ON api_cache
+                BEGIN
+                    DELETE FROM cached_game_meta WHERE cacheKey = old.cacheKey;
+                END;
+                CREATE TRIGGER IF NOT EXISTS cached_game_meta_rename AFTER UPDATE OF cacheKey ON api_cache
+                BEGIN
+                    UPDATE cached_game_meta SET cacheKey = new.cacheKey WHERE cacheKey = old.cacheKey;
+                END;
                 """
             )
             cache_columns = {
@@ -257,7 +278,40 @@ class Storage:
                     len(awards),
                     self._json_path.name,
                 )
+        self._index_missing_game_meta()
         es_export.export_cached_game_ids(self)
+
+    def _index_missing_game_meta(self) -> None:
+        """Indexes entries written before cached_game_meta existed, by the JSON import, or by an
+        older version after a downgrade (its deletes and renames still reach the table through
+        the triggers). A library of 1000 games takes about half a minute, once."""
+        assert self._connection is not None
+        with self._lock:
+            row_ids = [
+                int(row[0])
+                for row in self._connection.execute(
+                    """
+                    SELECT id FROM api_cache
+                    WHERE (cacheKey LIKE 'patch:%' OR cacheKey LIKE 'achievementsets:%')
+                      AND cacheKey NOT IN (SELECT cacheKey FROM cached_game_meta)
+                    """
+                ).fetchall()
+            ]
+        if not row_ids:
+            return
+        LOGGER.info("Indexing %d cached game entries", len(row_ids))
+        for start in range(0, len(row_ids), GAME_META_INDEX_BATCH):
+            meta_rows = []
+            for row_id in row_ids[start:start + GAME_META_INDEX_BATCH]:
+                with self._lock:
+                    row = self._connection.execute(
+                        "SELECT cacheKey, responseBody FROM api_cache WHERE id = ?", (row_id,)
+                    ).fetchone()
+                if row is not None:
+                    meta_rows.append(game_meta_row(row["cacheKey"], row["responseBody"]))
+            with self._lock:
+                self._connection.executemany(INSERT_GAME_META, meta_rows)
+                self._connection.commit()
 
     def _initialize_json(self) -> None:
         with self._lock:
@@ -374,6 +428,11 @@ class Storage:
         now: int,
     ) -> None:
         assert self._connection is not None
+        meta_row = (
+            game_meta_row(cache_key, response_body)
+            if cache_key.startswith(game_meta.GAME_META_PREFIXES)
+            else None
+        )
         with self._lock:
             row = self._connection.execute(
                 "SELECT firstCachedAt, sourceRomPath FROM api_cache WHERE cacheKey = ? LIMIT 1",
@@ -402,6 +461,8 @@ class Storage:
                     first_cached_at,
                 ),
             )
+            if meta_row is not None:
+                self._connection.execute(INSERT_GAME_META, meta_row)
             self._connection.commit()
 
     def _upsert_cache_json(
@@ -489,26 +550,83 @@ class Storage:
                 )
                 return dict(entry) if entry is not None else None
 
-    def get_all_cache_by_prefix(self, prefix: str) -> list[dict]:
+    def iter_cache_by_prefix(self, prefix: str) -> Iterator[dict]:
+        """Yields one entry at a time. A library of thousands of games holds gigabytes of
+        response bodies: loading them at once exceeds the memory of small devices, and sorting
+        them fills the RAM-backed /tmp SQLite spills to (49 MB on Onion)."""
+        if not self._use_sqlite:
+            yield from self._json_entries_by_prefix(prefix)
+            return
+
+        assert self._connection is not None
+        with self._lock:
+            row_ids = [
+                int(row[0])
+                for row in self._connection.execute(
+                    "SELECT id FROM api_cache WHERE cacheKey LIKE ?",
+                    (f"{prefix}%",),
+                ).fetchall()
+            ]
+        for row_id in row_ids:
+            with self._lock:
+                row = self._connection.execute(
+                    "SELECT * FROM api_cache WHERE id = ?", (row_id,)
+                ).fetchone()
+            if row is not None:
+                yield row_to_dict(row)
+
+    def cached_game_meta(self, game_id: int | None = None) -> list[dict]:
+        """Game id, title and icon of every cached patch and achievementsets entry. Kept beside
+        api_cache so listing games never reads the response bodies (~230 KB per game, half a
+        minute per pass over 1000 games on an SD card)."""
+        if self._use_sqlite:
+            assert self._connection is not None
+            query = "SELECT cacheKey, gameId, title, imagePath FROM cached_game_meta WHERE gameId > 0"
+            params: tuple = ()
+            if game_id is not None:
+                query += " AND gameId = ?"
+                params = (game_id,)
+            with self._lock:
+                rows = self._connection.execute(query, params).fetchall()
+            return [row_to_dict(row) for row in rows]
+
+        metas = (
+            game_meta.game_meta_for_entry(entry["cacheKey"], entry["responseBody"])
+            for prefix in game_meta.GAME_META_PREFIXES
+            for entry in self._json_entries_by_prefix(prefix)
+        )
+        return [
+            meta
+            for meta in metas
+            if meta is not None and (game_id is None or meta["gameId"] == game_id)
+        ]
+
+    def cache_summaries_by_prefix(self, prefix: str) -> list[dict]:
         if self._use_sqlite:
             assert self._connection is not None
             with self._lock:
                 rows = self._connection.execute(
-                    "SELECT * FROM api_cache WHERE cacheKey LIKE ? ORDER BY cachedAt DESC",
+                    "SELECT id, cacheKey, sourceRomPath, cachedAt, firstCachedAt "
+                    "FROM api_cache WHERE cacheKey LIKE ?",
                     (f"{prefix}%",),
                 ).fetchall()
             return [row_to_dict(row) for row in rows]
 
+        return [
+            {key: value for key, value in entry.items() if key != "responseBody"}
+            for entry in self._json_entries_by_prefix(prefix)
+        ]
+
+    def _json_entries_by_prefix(self, prefix: str) -> list[dict]:
         with self._lock:
             with self._json_file_lock(exclusive=False):
                 self._reload_json_state_unlocked()
                 assert self._json_state is not None
-                matches = [
+                return [
                     dict(item)
                     for item in self._json_state["api_cache"]
                     if item["cacheKey"].startswith(prefix)
                 ]
-        return sorted(matches, key=lambda item: item.get("cachedAt", 0), reverse=True)
 
     def cache_keys_by_prefix(self, prefix: str) -> list[str]:
         if self._use_sqlite:
@@ -986,8 +1104,7 @@ def migrate_user_case_in_cache_keys(store: Storage) -> None:
         cache_keys.PREFIX_STARTSESSION,
     ]
     for prefix in prefixes:
-        for entry in store.get_all_cache_by_prefix(prefix):
-            old_key = entry["cacheKey"]
+        for old_key in store.cache_keys_by_prefix(prefix):
             new_key = _lowercased_user_key(old_key, prefix)
             if new_key is None or new_key == old_key:
                 continue
@@ -1017,6 +1134,13 @@ def _lowercased_user_key(key: str, prefix: str) -> str | None:
     user = parts[1]
     suffix = (":" + ":".join(parts[2:])) if len(parts) > 2 else ""
     return f"{prefix}{game_id}:{user.lower()}{suffix}"
+
+
+def game_meta_row(cache_key: str, response_body: str) -> tuple:
+    """Parsed before the write transaction starts: the menu and the proxy service share the
+    database, and on FAT32 there is no WAL, so a held write lock blocks the other process."""
+    meta = game_meta.game_meta_for_entry(cache_key, response_body) or {}
+    return (cache_key, meta.get("gameId"), meta.get("title"), meta.get("imagePath"))
 
 
 def current_millis() -> int:

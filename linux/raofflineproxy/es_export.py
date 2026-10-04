@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-import json
 import logging
 import os
 
 from . import cache_keys
 from .config import CONFIG_DIR
+from .game_meta import achievementsets_game_id
 
 CACHED_IDS_FILE = CONFIG_DIR / "cached_game_ids.txt"
 LOGGER = logging.getLogger("raofflineproxy")
@@ -20,23 +20,7 @@ def key_affects_cached_game_ids(cache_key: str | None) -> bool:
 
 
 def collect_cached_game_ids(storage) -> set[int]:
-    ids: set[int] = set()
-
-    for key in storage.cache_keys_by_prefix(cache_keys.PREFIX_PATCH):
-        game_id = cache_keys.parse_game_id_from_patch_key(key)
-        if game_id is not None and game_id > 0:
-            ids.add(game_id)
-
-    for entry in storage.get_all_cache_by_prefix(cache_keys.PREFIX_ACHIEVEMENTSETS):
-        try:
-            payload = json.loads(entry["responseBody"])
-        except Exception:
-            continue
-        game_id = payload.get("GameId")
-        if isinstance(game_id, int) and game_id > 0:
-            ids.add(game_id)
-
-    return ids
+    return {int(meta["gameId"]) for meta in storage.cached_game_meta()}
 
 
 def export_cached_game_ids(storage) -> None:
@@ -68,11 +52,7 @@ def add_cached_game_id(storage, cache_key: str, response_body: str) -> None:
 def _game_id_for_entry(cache_key: str, response_body: str) -> int | None:
     if cache_key.startswith(cache_keys.PREFIX_PATCH):
         return cache_keys.parse_game_id_from_patch_key(cache_key)
-    try:
-        game_id = json.loads(response_body).get("GameId")
-    except Exception:
-        return None
-    return game_id if isinstance(game_id, int) and game_id > 0 else None
+    return achievementsets_game_id(response_body)
 
 
 def _write_ids(ids: set[int]) -> None:

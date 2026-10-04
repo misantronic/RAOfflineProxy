@@ -7,6 +7,7 @@ import tempfile
 import time
 import urllib.error
 import zipfile
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urljoin
@@ -15,6 +16,7 @@ from . import cache_budget, cache_keys, cache_queue, rate_limit, usage_stats
 from .auth import resolve_credentials
 from .cache_queue import QueuedRom
 from .config import FALLBACK_USER_AGENT, RA_MEDIA_HOST, image_caching_enabled, upstream_host
+from .es_export import collect_cached_game_ids
 from .image_cache import (
     clear_all_cached_images,
     delete_cached_images_for_game,
@@ -28,11 +30,12 @@ from .image_cache import (
 from .network import apply_scan_batch_cooldown, build_api_url, http_get
 from .rom_cache import (
     CacheGameAuthError,
-    build_achievement_game_ids,
     cache_game,
     filter_warning_achievement_ids,
+    find_achievement_game_ids,
     merge_start_session_unlock_ids,
     merged_unlock_ids as merged_unlock_ids_for_user,
+    pending_unlock_achievement_ids,
 )
 from .rom_hashing import (
     hash_7z_entry_candidates,
@@ -132,52 +135,30 @@ def normalize_cached_rom_path(path: str | Path) -> str:
 def load_cached_rom_paths(storage: Storage) -> set[str]:
     return {
         normalize_cached_rom_path(entry["sourceRomPath"])
-        for entry in storage.get_all_cache_by_prefix(cache_keys.PREFIX_PATCH)
+        for entry in storage.cache_summaries_by_prefix(cache_keys.PREFIX_PATCH)
         if isinstance(entry.get("sourceRomPath"), str)
         and entry["sourceRomPath"].strip()
     }
 
 
 def list_cached_games(storage: Storage) -> list[CachedGameEntry]:
-    games: dict[int, CachedGameEntry] = {}
-    for entry in storage.get_all_cache_by_prefix(cache_keys.PREFIX_PATCH):
-        game_id = cache_keys.parse_game_id_from_patch_key(entry["cacheKey"])
-        if game_id is None:
-            continue
-        try:
-            payload = json.loads(entry["responseBody"])
-        except Exception:
-            continue
-
-        patch_data = payload.get("PatchData") or {}
-        title = patch_data.get("Title") or f"Game {game_id}"
-        image_path = patch_data.get("ImageIcon") or patch_data.get("ImageBoxArt")
-        games[game_id] = CachedGameEntry(
-            game_id=game_id,
-            title=title,
-            image_url=normalize_preview_url(image_path),
-        )
-
-    for entry in storage.get_all_cache_by_prefix(cache_keys.PREFIX_ACHIEVEMENTSETS):
-        try:
-            payload = json.loads(entry["responseBody"])
-        except Exception:
-            continue
-
-        game_id = payload.get("GameId")
-        if not isinstance(game_id, int) or game_id <= 0:
-            continue
-
-        title = payload.get("Title") or f"Game {game_id}"
-        image_path = payload.get("ImageIcon") or payload.get("ImageIconUrl")
-        if game_id not in games:
-            games[game_id] = CachedGameEntry(
-                game_id=game_id,
-                title=title,
-                image_url=normalize_preview_url(image_path),
-            )
-
+    games = cached_games_from_meta(storage.cached_game_meta())
     return sorted(games.values(), key=lambda game: game.title.lower())
+
+
+def cached_games_from_meta(metas: list[dict]) -> dict[int, CachedGameEntry]:
+    """A game's patch names it; its achievementsets only name games cached without a patch."""
+    games: dict[int, CachedGameEntry] = {}
+    for meta in sorted(metas, key=lambda meta: not meta["cacheKey"].startswith(cache_keys.PREFIX_PATCH)):
+        games.setdefault(
+            int(meta["gameId"]),
+            CachedGameEntry(
+                game_id=int(meta["gameId"]),
+                title=meta["title"] or f"Game {meta['gameId']}",
+                image_url=normalize_preview_url(meta["imagePath"]),
+            ),
+        )
+    return games
 
 
 def list_browser_entries(current_dir: Path) -> list[Path]:
@@ -261,7 +242,7 @@ def list_scannable_files_recursive(root: Path) -> list[Path]:
 
 
 def describe_browser_entries(current_dir: Path, storage: Storage) -> list[BrowserEntry]:
-    cached_game_ids = {game.game_id for game in list_cached_games(storage)}
+    cached_game_ids = collect_cached_game_ids(storage)
     entries: list[BrowserEntry] = []
     for path in list_browser_entries(current_dir):
         entries.append(
@@ -280,7 +261,7 @@ def browser_file_is_cached(
     path: Path, storage: Storage, cached_game_ids: set[int] | None = None
 ) -> bool:
     if cached_game_ids is None:
-        cached_game_ids = {game.game_id for game in list_cached_games(storage)}
+        cached_game_ids = collect_cached_game_ids(storage)
 
     try:
         hash_candidates = hash_candidates_for_manual_cache(path)
@@ -592,10 +573,15 @@ def format_clock_time(millis: int) -> str:
 
 
 def find_cached_game(storage: Storage, game_id: int) -> CachedGameEntry | None:
-    return next(
-        (entry for entry in list_cached_games(storage) if entry.game_id == game_id),
-        None,
-    )
+    return cached_games_from_meta(storage.cached_game_meta(game_id)).get(game_id)
+
+
+def achievementsets_keys_for_game(storage: Storage, game_id: int) -> list[str]:
+    return [
+        meta["cacheKey"]
+        for meta in storage.cached_game_meta(game_id)
+        if meta["cacheKey"].startswith(cache_keys.PREFIX_ACHIEVEMENTSETS)
+    ]
 
 
 def already_cached_result(storage: Storage, game_id: int) -> AddRomResult:
@@ -942,22 +928,12 @@ def remove_cached_game(storage: Storage, game_id: int) -> None:
 
 
 def remove_achievementsets_for_game(storage: Storage, game_id: int) -> None:
-    for entry in storage.get_all_cache_by_prefix(cache_keys.PREFIX_ACHIEVEMENTSETS):
-        try:
-            payload = json.loads(entry["responseBody"])
-        except Exception:
-            continue
-
-        if payload.get("GameId") != game_id:
-            continue
-
-        cache_key = entry.get("cacheKey")
-        if isinstance(cache_key, str) and cache_key:
-            storage.delete_cache(cache_key)
+    for cache_key in achievementsets_keys_for_game(storage, game_id):
+        storage.delete_cache(cache_key)
 
 
 def remove_gameid_aliases_for_game(storage: Storage, game_id: int) -> None:
-    for entry in storage.get_all_cache_by_prefix(cache_keys.PREFIX_GAMEID):
+    for entry in storage.iter_cache_by_prefix(cache_keys.PREFIX_GAMEID):
         try:
             payload = json.loads(entry["responseBody"])
         except Exception:
@@ -979,14 +955,13 @@ def cached_unlock_count(storage: Storage, game_id: int) -> int | None:
 
 
 def cached_unlock_counts(storage: Storage) -> dict[int, int]:
-    achievement_game_ids = build_achievement_game_ids(
-        storage.get_all_cache_by_prefix(cache_keys.PREFIX_PATCH),
-        storage.get_all_cache_by_prefix(cache_keys.PREFIX_ACHIEVEMENTSETS),
-    )
     pending_awards = storage.get_pending_awards()
+    achievement_game_ids = find_achievement_game_ids(
+        storage, pending_unlock_achievement_ids(pending_awards)
+    )
     counts: dict[int, int] = {}
 
-    for entry in storage.get_all_cache_by_prefix(cache_keys.PREFIX_UNLOCKS):
+    for entry in storage.iter_cache_by_prefix(cache_keys.PREFIX_UNLOCKS):
         game_id = parse_game_id_from_unlock_key(entry.get("cacheKey", ""))
         user = parse_user_from_unlocks_key(entry.get("cacheKey", ""))
         if game_id is None or user is None:
@@ -1010,7 +985,7 @@ def cached_unlock_counts(storage: Storage) -> dict[int, int]:
         )
         counts[game_id] = len(merged_ids)
 
-    for entry in storage.get_all_cache_by_prefix(cache_keys.PREFIX_STARTSESSION):
+    for entry in storage.iter_cache_by_prefix(cache_keys.PREFIX_STARTSESSION):
         game_id = parse_game_id_from_start_session_key(entry.get("cacheKey", ""))
         user = parse_user_from_start_session_key(entry.get("cacheKey", ""))
         if game_id is None or user is None or game_id in counts:
@@ -1062,9 +1037,7 @@ def cached_unlock_titles(storage: Storage, game_id: int) -> list[str]:
 def merged_unlock_ids(storage: Storage, game_id: int) -> list[int] | None:
     cached_unlock_ids: list[int] | None = None
     unlock_user: str | None = None
-    for entry in storage.get_all_cache_by_prefix(
-        f"{cache_keys.PREFIX_UNLOCKS}{game_id}:"
-    ):
+    for entry in storage.iter_cache_by_prefix(f"{cache_keys.PREFIX_UNLOCKS}{game_id}:"):
         try:
             payload = json.loads(entry["responseBody"])
         except Exception:
@@ -1104,14 +1077,15 @@ def merged_unlock_ids(storage: Storage, game_id: int) -> list[int] | None:
             if isinstance(item, dict) and int(item.get("ID", 0) or 0) > 0
         ])
 
-    achievement_game_ids = build_achievement_game_ids(
-        storage.get_all_cache_by_prefix(cache_keys.PREFIX_PATCH),
-        storage.get_all_cache_by_prefix(cache_keys.PREFIX_ACHIEVEMENTSETS),
-    )
+    pending_awards = storage.get_pending_awards()
     return merge_start_session_unlock_ids(
         cached_unlock_ids=cached_unlock_ids or [],
-        pending_awards=storage.get_pending_awards(),
-        achievement_game_ids=achievement_game_ids,
+        pending_awards=pending_awards,
+        achievement_game_ids=find_achievement_game_ids(
+            storage,
+            pending_unlock_achievement_ids(pending_awards, unlock_user),
+            likely_game_id=game_id,
+        ),
         game_id=game_id,
         user=unlock_user,
     )
@@ -1186,19 +1160,23 @@ def cached_achievements_by_id(storage: Storage, game_id: int) -> dict[int, dict]
     achievements_by_id: dict[int, dict] = {}
     merge_cached_achievement_entries(
         achievements_by_id,
-        storage.get_all_cache_by_prefix(cache_keys.patch_prefix(game_id)),
+        storage.iter_cache_by_prefix(cache_keys.patch_prefix(game_id)),
         lambda payload: payload.get("PatchData", {}).get("Achievements"),
     )
     merge_cached_achievement_entries(
         achievements_by_id,
-        storage.get_all_cache_by_prefix(cache_keys.PREFIX_ACHIEVEMENTSETS),
+        (
+            entry
+            for entry in map(storage.get_cache, achievementsets_keys_for_game(storage, game_id))
+            if entry is not None
+        ),
         lambda payload: achievementsets_payload_achievements(payload, game_id),
     )
     return achievements_by_id
 
 
 def merge_cached_achievement_entries(
-    achievements_by_id: dict[int, dict], entries: list[dict], select_achievements
+    achievements_by_id: dict[int, dict], entries: Iterable[dict], select_achievements
 ) -> None:
     for entry in entries:
         try:

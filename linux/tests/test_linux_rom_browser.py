@@ -1155,9 +1155,7 @@ class LinuxRomBrowserTests(unittest.TestCase):
 
                 rom_browser.remove_cached_game(store, 10701)
 
-                remaining_keys = {
-                    entry["cacheKey"] for entry in store.get_all_cache_by_prefix("")
-                }
+                remaining_keys = set(store.cache_keys_by_prefix(""))
                 self.assertNotIn(cache_keys.game_id("abc123"), remaining_keys)
                 self.assertNotIn(cache_keys.patch(10701, "misantronic"), remaining_keys)
                 self.assertNotIn(
@@ -1305,12 +1303,9 @@ class LinuxRomBrowserTests(unittest.TestCase):
 
                 rom_browser.remove_cached_game(store, 10701)
 
-                self.assertEqual(store.get_all_cache_by_prefix("patch:10701:"), [])
-                self.assertEqual(store.get_all_cache_by_prefix("unlocks:10701:"), [])
-                self.assertEqual(
-                    store.get_all_cache_by_prefix("startsession:10701:"),
-                    [],
-                )
+                self.assertEqual(store.cache_keys_by_prefix("patch:10701:"), [])
+                self.assertEqual(store.cache_keys_by_prefix("unlocks:10701:"), [])
+                self.assertEqual(store.cache_keys_by_prefix("startsession:10701:"), [])
             finally:
                 store.close()
 
