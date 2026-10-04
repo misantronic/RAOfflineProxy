@@ -121,7 +121,8 @@ internal sealed interface HttpGetResult {
         val bodySnippet: String? = null,
         val exceptionMessage: String? = null
     ) : HttpGetResult {
-        val isAuthRejection: Boolean get() = kind == "http" && statusCode == 401
+        val isAuthRejection: Boolean
+            get() = kind == "http" && statusCode == 401 && bodySnippet?.contains("invalid_credentials") == true
 
         fun logMessage(action: String, url: String): String {
             val target = redactTokens(url)

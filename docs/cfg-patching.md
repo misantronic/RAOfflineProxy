@@ -39,7 +39,7 @@ PPSSPP supports two patching paths depending on the installed build. RAOfflinePr
 - The RetroAchievements host override is set to the proxy on your device
 - The emulator writes the change to its own configuration and applies it on the next game load
 - No config file patching or SAF grant is required
-- These emulators don't expose a saved login, so RAOfflineProxy asks for your RetroAchievements username and password once. Only the resulting token is stored
+- These emulators don't expose a saved login. RAOfflineProxy offers to log in with your RetroAchievements username and password (only the resulting token is stored), or you can start without: the login is picked up automatically the first time you play online through the proxy
 - NetherSX2 binds the host once per app launch, so it restarts itself to apply the change (deferred until you quit the running game). Current NetherSX2 builds do not ship the receiver yet, so it is skipped until a release includes it
 - Emulators that ship under more than one package ID (current, legacy, and debug builds) use the same broadcast flow
 - Hardcore mode is left to the emulator, see [Why Hardcore Mode is Disabled](#why-hardcore-mode-is-disabled)
@@ -56,7 +56,7 @@ Patching and reverting happen **automatically** when you start and stop the prox
 
 ## Automatic Patching (Start Proxy)
 
-When you press **Start proxy** in the action bar, the app imports credentials from each enabled supported emulator, patches the emulator config, then starts the proxy service. If no login can be imported (no supported emulator enabled, or its config is not accessible), the app asks for your RetroAchievements username and password instead. Do this only while the emulator is fully closed.
+When you press **Start proxy** in the action bar, the app imports credentials from each enabled supported emulator, patches the emulator config, then starts the proxy service. If no login can be imported (no supported emulator enabled, or its config has no login), the app offers to log in with your RetroAchievements username and password, or to start without one. Do this only while the emulator is fully closed.
 
 :::tabs key:android-emulator
 

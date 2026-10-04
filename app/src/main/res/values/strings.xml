@@ -388,6 +388,10 @@
     <string name="manual_patching_checkbox">Activate manual emulator patching</string>
     <string name="manual_credentials_dialog_title">RetroAchievements login</string>
     <string name="manual_credentials_message">Manual emulator patching cannot import your RetroAchievements login from emulator config files. Enter your RetroAchievements username and password so RAOfflineProxy can request the correct login token.</string>
+    <string name="login_choice_title">RetroAchievements login</string>
+    <string name="login_choice_message">Log in now to cache games for offline play right away. You can also start without logging in: your login is picked up automatically the first time you play online through RAOfflineProxy.</string>
+    <string name="login_choice_login">Log in now</string>
+    <string name="login_choice_skip">Start without</string>
     <string name="credentials_for_caching_message">No RetroAchievements credentials found. Enter your username and password to continue.</string>
     <string name="manual_credentials_username_label">Username</string>
     <string name="manual_credentials_password_label">Password</string>
