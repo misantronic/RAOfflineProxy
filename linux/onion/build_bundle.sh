@@ -13,6 +13,15 @@ RUNTIME_ARCHIVE_PATH="${RUNTIME_CACHE_DIR}/${RUNTIME_ARCHIVE_NAME}"
 VENDOR_DIR="${SCRIPT_DIR}/vendor"
 ZIP_NAME="RAOfflineProxy-Onion-v2.0.0-alpha2.zip"
 
+if [ ! -f "${RUNTIME_ARCHIVE_PATH}" ]; then
+  echo "Missing runtime at ${RUNTIME_ARCHIVE_PATH}, run ./linux/onion/fetch_runtime.sh first" >&2
+  exit 1
+fi
+if [ ! -d "${VENDOR_DIR}/pygame" ] || [ ! -d "${VENDOR_DIR}/pygame.libs" ]; then
+  echo "Missing pygame vendor libs at ${VENDOR_DIR}, run ./linux/onion/fetch_vendor.sh first" >&2
+  exit 1
+fi
+
 TARGET="arm-linux-gnueabihf.2.17" OUT_DIR="${SCRIPT_DIR}/native" \
   "${LINUX_DIR}/build_rchash.sh"
 
@@ -33,23 +42,16 @@ cp "${LINUX_DIR}/requirements.txt" "${APP_DIR}/app/requirements.txt"
 "${LINUX_DIR}/resize_icon.sh" "${LINUX_DIR}/../docs/public/logo.png" "${APP_DIR}/icon.png" 74
 mkdir -p "${APP_DIR}/data"
 
-if [ -f "${RUNTIME_ARCHIVE_PATH}" ]; then
-  rm -rf "${APP_DIR}/runtime"
-  mkdir -p "${APP_DIR}/runtime"
-  tar -xzf "${RUNTIME_ARCHIVE_PATH}" -C "${APP_DIR}/runtime" --strip-components 1
-  python3 "${SCRIPT_DIR}/flatten_symlinks.py" "${APP_DIR}/runtime"
-fi
+rm -rf "${APP_DIR}/runtime"
+mkdir -p "${APP_DIR}/runtime"
+tar -xzf "${RUNTIME_ARCHIVE_PATH}" -C "${APP_DIR}/runtime" --strip-components 1
+python3 "${SCRIPT_DIR}/flatten_symlinks.py" "${APP_DIR}/runtime"
 
-if [ -d "${VENDOR_DIR}/pygame" ] && [ -d "${VENDOR_DIR}/pygame.libs" ]; then
-  SITE_PACKAGES="${APP_DIR}/runtime/lib/python3.9/site-packages"
-  mkdir -p "${SITE_PACKAGES}"
-  rm -rf "${SITE_PACKAGES}/pygame"
-  cp -R "${VENDOR_DIR}/pygame" "${SITE_PACKAGES}/pygame"
-  cp "${VENDOR_DIR}"/pygame.libs/* "${LIB_DIR}/"
-  echo "Included pygame + SDL2 vendor libs from ${VENDOR_DIR}"
-else
-  echo "No vendor directory found at ${VENDOR_DIR} — run ./linux/onion/fetch_vendor.sh first (menu-sdl will be unavailable)"
-fi
+SITE_PACKAGES="${APP_DIR}/runtime/lib/python3.9/site-packages"
+mkdir -p "${SITE_PACKAGES}"
+rm -rf "${SITE_PACKAGES}/pygame"
+cp -R "${VENDOR_DIR}/pygame" "${SITE_PACKAGES}/pygame"
+cp "${VENDOR_DIR}"/pygame.libs/* "${LIB_DIR}/"
 
 find "${APP_DIR}" -name "__pycache__" -type d -prune -exec rm -rf {} +
 find "${APP_DIR}" -name "*.pyc" -delete
@@ -81,8 +83,3 @@ PY
 
 echo "Created ${BUILD_DIR}"
 echo "Created ${DIST_DIR}/${ZIP_NAME}"
-if [ -f "${RUNTIME_ARCHIVE_PATH}" ]; then
-  echo "Included runtime from ${RUNTIME_ARCHIVE_PATH}"
-else
-  echo "No cached runtime found at ${RUNTIME_ARCHIVE_PATH}"
-fi
