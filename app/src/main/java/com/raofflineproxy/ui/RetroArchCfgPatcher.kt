@@ -13,13 +13,8 @@ import java.io.File
 private const val TAG = "RAProxy/RetroArchCfg"
 private const val CFG_BACKUP_NAME = "retroarch.raofflineproxy.cfg"
 
-internal val RETROARCH_PACKAGE_CANDIDATES = listOf(
-    "com.retroarch.aarch64",
-    "com.retroarch"
-)
-
 internal val RETROARCH_SOURCE_CANDIDATES by lazy {
-    RETROARCH_PACKAGE_CANDIDATES.flatMap { packageName ->
+    Emulator.RetroArch.packageCandidates.flatMap { packageName ->
         listOf(
             "/storage/emulated/0/Android/data/$packageName/files/retroarch.cfg"
         )
@@ -32,7 +27,7 @@ internal val RETROARCH_SOURCE_CANDIDATES by lazy {
 // Covers: granted Android/data/ → full path needed
 //         granted com.retroarch.aarch64 or com.retroarch → skip the package segment
 //         granted files/ → skip package + files
-private val SAF_CFG_PATHS = RETROARCH_PACKAGE_CANDIDATES.map { listOf(it, "files", "retroarch.cfg") } + listOf(
+private val SAF_CFG_PATHS = Emulator.RetroArch.packageCandidates.map { listOf(it, "files", "retroarch.cfg") } + listOf(
     listOf("files", "retroarch.cfg"),
     listOf("retroarch.cfg")
 )

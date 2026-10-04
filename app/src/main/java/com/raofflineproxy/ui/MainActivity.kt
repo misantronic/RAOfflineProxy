@@ -1001,10 +1001,10 @@ private class OpenAndroidDataTree : ActivityResultContract<Unit, Uri?>() {
         if (resultCode == android.app.Activity.RESULT_OK) intent?.data else null
 
     private fun resolveRetroArchPackage(context: Context): String =
-        RETROARCH_PACKAGE_CANDIDATES.firstOrNull { packageName ->
+        Emulator.RetroArch.packageCandidates.firstOrNull { packageName ->
             runCatching { context.packageManager.getPackageInfo(packageName, 0) }
                 .isSuccess
-        } ?: RETROARCH_PACKAGE_CANDIDATES.first()
+        } ?: Emulator.RetroArch.packageCandidates.first()
 }
 
 private class OpenDolphinConfigTree : ActivityResultContract<Unit, Uri?>() {
@@ -1024,16 +1024,16 @@ private class OpenDolphinConfigTree : ActivityResultContract<Unit, Uri?>() {
         if (resultCode == android.app.Activity.RESULT_OK) intent?.data else null
 
     private fun resolveDolphinPackage(context: Context): String =
-        DOLPHIN_PACKAGE_CANDIDATES.firstOrNull { packageName ->
+        Emulator.Dolphin.packageCandidates.firstOrNull { packageName ->
             runCatching { context.packageManager.getPackageInfo(packageName, 0) }
                 .isSuccess
-        } ?: DOLPHIN_PACKAGE_CANDIDATES.first()
+        } ?: Emulator.Dolphin.packageCandidates.first()
 }
 
 private class OpenPpssppRootTree : ActivityResultContract<Unit, Uri?>() {
     override fun createIntent(context: Context, input: Unit): Intent =
         Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).apply {
-            val ppssppPackage = resolveInstalledPackage(context, UI_PPSSPP_PACKAGE_CANDIDATES) ?: UI_PPSSPP_PACKAGE
+            val ppssppPackage = resolveInstalledPackage(context, Emulator.Ppsspp.packageCandidates) ?: Emulator.Ppsspp.packageCandidates.first()
             initialTreeUriForPath("/storage/emulated/0/Android/data/$ppssppPackage/files/$PPSSPP_PSP_DIR")
                 ?.let { putExtra(DocumentsContract.EXTRA_INITIAL_URI, it) }
             addFlags(
