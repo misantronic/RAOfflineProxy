@@ -18,6 +18,7 @@ import com.raofflineproxy.throttleRetroAchievementsApiRequest
 import com.raofflineproxy.data.AppDatabase
 import com.raofflineproxy.data.CacheEntry
 import com.raofflineproxy.data.CacheKeys
+import com.raofflineproxy.data.forEachEntryByPrefix
 import com.raofflineproxy.data.PENDING_AWARD_STATUS_PENDING
 import com.raofflineproxy.data.PendingAward
 import com.raofflineproxy.proxyUserAgent
@@ -85,8 +86,8 @@ internal data class QueueDrainResult(
 }
 
 internal suspend fun loadCachedRomPaths(db: AppDatabase): MutableSet<String> =
-    db.cacheDao().getAllByPrefix(CacheKeys.PREFIX_PATCH)
-        .mapNotNull { entry -> entry.sourceRomPath?.normalizeCachedRomPath() }
+    db.cacheDao().getAllSummariesByPrefix(CacheKeys.PREFIX_PATCH)
+        .mapNotNull { summary -> summary.sourceRomPath?.normalizeCachedRomPath() }
         .toMutableSet()
 
 data class LoginCredentials(val user: String, val token: String)
@@ -266,30 +267,49 @@ suspend fun refreshGamePatch(
     return normalizedBody
 }
 
-internal suspend fun loadCachedGameRefreshTargets(db: AppDatabase): List<CachedGameRefreshTarget> {
-    val patchEntries = db.cacheDao().getAllByPrefix(CacheKeys.PREFIX_PATCH)
-    val achievementSetEntries = db.cacheDao().getAllByPrefix(CacheKeys.PREFIX_ACHIEVEMENTSETS)
-    val achievementSetsByGameAndUser = buildMap<Pair<Int, String>, String> {
-        achievementSetEntries.forEach { entry ->
-            val user = CacheKeys.parseUserFromAchievementSetsKey(entry.cacheKey) ?: return@forEach
-            val hash = CacheKeys.parseAchievementSetsHash(entry.cacheKey) ?: return@forEach
-            val gameId = achievementSetsGameId(entry) ?: return@forEach
-            putIfAbsent(gameId to user, hash)
-        }
+internal suspend fun loadCachedGameRefreshTargets(
+    db: AppDatabase,
+    gameIds: Set<Int>
+): List<CachedGameRefreshTarget> {
+    val patches = db.cacheDao().getAllSummariesByPrefix(CacheKeys.PREFIX_PATCH).mapNotNull { summary ->
+        val gameId = CacheKeys.parseGameIdFromPatchKey(summary.cacheKey)?.takeIf { it in gameIds }
+            ?: return@mapNotNull null
+        val user = CacheKeys.parseUserFromPatchKey(summary.cacheKey) ?: return@mapNotNull null
+        Triple(gameId, user, summary.sourceRomPath)
     }
+    val achievementSetsByGameAndUser = loadAchievementSetsHashes(
+        db,
+        patches.mapTo(HashSet()) { (gameId, user) -> gameId to user }
+    )
 
-    return patchEntries.mapNotNull { entry ->
-        val gameId = CacheKeys.parseGameIdFromPatchKey(entry.cacheKey) ?: return@mapNotNull null
-        val user = CacheKeys.parseUserFromPatchKey(entry.cacheKey) ?: return@mapNotNull null
+    return patches.map { (gameId, user, sourceRomPath) ->
         val endpointHash = achievementSetsByGameAndUser[gameId to user]
         CachedGameRefreshTarget(
             gameId = gameId,
             user = user,
-            sourceRomPath = entry.sourceRomPath,
+            sourceRomPath = sourceRomPath,
             endpoint = if (endpointHash != null) RefreshEndpoint.AchievementSets else RefreshEndpoint.Patch,
             romHash = endpointHash
         )
     }
+}
+
+private suspend fun loadAchievementSetsHashes(
+    db: AppDatabase,
+    wanted: Set<Pair<Int, String>>
+): Map<Pair<Int, String>, String> {
+    val found = HashMap<Pair<Int, String>, String>()
+    if (wanted.isEmpty()) return found
+    val wantedUsers = wanted.mapTo(HashSet()) { (_, user) -> user }
+    db.cacheDao().forEachEntryByPrefix(CacheKeys.PREFIX_ACHIEVEMENTSETS) { entry ->
+        val user = CacheKeys.parseUserFromAchievementSetsKey(entry.cacheKey)?.takeIf { it in wantedUsers }
+            ?: return@forEachEntryByPrefix
+        val hash = CacheKeys.parseAchievementSetsHash(entry.cacheKey) ?: return@forEachEntryByPrefix
+        val key = (achievementSetsGameId(entry) ?: return@forEachEntryByPrefix) to user
+        if (key in wanted) found.putIfAbsent(key, hash)
+        if (found.size == wanted.size) return found
+    }
+    return found
 }
 
 private fun achievementSetsGameId(entry: CacheEntry): Int? {
@@ -310,9 +330,9 @@ internal suspend fun deleteCachedGamesData(db: AppDatabase, gameIds: Set<String>
         dao.deleteByKeyPrefix(CacheKeys.startSessionPrefix(gameId))
         gameId.toIntOrNull()?.let { dao.deleteByKey(CacheKeys.lastPlayed(it)) }
     }
-    dao.getAllByPrefix(CacheKeys.PREFIX_ACHIEVEMENTSETS)
-        .filter { entry -> achievementSetsGameId(entry)?.toString() in gameIds }
-        .forEach { entry -> dao.deleteByKey(entry.cacheKey) }
+    dao.forEachEntryByPrefix(CacheKeys.PREFIX_ACHIEVEMENTSETS) { entry ->
+        if (achievementSetsGameId(entry)?.toString() in gameIds) dao.deleteByKey(entry.cacheKey)
+    }
 }
 
 internal suspend fun refreshCachedGameOfflineBundle(
@@ -678,8 +698,8 @@ private suspend fun recordFailedAttempt(db: AppDatabase, rom: QueuedRom) {
 }
 
 internal suspend fun loadCachedGameIds(db: AppDatabase): MutableSet<String> =
-    db.cacheDao().getAllByPrefix(CacheKeys.PREFIX_PATCH)
-        .mapNotNull { entry -> CacheKeys.parseGameIdStringFromPatchKey(entry.cacheKey) }
+    db.cacheDao().getKeysByPrefix(CacheKeys.PREFIX_PATCH)
+        .mapNotNull { key -> CacheKeys.parseGameIdStringFromPatchKey(key) }
         .toMutableSet()
 
 internal fun String.normalizeCachedRomPath(): String =

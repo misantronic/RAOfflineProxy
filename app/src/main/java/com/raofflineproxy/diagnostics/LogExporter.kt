@@ -47,6 +47,9 @@ object LogExporter {
         return "$dateTime $trimmedTag:$message"
     }
 
+    fun redactText(text: String): String =
+        text.lineSequence().joinToString("\n") { line -> redactLine(line) }
+
     private fun redactLine(line: String): String {
         val withoutUrlSecrets = redactFormBody(redactTokens(line))
         return JSON_SECRET_FIELD_REGEX.replace(withoutUrlSecrets) { "${it.groupValues[1]}<redacted>${it.groupValues[2]}" }

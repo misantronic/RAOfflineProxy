@@ -18,6 +18,7 @@ import com.raofflineproxy.usage.RaRequestSource
 import com.raofflineproxy.usage.executeCounted
 import com.raofflineproxy.data.CacheEntry
 import com.raofflineproxy.data.CacheKeys
+import com.raofflineproxy.data.forEachEntryByPrefix
 import com.raofflineproxy.data.PendingAward
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -695,10 +696,7 @@ class ProxyServer(
         }
 
         Log.i(TAG, "Resolving achievementId=$achievementId against every cached game")
-        return buildAchievementGameIds(
-            db.cacheDao().getAllByPrefix(CacheKeys.PREFIX_PATCH),
-            db.cacheDao().getAllByPrefix(CacheKeys.PREFIX_ACHIEVEMENTSETS),
-        )[achievementId]
+        return findAchievementGameIds(db, setOf(achievementId))[achievementId]
     }
 
     private suspend fun isAchievementAlreadyUnlocked(achievementId: Int, user: String?): Boolean {
@@ -996,7 +994,7 @@ internal suspend fun resolveAwardSnapshot(
     context: android.content.Context,
     achievementId: Int
 ): AwardSnapshot? {
-    for (entry in db.cacheDao().getAllByPrefix(CacheKeys.PREFIX_PATCH)) {
+    db.cacheDao().forEachEntryByPrefix(CacheKeys.PREFIX_PATCH) { entry ->
         runCatching {
             val gameId = CacheKeys.parseGameIdFromPatchKey(entry.cacheKey)
             val patchData = JSONObject(entry.responseBody).getJSONObject("PatchData")
@@ -1292,38 +1290,62 @@ internal fun buildAchievementGameIds(
     patchEntries: List<CacheEntry>,
     achievementsetsEntries: List<CacheEntry> = emptyList(),
 ): Map<Int, Int> = buildMap {
-    patchEntries.forEach { entry ->
-        val gameId = CacheKeys.parseGameIdFromPatchKey(entry.cacheKey) ?: return@forEach
-        val patchData = runCatching {
-            JSONObject(entry.responseBody).getJSONObject("PatchData")
-        }.getOrNull() ?: return@forEach
-        val achievements = patchData.optJSONArray("Achievements") ?: return@forEach
-        for (index in 0 until achievements.length()) {
-            val achievement = achievements.optJSONObject(index) ?: continue
-            val achievementId = achievement.optInt("ID")
-            if (achievementId > 0) putIfAbsent(achievementId, gameId)
+    patchEntries.forEach { entry -> putPatchAchievementGameIds(entry, this) }
+    achievementsetsEntries.forEach { entry -> putAchievementSetsGameIds(entry, this) }
+}
+
+/** Same result as [buildAchievementGameIds] over the whole cache, restricted to
+ *  [achievementIds], but loads one cached game at a time and stops once all are found. */
+internal suspend fun findAchievementGameIds(db: AppDatabase, achievementIds: Set<Int>): Map<Int, Int> {
+    val found = HashMap<Int, Int>()
+    if (achievementIds.isEmpty()) return found
+    val sources = listOf(
+        CacheKeys.PREFIX_PATCH to ::putPatchAchievementGameIds,
+        CacheKeys.PREFIX_ACHIEVEMENTSETS to ::putAchievementSetsGameIds,
+    )
+    for ((prefix, collect) in sources) {
+        db.cacheDao().forEachEntryByPrefix(prefix) { entry ->
+            val entryGameIds = HashMap<Int, Int>()
+            collect(entry, entryGameIds)
+            achievementIds.forEach { id -> entryGameIds[id]?.let { gameId -> found.putIfAbsent(id, gameId) } }
+            if (found.size == achievementIds.size) return found
         }
     }
-    achievementsetsEntries.forEach { entry ->
-        val payload = runCatching { JSONObject(entry.responseBody) }.getOrNull() ?: return@forEach
-        val topLevelGameId = payload.optInt("GameId").takeIf { it > 0 } ?: return@forEach
-        val sets = payload.optJSONArray("Sets")
-        if (sets != null) {
-            for (i in 0 until sets.length()) {
-                val set = sets.optJSONObject(i) ?: continue
-                val setGameId = set.optInt("GameId").takeIf { it > 0 } ?: topLevelGameId
-                val achievements = set.optJSONArray("Achievements") ?: continue
-                for (j in 0 until achievements.length()) {
-                    val achievementId = achievements.optJSONObject(j)?.optInt("ID") ?: continue
-                    if (achievementId > 0) putIfAbsent(achievementId, setGameId)
-                }
+    return found
+}
+
+private fun putPatchAchievementGameIds(entry: CacheEntry, into: MutableMap<Int, Int>) {
+    val gameId = CacheKeys.parseGameIdFromPatchKey(entry.cacheKey) ?: return
+    val patchData = runCatching {
+        JSONObject(entry.responseBody).getJSONObject("PatchData")
+    }.getOrNull() ?: return
+    val achievements = patchData.optJSONArray("Achievements") ?: return
+    for (index in 0 until achievements.length()) {
+        val achievement = achievements.optJSONObject(index) ?: continue
+        val achievementId = achievement.optInt("ID")
+        if (achievementId > 0) into.putIfAbsent(achievementId, gameId)
+    }
+}
+
+private fun putAchievementSetsGameIds(entry: CacheEntry, into: MutableMap<Int, Int>) {
+    val payload = runCatching { JSONObject(entry.responseBody) }.getOrNull() ?: return
+    val topLevelGameId = payload.optInt("GameId").takeIf { it > 0 } ?: return
+    val sets = payload.optJSONArray("Sets")
+    if (sets != null) {
+        for (i in 0 until sets.length()) {
+            val set = sets.optJSONObject(i) ?: continue
+            val setGameId = set.optInt("GameId").takeIf { it > 0 } ?: topLevelGameId
+            val achievements = set.optJSONArray("Achievements") ?: continue
+            for (j in 0 until achievements.length()) {
+                val achievementId = achievements.optJSONObject(j)?.optInt("ID") ?: continue
+                if (achievementId > 0) into.putIfAbsent(achievementId, setGameId)
             }
-        } else {
-            val achievements = payload.optJSONArray("Achievements") ?: return@forEach
-            for (i in 0 until achievements.length()) {
-                val achievementId = achievements.optJSONObject(i)?.optInt("ID") ?: continue
-                if (achievementId > 0) putIfAbsent(achievementId, topLevelGameId)
-            }
+        }
+    } else {
+        val achievements = payload.optJSONArray("Achievements") ?: return
+        for (i in 0 until achievements.length()) {
+            val achievementId = achievements.optJSONObject(i)?.optInt("ID") ?: continue
+            if (achievementId > 0) into.putIfAbsent(achievementId, topLevelGameId)
         }
     }
 }

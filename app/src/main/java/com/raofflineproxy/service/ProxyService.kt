@@ -361,13 +361,13 @@ class ProxyService : Service() {
                 continue
             }
             val userAgent = loadUserAgent(db)
-            val refreshTargets = loadCachedGameRefreshTargets(db)
             val playedSince = System.currentTimeMillis() - REFRESH_PLAYED_WINDOW_MS
             val recentlyPlayed = loadRecentlyPlayedGameIds(db, playedSince)
-            val dueTargets = refreshTargets.filter { target -> target.gameId in recentlyPlayed }
+            val dueTargets = loadCachedGameRefreshTargets(db, recentlyPlayed)
+            val cachedGameCount = db.cacheDao().countByPrefix(CacheKeys.PREFIX_PATCH)
             Log.i(
                 TAG,
-                "Periodic refresh: ${dueTargets.size} of ${refreshTargets.size} cached game(s) " +
+                "Periodic refresh: ${dueTargets.size} of $cachedGameCount cached game(s) " +
                     "played in the last $REFRESH_PLAYED_WINDOW_DAYS day(s)"
             )
             RateLimitBackoff.background {

@@ -38,11 +38,16 @@ sealed interface CachedGameListItem {
 class CachedGamesAdapter(
     private val onHeaderClick: (consoleId: Int) -> Unit,
     private val onDelete: (CachedGame) -> Unit,
-    private val onDeleteConsole: (CachedGameListItem.ConsoleHeader) -> Unit
+    private val onDeleteConsole: (CachedGameListItem.ConsoleHeader) -> Unit,
+    private val loadAchievements: (CachedGame, (List<CachedAchievement>) -> Unit) -> Unit
 ) : ListAdapter<CachedGameListItem, RecyclerView.ViewHolder>(DIFF) {
 
     private val dateFormat = SimpleDateFormat("MMM d, HH:mm", Locale.getDefault())
     private val expandedGameIds = mutableSetOf<String>()
+    private val loadedAchievements = mutableMapOf<String, LoadedAchievements>()
+    private val loadingGameIds = mutableSetOf<String>()
+
+    private class LoadedAchievements(val game: CachedGame, val achievements: List<CachedAchievement>)
 
     var showLocked: Boolean = false
         @SuppressLint("NotifyDataSetChanged")
@@ -61,8 +66,24 @@ class CachedGamesAdapter(
         notifyDataSetChanged()
     }
 
-    private fun visibleAchievements(game: CachedGame): List<CachedAchievement> =
-        if (showLocked) game.achievements else game.achievements.filter { it.unlocked }
+    private fun hasVisibleAchievements(game: CachedGame): Boolean =
+        if (showLocked) game.totalAchievements > 0 else game.unlockedListedCount > 0
+
+    private fun visibleAchievements(achievements: List<CachedAchievement>): List<CachedAchievement> =
+        if (showLocked) achievements else achievements.filter { it.unlocked }
+
+    private fun loadedAchievementsFor(game: CachedGame): List<CachedAchievement>? =
+        loadedAchievements[game.gameId]?.takeIf { it.game == game }?.achievements
+
+    private fun requestAchievements(game: CachedGame) {
+        if (!loadingGameIds.add(game.gameId)) return
+        loadAchievements(game) { achievements ->
+            loadingGameIds.remove(game.gameId)
+            loadedAchievements[game.gameId] = LoadedAchievements(game, achievements)
+            val position = currentList.indexOfFirst { it is CachedGameListItem.GameItem && it.game.gameId == game.gameId }
+            if (position >= 0) notifyItemChanged(position)
+        }
+    }
 
     inner class HeaderViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
         private val tvConsoleName: TextView = itemView.findViewById(R.id.tv_console_name)
@@ -91,18 +112,17 @@ class CachedGamesAdapter(
             bindExpandedState(game, expanded)
 
             binding.layoutGameRow.setOnClickListener {
-                if (visibleAchievements(game).isEmpty()) return@setOnClickListener
+                if (!hasVisibleAchievements(game)) return@setOnClickListener
                 toggleExpanded(game.gameId)
             }
             binding.ivExpand.setOnClickListener {
-                if (visibleAchievements(game).isEmpty()) return@setOnClickListener
+                if (!hasVisibleAchievements(game)) return@setOnClickListener
                 toggleExpanded(game.gameId)
             }
         }
 
         private fun bindExpandedState(game: CachedGame, expanded: Boolean) {
-            val achievements = visibleAchievements(game)
-            val hasAchievements = achievements.isNotEmpty()
+            val hasAchievements = hasVisibleAchievements(game)
             binding.ivExpand.visibility = if (hasAchievements) View.VISIBLE else View.INVISIBLE
             binding.ivExpand.rotation = if (expanded) 180f else 0f
             binding.layoutGameRow.contentDescription = binding.root.context.getString(
@@ -110,11 +130,16 @@ class CachedGamesAdapter(
             )
 
             binding.layoutUnlockedAchievements.removeAllViews()
-            binding.layoutUnlockedAchievements.visibility = if (expanded && hasAchievements) View.VISIBLE else View.GONE
+            val loaded = if (expanded && hasAchievements) loadedAchievementsFor(game) else null
+            binding.layoutUnlockedAchievements.visibility = if (loaded != null) View.VISIBLE else View.GONE
             if (!expanded || !hasAchievements) return
+            if (loaded == null) {
+                requestAchievements(game)
+                return
+            }
 
             val inflater = LayoutInflater.from(binding.root.context)
-            achievements.forEach { achievement ->
+            visibleAchievements(loaded).forEach { achievement ->
                 binding.layoutUnlockedAchievements.addView(
                     inflateAchievement(inflater, binding.layoutUnlockedAchievements, achievement)
                 )
@@ -146,6 +171,7 @@ class CachedGamesAdapter(
         private fun toggleExpanded(gameId: String) {
             if (!expandedGameIds.add(gameId)) {
                 expandedGameIds.remove(gameId)
+                loadedAchievements.remove(gameId)
             }
             notifyItemChanged(bindingAdapterPosition)
         }

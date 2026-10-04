@@ -116,12 +116,6 @@ private fun writeAtomically(target: File, write: (File) -> Unit) {
     }
 }
 
-fun cachedBadgeFileNames(context: Context): Set<String> =
-    File(staticDir(context), "Badge")
-        .listFiles()
-        ?.mapNotNullTo(mutableSetOf()) { file -> file.name.takeIf { file.isFile && file.length() > 0L } }
-        .orEmpty()
-
 fun cachedBadgePath(context: Context, badgeName: String): String =
     File(staticDir(context), "Badge/$badgeName.png").absolutePath
 

@@ -109,6 +109,11 @@ class CachedGamesFragment : Fragment() {
                     .create()
                     .also { it.setCanceledOnTouchOutside(false) }
                     .show()
+            },
+            loadAchievements = { game, onLoaded ->
+                viewLifecycleOwner.lifecycleScope.launch {
+                    onLoaded(viewModel.cachedGameAchievements(game))
+                }
             }
         )
         gamesAdapter = adapter

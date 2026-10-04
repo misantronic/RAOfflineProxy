@@ -10,7 +10,6 @@ import com.raofflineproxy.RequestFailureNotifier
 import com.raofflineproxy.data.AppDatabase
 import com.raofflineproxy.usage.RaRequestSource
 import com.raofflineproxy.usage.executeCounted
-import com.raofflineproxy.data.CacheKeys
 import com.raofflineproxy.data.PendingAward
 import com.raofflineproxy.data.PENDING_AWARD_STATUS_DELETED
 import com.raofflineproxy.data.PENDING_AWARD_STATUS_FLUSHED
@@ -257,9 +256,9 @@ class AwardFlusher(
     private suspend fun resolvePendingAwardGameTargets(
         awards: List<PendingAward>
     ): PendingAwardGameTargets {
-        val achievementGameIds = buildAchievementGameIds(
-            db.cacheDao().getAllByPrefix(CacheKeys.PREFIX_PATCH),
-            db.cacheDao().getAllByPrefix(CacheKeys.PREFIX_ACHIEVEMENTSETS),
+        val achievementGameIds = findAchievementGameIds(
+            db,
+            awards.mapTo(HashSet()) { award -> award.achievementId }
         )
         if (achievementGameIds.isEmpty()) {
             return PendingAwardGameTargets(emptyMap(), emptyList())

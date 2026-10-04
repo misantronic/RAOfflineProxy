@@ -31,6 +31,7 @@ import com.raofflineproxy.data.AppDatabase
 import com.raofflineproxy.data.CacheEntry
 import com.raofflineproxy.data.CacheEntrySummary
 import com.raofflineproxy.data.CacheKeys
+import com.raofflineproxy.data.forEachEntryByPrefix
 import com.raofflineproxy.data.CachedGame
 import com.raofflineproxy.data.PendingAward
 import com.raofflineproxy.data.PendingAwardUi
@@ -56,7 +57,6 @@ import com.raofflineproxy.proxy.PasswordCredentials
 import com.raofflineproxy.proxy.patchImagePath
 import com.raofflineproxy.proxy.patchImageUrl
 import com.raofflineproxy.proxy.resolveCachedStaticAsset
-import com.raofflineproxy.proxy.cachedBadgeFileNames
 import com.raofflineproxy.proxy.cachedBadgePath
 import com.raofflineproxy.proxy.cacheLoginCredentialsResponse
 import com.raofflineproxy.proxy.clearAllCachedImages
@@ -105,6 +105,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.concurrent.ConcurrentHashMap
+import java.io.File
 import org.json.JSONArray
 import org.json.JSONObject
 import kotlin.time.Duration.Companion.milliseconds
@@ -215,6 +216,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val pendingDeletedGameIds: MutableSet<String> = ConcurrentHashMap.newKeySet()
     private val patchCache = mutableMapOf<Long, ParsedPatch>()
     private val unlockCache = mutableMapOf<Long, CachedUnlocks>()
+    private val awardAchievementCache = mutableMapOf<Int, CachedAwardAchievement>()
     private val connectivityManager =
         app.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
     private var pendingProxyStart = false
@@ -350,9 +352,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     .map { it.isNotEmpty() }
                     .distinctUntilChanged()
             ) { awards, historyAwards, patchSummaries, unlockSummaries, hasLoginCredentials ->
-                val badgeNames = cachedBadgeFileNames(application)
-                val patches = loadPatchViews(patchSummaries, badgeNames)
-                val achievementIndex = buildAchievementIndex(patches)
+                val patches = loadPatchViews(patchSummaries)
+                val achievementIndex = buildAchievementIndex(
+                    patches,
+                    (awards + historyAwards).mapNotNullTo(HashSet()) { parsePendingAwardAchievementId(it) }
+                )
                 val resolvedAwards = awards.map { resolvePendingAward(it, achievementIndex) }
                 val resolvedHistoryAwards = historyAwards.map { resolvePendingAward(it, achievementIndex) }
                 val pendingAwardsByGameId = buildPendingAwardsByGameId(achievementIndex, awards)
@@ -1899,8 +1903,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val points: Int,
         val badgeName: String?,
         val core: Boolean
-    )
+    ) {
+        val listed: Boolean get() = id > 0 && id != WARNING_ACHIEVEMENT_ID && core
+    }
 
+    // Only what a list row needs. Keeping every achievement's texts for thousands of cached games
+    // exceeds the app's heap, so achievement details are parsed when a game is expanded.
     private class ParsedPatch(
         val cacheKey: String,
         val cachedAt: Long,
@@ -1910,38 +1918,40 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val consoleId: Int,
         val imagePath: String?,
         val imageUrl: String?,
-        val achievements: List<ParsedAchievement>
+        val achievementIds: IntArray,
+        val listedAchievementIds: IntArray
     )
 
     private class CachedUnlocks(val cachedAt: Long, val ids: Set<Int>)
 
+    private class CachedAwardAchievement(val summaryId: Long, val cachedAt: Long, val achievement: ParsedAchievement)
+
     private inner class PatchView(
         val summary: CacheEntrySummary,
-        val parsed: ParsedPatch,
-        private val badgeNames: Set<String>
+        val parsed: ParsedPatch
     ) {
         val gameId: String get() = parsed.gameId
         val user: String get() = parsed.user
-        val achievements: List<ParsedAchievement> get() = parsed.achievements
 
         val imageIconUrl: String? by lazy {
             parsed.gameId.toIntOrNull()?.let { resolveCachedGameIconPath(application, it) }
                 ?: parsed.imagePath?.let { resolveCachedStaticAsset(application, it)?.absolutePath }
                 ?: parsed.imageUrl
         }
-
-        fun badgeUrl(achievement: ParsedAchievement): String? = achievement.badgeName?.let { name ->
-            if ("$name.png" in badgeNames) cachedBadgePath(application, name)
-            else "https://i.retroachievements.org/Badge/$name.png"
-        }
     }
 
     private class AchievementRef(val patch: PatchView, val achievement: ParsedAchievement)
+
+    private fun badgeUrl(achievement: ParsedAchievement): String? = achievement.badgeName?.let { name ->
+        val cachedPath = cachedBadgePath(application, name)
+        if (File(cachedPath).length() > 0L) cachedPath else "https://i.retroachievements.org/Badge/$name.png"
+    }
 
     private fun parsePatch(summary: CacheEntrySummary, body: String): ParsedPatch? {
         val parts = summary.cacheKey.split(":")
         if (parts.size < 3) return null
         val patchData = runCatching { JSONObject(body).getJSONObject("PatchData") }.getOrNull()
+        val achievements = parseAchievements(patchData?.optJSONArray("Achievements"))
         return ParsedPatch(
             cacheKey = summary.cacheKey,
             cachedAt = summary.cachedAt,
@@ -1951,7 +1961,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             consoleId = patchData?.optInt("ConsoleID", 0) ?: 0,
             imagePath = patchData?.let(::patchImagePath),
             imageUrl = patchData?.let(::patchImageUrl),
-            achievements = parseAchievements(patchData?.optJSONArray("Achievements"))
+            achievementIds = achievements.map { it.id }.toIntArray(),
+            listedAchievementIds = achievements.filter { it.listed }.map { it.id }.toIntArray()
         )
     }
 
@@ -1976,10 +1987,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    private suspend fun loadPatchViews(
-        summaries: List<CacheEntrySummary>,
-        badgeNames: Set<String>
-    ): List<PatchView> {
+    private suspend fun loadAchievements(summary: CacheEntrySummary): List<ParsedAchievement>? {
+        val body = db.cacheDao().bodyForSummary(summary) ?: return null
+        val patchData = runCatching { JSONObject(body).getJSONObject("PatchData") }.getOrNull() ?: return null
+        return parseAchievements(patchData.optJSONArray("Achievements"))
+    }
+
+    private suspend fun loadPatchViews(summaries: List<CacheEntrySummary>): List<PatchView> {
         val views = ArrayList<PatchView>(summaries.size)
         for (summary in summaries) {
             val parsed = patchCache[summary.id]
@@ -1988,32 +2002,60 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     ?.let { body -> parsePatch(summary, body) }
                     ?.also { patchCache[summary.id] = it }
                 ?: continue
-            views += PatchView(summary, parsed, badgeNames)
+            views += PatchView(summary, parsed)
         }
         patchCache.keys.retainAll(summaries.mapTo(HashSet()) { it.id })
         return views
     }
 
-    private fun buildAchievementIndex(patches: List<PatchView>): Map<Int, AchievementRef> = buildMap {
-        patches.forEach { patch ->
-            patch.achievements.forEach { achievement ->
-                putIfAbsent(achievement.id, AchievementRef(patch, achievement))
+    private suspend fun buildAchievementIndex(
+        patches: List<PatchView>,
+        achievementIds: Set<Int>
+    ): Map<Int, AchievementRef> {
+        awardAchievementCache.keys.retainAll(achievementIds)
+        if (achievementIds.isEmpty()) return emptyMap()
+        val index = HashMap<Int, AchievementRef>()
+        for (patch in patches) {
+            val wanted = patch.parsed.achievementIds.filter { it in achievementIds && it !in index }
+            if (wanted.isEmpty()) continue
+            val missing = wanted.filter { id ->
+                val cached = awardAchievementCache[id]
+                    ?.takeIf { it.summaryId == patch.summary.id && it.cachedAt == patch.summary.cachedAt }
+                    ?: return@filter true
+                index[id] = AchievementRef(patch, cached.achievement)
+                false
             }
+            if (missing.isNotEmpty()) {
+                loadAchievements(patch.summary).orEmpty()
+                    .filter { it.id in missing }
+                    .forEach { achievement ->
+                        awardAchievementCache[achievement.id] =
+                            CachedAwardAchievement(patch.summary.id, patch.summary.cachedAt, achievement)
+                        index.putIfAbsent(achievement.id, AchievementRef(patch, achievement))
+                    }
+            }
+            if (index.size == achievementIds.size) break
         }
+        return index
     }
 
     private suspend fun unlockedIdsFor(summary: CacheEntrySummary?): Set<Int> {
         if (summary == null) return emptySet()
         unlockCache[summary.id]?.let { if (it.cachedAt == summary.cachedAt) return it.ids }
+        val ids = loadUnlockedIds(summary)
+        unlockCache[summary.id] = CachedUnlocks(summary.cachedAt, ids)
+        return ids
+    }
+
+    private suspend fun loadUnlockedIds(summary: CacheEntrySummary?): Set<Int> {
+        if (summary == null) return emptySet()
         val body = db.cacheDao().bodyForSummary(summary) ?: return emptySet()
-        val ids = runCatching {
+        return runCatching {
             val unlocks = JSONObject(body).optJSONArray("UserUnlocks") ?: return@runCatching emptySet()
             buildSet(unlocks.length()) {
                 for (i in 0 until unlocks.length()) add(unlocks.optInt(i))
             }
         }.getOrDefault(emptySet())
-        unlockCache[summary.id] = CachedUnlocks(summary.cachedAt, ids)
-        return ids
     }
 
     private suspend fun buildCachedGame(
@@ -2022,7 +2064,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         pendingAwardCount: Int
     ): CachedGame {
         val unlocked = unlockedIdsFor(unlockSummary)
-        val coreAchievements = patch.achievements.filter { it.id > 0 && it.id != WARNING_ACHIEVEMENT_ID && it.core }
         return CachedGame(
             gameId = patch.gameId,
             title = patch.parsed.title,
@@ -2032,21 +2073,29 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             cachedAt = patch.summary.cachedAt,
             imageIconUrl = patch.imageIconUrl,
             unlockedCount = unlocked.size,
+            unlockedListedCount = patch.parsed.listedAchievementIds.count { it in unlocked },
             pendingAwardCount = pendingAwardCount,
-            totalAchievements = coreAchievements.size,
-            achievements = coreAchievements
-                .map { achievement ->
-                    CachedAchievement(
-                        id = achievement.id,
-                        title = achievement.title ?: str(R.string.achievement_fallback, achievement.id),
-                        description = achievement.description,
-                        points = achievement.points,
-                        badgeUrl = patch.badgeUrl(achievement),
-                        unlocked = unlocked.contains(achievement.id)
-                    )
-                }
-                .sortedByDescending { it.unlocked }
+            totalAchievements = patch.parsed.listedAchievementIds.size
         )
+    }
+
+    suspend fun cachedGameAchievements(game: CachedGame): List<CachedAchievement> = withContext(Dispatchers.IO) {
+        val summary = db.cacheDao().getSummary(CacheKeys.patchPrefix(game.gameId) + game.user)
+            ?: return@withContext emptyList()
+        val unlocked = loadUnlockedIds(db.cacheDao().getSummary(CacheKeys.unlocks(game.gameId, game.user)))
+        loadAchievements(summary).orEmpty()
+            .filter { it.listed }
+            .map { achievement ->
+                CachedAchievement(
+                    id = achievement.id,
+                    title = achievement.title ?: str(R.string.achievement_fallback, achievement.id),
+                    description = achievement.description,
+                    points = achievement.points,
+                    badgeUrl = badgeUrl(achievement),
+                    unlocked = achievement.id in unlocked
+                )
+            }
+            .sortedByDescending { it.unlocked }
     }
 
     private fun resolvePendingAward(
@@ -2070,7 +2119,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             gameIconUrl = ref.patch.imageIconUrl
             achievementTitle = ref.achievement.title ?: achievementTitle
             points = ref.achievement.points
-            badgeUrl = ref.patch.badgeUrl(ref.achievement)
+            badgeUrl = badgeUrl(ref.achievement)
         } else {
             gameTitle = award.snapshotGameTitle ?: gameTitle
             achievementTitle = award.snapshotAchievementTitle ?: achievementTitle
@@ -2502,13 +2551,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    private suspend fun compactCachedShadowPatches() {
-        val patchEntries = runCatching { db.cacheDao().getAllByPrefix(CacheKeys.PREFIX_PATCH) }.getOrDefault(emptyList())
-        patchEntries.forEach { entry ->
+    private suspend fun compactCachedShadowPatches() = runCatching {
+        db.cacheDao().forEachEntryByPrefix(CacheKeys.PREFIX_PATCH) { entry ->
             val normalized = runCatching {
                 normalizeCachedResponse("patch", "", "", entry.responseBody)
-            }.getOrNull() ?: return@forEach
-            if (normalized == entry.responseBody) return@forEach
+            }.getOrNull() ?: return@forEachEntryByPrefix
+            if (normalized == entry.responseBody) return@forEachEntryByPrefix
             db.cacheDao().upsert(
                 entry.copy(
                     responseBody = normalized,
@@ -2518,14 +2566,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    private suspend fun compactCachedRawAchievementSets() {
-        val rawEntries = runCatching { db.cacheDao().getAllByPrefix(CacheKeys.PREFIX_ACHIEVEMENTSETS) }.getOrDefault(emptyList())
-        rawEntries.forEach { entry ->
-            if (!shouldCompactAchievementSets("achievementsets", entry.responseBody)) return@forEach
+    private suspend fun compactCachedRawAchievementSets() = runCatching {
+        db.cacheDao().forEachEntryByPrefix(CacheKeys.PREFIX_ACHIEVEMENTSETS) { entry ->
+            if (!shouldCompactAchievementSets("achievementsets", entry.responseBody)) return@forEachEntryByPrefix
             val compacted = runCatching {
                 compactCachedRawResponse("achievementsets", entry.responseBody)
-            }.getOrNull() ?: return@forEach
-            if (compacted == entry.responseBody) return@forEach
+            }.getOrNull() ?: return@forEachEntryByPrefix
+            if (compacted == entry.responseBody) return@forEachEntryByPrefix
             db.cacheDao().upsert(
                 entry.copy(
                     responseBody = compacted,
