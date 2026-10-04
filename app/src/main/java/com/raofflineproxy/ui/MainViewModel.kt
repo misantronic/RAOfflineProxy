@@ -121,6 +121,7 @@ sealed interface MainUiEvent {
     data object PromptSmartCacheAfterProxyStart : MainUiEvent
     data object PromptManualCredentials : MainUiEvent
     data object PromptCredentialsForCaching : MainUiEvent
+    data object PromptLoginChoice : MainUiEvent
     data object OpenShizukuGuide : MainUiEvent
     data class ShowAppUpdate(val update: AppUpdateInfo) : MainUiEvent
     data object RequestShizukuPermission : MainUiEvent
@@ -136,7 +137,6 @@ private sealed interface PendingCredentialAction {
     data class ScanRoms(val treeUri: Uri) : PendingCredentialAction
     data class StartProxy(val treeUri: Uri?) : PendingCredentialAction
     data class FinishProxyStart(val alreadyRunning: Boolean) : PendingCredentialAction
-    data object ResumeProxy : PendingCredentialAction
 }
 
 data class MainUiState(
@@ -202,7 +202,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         var lastPromptedRejectedToken: String? = null
 
         @Volatile
-        var promptedForMissingCredentials = false
+        var loginChoiceSkipped = false
     }
 
     private val application = app
@@ -401,13 +401,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val app = getApplication<Application>()
         viewModelScope.launch {
             val shouldKeepRunning = ProxyService.shouldKeepRunning(app)
-            if (shouldKeepRunning && !ProxyService.isRunning(app) &&
-                withContext(Dispatchers.IO) { loadLoginCredentials(db) } == null
-            ) {
-                pendingCredentialAction = PendingCredentialAction.ResumeProxy
-                promptForCredentials()
-                return@launch
-            }
             if (loadManualEmulatorPatchingEnabled()) {
                 val proxyRunning = ProxyService.isRunning(app)
                 if (!proxyRunning) {
@@ -907,8 +900,27 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         credentialsPromptActive = false
         val action = pendingCredentialAction
         pendingCredentialAction = null
-        if (action is PendingCredentialAction.FinishProxyStart || action is PendingCredentialAction.ResumeProxy) {
+        if (action is PendingCredentialAction.FinishProxyStart) {
             stopProxy()
+        }
+    }
+
+    private fun promptLoginChoice() {
+        _events.tryEmit(MainUiEvent.PromptLoginChoice)
+    }
+
+    fun chooseLogin() {
+        promptForCredentials()
+    }
+
+    fun chooseStartWithoutLogin() {
+        loginChoiceSkipped = true
+        val action = pendingCredentialAction
+        pendingCredentialAction = null
+        when (action) {
+            is PendingCredentialAction.StartProxy -> startProxy(action.treeUri)
+            is PendingCredentialAction.FinishProxyStart -> finishAutoPatchedProxyStart(action.alreadyRunning)
+            else -> Unit
         }
     }
 
@@ -937,10 +949,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             if (credentials == null) {
                 Log.i("RAProxy/Auth", "validateToken: no cached credentials found")
                 _state.value = _state.value.copy(authState = AuthState.Invalid)
-                if (_state.value.proxyRunning && !credentialsPromptActive && !promptedForMissingCredentials) {
-                    promptedForMissingCredentials = true
-                    promptForCredentials()
-                }
                 return@launch
             }
             if (!_state.value.isOnline) {
@@ -1101,10 +1109,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 }
 
                 val hasCachedCredentials = withContext(Dispatchers.IO) { loadLoginCredentials(db) } != null
-                if (!hasCredentialSource(hasCachedCredentials, emulatorSupport)) {
+                if (!hasCredentialSource(hasCachedCredentials, emulatorSupport) && !loginChoiceSkipped) {
                     pendingProxyStart = false
                     pendingCredentialAction = PendingCredentialAction.StartProxy(treeUri)
-                    promptForCredentials()
+                    promptLoginChoice()
                     return@launch
                 }
 
@@ -1231,10 +1239,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     withContext(Dispatchers.IO) { cacheImportedCredentials(credentials) }
                 }
 
-                if (withContext(Dispatchers.IO) { loadLoginCredentials(db) } == null) {
+                if (!loginChoiceSkipped && withContext(Dispatchers.IO) { loadLoginCredentials(db) } == null) {
                     pendingProxyStart = false
                     pendingCredentialAction = PendingCredentialAction.FinishProxyStart(alreadyRunning)
-                    promptForCredentials()
+                    promptLoginChoice()
                     return@launch
                 }
 
@@ -2343,7 +2351,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             when (action) {
                 is PendingCredentialAction.StartProxy -> startProxy(action.treeUri)
                 is PendingCredentialAction.FinishProxyStart -> finishAutoPatchedProxyStart(action.alreadyRunning)
-                PendingCredentialAction.ResumeProxy -> recoverPatchedCfgIfProxyStopped()
                 PendingCredentialAction.SmartCache -> startSmartCache()
                 is PendingCredentialAction.AddRom -> addRom(action.uris)
                 is PendingCredentialAction.ScanRoms -> scanRoms(action.treeUri)

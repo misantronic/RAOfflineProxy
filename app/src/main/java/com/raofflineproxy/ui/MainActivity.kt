@@ -309,6 +309,7 @@ class MainActivity : AppCompatActivity() {
                     MainUiEvent.PromptSmartCacheAfterProxyStart -> showSmartCacheAfterProxyStartDialog()
                     MainUiEvent.PromptManualCredentials -> showManualCredentialsDialog()
                     MainUiEvent.PromptCredentialsForCaching -> showCredentialsForCachingDialog()
+                    MainUiEvent.PromptLoginChoice -> showLoginChoiceDialog()
                     MainUiEvent.PromptPpssppShizukuRootMode -> showPpssppShizukuRootModeDialog()
                     MainUiEvent.OpenShizukuGuide -> openUrl(getString(R.string.manual_patching_shizuku_guide_url))
                     MainUiEvent.RequestShizukuPermission -> Shizuku.requestPermission(SHIZUKU_PERMISSION_REQUEST_CODE)
@@ -661,6 +662,19 @@ class MainActivity : AppCompatActivity() {
 
         dialog.setCanceledOnTouchOutside(false)
         dialog.show()
+    }
+
+    private fun showLoginChoiceDialog() {
+        AlertDialog.Builder(this)
+            .setTitle(R.string.login_choice_title)
+            .setMessage(R.string.login_choice_message)
+            .setPositiveButton(R.string.login_choice_login) { _, _ -> viewModel.chooseLogin() }
+            .setNegativeButton(R.string.login_choice_skip) { _, _ -> viewModel.chooseStartWithoutLogin() }
+            .setNeutralButton(android.R.string.cancel) { _, _ -> viewModel.cancelCredentialsPrompt() }
+            .setOnCancelListener { viewModel.cancelCredentialsPrompt() }
+            .create()
+            .also { it.setCanceledOnTouchOutside(false) }
+            .show()
     }
 
     private fun showCredentialsForCachingDialog() {
