@@ -135,6 +135,7 @@ private sealed interface PendingCredentialAction {
     data class ScanRoms(val treeUri: Uri) : PendingCredentialAction
     data class StartProxy(val treeUri: Uri?) : PendingCredentialAction
     data class FinishProxyStart(val alreadyRunning: Boolean) : PendingCredentialAction
+    data object ResumeProxy : PendingCredentialAction
 }
 
 data class MainUiState(
@@ -194,6 +195,13 @@ data class MainUiState(
 class MainViewModel(app: Application) : AndroidViewModel(app) {
     private companion object {
         const val APP_UPDATE_CHECK_INTERVAL_MS = 24L * 60L * 60L * 1000L
+
+        // Activities are recreated on every return from Home, so this must outlive the ViewModel.
+        @Volatile
+        var lastPromptedRejectedToken: String? = null
+
+        @Volatile
+        var promptedForMissingCredentials = false
     }
 
     private val application = app
@@ -389,6 +397,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val app = getApplication<Application>()
         viewModelScope.launch {
             val shouldKeepRunning = ProxyService.shouldKeepRunning(app)
+            if (shouldKeepRunning && !ProxyService.isRunning(app) &&
+                withContext(Dispatchers.IO) { loadLoginCredentials(db) } == null
+            ) {
+                pendingCredentialAction = PendingCredentialAction.ResumeProxy
+                promptForCredentials()
+                return@launch
+            }
             if (loadManualEmulatorPatchingEnabled()) {
                 val proxyRunning = ProxyService.isRunning(app)
                 if (!proxyRunning) {
@@ -897,7 +912,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         credentialsPromptActive = false
         val action = pendingCredentialAction
         pendingCredentialAction = null
-        if (action is PendingCredentialAction.FinishProxyStart) {
+        if (action is PendingCredentialAction.FinishProxyStart || action is PendingCredentialAction.ResumeProxy) {
             stopProxy()
         }
     }
@@ -927,6 +942,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             if (credentials == null) {
                 Log.i("RAProxy/Auth", "validateToken: no cached credentials found")
                 _state.value = _state.value.copy(authState = AuthState.Invalid)
+                if (_state.value.proxyRunning && !credentialsPromptActive && !promptedForMissingCredentials) {
+                    promptedForMissingCredentials = true
+                    promptForCredentials()
+                }
                 return@launch
             }
             if (!_state.value.isOnline) {
@@ -966,7 +985,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         .also { rejected = !it }
                     is HttpGetResult.Failure -> {
                         val logDetails = result.logMessage("patch", url)
-                        RequestFailureNotifier.report(result.userMessage(getApplication(), "patch"), logDetails)
+                        rejected = result.isAuthRejection
+                        val alreadyPrompted = rejected && credentials.token == lastPromptedRejectedToken
+                        if (!alreadyPrompted) {
+                            RequestFailureNotifier.report(result.userMessage(getApplication(), "patch"), logDetails)
+                        }
                         Log.w("RAProxy/Auth", "validateToken: live check failed — $logDetails")
                         false
                     }
@@ -974,7 +997,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             }
             Log.i("RAProxy/Auth", "validateToken: live patch check valid=$valid")
             _state.value = _state.value.copy(authState = if (valid) AuthState.Valid else AuthState.Invalid)
-            if (rejected && !credentialsPromptActive) {
+            if (rejected && !credentialsPromptActive && credentials.token != lastPromptedRejectedToken) {
+                lastPromptedRejectedToken = credentials.token
                 promptForCredentials()
             }
         }
@@ -2294,6 +2318,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             when (action) {
                 is PendingCredentialAction.StartProxy -> startProxy(action.treeUri)
                 is PendingCredentialAction.FinishProxyStart -> finishAutoPatchedProxyStart(action.alreadyRunning)
+                PendingCredentialAction.ResumeProxy -> recoverPatchedCfgIfProxyStopped()
                 PendingCredentialAction.SmartCache -> startSmartCache()
                 is PendingCredentialAction.AddRom -> addRom(action.uris)
                 is PendingCredentialAction.ScanRoms -> scanRoms(action.treeUri)
