@@ -22,6 +22,9 @@ except ModuleNotFoundError:
 
 LOGGER = logging.getLogger("raofflineproxy")
 GAME_META_INDEX_BATCH = 50
+INSERT_GAME_META = (
+    "INSERT OR REPLACE INTO cached_game_meta(cacheKey, gameId, title, imagePath) VALUES(?, ?, ?, ?)"
+)
 
 VENDORED_SQLITE_DIR = Path(__file__).resolve().parent.parent / "vendor" / "sqlite"
 
@@ -298,24 +301,17 @@ class Storage:
             return
         LOGGER.info("Indexing %d cached game entries", len(row_ids))
         for start in range(0, len(row_ids), GAME_META_INDEX_BATCH):
-            with self._lock:
-                for row_id in row_ids[start:start + GAME_META_INDEX_BATCH]:
+            meta_rows = []
+            for row_id in row_ids[start:start + GAME_META_INDEX_BATCH]:
+                with self._lock:
                     row = self._connection.execute(
                         "SELECT cacheKey, responseBody FROM api_cache WHERE id = ?", (row_id,)
                     ).fetchone()
-                    if row is not None:
-                        self._index_game_meta(row["cacheKey"], row["responseBody"])
+                if row is not None:
+                    meta_rows.append(game_meta_row(row["cacheKey"], row["responseBody"]))
+            with self._lock:
+                self._connection.executemany(INSERT_GAME_META, meta_rows)
                 self._connection.commit()
-
-    def _index_game_meta(self, cache_key: str, response_body: str) -> None:
-        if not cache_key.startswith(game_meta.GAME_META_PREFIXES):
-            return
-        meta = game_meta.game_meta_for_entry(cache_key, response_body) or {}
-        self._connection.execute(
-            "INSERT OR REPLACE INTO cached_game_meta(cacheKey, gameId, title, imagePath) "
-            "VALUES(?, ?, ?, ?)",
-            (cache_key, meta.get("gameId"), meta.get("title"), meta.get("imagePath")),
-        )
 
     def _initialize_json(self) -> None:
         with self._lock:
@@ -432,6 +428,11 @@ class Storage:
         now: int,
     ) -> None:
         assert self._connection is not None
+        meta_row = (
+            game_meta_row(cache_key, response_body)
+            if cache_key.startswith(game_meta.GAME_META_PREFIXES)
+            else None
+        )
         with self._lock:
             row = self._connection.execute(
                 "SELECT firstCachedAt, sourceRomPath FROM api_cache WHERE cacheKey = ? LIMIT 1",
@@ -460,7 +461,8 @@ class Storage:
                     first_cached_at,
                 ),
             )
-            self._index_game_meta(cache_key, response_body)
+            if meta_row is not None:
+                self._connection.execute(INSERT_GAME_META, meta_row)
             self._connection.commit()
 
     def _upsert_cache_json(
@@ -1132,6 +1134,13 @@ def _lowercased_user_key(key: str, prefix: str) -> str | None:
     user = parts[1]
     suffix = (":" + ":".join(parts[2:])) if len(parts) > 2 else ""
     return f"{prefix}{game_id}:{user.lower()}{suffix}"
+
+
+def game_meta_row(cache_key: str, response_body: str) -> tuple:
+    """Parsed before the write transaction starts: the menu and the proxy service share the
+    database, and on FAT32 there is no WAL, so a held write lock blocks the other process."""
+    meta = game_meta.game_meta_for_entry(cache_key, response_body) or {}
+    return (cache_key, meta.get("gameId"), meta.get("title"), meta.get("imagePath"))
 
 
 def current_millis() -> int:
