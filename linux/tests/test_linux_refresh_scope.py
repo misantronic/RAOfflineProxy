@@ -59,7 +59,7 @@ class RecordGamePlayedTests(StorageTestCase):
     def test_ignores_non_positive_game_id(self) -> None:
         last_played.record_game_played(self.store, 0, now=5_000)
 
-        self.assertEqual([], self.store.get_all_cache_by_prefix(cache_keys.PREFIX_LAST_PLAYED))
+        self.assertEqual([], self.store.cache_keys_by_prefix(cache_keys.PREFIX_LAST_PLAYED))
 
 
 class RecentlyPlayedTests(unittest.TestCase):
@@ -82,19 +82,15 @@ class RecentlyPlayedTests(unittest.TestCase):
 
 class DueRefreshGameIdsTests(unittest.TestCase):
     def test_only_recently_played_games_are_due(self) -> None:
-        patch_entries = [
-            {"cacheKey": "patch:10:misantronic"},
-            {"cacheKey": "patch:20:misantronic"},
-            {"cacheKey": "patch:30:misantronic"},
-        ]
-        self.assertEqual([20], proxy_service.due_refresh_game_ids(patch_entries, {20, 99}))
+        patch_keys = ["patch:10:misantronic", "patch:20:misantronic", "patch:30:misantronic"]
+        self.assertEqual([20], proxy_service.due_refresh_game_ids(patch_keys, {20, 99}))
 
     def test_deduplicates_games_cached_for_several_users(self) -> None:
-        patch_entries = [{"cacheKey": "patch:10:alice"}, {"cacheKey": "patch:10:bob"}]
-        self.assertEqual([10], proxy_service.due_refresh_game_ids(patch_entries, {10}))
+        patch_keys = ["patch:10:alice", "patch:10:bob"]
+        self.assertEqual([10], proxy_service.due_refresh_game_ids(patch_keys, {10}))
 
     def test_nothing_due_when_nothing_played(self) -> None:
-        self.assertEqual([], proxy_service.due_refresh_game_ids([{"cacheKey": "patch:10:alice"}], set()))
+        self.assertEqual([], proxy_service.due_refresh_game_ids(["patch:10:alice"], set()))
 
 
 class RecordGameActivityTests(StorageTestCase):
@@ -111,7 +107,7 @@ class RecordGameActivityTests(StorageTestCase):
         proxy_service.ProxyRuntimeServer.record_game_activity(server, "/dorequest.php?r=ping", "")
         proxy_service.ProxyRuntimeServer.record_game_activity(server, "/dorequest.php?r=ping&g=abc", "")
 
-        self.assertEqual([], self.store.get_all_cache_by_prefix(cache_keys.PREFIX_LAST_PLAYED))
+        self.assertEqual([], self.store.cache_keys_by_prefix(cache_keys.PREFIX_LAST_PLAYED))
 
     def test_only_ping_and_startsession_count_as_playing(self) -> None:
         self.assertEqual(frozenset({"ping", "startsession"}), last_played.LAST_PLAYED_ACTIONS)

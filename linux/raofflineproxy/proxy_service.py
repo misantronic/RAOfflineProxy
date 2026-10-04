@@ -46,12 +46,12 @@ from .network import (
     response_content_type,
 )
 from .rom_cache import (
-    build_achievement_game_ids,
     build_unlocks_array,
     cache_session,
     cache_unlocks,
     filter_warning_achievement_ids,
     filter_warning_achievements_for_action,
+    find_achievement_game_ids,
     merged_unlock_ids,
     refresh_game_patch,
 )
@@ -476,11 +476,9 @@ class ProxyRuntimeServer(ThreadingTCPServer):
         if achievement_id <= 0:
             return None
 
-        achievement_game_ids = build_achievement_game_ids(
-            self.storage.get_all_cache_by_prefix(cache_keys.PREFIX_PATCH),
-            self.storage.get_all_cache_by_prefix(cache_keys.PREFIX_ACHIEVEMENTSETS),
+        resolved_game_id = find_achievement_game_ids(self.storage, {achievement_id}).get(
+            achievement_id
         )
-        resolved_game_id = achievement_game_ids.get(achievement_id)
         if resolved_game_id is None:
             return None
         return str(resolved_game_id)
@@ -638,12 +636,7 @@ class ProxyRuntimeServer(ThreadingTCPServer):
             LOGGER.warning(
                 "Offline gameid cache miss requestedKey=%s sampleKeys=%s",
                 key,
-                [
-                    entry["cacheKey"]
-                    for entry in self.storage.get_all_cache_by_prefix(
-                        cache_keys.PREFIX_GAMEID
-                    )[:10]
-                ],
+                self.storage.cache_keys_by_prefix(cache_keys.PREFIX_GAMEID)[:10],
             )
             return game_id_cache_miss()
 
@@ -899,8 +892,7 @@ class ProxyRuntimeServer(ThreadingTCPServer):
         if achievement_id <= 0 or not user:
             return False
 
-        achievement_game_ids = self.build_cached_achievement_game_ids()
-        game_id = achievement_game_ids.get(achievement_id)
+        game_id = find_achievement_game_ids(self.storage, {achievement_id}).get(achievement_id)
         if game_id is None:
             return False
 
@@ -919,12 +911,6 @@ class ProxyRuntimeServer(ThreadingTCPServer):
 
         return achievement_id in filter_warning_achievement_ids(
             [item for item in unlock_ids if isinstance(item, int)]
-        )
-
-    def build_cached_achievement_game_ids(self) -> dict[int, int]:
-        return build_achievement_game_ids(
-            self.storage.get_all_cache_by_prefix(cache_keys.PREFIX_PATCH),
-            self.storage.get_all_cache_by_prefix(cache_keys.PREFIX_ACHIEVEMENTSETS),
         )
 
     def fetch_cached_score(self, path: str, raw_body: str) -> int:
@@ -1064,17 +1050,15 @@ class PeriodicRefresh(threading.Thread):
                 continue
             if not self.wait_until_idle():
                 continue
-            patch_entries = self.server.storage.get_all_cache_by_prefix(
-                cache_keys.PREFIX_PATCH
-            )
+            patch_keys = self.server.storage.cache_keys_by_prefix(cache_keys.PREFIX_PATCH)
             recently_played = load_recently_played_game_ids(
                 self.server.storage, current_millis() - REFRESH_PLAYED_WINDOW_MS
             )
-            due_game_ids = due_refresh_game_ids(patch_entries, recently_played)
+            due_game_ids = due_refresh_game_ids(patch_keys, recently_played)
             LOGGER.info(
                 "Periodic refresh: %d of %d cached game(s) played in the last %d day(s)",
                 len(due_game_ids),
-                len(patch_entries),
+                len(patch_keys),
                 REFRESH_PLAYED_WINDOW_DAYS,
             )
             with rate_limit.background():
@@ -1208,10 +1192,10 @@ class CacheQueueWorker(threading.Thread):
         return result
 
 
-def due_refresh_game_ids(patch_entries: list[dict], recently_played: set[int]) -> list[int]:
+def due_refresh_game_ids(patch_keys: list[str], recently_played: set[int]) -> list[int]:
     due: list[int] = []
-    for entry in patch_entries:
-        game_id = cache_keys.parse_game_id_from_patch_key(entry["cacheKey"])
+    for patch_key in patch_keys:
+        game_id = cache_keys.parse_game_id_from_patch_key(patch_key)
         if game_id is not None and game_id in recently_played and game_id not in due:
             due.append(game_id)
     return due
