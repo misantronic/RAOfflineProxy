@@ -677,7 +677,8 @@ class MainActivity : AppCompatActivity() {
             .setTitle(R.string.manual_credentials_dialog_title)
             .setView(dialogView)
             .setPositiveButton(R.string.manual_credentials_save, null)
-            .setNegativeButton(android.R.string.cancel, null)
+            .setNegativeButton(android.R.string.cancel) { _, _ -> viewModel.cancelCredentialsPrompt() }
+            .setOnCancelListener { viewModel.cancelCredentialsPrompt() }
             .create()
 
         dialog.setOnShowListener {
