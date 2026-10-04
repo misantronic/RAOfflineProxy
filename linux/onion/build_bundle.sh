@@ -11,7 +11,7 @@ RUNTIME_CACHE_DIR="${SCRIPT_DIR}/runtime-cache"
 RUNTIME_ARCHIVE_NAME="cpython-3.9.20+20241016-armv7-unknown-linux-gnueabihf-install_only_stripped.tar.gz"
 RUNTIME_ARCHIVE_PATH="${RUNTIME_CACHE_DIR}/${RUNTIME_ARCHIVE_NAME}"
 VENDOR_DIR="${SCRIPT_DIR}/vendor"
-ZIP_NAME="RAOfflineProxy-Onion-v2.0.0-alpha2.zip"
+ZIP_NAME="RAOfflineProxy-Onion-v2.1.0-alpha1.zip"
 
 if [ ! -f "${RUNTIME_ARCHIVE_PATH}" ]; then
   echo "Missing runtime at ${RUNTIME_ARCHIVE_PATH}, run ./linux/onion/fetch_runtime.sh first" >&2

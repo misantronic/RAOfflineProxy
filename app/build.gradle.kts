@@ -21,8 +21,8 @@ android {
         applicationId = "com.raofflineproxy"
         minSdk = 26
         targetSdk = 36
-        versionCode = 32
-        versionName = "2.0.0-alpha2"
+        versionCode = 33
+        versionName = "2.1.0-alpha1"
         buildConfigField("String", "RA_HOST", "\"https://retroachievements.org\"")
         buildConfigField("String", "RA_MEDIA_HOST", "\"https://media.retroachievements.org\"")
         buildConfigField("String", "USAGE_STATS_URL", "\"https://ud63psmdb5.execute-api.eu-central-1.amazonaws.com/usage/ping\"")

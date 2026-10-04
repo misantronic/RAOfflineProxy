@@ -17,7 +17,7 @@ RUNTIME_CACHE_DIR="${ONION_DIR}/runtime-cache"
 RUNTIME_ARCHIVE_NAME="cpython-3.9.20+20241016-armv7-unknown-linux-gnueabihf-install_only_stripped.tar.gz"
 RUNTIME_ARCHIVE_PATH="${RUNTIME_CACHE_DIR}/${RUNTIME_ARCHIVE_NAME}"
 VENDOR_DIR="${ONION_DIR}/vendor"
-APP_VERSION="${RAOFFLINEPROXY_APP_VERSION:-2.0.0-alpha2}"
+APP_VERSION="${RAOFFLINEPROXY_APP_VERSION:-2.1.0-alpha1}"
 ZIP_NAME="RAOfflineProxy-Allium-v${APP_VERSION}.zip"
 
 if [ ! -f "${RUNTIME_ARCHIVE_PATH}" ]; then
