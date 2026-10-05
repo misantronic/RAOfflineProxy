@@ -5,7 +5,7 @@ import re
 import shlex
 import time
 
-from app.e2e.harness.adb import Adb
+from app.e2e.harness.adb import Adb, AdbError
 
 NOTIFICATION_RECORD = re.compile(r"NotificationRecord\(")
 NOTIFICATION_TITLE = re.compile(r"android\.title=\S+ \((.*)\)")
@@ -123,6 +123,27 @@ class AndroidDevice:
             "run-as %s cat %s" % (package, shlex.quote(relative_path)), check=False
         )
         return result.stdout if result.returncode == 0 else None
+
+    def pull_app_file(self, package: str, relative_path: str) -> bytes | None:
+        try:
+            return self.adb.output_bytes("exec-out", "run-as", package, "cat", relative_path)
+        except AdbError:
+            return None
+
+    def input_text(self, text: str) -> None:
+        self.adb.shell("input text %s" % shlex.quote(text))
+
+    def press(self, keycode: str) -> None:
+        self.adb.shell("input keyevent %s" % keycode)
+
+    def keyboard_shown(self) -> bool:
+        return "mInputShown=true" in self.adb.shell("dumpsys input_method", check=False).stdout
+
+    def hide_keyboard(self) -> None:
+        """BACK closes the soft keyboard but would cancel a dialog once it is gone."""
+        if self.keyboard_shown():
+            self.press("KEYCODE_BACK")
+            time.sleep(1.0)
 
     def set_airplane_mode(self, enabled: bool) -> None:
         self.adb.shell(

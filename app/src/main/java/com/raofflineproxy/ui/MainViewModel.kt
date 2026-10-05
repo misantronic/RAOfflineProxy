@@ -985,12 +985,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 )
                 when (val result = httpGet(url, userAgent)) {
                     is HttpGetResult.Success -> JSONObject(result.body).optBoolean("Success", false)
-                        .also { rejected = !it }
+                        .also { rejected = !it && isInvalidCredentialsResponse(result.body) }
                     is HttpGetResult.Failure -> {
                         val logDetails = result.logMessage("patch", url)
                         rejected = result.isAuthRejection
-                        val alreadyPrompted = rejected && credentials.token == lastPromptedRejectedToken
-                        if (!alreadyPrompted) {
+                        if (shouldReportAuthFailure(rejected, credentials.token, lastPromptedRejectedToken)) {
                             RequestFailureNotifier.report(result.userMessage(getApplication(), "patch"), logDetails)
                         }
                         Log.w("RAProxy/Auth", "validateToken: live check failed — $logDetails")
@@ -1000,7 +999,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             }
             Log.i("RAProxy/Auth", "validateToken: live patch check valid=$valid")
             _state.value = _state.value.copy(authState = if (valid) AuthState.Valid else AuthState.Invalid)
-            if (rejected && !credentialsPromptActive && credentials.token != lastPromptedRejectedToken) {
+            if (shouldPromptRejectedToken(rejected, credentialsPromptActive, credentials.token, lastPromptedRejectedToken)) {
                 lastPromptedRejectedToken = credentials.token
                 promptForCredentials()
             }
@@ -1109,7 +1108,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 }
 
                 val hasCachedCredentials = withContext(Dispatchers.IO) { loadLoginCredentials(db) } != null
-                if (!hasCredentialSource(hasCachedCredentials, emulatorSupport) && !loginChoiceSkipped) {
+                if (needsLoginChoice(hasCachedCredentials, emulatorSupport, loginChoiceSkipped)) {
                     pendingProxyStart = false
                     pendingCredentialAction = PendingCredentialAction.StartProxy(treeUri)
                     promptLoginChoice()
@@ -1239,7 +1238,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     withContext(Dispatchers.IO) { cacheImportedCredentials(credentials) }
                 }
 
-                if (!loginChoiceSkipped && withContext(Dispatchers.IO) { loadLoginCredentials(db) } == null) {
+                val hasCredentialsAfterImport = withContext(Dispatchers.IO) { loadLoginCredentials(db) } != null
+                if (needsLoginChoiceAfterImport(hasCredentialsAfterImport, loginChoiceSkipped)) {
                     pendingProxyStart = false
                     pendingCredentialAction = PendingCredentialAction.FinishProxyStart(alreadyRunning)
                     promptLoginChoice()
@@ -2616,14 +2616,6 @@ private fun lowercasedUserKey(key: String, prefix: String): String? {
         else -> null
     }
 }
-
-internal fun hasCredentialSource(
-    hasCachedCredentials: Boolean,
-    emulatorSupport: EmulatorSupport
-): Boolean = hasCachedCredentials ||
-    emulatorSupport.isEnabled(Emulator.RetroArch) ||
-    emulatorSupport.isEnabled(Emulator.Dolphin) ||
-    emulatorSupport.isEnabled(Emulator.Ppsspp)
 
 internal fun selectImportedCredentials(
     retroArch: ImportedCredentials?,

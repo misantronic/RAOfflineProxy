@@ -190,3 +190,41 @@ def test_diagnostics_capture_survives_a_failing_step(tmp_path):
     assert "btn_start_proxy" in (target / "window.xml").read_text()
     assert "MainActivity" in (target / "foreground.txt").read_text()
     assert "adb went away" in (target / "logcat.txt").read_text()
+
+
+def _login_database(directory, rows) -> None:
+    import sqlite3
+
+    connection = sqlite3.connect(str(directory / "raofflineproxy.db"))
+    connection.execute("CREATE TABLE api_cache (cacheKey TEXT PRIMARY KEY, responseBody TEXT)")
+    connection.executemany("INSERT INTO api_cache VALUES (?, ?)", rows)
+    connection.commit()
+    connection.close()
+
+
+def test_cached_login_is_read_from_the_login_row(tmp_path):
+    from app.e2e.harness.session import read_cached_login
+
+    _login_database(
+        tmp_path,
+        [
+            ("patch:1:testuser", "{}"),
+            ("login2::testuser", '{"Success":true,"User":"testuser","Token":"tok"}'),
+        ],
+    )
+
+    assert read_cached_login(tmp_path) == {"user": "testuser", "token": "tok"}
+
+
+def test_cached_login_is_none_without_a_login_row(tmp_path):
+    from app.e2e.harness.session import read_cached_login
+
+    _login_database(tmp_path, [("patch:1:testuser", "{}")])
+
+    assert read_cached_login(tmp_path) is None
+
+
+def test_cached_login_is_none_without_a_database(tmp_path):
+    from app.e2e.harness.session import read_cached_login
+
+    assert read_cached_login(tmp_path) is None

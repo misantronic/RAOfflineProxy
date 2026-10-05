@@ -107,6 +107,26 @@ class Ui:
             % (resource_id, text, enabled, last, self.last_dump_output)
         )
 
+    def is_absent(self, resource_id: str, text: str | None = None) -> bool:
+        """True only when a dump succeeded and the view is not in it."""
+        root = self.dump()
+        if root is None:
+            return False
+        qualified = self._qualified(resource_id)
+        return not any(
+            node.get("resource-id") == qualified
+            and (text is None or (node.get("text") or "").casefold() == text.casefold())
+            for node in root.iter("node")
+        )
+
+    def wait_gone(self, resource_id: str, text: str | None = None, timeout: float = 30.0) -> None:
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            if self.is_absent(resource_id, text):
+                return
+            time.sleep(1.0)
+        raise UiNotFound("view %s (text=%r) is still showing" % (resource_id, text))
+
     def tap(self, node: dict) -> None:
         match = BOUNDS.match(node.get("bounds", ""))
         if match is None:

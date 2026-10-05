@@ -113,3 +113,17 @@ def android(device, fake_ra):
         yield session
     finally:
         session.teardown()
+
+
+@pytest.fixture
+def broadcast_only(device, fake_ra):
+    """The app with RetroArch (the only config-file emulator) off: nothing to import a login from."""
+    fake_ra.reset()
+    session = AndroidSession(device, fake_ra, HostEmulator(HOST_PROXY_PORT))
+    session.reset()
+    session.disable_emulator("enable_retroarch")
+    session.launch()
+    try:
+        yield session
+    finally:
+        session.teardown()
