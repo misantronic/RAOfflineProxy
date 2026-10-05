@@ -63,22 +63,27 @@ Since Android 12, an app in the background may not start a foreground service. W
 
 ```json
 {
-  "version": 1,
+  "version": 2,
   "running": true,
   "shouldBeRunning": true,
   "online": true,
-  "queue": { "count": 342, "state": "waiting", "nextWindowAt": 1759230000000 }
+  "queue": { "count": 342, "state": "waiting", "nextWindowAt": 1759230000000 },
+  "pendingAwards": { "count": 3, "state": "syncing", "error": null }
 }
 ```
 
 | Field | Meaning |
 |---|---|
+| `version` | `2` since `pendingAwards` was added |
 | `running` | The proxy service is running |
 | `shouldBeRunning` | RAOfflineProxy intends the proxy to run. `true` while `running` is `false` means it's about to restart |
 | `online` | RetroAchievements is reachable |
 | `queue.count` | Games waiting in the [caching queue](/caching-games) |
 | `queue.state` | See below |
 | `queue.nextWindowAt` | Epoch milliseconds of the next caching batch while `waiting`, otherwise `null` |
+| `pendingAwards.count` | Achievements unlocked offline that haven't been uploaded yet |
+| `pendingAwards.state` | See below |
+| `pendingAwards.error` | Why the upload failed while `blocked`, otherwise `null` |
 
 | `queue.state` | Meaning |
 |---|---|
@@ -86,6 +91,22 @@ Since Android 12, an app in the background may not start a foreground service. W
 | `caching` | Games are being cached right now |
 | `waiting` | Waiting for the next caching window. RAOfflineProxy wakes the device for it |
 | `blocked` | Won't progress without the user, e.g. the proxy is stopped or the login is invalid. Treat it like `idle` |
+
+Pending awards are uploaded automatically when the proxy starts and whenever RetroAchievements becomes reachable again. A failed upload isn't retried until the next time that happens.
+
+| `pendingAwards.state` | Meaning |
+|---|---|
+| `idle` | Nothing to upload |
+| `waiting` | Awards will upload once RetroAchievements is reachable |
+| `syncing` | Awards are being uploaded right now |
+| `blocked` | The proxy is stopped, or the last upload failed and won't be retried until connectivity drops and returns. Treat it like `idle` |
+
+| `pendingAwards.error` | Meaning |
+|---|---|
+| `auth` | The login was rejected, log in again in RAOfflineProxy |
+| `chain_broken` | The pending awards failed their integrity check, open RAOfflineProxy |
+| `refresh_failed` | The achievement data couldn't be refreshed from RetroAchievements |
+| `upload_failed` | Some awards couldn't be uploaded, e.g. a network or server error |
 
 ## Observing changes
 
@@ -105,3 +126,5 @@ Before sleep:
 
 - `queue.state` is `idle` or `blocked`: call `stop`, start again on wake
 - `queue.state` is `caching` or `waiting`: leave the proxy running until the queue is done, or let the user decide
+
+To sync achievements in a maintenance window, turn Wi-Fi on and keep it on until `online` is `true` and `pendingAwards.state` is `idle` or `blocked`.

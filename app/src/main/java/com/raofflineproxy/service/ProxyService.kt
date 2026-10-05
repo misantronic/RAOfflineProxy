@@ -598,6 +598,7 @@ class ProxyService : Service() {
 
         if (!validated) {
             markRetroAchievementsUnreachable()
+            AwardFlusher.clearSyncError()
         } else {
             val effectiveWasReachable = if (forceProbe) {
                 markRetroAchievementsUnreachable()
@@ -618,6 +619,7 @@ class ProxyService : Service() {
                     wakeCacheQueue()
                 } else if (!isReachableNow && effectiveWasReachable) {
                     Log.i(TAG, "RetroAchievements unreachable")
+                    AwardFlusher.clearSyncError()
                     if (recentGameId != null) {
                         scheduleOfflineIdleTimeout(currentOfflineActivityAt())
                     }

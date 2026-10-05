@@ -1,8 +1,10 @@
 package com.raofflineproxy
 
+import com.raofflineproxy.proxy.AwardSyncError
 import com.raofflineproxy.service.ControlResult
 import com.raofflineproxy.service.HeadlessStartResult
 import com.raofflineproxy.service.PROXY_STATUS_VERSION
+import com.raofflineproxy.service.PendingAwardsState
 import com.raofflineproxy.service.ProxyStatus
 import com.raofflineproxy.service.QueueState
 import com.raofflineproxy.service.needsStart
@@ -44,6 +46,78 @@ class ProxyControlTest {
         assertEquals(QueueState.Waiting, QueueState.resolve(count = 3, caching = false, proxyRunning = true, loginBlocked = false))
     }
 
+    // ── Pending awards state ──
+
+    @Test
+    fun pendingAwards_syncingWinsWhileRunning() {
+        assertEquals(
+            PendingAwardsState.Syncing,
+            PendingAwardsState.resolve(count = 3, syncing = true, proxyRunning = true, online = true, lastError = null)
+        )
+        assertEquals(
+            PendingAwardsState.Syncing,
+            PendingAwardsState.resolve(count = 0, syncing = true, proxyRunning = true, online = true, lastError = null)
+        )
+    }
+
+    @Test
+    fun pendingAwards_staleSyncFlagIgnoredWhenStopped() {
+        assertEquals(
+            PendingAwardsState.Blocked,
+            PendingAwardsState.resolve(count = 3, syncing = true, proxyRunning = false, online = false, lastError = null)
+        )
+    }
+
+    @Test
+    fun pendingAwards_emptyIsIdle() {
+        assertEquals(
+            PendingAwardsState.Idle,
+            PendingAwardsState.resolve(count = 0, syncing = false, proxyRunning = false, online = false, lastError = AwardSyncError.Auth)
+        )
+        assertEquals(
+            PendingAwardsState.Idle,
+            PendingAwardsState.resolve(count = 0, syncing = false, proxyRunning = true, online = true, lastError = null)
+        )
+    }
+
+    @Test
+    fun pendingAwards_blockedWhenProxyStopped() {
+        assertEquals(
+            PendingAwardsState.Blocked,
+            PendingAwardsState.resolve(count = 2, syncing = false, proxyRunning = false, online = false, lastError = null)
+        )
+    }
+
+    @Test
+    fun pendingAwards_waitingWhileOfflineEvenAfterAFailure() {
+        assertEquals(
+            PendingAwardsState.Waiting,
+            PendingAwardsState.resolve(count = 2, syncing = false, proxyRunning = true, online = false, lastError = null)
+        )
+        assertEquals(
+            PendingAwardsState.Waiting,
+            PendingAwardsState.resolve(count = 2, syncing = false, proxyRunning = true, online = false, lastError = AwardSyncError.UploadFailed)
+        )
+    }
+
+    @Test
+    fun pendingAwards_blockedOnlineAfterAFailedFlush() {
+        AwardSyncError.entries.forEach { error ->
+            assertEquals(
+                PendingAwardsState.Blocked,
+                PendingAwardsState.resolve(count = 2, syncing = false, proxyRunning = true, online = true, lastError = error)
+            )
+        }
+    }
+
+    @Test
+    fun pendingAwards_waitingOnlineBeforeTheFirstFlush() {
+        assertEquals(
+            PendingAwardsState.Waiting,
+            PendingAwardsState.resolve(count = 2, syncing = false, proxyRunning = true, online = true, lastError = null)
+        )
+    }
+
     // ── Status JSON ──
 
     @Test
@@ -55,7 +129,10 @@ class ProxyControlTest {
                 online = true,
                 queueCount = 342,
                 queueState = QueueState.Waiting,
-                nextWindowAt = 1_759_230_000_000L
+                nextWindowAt = 1_759_230_000_000L,
+                pendingAwardsCount = 4,
+                pendingAwardsState = PendingAwardsState.Blocked,
+                pendingAwardsError = AwardSyncError.Auth
             ).toJson()
         )
         assertEquals(PROXY_STATUS_VERSION, json.getInt("version"))
@@ -66,6 +143,10 @@ class ProxyControlTest {
         assertEquals(342, queue.getInt("count"))
         assertEquals("waiting", queue.getString("state"))
         assertEquals(1_759_230_000_000L, queue.getLong("nextWindowAt"))
+        val pendingAwards = json.getJSONObject("pendingAwards")
+        assertEquals(4, pendingAwards.getInt("count"))
+        assertEquals("blocked", pendingAwards.getString("state"))
+        assertEquals("auth", pendingAwards.getString("error"))
     }
 
     @Test
@@ -76,7 +157,10 @@ class ProxyControlTest {
             online = false,
             queueCount = 3,
             queueState = QueueState.Blocked,
-            nextWindowAt = 1_759_230_000_000L
+            nextWindowAt = 1_759_230_000_000L,
+            pendingAwardsCount = 0,
+            pendingAwardsState = PendingAwardsState.Idle,
+            pendingAwardsError = null
         )
         assertTrue(JSONObject(blocked.toJson()).getJSONObject("queue").isNull("nextWindowAt"))
 
@@ -85,8 +169,32 @@ class ProxyControlTest {
     }
 
     @Test
+    fun statusJson_pendingAwardsErrorOnlyWhileBlocked() {
+        val status = ProxyStatus(
+            running = true,
+            shouldBeRunning = true,
+            online = false,
+            queueCount = 0,
+            queueState = QueueState.Idle,
+            nextWindowAt = null,
+            pendingAwardsCount = 2,
+            pendingAwardsState = PendingAwardsState.Waiting,
+            pendingAwardsError = AwardSyncError.UploadFailed
+        )
+        assertTrue(JSONObject(status.toJson()).getJSONObject("pendingAwards").isNull("error"))
+
+        val blockedByStop = status.copy(running = false, pendingAwardsState = PendingAwardsState.Blocked, pendingAwardsError = null)
+        assertTrue(JSONObject(blockedByStop.toJson()).getJSONObject("pendingAwards").isNull("error"))
+    }
+
+    @Test
     fun statusJson_usesWireNamesForStates() {
         assertEquals(listOf("idle", "caching", "waiting", "blocked"), QueueState.entries.map { it.wire })
+        assertEquals(listOf("idle", "waiting", "syncing", "blocked"), PendingAwardsState.entries.map { it.wire })
+        assertEquals(
+            listOf("auth", "chain_broken", "refresh_failed", "upload_failed"),
+            AwardSyncError.entries.map { it.wire }
+        )
     }
 
     // ── Idempotent start/stop ──
