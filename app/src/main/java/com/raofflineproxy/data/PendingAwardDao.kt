@@ -26,6 +26,12 @@ interface PendingAwardDao {
         status: String = PENDING_AWARD_STATUS_PENDING
     ): Boolean
 
+    @Query("SELECT COUNT(*) FROM pending_awards WHERE status = :status")
+    suspend fun countByStatus(status: String = PENDING_AWARD_STATUS_PENDING): Int
+
+    @Query("SELECT COUNT(*) FROM pending_awards WHERE status = :status")
+    fun observeCountByStatus(status: String = PENDING_AWARD_STATUS_PENDING): Flow<Int>
+
     @Query("SELECT EXISTS(SELECT 1 FROM pending_awards WHERE status = :status)")
     suspend fun existsByStatus(status: String): Boolean
 

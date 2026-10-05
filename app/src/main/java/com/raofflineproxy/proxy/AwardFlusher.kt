@@ -24,10 +24,15 @@ import com.raofflineproxy.sha256Hex
 import com.raofflineproxy.sharedHttpClient
 import com.raofflineproxy.throttleRetroAchievementsApiRequest
 import com.raofflineproxy.toHexString
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.Request
@@ -54,6 +59,18 @@ sealed interface FlushEvent {
     data class ChainBroken(val index: Int, val reason: String) : FlushEvent
     data class RefreshFailed(val reason: String) : FlushEvent
 }
+
+enum class AwardSyncError(val wire: String) {
+    Auth("auth"),
+    ChainBroken("chain_broken"),
+    RefreshFailed("refresh_failed"),
+    UploadFailed("upload_failed")
+}
+
+data class AwardSyncState(
+    val syncing: Boolean = false,
+    val lastError: AwardSyncError? = null
+)
 
 private sealed interface FlushResult {
     data object Success : FlushResult
@@ -246,6 +263,16 @@ class AwardFlusher(
     companion object {
         private val _events = MutableSharedFlow<FlushEvent>(extraBufferCapacity = 8)
         val events = _events.asSharedFlow()
+
+        private val _syncState = MutableStateFlow(AwardSyncState())
+
+        /** Whether a flush is running and why the last one left awards pending. A failed flush
+         *  isn't retried until RetroAchievements becomes reachable again. */
+        val syncState: StateFlow<AwardSyncState> = _syncState.asStateFlow()
+
+        fun clearSyncError() {
+            _syncState.update { it.copy(lastError = null) }
+        }
     }
 
     private data class PendingAwardGameTargets(
@@ -280,7 +307,8 @@ class AwardFlusher(
     private suspend fun refreshAndLoadAchievementIds(
         creds: LoginCredentials,
         userAgent: String,
-        gameIds: List<Int>
+        gameIds: List<Int>,
+        onAuthRejected: () -> Unit
     ): Set<Int>? {
 
         if (gameIds.isEmpty()) {
@@ -291,8 +319,9 @@ class AwardFlusher(
         val ids = mutableSetOf<Int>()
         val ua = proxyUserAgent(userAgent)
         for (gameId in gameIds) {
-            val responseBody = refreshGamePatch(context, gameId, creds, ua, db, cacheImages = false)
-                ?: return null
+            val responseBody = refreshGamePatch(context, gameId, creds, ua, db, cacheImages = false) { failure ->
+                if (failure.isAuthRejection) onAuthRejected()
+            } ?: return null
 
             runCatching {
                 val json = JSONObject(responseBody)
@@ -309,15 +338,30 @@ class AwardFlusher(
         return ids
     }
 
-    suspend fun flush() = withContext(Dispatchers.IO) {
+    suspend fun flush() {
+        _syncState.value = AwardSyncState(syncing = true)
+        var error: AwardSyncError? = null
+        try {
+            error = flushPending()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            error = AwardSyncError.UploadFailed
+            throw e
+        } finally {
+            _syncState.value = AwardSyncState(syncing = false, lastError = error)
+        }
+    }
+
+    private suspend fun flushPending(): AwardSyncError? = withContext(Dispatchers.IO) {
         val awards = db.pendingAwardDao().getAll()
-        if (awards.isEmpty()) return@withContext
+        if (awards.isEmpty()) return@withContext null
 
         var pendingAwards = awards.filter { it.status == PENDING_AWARD_STATUS_PENDING }
         if (pendingAwards.isEmpty()) {
             Log.i(TAG, "No pending awards to flush")
             purgeProcessedAwardsIfSafe()
-            return@withContext
+            return@withContext null
         }
 
         Log.i(TAG, "Flushing ${pendingAwards.size} pending awards")
@@ -337,7 +381,7 @@ class AwardFlusher(
                 } else {
                 Log.w(TAG, "Chain verification failed: ${chain.reason}")
                 _events.emit(FlushEvent.ChainBroken(chain.index, chain.reason))
-                return@withContext
+                return@withContext AwardSyncError.ChainBroken
                 }
             }
             ChainVerificationResult.Valid -> {
@@ -349,20 +393,22 @@ class AwardFlusher(
         if (creds == null) {
             Log.e(TAG, "Flush blocked — no login credentials available")
             _events.emit(FlushEvent.RefreshFailed("No login credentials available"))
-            return@withContext
+            return@withContext AwardSyncError.Auth
         }
         val userAgent = loadUserAgent(db)
         val pendingAwardGameTargets = resolvePendingAwardGameTargets(pendingAwards)
 
+        var authRejected = false
         val knownAchievementIds = refreshAndLoadAchievementIds(
             creds = creds,
             userAgent = userAgent,
-            gameIds = pendingAwardGameTargets.gameIds
+            gameIds = pendingAwardGameTargets.gameIds,
+            onAuthRejected = { authRejected = true }
         )
         if (knownAchievementIds == null) {
             Log.e(TAG, "Flush blocked — could not refresh achievement data from server")
             _events.emit(FlushEvent.RefreshFailed("Could not refresh achievement data from server. Try again later."))
-            return@withContext
+            return@withContext if (authRejected) AwardSyncError.Auth else AwardSyncError.RefreshFailed
         }
         Log.i(
             TAG,
@@ -373,6 +419,7 @@ class AwardFlusher(
 
         var flushed = 0
         var skippedStale = 0
+        var authFailed = false
         val successfulGameIds = linkedSetOf<Int>()
         pendingAwards.forEachIndexed { index, award ->
             _events.emit(FlushEvent.Progress(index + 1, pendingAwards.size))
@@ -443,6 +490,7 @@ class AwardFlusher(
                     }
                 }
                 is FlushResult.AuthError -> {
+                    authFailed = true
                     Log.w(TAG, "Award ${award.id} auth error — not retrying: ${result.message}")
                     db.pendingAwardDao().update(
                         award.copy(
@@ -488,6 +536,12 @@ class AwardFlusher(
                 pendingRemaining = pendingRemaining
             )
         )
+
+        when {
+            pendingRemaining == 0 -> null
+            authFailed -> AwardSyncError.Auth
+            else -> AwardSyncError.UploadFailed
+        }
     }
 
     private suspend fun purgeProcessedAwardsIfSafe() {

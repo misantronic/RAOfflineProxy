@@ -217,13 +217,14 @@ suspend fun loginAndCacheToken(
     }
 }
 
-suspend fun refreshGamePatch(
+internal suspend fun refreshGamePatch(
     context: Context,
     gameId: Int,
     creds: LoginCredentials,
     userAgent: String,
     db: AppDatabase,
     cacheImages: Boolean = true,
+    onFailure: (HttpGetResult.Failure) -> Unit = {},
 ): String? {
     val url = buildApiUrl(
         RA_HOST,
@@ -240,6 +241,7 @@ suspend fun refreshGamePatch(
             val logDetails = result.logMessage("patch", url)
             Log.e(TAG, "refreshGamePatch failed for gameId=$gameId: $logDetails")
             RequestFailureNotifier.report(result.userMessage(context, "patch"), logDetails)
+            onFailure(result)
             return null
         }
     }

@@ -5,6 +5,7 @@ import android.content.Context
 import android.os.Build
 import android.util.Log
 import com.raofflineproxy.data.AppDatabase
+import com.raofflineproxy.proxy.AwardFlusher
 import com.raofflineproxy.proxy.CacheQueue
 import kotlinx.coroutines.runBlocking
 
@@ -39,15 +40,22 @@ internal object ProxyControl {
     fun status(context: Context): ProxyStatus {
         val running = ProxyService.isRunning(context)
         val runtime = ProxyService.runtime.value
-        val count = runBlocking { CacheQueue.count(AppDatabase.getInstance(context)) }
+        val online = running && runtime.online
+        val db = AppDatabase.getInstance(context)
+        val count = runBlocking { CacheQueue.count(db) }
+        val pendingAwards = runBlocking { db.pendingAwardDao().countByStatus() }
+        val sync = AwardFlusher.syncState.value
         val caching = CachingNotifications.progress.value != null || CachingNotifications.queueProgress.value != null
         return ProxyStatus(
             running = running,
             shouldBeRunning = ProxyService.shouldKeepRunning(context),
-            online = running && runtime.online,
+            online = online,
             queueCount = count,
             queueState = QueueState.resolve(count, caching, running, runtime.queueLoginBlocked),
-            nextWindowAt = CachingNotifications.nextQueueBatchAt.value
+            nextWindowAt = CachingNotifications.nextQueueBatchAt.value,
+            pendingAwardsCount = pendingAwards,
+            pendingAwardsState = PendingAwardsState.resolve(pendingAwards, sync.syncing, running, online, sync.lastError),
+            pendingAwardsError = sync.lastError
         )
     }
 
