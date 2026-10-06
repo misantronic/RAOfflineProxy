@@ -14,6 +14,7 @@ import com.raofflineproxy.PrefsConstants
 import com.raofflineproxy.R
 import com.raofflineproxy.hasValidatedInternet
 import com.raofflineproxy.service.openAppIntent
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -34,7 +35,7 @@ internal object AppUpdateNotifier {
         if (!isAppUpdatePromptDue(PrefsConstants.loadAppUpdateLastPromptedAt(context), now)) return
 
         PrefsConstants.saveAppUpdateLastCheckedAt(context, now)
-        val update = withContext(Dispatchers.IO) { AppUpdateChecker.fetchLatestUpdate(BuildConfig.VERSION_NAME) }
+        val update = fetchUpdateOrNull()
         if (update == null) {
             PrefsConstants.clearAvailableAppUpdate(context)
             return
@@ -42,17 +43,26 @@ internal object AppUpdateNotifier {
 
         Log.i(TAG, "App update available in background: ${update.versionName}")
         PrefsConstants.saveAvailableAppUpdate(context, update)
-        PrefsConstants.saveAppUpdateLastPromptedAt(context, now)
-        post(context, update)
+        if (post(context, update)) {
+            PrefsConstants.saveAppUpdateLastPromptedAt(context, now)
+        }
     }
 
-    private fun post(context: Context, update: AppUpdateInfo) {
-        if (ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) !=
-            PackageManager.PERMISSION_GRANTED
-        ) {
-            return
+    private suspend fun fetchUpdateOrNull(): AppUpdateInfo? =
+        try {
+            withContext(Dispatchers.IO) { AppUpdateChecker.fetchLatestUpdate(BuildConfig.VERSION_NAME) }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w(TAG, "Background update check failed: ${e.message ?: e::class.java.simpleName}")
+            null
         }
+
+    private fun post(context: Context, update: AppUpdateInfo): Boolean {
         val manager = context.getSystemService(NotificationManager::class.java)
+        val permitted = ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) ==
+            PackageManager.PERMISSION_GRANTED
+        if (!permitted || !manager.areNotificationsEnabled()) return false
         manager.createNotificationChannel(
             NotificationChannel(
                 APP_UPDATE_CHANNEL_ID,
@@ -61,6 +71,7 @@ internal object AppUpdateNotifier {
             )
         )
         manager.notify(APP_UPDATE_NOTIFICATION_ID, buildNotification(context, update))
+        return true
     }
 
     private fun buildNotification(context: Context, update: AppUpdateInfo): Notification =
