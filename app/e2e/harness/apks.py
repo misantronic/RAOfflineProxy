@@ -21,9 +21,8 @@ class Apks:
     automation_client: Path
 
     def all(self) -> tuple:
-        # The client last: Android only grants it the app's control permission when the app
-        # that defines it is already installed.
-        return (self.app, self.retroarch_stub, self.flycast_stub, self.automation_client)
+        # The client first, so its control permission only works through a runtime grant.
+        return (self.automation_client, self.app, self.retroarch_stub, self.flycast_stub)
 
 
 def default_apks(repo_root: Path) -> Apks:

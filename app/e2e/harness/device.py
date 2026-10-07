@@ -68,6 +68,9 @@ class AndroidDevice:
     def grant(self, package: str, permission: str) -> None:
         self.adb.shell("pm grant %s %s" % (package, permission))
 
+    def revoke(self, package: str, permission: str) -> None:
+        self.adb.shell("pm revoke %s %s" % (package, permission))
+
     def set_battery_unrestricted(self, package: str, unrestricted: bool) -> None:
         self.adb.shell("dumpsys deviceidle whitelist %s%s" % ("+" if unrestricted else "-", package))
 
