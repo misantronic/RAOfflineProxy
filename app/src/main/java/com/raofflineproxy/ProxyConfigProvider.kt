@@ -46,7 +46,7 @@ class ProxyConfigProvider : ContentProvider() {
         sortOrder: String?
     ): Cursor {
         val ctx = context ?: return MatrixCursor(emptyArray())
-        val running = ProxyService.isRunning(ctx)
+        val running = ProxyService.isListening()
         val port = proxyPort(ctx)
         val columns = arrayOf(COLUMN_PROXY_RUNNING, COLUMN_PROXY_HOST, COLUMN_PROXY_PORT, COLUMN_PROXY_VALUE)
         val cursor = MatrixCursor(columns)

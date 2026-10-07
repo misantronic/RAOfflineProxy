@@ -57,6 +57,8 @@ val status = result?.getString("status")
 
 Since Android 12, an app in the background may not start a foreground service. While RAOfflineProxy is in the background, `start` fails with `foreground_service_not_allowed`. Any emulator patches are rolled back and `shouldBeRunning` stays `false`. Setting RAOfflineProxy's battery usage to **Unrestricted** lifts this limit.
 
+`start` returns `ok` once the service has been asked to start. `running` turns `true` once the proxy accepts connections. If Android refuses the service afterwards, which happens when RAOfflineProxy's battery usage is **Restricted**, the proxy stops again and `shouldBeRunning` turns `false`.
+
 `stop` returns `ok` as soon as the proxy has been asked to stop. `running` turns `false` shortly after, once the service is gone.
 
 ## Status
@@ -75,8 +77,8 @@ Since Android 12, an app in the background may not start a foreground service. W
 | Field | Meaning |
 |---|---|
 | `version` | `2` since `pendingAwards` was added |
-| `running` | The proxy service is running |
-| `shouldBeRunning` | RAOfflineProxy intends the proxy to run. `true` while `running` is `false` means it's about to restart |
+| `running` | The proxy accepts connections |
+| `shouldBeRunning` | RAOfflineProxy intends the proxy to run. `true` while `running` is `false` means it's starting or about to restart |
 | `online` | RetroAchievements is reachable |
 | `queue.count` | Games waiting in the [caching queue](/caching-games) |
 | `queue.state` | See below |

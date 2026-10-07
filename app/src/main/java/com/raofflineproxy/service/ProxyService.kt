@@ -85,6 +85,7 @@ class ProxyService : Service() {
     private lateinit var connectivityManager: ConnectivityManager
 
     private var hasInternet = false
+    @Volatile private var listening = false
     private var networkCallbackRegistered = false
     private var refreshJob: Job? = null
     private var cacheQueueJob: Job? = null
@@ -156,10 +157,10 @@ class ProxyService : Service() {
 
         cancelRestart(this)
         createNotificationChannel()
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            startForeground(NOTIFICATION_ID, buildNotification(), ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
-        } else {
-            startForeground(NOTIFICATION_ID, buildNotification())
+        if (!enterForeground()) {
+            setShouldKeepRunning(this, false)
+            stopSelf()
+            return START_NOT_STICKY
         }
 
         refreshReachability(forceProbe = true)
@@ -182,6 +183,8 @@ class ProxyService : Service() {
             stopSelf()
             return START_NOT_STICKY
         }
+        listening = true
+        publishRuntime()
 
         if (isServerReachable()) {
             requestFlush()
@@ -224,6 +227,26 @@ class ProxyService : Service() {
         }
 
         return START_STICKY
+    }
+
+    private fun enterForeground(): Boolean {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                startForeground(NOTIFICATION_ID, buildNotification(), ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
+            } else {
+                startForeground(NOTIFICATION_ID, buildNotification())
+            }
+        } catch (error: IllegalStateException) {
+            if (!isForegroundServiceStartBlocked(error)) throw error
+            Log.w(TAG, "Android refused to run the proxy in the foreground; stopping", error)
+            return false
+        }
+        // With battery usage restricted, Android may ignore startForeground() without throwing.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && foregroundServiceType == ServiceInfo.FOREGROUND_SERVICE_TYPE_NONE) {
+            Log.w(TAG, "Android ignored the request to run the proxy in the foreground; stopping")
+            return false
+        }
+        return true
     }
 
     private fun requestFlush() {
@@ -513,7 +536,7 @@ class ProxyService : Service() {
     // Runs on worker threads too: the lock keeps a late publish from undoing onDestroy's reset.
     private fun publishRuntime() = synchronized(runtimeLock) {
         if (!runningInProcess) return
-        _runtime.value = ServiceRuntime(running = true, online = isServerReachable(), queueLoginBlocked = queueLoginBlocked)
+        _runtime.value = ServiceRuntime(running = listening, online = isServerReachable(), queueLoginBlocked = queueLoginBlocked)
     }
 
     private fun onGameActivity(activity: GameActivity) {
@@ -663,6 +686,10 @@ class ProxyService : Service() {
         val runtime: StateFlow<ServiceRuntime> = _runtime.asStateFlow()
 
         fun isRunningInProcess(): Boolean = runningInProcess
+
+        /** Whether the proxy accepts connections, unlike [isRunning], which is also true while
+         *  the service is still starting. */
+        fun isListening(): Boolean = _runtime.value.running
 
         fun wakeCacheQueue() {
             cacheQueueWake.trySend(Unit)

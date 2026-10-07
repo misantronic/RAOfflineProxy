@@ -38,8 +38,8 @@ internal object ProxyControl {
     }
 
     fun status(context: Context): ProxyStatus {
-        val running = ProxyService.isRunning(context)
         val runtime = ProxyService.runtime.value
+        val running = runtime.running
         val online = running && runtime.online
         val db = AppDatabase.getInstance(context)
         val count = runBlocking { CacheQueue.count(db) }
@@ -58,7 +58,7 @@ internal object ProxyControl {
             pendingAwardsError = sync.lastError
         )
     }
-
-    private fun isForegroundServiceStartBlocked(error: IllegalStateException): Boolean =
-        Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && error is ForegroundServiceStartNotAllowedException
 }
+
+internal fun isForegroundServiceStartBlocked(error: IllegalStateException): Boolean =
+    Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && error is ForegroundServiceStartNotAllowedException
