@@ -45,7 +45,13 @@ test('Linux hardware identifiers get a readable name', () => {
     assert.equal(deviceLabel('MY354'), 'Miyoo Mini Plus');
     assert.equal(deviceLabel('MY283'), 'Miyoo Mini');
     assert.equal(deviceLabel('TUI-BRICK'), 'Trimui Brick');
-    assert.equal(deviceLabel('sun50iw10'), 'Trimui Smart Pro / Brick (sun50iw10)');
+    assert.equal(deviceLabel('sun50iw10'), 'Trimui Smart Pro');
+    assert.equal(deviceLabel('Brick'), 'Trimui Brick');
+    assert.equal(deviceLabel('SmartProS'), 'Trimui Smart Pro S');
+    assert.equal(deviceLabel('Flip'), 'Miyoo Flip');
+    assert.equal(deviceLabel('MiyooMini'), 'Miyoo Mini');
+    assert.equal(deviceLabel('Anbernic RG35XX-Pro'), 'Anbernic RG35XX-PRO');
+    assert.equal(deviceLabel('RGCUBEXX-H'), 'Anbernic RGCUBEXX-H');
     assert.equal(deviceLabel('AnbernicXX720480NoStick'), 'Anbernic 720x480 (no stick)');
     assert.equal(deviceLabel('AnbernicXX640480'), 'Anbernic 640x480');
     assert.equal(deviceLabel('RG35XX-H'), 'Anbernic RG35XX-H');

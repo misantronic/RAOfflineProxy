@@ -75,12 +75,21 @@ const BRAND_SPELLINGS: Record<string, string> = Object.fromEntries(
 // Linux handhelds report their own hardware identifiers, often without a brand, so the same device
 // shows up under several names. Keys are lowercase; anything not listed stays as reported.
 const HARDWARE_ALIASES: Record<string, string> = {
+    // spruce's and NextUI's platform names.
+    brick: 'Trimui Brick',
     'tui-brick': 'Trimui Brick',
+    brickpro: 'Trimui Brick Pro',
+    smartpro: 'Trimui Smart Pro',
+    smartpros: 'Trimui Smart Pro S',
     // The Allwinner A133 chip: what Knulli reports on Trimui devices without a devicetree model.
-    sun50iw10: 'Trimui Smart Pro / Brick (sun50iw10)',
-    // Onion's own model codes (/tmp/deviceModel).
+    sun50iw10: 'Trimui Smart Pro',
+    flip: 'Miyoo Flip',
+    a30: 'Miyoo A30',
+    // Onion's own model codes (/tmp/deviceModel) and spruce's name for the same hardware.
     my283: 'Miyoo Mini',
-    my354: 'Miyoo Mini Plus'
+    miyoomini: 'Miyoo Mini',
+    my354: 'Miyoo Mini Plus',
+    'rgcubexx-h': 'Anbernic RGCUBEXX-H'
 };
 
 /** spruce's platform IDs name a screen layout, not a model ("AnbernicXX720480NoStick"), so they
@@ -92,6 +101,8 @@ function knownHardware(label: string): string | undefined {
     const spruce = /^AnbernicXX(\d{3})(\d{3})(NoStick)?$/.exec(label);
     if (spruce) return `Anbernic ${spruce[1]}x${spruce[2]}${spruce[3] ? ' (no stick)' : ''}`;
     if (/^RG\d/i.test(label)) return `Anbernic ${label.toUpperCase()}`;
+    const anbernic = /^Anbernic (RG\d\S*)$/i.exec(label);
+    if (anbernic) return `Anbernic ${anbernic[1].toUpperCase()}`;
     return undefined;
 }
 

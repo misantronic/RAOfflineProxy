@@ -225,6 +225,23 @@ function renderPanel(view: StatsView): string {
         tile('Rate limits (429)', formatNumber(model.rateLimitedLast30Days), 'last 30 days')
     ].join('');
 
+    const devicesCard = card(
+        'Devices',
+        `People, ${month} · beyond the ${MIN_SHOWN} most used, devices used by only one person are grouped as Other`,
+        barList(model.devices)
+    );
+    const breakdownCards = [
+        view.key === 'all' ? card('Platforms', `People, ${month}`, barList(model.platforms)) : '',
+        card(
+            firmwareTitle,
+            `People, ${month} · beyond the ${MIN_SHOWN} most used, versions used by only one person are grouped as Other`,
+            barList(model.firmwares)
+        ),
+        card('Enabled emulators', `Share of devices, ${month}`, barList(model.emulators, formatPercent, 1)),
+        card('Library size', 'Devices by number of cached games, latest report this month', barList(model.libraries)),
+        card('App versions', `People, ${month}`, barList(model.appVersions))
+    ].join('');
+
     const cards = [
         card(
             'Daily active people',
@@ -258,20 +275,7 @@ function renderPanel(view: StatsView): string {
             dailyColumns(daily, [{ name: 'Games cached', color: '--series-1', values: daily.map((day) => day.queueCached) }]),
             true
         ),
-        view.key === 'all' ? card('Platforms', `People, ${month}`, barList(model.platforms)) : '',
-        card(
-            'Devices',
-            `People, ${month} · beyond the ${MIN_SHOWN} most used, devices used by only one person are grouped as Other`,
-            barList(model.devices)
-        ),
-        card(
-            firmwareTitle,
-            `People, ${month} · beyond the ${MIN_SHOWN} most used, versions used by only one person are grouped as Other`,
-            barList(model.firmwares)
-        ),
-        card('Enabled emulators', `Share of devices, ${month}`, barList(model.emulators, formatPercent, 1)),
-        card('Library size', 'Devices by number of cached games, latest report this month', barList(model.libraries)),
-        card('App versions', `People, ${month}`, barList(model.appVersions))
+        `<div class="split"><div class="col">${devicesCard}</div><div class="col">${breakdownCards}</div></div>`
     ].join('');
 
     return `<div class="tiles">${tiles}</div><div class="grid">${cards}</div>`;
@@ -359,6 +363,8 @@ h1{margin:16px 0 4px;font-size:28px;line-height:1.2;color:var(--brand)}
 .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr));gap:12px}
 .card{padding:16px;min-width:0}
 .card.wide{grid-column:1/-1}
+.split{grid-column:1/-1;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr));gap:12px;align-items:start}
+.col{display:grid;gap:12px;min-width:0}
 h2{margin:0;font-size:16px}
 .subtitle{margin:2px 0 12px;color:var(--text-secondary);font-size:13px}
 svg{display:block;width:100%;height:auto;overflow:visible}
