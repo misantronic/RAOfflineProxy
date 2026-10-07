@@ -4,6 +4,8 @@ import pytest
 
 from app.e2e.harness.session import (
     APP_PACKAGE,
+    CLIENT_PACKAGE,
+    CONTROL_PERMISSION,
     PROXY_BASE,
     PROXY_VALUE,
     START_LABEL,
@@ -121,6 +123,14 @@ class TestPermission:
 
         assert "SecurityException" in output
         assert not android.proxy_service_running()
+
+    def test_a_client_installed_first_works_once_the_user_allows_it(self, android):
+        android.device.revoke(CLIENT_PACKAGE, CONTROL_PERMISSION)
+        assert "SecurityException" in android.control_output("stop")
+
+        android.device.grant(CLIENT_PACKAGE, CONTROL_PERMISSION)
+
+        assert android.control("stop")[0] == "ok"
 
 
 class TestStart:

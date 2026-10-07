@@ -36,7 +36,7 @@
     <string name="proxy_started_success">Proxy started successfully.</string>
     <string name="proxy_stopped_success">Proxy stopped.</string>
     <string name="permission_control_proxy_label">control RAOfflineProxy</string>
-    <string name="permission_control_proxy_description">Allows the app to start and stop the RAOfflineProxy proxy.</string>
+    <string name="permission_control_proxy_description">start and stop the RAOfflineProxy proxy</string>
     <string name="proxy_tooltip_online">Proxy running — online</string>
     <string name="proxy_tooltip_offline">Proxy running — offline</string>
     <string name="proxy_menu_title">Proxy</string>

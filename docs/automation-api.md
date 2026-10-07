@@ -20,9 +20,19 @@ Declare the control permission and make the provider visible to your app:
 
 `status` needs no permission. `start` and `stop` throw a `SecurityException` without it.
 
-::: warning Install order
-Android only grants the permission if RAOfflineProxy was installed before your app. If your app was installed first, reinstall it.
-:::
+The user grants the permission, like camera or location access. Request it at runtime, which works whichever app was installed first:
+
+```kotlin
+const val CONTROL_PROXY = "com.raofflineproxy.permission.CONTROL_PROXY"
+
+if (checkSelfPermission(CONTROL_PROXY) != PackageManager.PERMISSION_GRANTED) {
+    requestPermissions(arrayOf(CONTROL_PROXY), REQUEST_CODE)
+}
+```
+
+Android asks "Allow ‹your app› to start and stop the RAOfflineProxy proxy?". If RAOfflineProxy isn't installed yet, the request is denied without a dialog, so ask again once it is. Check the permission before each call: the user can revoke it, and Android may revoke it from apps that go unused for months.
+
+Apps that already hold the permission keep it when RAOfflineProxy updates.
 
 ## Methods
 

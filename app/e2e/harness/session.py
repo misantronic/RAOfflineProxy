@@ -19,7 +19,9 @@ PROXY_NOTIFICATION_ID = 1
 PREFS_FILE = "shared_prefs/ra_proxy_prefs.xml"
 
 CONFIG_URI = "content://%s.config" % APP_PACKAGE
-CLIENT_RECEIVER = "com.raofflineproxy.e2e.client/.ControlReceiver"
+CLIENT_PACKAGE = "com.raofflineproxy.e2e.client"
+CLIENT_RECEIVER = CLIENT_PACKAGE + "/.ControlReceiver"
+CONTROL_PERMISSION = APP_PACKAGE + ".permission.CONTROL_PROXY"
 CONTROL_OUTPUT = re.compile(r'-> result=(\S+) status=(\{.*\})"')
 
 FLYCAST_PACKAGE = "com.flycast.emulator"
@@ -146,6 +148,7 @@ class AndroidSession:
         self.device.allow_all_files_access(APP_PACKAGE)
         if self.device.sdk_int() >= 33:
             self.device.grant(APP_PACKAGE, "android.permission.POST_NOTIFICATIONS")
+        self.device.grant(CLIENT_PACKAGE, CONTROL_PERMISSION)
         self.device.write_app_file(APP_PACKAGE, PREFS_FILE, SEEDED_PREFS)
         self.device.remove(RETROARCH_BACKUP)
         self.seed_cfg(hardcore=hardcore)
@@ -288,10 +291,12 @@ class AndroidSession:
 
     def control(self, method: str) -> tuple:
         """Calls the provider from the automation client, which holds the control permission."""
-        output = self.device.adb.shell(
+        return parse_control_output(self.control_output(method))
+
+    def control_output(self, method: str) -> str:
+        return self.device.adb.shell(
             "am broadcast -n %s --es method %s" % (CLIENT_RECEIVER, method), timeout=120
         ).stdout
-        return parse_control_output(output)
 
     def status(self) -> dict:
         return self.control("status")[1]
