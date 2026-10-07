@@ -1,4 +1,4 @@
-import { aggregate, Count, DailyLoad, MIN_SHOWN, PLATFORMS, REQUEST_SOURCES, Row, StatsModel } from './aggregate';
+import { aggregate, Count, DailyLoad, PLATFORMS, REQUEST_SOURCES, Row, StatsModel } from './aggregate';
 
 interface Series {
     name: string;
@@ -269,7 +269,7 @@ function renderPanel(view: StatsView): string {
 
     const devicesCard = card(
         'Devices',
-        `Share of people, ${month} · beyond the ${MIN_SHOWN} most used, devices used by only one person are grouped as Other`,
+        `Share of people, ${month} · rarely used devices are grouped as Other`,
         deviceBrowser(model.devices, model.peopleThisMonth),
         true
     );
@@ -277,7 +277,7 @@ function renderPanel(view: StatsView): string {
         view.key === 'all' ? card('Platforms', `Share of people, ${month}`, shareList(model.platforms, model.peopleThisMonth, 'people')) : '',
         card(
             firmwareTitle,
-            `Share of people, ${month} · beyond the ${MIN_SHOWN} most used, versions used by only one person are grouped as Other`,
+            `Share of people, ${month} · rarely used versions are grouped as Other`,
             shareList(model.firmwares, model.peopleThisMonth, 'people')
         ),
         card('Enabled emulators', `Share of devices, ${month}`, barList(model.emulators, {
@@ -456,5 +456,5 @@ const FILTER_SCRIPT = `
 `;
 
 const TOOLTIP_SCRIPT = `
-(function(){var tip=document.querySelector('.tooltip');function show(e){var t=e.target.closest('[data-tip]');if(!t){tip.hidden=true;return;}tip.textContent=t.getAttribute('data-tip');tip.hidden=false;var x=Math.min(e.clientX+14,window.innerWidth-tip.offsetWidth-8);var y=e.clientY+14;if(y+tip.offsetHeight>window.innerHeight-8)y=e.clientY-tip.offsetHeight-10;tip.style.left=x+'px';tip.style.top=y+'px';}document.addEventListener('pointermove',show);document.addEventListener('pointerdown',show);document.addEventListener('scroll',function(){tip.hidden=true;},{passive:true});})();
+(function(){var tip=document.querySelector('.tooltip');function show(e){var t=e.target.closest('[data-tip]');if(!t){tip.hidden=true;return;}var text=t.getAttribute('data-tip');if(tip.dataset.text!==text){tip.dataset.text=text;var cut=text.indexOf(': ');tip.textContent='';if(cut<0){tip.textContent=text;}else{var b=document.createElement('strong');b.textContent=text.slice(0,cut);tip.append(b,text.slice(cut));}}tip.hidden=false;var x=Math.min(e.clientX+14,window.innerWidth-tip.offsetWidth-8);var y=e.clientY+14;if(y+tip.offsetHeight>window.innerHeight-8)y=e.clientY-tip.offsetHeight-10;tip.style.left=x+'px';tip.style.top=y+'px';}document.addEventListener('pointermove',show);document.addEventListener('pointerdown',show);document.addEventListener('scroll',function(){tip.hidden=true;},{passive:true});})();
 `;
