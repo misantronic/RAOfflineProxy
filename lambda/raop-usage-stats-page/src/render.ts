@@ -24,6 +24,11 @@ function formatNumber(value: number): string {
     return Math.round(value).toLocaleString('en-US');
 }
 
+function formatShare(value: number): string {
+    const percent = value * 100;
+    return `${percent > 0 && percent < 10 ? percent.toFixed(1) : Math.round(percent)}%`;
+}
+
 function formatPercent(value: number): string {
     return `${Math.round(value * 100)}%`;
 }
@@ -154,18 +159,55 @@ export function columnChart(
     return legend(series) + svg + dataTable(labels, series, format);
 }
 
+interface BarOptions {
+    format?: (value: number) => string;
+    max?: number;
+    brandOf?: (label: string) => string;
+    tip?: (count: Count) => string;
+}
+
 /** Horizontal bars for categories, with the value written next to each bar. */
-export function barList(counts: Count[], format: (value: number) => string = formatNumber, max?: number): string {
+export function barList(counts: Count[], options: BarOptions = {}): string {
     if (counts.length === 0) return '<p class="empty">No data yet.</p>';
-    const top = max ?? Math.max(...counts.map((c) => c.value), 1);
+    const format = options.format ?? formatNumber;
+    const top = options.max ?? Math.max(...counts.map((c) => c.value), 1);
     const rows = counts
         .map((count) => {
             const width = top > 0 && count.value > 0 ? Math.max(0.5, (count.value / top) * 100) : 0;
-            const tip = `${count.label}: ${format(count.value)}`;
-            return `<div class="bar-row" data-tip="${escapeHtml(tip)}"><span class="bar-label">${escapeHtml(count.label)}</span><span class="bar-track"><span class="bar" style="width:${width.toFixed(1)}%"></span></span><span class="bar-value">${format(count.value)}</span></div>`;
+            const tip = options.tip ? options.tip(count) : `${count.label}: ${format(count.value)}`;
+            const brand = options.brandOf ? ` data-brand="${escapeHtml(options.brandOf(count.label))}"` : '';
+            return `<div class="bar-row"${brand} data-tip="${escapeHtml(tip)}"><span class="bar-label">${escapeHtml(count.label)}</span><span class="bar-track"><span class="bar" style="width:${width.toFixed(1)}%"></span></span><span class="bar-value">${format(count.value)}</span></div>`;
         })
         .join('');
     return `<div class="bar-list">${rows}</div>`;
+}
+
+/** Bars labelled with the share of a total; the absolute number is in the hover text. */
+function shareList(counts: Count[], total: number, unit: 'people' | 'devices', extra: BarOptions = {}): string {
+    const share = (value: number) => (total > 0 ? value / total : 0);
+    return barList(counts, {
+        ...extra,
+        format: (value) => formatShare(share(value)),
+        tip: (count) => `${count.label}: ${formatNumber(count.value)} ${count.value === 1 ? unit === 'people' ? 'person' : 'device' : unit} (${formatShare(share(count.value))})`
+    });
+}
+
+function brandOf(label: string): string {
+    return label === 'Other' ? '' : label.split(' ')[0];
+}
+
+/** Devices as a wide, multi-column list with one filter chip per brand that has several devices. */
+function deviceBrowser(devices: Count[], people: number): string {
+    const perBrand = new Map<string, number>();
+    for (const device of devices) {
+        const brand = brandOf(device.label);
+        if (brand) perBrand.set(brand, (perBrand.get(brand) ?? 0) + 1);
+    }
+    const brands = [...perBrand.entries()].filter(([, models]) => models > 1).map(([brand]) => brand);
+    const chip = (label: string, brand: string, pressed: boolean) =>
+        `<button type="button" class="chip" data-brand="${escapeHtml(brand)}" aria-pressed="${pressed}">${escapeHtml(label)}</button>`;
+    const chips = brands.length > 0 ? `<div class="chips" aria-label="Filter by brand">${[chip('All', '', true), ...brands.map((b) => chip(b, b, false))].join('')}</div>` : '';
+    return `<div class="device-browser">${chips}<div class="device-list">${shareList(devices, people, 'people', { brandOf })}</div></div>`;
 }
 
 function tile(label: string, value: string, note: string): string {
@@ -227,19 +269,24 @@ function renderPanel(view: StatsView): string {
 
     const devicesCard = card(
         'Devices',
-        `People, ${month} · beyond the ${MIN_SHOWN} most used, devices used by only one person are grouped as Other`,
-        barList(model.devices)
+        `Share of people, ${month} · beyond the ${MIN_SHOWN} most used, devices used by only one person are grouped as Other`,
+        deviceBrowser(model.devices, model.peopleThisMonth),
+        true
     );
     const breakdownCards = [
-        view.key === 'all' ? card('Platforms', `People, ${month}`, barList(model.platforms)) : '',
+        view.key === 'all' ? card('Platforms', `Share of people, ${month}`, shareList(model.platforms, model.peopleThisMonth, 'people')) : '',
         card(
             firmwareTitle,
-            `People, ${month} · beyond the ${MIN_SHOWN} most used, versions used by only one person are grouped as Other`,
-            barList(model.firmwares)
+            `Share of people, ${month} · beyond the ${MIN_SHOWN} most used, versions used by only one person are grouped as Other`,
+            shareList(model.firmwares, model.peopleThisMonth, 'people')
         ),
-        card('Enabled emulators', `Share of devices, ${month}`, barList(model.emulators, formatPercent, 1)),
-        card('Library size', 'Devices by number of cached games, latest report this month', barList(model.libraries)),
-        card('App versions', `People, ${month}`, barList(model.appVersions))
+        card('Enabled emulators', `Share of devices, ${month}`, barList(model.emulators, {
+                format: formatShare,
+                max: 1,
+                tip: (count) => `${count.label}: ${formatNumber(Math.round(count.value * model.devicesThisMonth))} devices (${formatShare(count.value)})`
+            })),
+        card('Library size', 'Share of devices by number of cached games, latest report this month', shareList(model.libraries, model.libraries.reduce((sum, c) => sum + c.value, 0), 'devices')),
+        card('App versions', `Share of people, ${month}`, shareList(model.appVersions, model.peopleThisMonth, 'people'))
     ].join('');
 
     const cards = [
@@ -275,7 +322,8 @@ function renderPanel(view: StatsView): string {
             dailyColumns(daily, [{ name: 'Games cached', color: '--series-1', values: daily.map((day) => day.queueCached) }]),
             true
         ),
-        `<div class="split"><div class="col">${devicesCard}</div><div class="col">${breakdownCards}</div></div>`
+        devicesCard,
+        breakdownCards
     ].join('');
 
     return `<div class="tiles">${tiles}</div><div class="grid">${cards}</div>`;
@@ -332,7 +380,7 @@ ${panels}
 <footer>How this data is collected: <a href="/privacy-policy.html#anonymous-usage-statistics">privacy policy</a>.</footer>
 </main>
 <div class="tooltip" role="status" hidden></div>
-<script>${TOOLTIP_SCRIPT}${TABS_SCRIPT}</script>
+<script>${TOOLTIP_SCRIPT}${TABS_SCRIPT}${FILTER_SCRIPT}</script>
 </body>
 </html>
 `;
@@ -363,8 +411,13 @@ h1{margin:16px 0 4px;font-size:28px;line-height:1.2;color:var(--brand)}
 .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr));gap:12px}
 .card{padding:16px;min-width:0}
 .card.wide{grid-column:1/-1}
-.split{grid-column:1/-1;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr));gap:12px;align-items:start}
-.col{display:grid;gap:12px;min-width:0}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 12px}
+.chip{font:inherit;font-size:13px;color:var(--text-secondary);background:transparent;border:1px solid var(--border);border-radius:999px;padding:3px 12px;cursor:pointer}
+.chip[aria-pressed=true]{color:var(--text-primary);background:var(--border)}
+.chip:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+.device-list .bar-list{display:block;column-width:340px;column-gap:32px}
+.device-list .bar-row{break-inside:avoid;margin-bottom:6px}
+.device-list .bar-row[hidden]{display:none}
 h2{margin:0;font-size:16px}
 .subtitle{margin:2px 0 12px;color:var(--text-secondary);font-size:13px}
 svg{display:block;width:100%;height:auto;overflow:visible}
@@ -396,6 +449,10 @@ footer{margin-top:24px;color:var(--text-secondary);font-size:13px}
 // tabs as the ARIA tabs pattern expects.
 const TABS_SCRIPT = `
 (function(){var tabs=[].slice.call(document.querySelectorAll('[role=tab]'));function select(key,focus){var found=tabs.some(function(t){return t.dataset.view===key;});if(!found)key=tabs[0].dataset.view;tabs.forEach(function(t){var on=t.dataset.view===key;t.setAttribute('aria-selected',on);t.tabIndex=on?0:-1;document.getElementById(t.getAttribute('aria-controls')).hidden=!on;if(on&&focus)t.focus();});}tabs.forEach(function(t,i){t.addEventListener('click',function(){select(t.dataset.view);history.replaceState(null,'','#'+t.dataset.view);});t.addEventListener('keydown',function(e){var d=e.key==='ArrowRight'?1:e.key==='ArrowLeft'?-1:0;if(!d)return;e.preventDefault();var next=tabs[(i+d+tabs.length)%tabs.length];select(next.dataset.view,true);history.replaceState(null,'','#'+next.dataset.view);});});select(location.hash.slice(1));window.addEventListener('hashchange',function(){select(location.hash.slice(1));});})();
+`;
+
+const FILTER_SCRIPT = `
+(function(){[].slice.call(document.querySelectorAll('.device-browser')).forEach(function(box){var chips=[].slice.call(box.querySelectorAll('.chip'));var rows=[].slice.call(box.querySelectorAll('.bar-row'));chips.forEach(function(chip){chip.addEventListener('click',function(){chips.forEach(function(c){c.setAttribute('aria-pressed',c===chip);});rows.forEach(function(r){r.hidden=chip.dataset.brand!==''&&r.dataset.brand!==chip.dataset.brand;});});});});})();
 `;
 
 const TOOLTIP_SCRIPT = `

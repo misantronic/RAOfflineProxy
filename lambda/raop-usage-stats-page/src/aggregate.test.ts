@@ -225,3 +225,20 @@ test('axis ticks land on whole, round values', () => {
     assert.deepEqual(niceScale(33), { max: 40, step: 10 });
     assert.deepEqual(niceScale(312), { max: 400, step: 100 });
 });
+
+test('the devices widget offers a filter chip per brand with several devices', () => {
+    const html = renderPage(
+        statsViews([monthRow('a', 'AYN Thor'), monthRow('b', 'AYN Odin3'), monthRow('c', 'Google Pixel 3a')], NOW)
+    );
+    assert.match(html, /class="chip" data-brand="AYN" aria-pressed="false"/);
+    assert.ok(!html.includes('data-brand="Google" aria-pressed'), 'a brand with one device gets no chip');
+    assert.match(html, /class="bar-row" data-brand="AYN"/);
+});
+
+test('bar lists show shares and keep the absolute number in the hover text', () => {
+    const html = renderPage(
+        statsViews([monthRow('a', 'AYN Thor'), monthRow('b', 'AYN Thor'), monthRow('c', 'AYN Thor'), monthRow('d', 'Google Pixel 3a')], NOW)
+    );
+    assert.match(html, /data-tip="AYN Thor: 3 people \(75%\)"[^>]*>.*?<span class="bar-value">75%<\/span>/);
+    assert.match(html, /data-tip="Google Pixel 3a: 1 person \(25%\)"/);
+});
