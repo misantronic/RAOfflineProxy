@@ -59,7 +59,7 @@ RAOfflineProxy patches the emulator configs it needs in order to redirect RetroA
 
 ## Setup
 
-:::tabs key:linux-target
+::::tabs key:linux-target
 
 == KNULLI
 
@@ -141,22 +141,12 @@ RAOfflineProxy patches the emulator configs it needs in order to redirect RetroA
 
 == spruce
 
-> spruce support is currently experimental.
->
-> Tested on a Miyoo Flip. Requires a spruce with `spruce/scripts/appEnv.sh`.
+RAOfflineProxy is built into [spruceOS v4.5.0](https://github.com/spruceUI/spruceOS/releases/tag/v4.5.0) and later. There is nothing to download or install.
 
-spruce runs the proxy itself, so there is one download for every device and no app to
-launch.
-
-1. Download `RAOfflineProxy-Spruce-v*.zip` from [GitHub Releases](https://github.com/misantronic/RAOfflineProxy/releases)
-2. Extract it over the root of your SD card so the app lands in:
-
-```text
-/App/RAOfflineProxy/
-```
-
-3. Enter your RetroAchievements username and password in **Settings → RetroAchievements**
-4. Turn on **Offline Achievements** in the same menu
+1. Update spruce to v4.5.0 or later
+2. Enter your RetroAchievements username and password in **RetroAchievements Settings**
+3. Set **Retroachievements mode** to **Casual** in the same menu
+4. Turn on **Offline Achievements**
 5. While online, press the options button on a game and choose **Cache Achievements**
 
 == Allium
@@ -196,7 +186,7 @@ launch.
 7. Start the proxy while online
 8. Cache games either from **Cached Games** then **Add ROM** or by launching them once in RetroArch
 
-:::
+::::
 
 See [Caching Games](/linux-support/caching-games) for more detail.
 

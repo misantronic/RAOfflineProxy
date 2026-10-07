@@ -4,7 +4,7 @@ Auto-start and shutdown behavior differ by target.
 
 ## Auto-start
 
-:::tabs key:linux-target
+::::tabs key:linux-target
 
 == KNULLI
 
@@ -64,23 +64,7 @@ ROCKNIX runs every script in that directory on boot. The hook re-adds the **Tool
 
 == spruce
 
-spruce autostart is available from the app menu.
-
-spruce has no drop-in startup folder, so RAOfflineProxy adds a small guarded block to spruce's own boot script:
-
-```text
-/.tmp_update/updater
-```
-
-That block calls the app's headless launcher:
-
-```text
-/App/RAOfflineProxy/autostart-launch.sh
-```
-
-::: tip Reinstalled automatically
-A spruce update replaces `/.tmp_update` and removes the block. The app reinstalls it every time you open RAOfflineProxy, so autostart repairs itself after a spruce update.
-:::
+spruce starts the proxy itself. It runs whenever **Offline Achievements** is turned on in spruce's **RetroAchievements Settings**, alongside spruce's other network services, so there is no separate autostart setting.
 
 == Allium
 
@@ -116,7 +100,7 @@ If you enable it, RAOfflineProxy installs (and permanently enables) a systemd un
 
 That unit always runs the proxy's boot-reconcile step on boot; enabling/disabling autostart from the menu just flips a config flag that boot-reconcile checks, so toggling it doesn't need `sudo` once the unit is installed. Installing the unit itself is done automatically during install using passwordless `sudo` for the device user (the same mechanism dArkOS's own Tools scripts use). If that's not available on your setup, the installer prints an on-screen message instead of failing.
 
-:::
+::::
 
 ## Start / Stop Behavior
 

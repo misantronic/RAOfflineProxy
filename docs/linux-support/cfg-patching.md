@@ -49,10 +49,10 @@ ROCKNIX also ships standalone PPSSPP with its own RetroAchievements support. Whe
 spruce launches RetroArch with its own per-device config rather than the usual one, so that is the file RAOfflineProxy patches:
 
 ```text
-/mnt/SDCARD/RetroArch/platform/retroarch-<device>.cfg
+/mnt/SDCARD/Saves/ra-configs/retroarch-<device>.cfg
 ```
 
-spruce rewrites the account and achievement keys in this file on every game launch from its own RetroAchievements settings, so starting the proxy also switches spruce's achievements mode to `Softcore`. Stopping the proxy restores whatever it was before.
+spruce rewrites the account and achievement keys in this file on every game launch from its own **RetroAchievements Settings**, so the achievements mode there decides how RetroArch logs in. Set it to **Casual**: Hardcore is not supported offline, and in **Manual** mode spruce does not write your account details into this file.
 
 == Allium
 
