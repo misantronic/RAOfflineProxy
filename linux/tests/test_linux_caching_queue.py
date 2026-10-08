@@ -198,6 +198,73 @@ class QueueTestCase(unittest.TestCase):
         return rom_browser.drain_cache_queue(self.store, {}, CREDENTIALS, "ua", **kwargs)
 
 
+class EstimateCacheCliTests(QueueTestCase):
+    def run_cli(self, *args: str) -> str:
+        stdout = StringIO()
+        with mock.patch("sys.argv", ["raofflineproxy", "estimate-cache", *args]), \
+                mock.patch.object(main, "load_config", return_value={}), \
+                mock.patch.object(main, "Storage", return_value=self.store), \
+                mock.patch.object(self.store, "close"), \
+                mock.patch("sys.stdout", stdout):
+            main.main()
+        return stdout.getvalue().strip()
+
+    def test_reports_the_estimate_as_json(self) -> None:
+        self.roms("a", "b", "c")
+        self.use_budget(CACHE_BUDGET_LIMIT - 1)
+
+        payload = json.loads(self.run_cli("--path", str(self.root / "roms"), "--json"))
+
+        self.assertEqual(
+            {
+                "candidates": 3,
+                "cached_now": 1,
+                "newly_queued": 2,
+                "queued_after": 2,
+                "eta_minutes": 30,
+                "needs_confirmation": False,
+            },
+            payload,
+        )
+
+    def test_asks_for_confirmation_above_the_budget_limit(self) -> None:
+        self.roms(*(f"rom{index}" for index in range(CACHE_BUDGET_LIMIT + 1)))
+        self.use_budget(CACHE_BUDGET_LIMIT)
+
+        payload = json.loads(self.run_cli("--path", str(self.root / "roms"), "--json"))
+
+        self.assertEqual(CACHE_BUDGET_LIMIT + 1, payload["queued_after"])
+        self.assertEqual(60, payload["eta_minutes"])
+        self.assertTrue(payload["needs_confirmation"])
+
+    def test_queued_roms_and_subfolders(self) -> None:
+        self.roms("a", "b")
+        nested = self.root / "roms" / "more" / "c.nes"
+        nested.parent.mkdir(parents=True)
+        nested.write_bytes(b"c")
+        self.queue("a")
+
+        payload = json.loads(self.run_cli("--path", str(self.root / "roms"), "--json"))
+
+        self.assertEqual((3, 2, 1), (payload["candidates"], payload["cached_now"], payload["queued_after"]))
+
+    def test_prints_key_value_pairs_without_json(self) -> None:
+        self.roms("a")
+
+        output = self.run_cli("--path", str(self.root / "roms"))
+
+        self.assertEqual(
+            "candidates=1 cached_now=1 newly_queued=0 queued_after=0 eta_minutes=0 needs_confirmation=false",
+            output,
+        )
+
+    def test_rejects_a_missing_or_invalid_path(self) -> None:
+        with self.assertRaises(SystemExit):
+            self.run_cli()
+        with self.assertRaises(SystemExit):
+            self.run_cli("--path", str(self.root / "nope"))
+
+
 class DrainTests(QueueTestCase):
     def test_caches_oldest_first_and_charges_only_cached_games(self) -> None:
         self.game_ids.update({"b": 2, "a": 1})
