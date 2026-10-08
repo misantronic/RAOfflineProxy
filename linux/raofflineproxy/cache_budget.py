@@ -8,9 +8,13 @@ from .storage import Storage, current_millis
 
 CACHE_BUDGET_LIMIT = 100
 CACHE_BUDGET_WINDOW_MS = 30 * 60 * 1000
+# Games in a batch are spread over the window instead of sent as one burst, which
+# RetroAchievements answers with a 429.
+CACHE_PACE_SECONDS = CACHE_BUDGET_WINDOW_MS / CACHE_BUDGET_LIMIT / 1000
 # Bounds how long one batch runs, e.g. on a stretch of ROMs RetroAchievements doesn't know,
-# which cost lookups but never fill the budget.
-CACHE_BATCH_MAX_MS = 10 * 60 * 1000
+# which cost lookups but never fill the budget. A whole window, so a paced batch can still use
+# the full budget.
+CACHE_BATCH_MAX_MS = CACHE_BUDGET_WINDOW_MS
 
 
 @dataclass(frozen=True)

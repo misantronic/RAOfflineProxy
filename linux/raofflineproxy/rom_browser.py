@@ -27,7 +27,7 @@ from .image_cache import (
     resolve_cached_static_asset,
     schedule_image_download,
 )
-from .network import apply_scan_batch_cooldown, build_api_url, http_get
+from .network import build_api_url, http_get
 from .rom_cache import (
     CacheGameAuthError,
     cache_game,
@@ -57,6 +57,7 @@ ZIP_READABLE_ARCHIVE_EXTENSIONS = {".zip"}
 EXCLUDED_BROWSER_DIR_NAMES = {"Imgs"}
 MAX_SCAN_ENTRIES = 5000
 MAX_SCAN_DEPTH = 12
+PACE_POLL_SECONDS = 1.0
 # RetroAchievements adds hashes over time, so a "no match" is only cached long enough to
 # stop a repeated scan of the same folder from re-querying every unsupported ROM.
 GAMEID_MISS_TTL_MS = 7 * 24 * 60 * 60 * 1000
@@ -675,7 +676,9 @@ def drain_cache_queue(
 ) -> DrainResult:
     """The single place that sends RA requests for bulk caching: works through the queue oldest
     first (or through keys, in order) within the caching budget. A window allows
-    CACHE_BUDGET_LIMIT cached games; ROMs RetroAchievements doesn't know don't count. A batch ends
+    CACHE_BUDGET_LIMIT cached games; ROMs RetroAchievements doesn't know don't count. ROMs that
+    need RetroAchievements start CACHE_PACE_SECONDS apart, so a single one goes out at once while
+    a full budget is spread over the window. A batch ends
     after CACHE_BATCH_MAX_MS at the latest and leaves the rest for the next window. A 429 stops
     the queue for at least RATE_LIMIT_PAUSE_MS. Only one caller drains at a time; without
     wait_for_lock a concurrent call returns BUSY at once. A failed ROM keeps its place and is
@@ -698,6 +701,18 @@ def drain_cache_queue(
             )
 
 
+def wait_for_pace(ready_at: float, should_pause) -> bool:
+    """Waits until the monotonic clock reaches ready_at; False when should_pause asks to stop
+    first, so a paused drain lets a game cached by hand go ahead within a second."""
+    while True:
+        if should_pause():
+            return False
+        left = ready_at - time.monotonic()
+        if left <= 0:
+            return True
+        time.sleep(min(PACE_POLL_SECONDS, left))
+
+
 def _drain_locked(
     storage: Storage,
     config_data: dict,
@@ -711,6 +726,7 @@ def _drain_locked(
     cached = 0
     no_match = 0
     requested = 0
+    next_request_at = 0.0
     started_at = current_millis()
     stop_at = started_at + cache_budget.CACHE_BATCH_MAX_MS
     known_game_ids = cached_game_ids(storage)
@@ -776,7 +792,9 @@ def _drain_locked(
         games_left = cache_budget.remaining(storage)
         if games_left == 0:
             return result(DrainStop.BUDGET_EXHAUSTED, cache_budget.next_available_at(storage))
-        apply_scan_batch_cooldown(requested)
+        if requested > 0 and not wait_for_pace(next_request_at, should_pause):
+            return result(DrainStop.PAUSED)
+        next_request_at = time.monotonic() + cache_budget.CACHE_PACE_SECONDS
         if on_item is not None:
             queued = len(pending_keys) if pending_keys is not None else cache_queue.count(storage)
             on_item(cached + 1, window_progress_total(cached, queued, games_left), rom.label)
