@@ -13,7 +13,7 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler
 from urllib.parse import urlsplit
 
-from . import cache_budget, cache_keys, cache_queue, log_uploader, rate_limit, storage_corruption, usage_report, usage_stats
+from . import cache_budget, cache_keys, cache_queue, log_uploader, rate_limit, storage_corruption, usage_report, usage_stats, watch_folders
 from .auth import resolve_credentials
 from .boot import adopt_listen_socket
 from .award_signing import sign_award
@@ -1192,6 +1192,70 @@ class CacheQueueWorker(threading.Thread):
         return result
 
 
+class FolderWatcher(threading.Thread):
+    """Once per budget window, hashes and queues the files in watched folders that it has not
+    handled before; CacheQueueWorker then caches them within the budget. It polls for the
+    same reason CacheQueueWorker does: a handheld's suspend stops the clock Event.wait uses.
+    The folder list is read from the config on every round, so the CLI can change it while
+    the service runs."""
+
+    def __init__(
+        self, server: ProxyRuntimeServer, poll_seconds: float = CACHE_QUEUE_POLL_SECONDS
+    ):
+        super().__init__(daemon=True)
+        self.server = server
+        self.poll_seconds = poll_seconds
+        self.stop_event = threading.Event()
+
+    def stop(self) -> None:
+        self.stop_event.set()
+
+    def run(self) -> None:
+        while not self.stop_event.wait(self.poll_seconds):
+            try:
+                self.process_once()
+            except Exception:
+                LOGGER.exception("Watched folder round failed")
+
+    def is_idle(self) -> bool:
+        return self.server.activity.idle_delay_seconds() <= 0
+
+    def can_work(self) -> bool:
+        return not cache_queue.bulk_run_active() and self.is_idle()
+
+    def should_stop(self) -> bool:
+        # Not can_work(): the scan holds the bulk-run lock itself, so checking it mid-run
+        # would make every pass abort itself.
+        return self.stop_event.is_set() or not self.is_idle()
+
+    def process_once(self) -> list[watch_folders.FolderScan]:
+        watched = watch_folders.configured_watched_folders()
+        if not watched:
+            return []
+        storage = self.server.storage
+        folders = watch_folders.due_folders(storage, watched, current_millis())
+        if not folders or not self.can_work():
+            return []
+        if resolve_credentials(storage, self.server.config_data, self_user_agent()) is None:
+            return []
+        scans: list[watch_folders.FolderScan] = []
+        for folder in folders:
+            if self.stop_event.is_set() or not self.can_work():
+                break
+            scan = watch_folders.scan_folder(
+                storage, self.server.config_data, folder, should_abort=self.should_stop
+            )
+            LOGGER.info(
+                "Watched folder %s: %d file(s), %d new, %d queued",
+                folder,
+                scan.files,
+                scan.new,
+                scan.queued,
+            )
+            scans.append(scan)
+        return scans
+
+
 def due_refresh_game_ids(patch_keys: list[str], recently_played: set[int]) -> list[int]:
     due: list[int] = []
     for patch_key in patch_keys:
@@ -1236,6 +1300,7 @@ def run_proxy_service(
     connectivity_monitor = ConnectivityMonitor(server)
     periodic_refresh = PeriodicRefresh(server)
     cache_queue_worker = CacheQueueWorker(server)
+    folder_watcher = FolderWatcher(server)
     usage_reporter = UsageReporter(server)
 
     try:
@@ -1255,6 +1320,7 @@ def run_proxy_service(
         connectivity_monitor.start()
         periodic_refresh.start()
         cache_queue_worker.start()
+        folder_watcher.start()
         usage_reporter.start()
 
         if stop_event is None:
@@ -1269,6 +1335,7 @@ def run_proxy_service(
         connectivity_monitor.stop()
         periodic_refresh.stop()
         cache_queue_worker.stop()
+        folder_watcher.stop()
         usage_reporter.stop()
         usage_stats.flush()
         stop_ra_proxy_chain()
