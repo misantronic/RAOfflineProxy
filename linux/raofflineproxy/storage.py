@@ -67,6 +67,7 @@ _EVICTION_EXEMPT_PREFIXES = (
     cache_keys.PREFIX_STARTSESSION,
     cache_keys.PREFIX_GAMEID,
     cache_keys.PREFIX_CACHE_QUEUE,
+    cache_keys.PREFIX_WATCH_SEEN,
 )
 
 class Storage:
@@ -828,6 +829,7 @@ class Storage:
                       AND cacheKey NOT LIKE 'startsession:%'
                       AND cacheKey NOT LIKE 'gameid:%'
                       AND cacheKey NOT LIKE 'cachequeue:%'
+                      AND cacheKey NOT LIKE 'watchseen:%'
                     """,
                     (before, cache_keys.USER_AGENT),
                 )
