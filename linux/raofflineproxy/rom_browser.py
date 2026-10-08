@@ -141,6 +141,22 @@ def load_cached_rom_paths(storage: Storage) -> set[str]:
     }
 
 
+def cached_rom_paths_by_game(storage: Storage) -> dict[int, str]:
+    """The ROM each cached game was cached from, as "/<system folder>/<file>": the part that
+    stays the same when the card is mounted elsewhere or moves to another device. With several
+    entries for one game (one per account), the most recently cached one wins."""
+    latest: dict[int, tuple[int, str]] = {}
+    for entry in storage.cache_summaries_by_prefix(cache_keys.PREFIX_PATCH):
+        game_id = cache_keys.parse_game_id_from_patch_key(str(entry.get("cacheKey", "")))
+        path = entry.get("sourceRomPath")
+        if game_id is None or not isinstance(path, str) or not path.strip():
+            continue
+        cached_at = int(entry.get("cachedAt") or 0)
+        if game_id not in latest or cached_at > latest[game_id][0]:
+            latest[game_id] = (cached_at, normalize_cached_rom_path(path))
+    return {game_id: path for game_id, (_cached_at, path) in latest.items()}
+
+
 def list_cached_games(storage: Storage) -> list[CachedGameEntry]:
     games = cached_games_from_meta(storage.cached_game_meta())
     return sorted(games.values(), key=lambda game: game.title.lower())

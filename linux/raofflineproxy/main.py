@@ -68,6 +68,7 @@ from .rom_browser import (
     add_rom_to_cache,
     cached_unlock_count,
     cached_unlock_counts,
+    cached_rom_paths_by_game,
     cached_unlock_titles,
     clear_cached_games,
     describe_browser_entries,
@@ -512,12 +513,14 @@ def main() -> None:
                 unlock_counts = cached_unlock_counts(storage) if games else {}
 
                 if args.as_json:
+                    rom_paths = cached_rom_paths_by_game(storage) if games else {}
                     print(json.dumps(
                         [
                             {
                                 "game_id": game.game_id,
                                 "title": game.title,
                                 "unlocks": unlock_counts.get(game.game_id),
+                                "rom_path": rom_paths.get(game.game_id),
                             }
                             for game in games
                         ],
