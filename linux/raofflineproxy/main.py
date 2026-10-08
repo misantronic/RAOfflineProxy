@@ -73,12 +73,14 @@ from .rom_browser import (
     describe_browser_entries,
     describe_browser_entries_fast,
     list_cached_games,
+    list_scannable_files_recursive,
     remove_cached_game,
 )
 from .smart_cache import (
     ROM_RESULT_FAIL,
     ROM_RESULT_OK,
     ROM_RESULT_QUEUED,
+    estimate_queue_for_paths,
     run_cache_paths,
     run_folder_cache,
     run_smart_cache,
@@ -247,6 +249,17 @@ def safe_stop_proxy(config_data: dict, cfg_path: str | None) -> list[str]:
     return [service_line, *_revert_proxy_config(config_data, cfg_path)]
 
 
+def estimate_payload(estimate) -> dict:
+    return {
+        "candidates": estimate.candidates,
+        "cached_now": estimate.cached_now,
+        "newly_queued": estimate.newly_queued,
+        "queued_after": estimate.queued_after,
+        "eta_minutes": estimate.eta_minutes,
+        "needs_confirmation": estimate.needs_confirmation,
+    }
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="RAOfflineProxy Linux client")
     parser.add_argument(
@@ -280,6 +293,7 @@ def main() -> None:
             "cache-roms",
             "export-cached-ids",
             "cache-folder-listing",
+            "estimate-cache",
             "smart-cache-status",
             "run-smart-cache",
             "update-status",
@@ -753,6 +767,27 @@ def main() -> None:
                 raise RuntimeError(result.message)
 
             print(result.message)
+            return
+
+        if args.command == "estimate-cache":
+            if not args.path:
+                raise ValueError("estimate-cache requires --path")
+
+            folder = Path(args.path).expanduser()
+            if not folder.is_dir():
+                raise ValueError(f"Invalid browser directory: {folder}")
+
+            storage = Storage()
+            try:
+                estimate = estimate_queue_for_paths(storage, list_scannable_files_recursive(folder))
+            finally:
+                storage.close()
+
+            payload = estimate_payload(estimate)
+            if args.as_json:
+                print(json.dumps(payload, separators=(",", ":")))
+            else:
+                print(" ".join(f"{key}={json.dumps(value)}" for key, value in payload.items()))
             return
 
         if args.command == "cache-folder-listing":
