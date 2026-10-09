@@ -37,11 +37,12 @@ data class EmulatorState(
     val enabled: Boolean
 )
 
-data class EmulatorSupport(val states: List<EmulatorState>) {
+data class EmulatorSupport(val states: List<EmulatorState>, val argosyInstalled: Boolean = false) {
     val installed: List<Emulator> = states.filter { it.installed }.map { it.emulator }
     val enabled: List<Emulator> = states.filter { it.enabled }.map { it.emulator }
     val installedCount: Int = installed.size
     val hasAnyEnabled: Boolean = enabled.isNotEmpty()
+    val canStartProxy: Boolean = hasAnyEnabled || argosyInstalled
     val hasAnyShizukuManagedEnabled: Boolean = enabled.any { it in Emulator.SHIZUKU_MANAGED }
 
     fun isInstalled(emulator: Emulator): Boolean = emulator in installed
@@ -76,7 +77,8 @@ internal fun loadEmulatorSupport(context: Context): EmulatorSupport {
     val installedCount = installedPackages.size
 
     return EmulatorSupport(
-        Emulator.entries.map { emulator ->
+        argosyInstalled = isArgosyInstalled(context),
+        states = Emulator.entries.map { emulator ->
             val installed = installedPackages.containsKey(emulator)
             EmulatorState(
                 emulator = emulator,

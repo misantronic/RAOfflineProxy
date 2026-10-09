@@ -39,7 +39,7 @@ internal object HeadlessProxy {
 
     fun start(context: Context): HeadlessStartResult {
         val emulatorSupport = loadEmulatorSupport(context)
-        if (!emulatorSupport.hasAnyEnabled) return HeadlessStartResult.NoEmulatorEnabled
+        if (!emulatorSupport.canStartProxy) return HeadlessStartResult.NoEmulatorEnabled
         if (!isLoopbackPortAvailable(PrefsConstants.loadProxyPort(context))) return HeadlessStartResult.PortUnavailable
 
         val prefs = context.getSharedPreferences(PrefsConstants.PREFS_NAME, Context.MODE_PRIVATE)

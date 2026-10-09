@@ -131,7 +131,7 @@ class HomeFragment : Fragment() {
         viewLifecycleOwner.lifecycleScope.launch {
             viewModel.state.collect { state ->
                 val installedCount = state.emulators.installedCount
-                val noEmulatorInstalled = installedCount == 0
+                val noEmulatorInstalled = installedCount == 0 && !state.emulators.argosyInstalled
                 val onlyOneInstalled = installedCount == 1
                 val hasManualSetupManagedEmulator = Emulator.SHIZUKU_MANAGED.any { state.emulators.isInstalled(it) }
                 val proxyStartPending = state.proxyToggleInProgress || state.needsSafGrant
@@ -155,7 +155,7 @@ class HomeFragment : Fragment() {
 
                 btnStartProxy.visibility = if (shouldShowManualSetupButton) View.GONE else View.VISIBLE
                 btnStartProxy.text = getString(if (state.proxyRunning) R.string.proxy_stop else R.string.proxy_start)
-                btnStartProxy.isEnabled = if (state.proxyRunning) !proxyStartPending else !proxyStartPending && state.hasEnabledEmulator
+                btnStartProxy.isEnabled = if (state.proxyRunning) !proxyStartPending else !proxyStartPending && state.canStartWithoutEmulator
                 btnStartProxy.alpha = if (proxyStartPending) 0.45f else 1f
                 btnManualEmulatorSetup.visibility = if (shouldShowManualSetupButton) View.VISIBLE else View.GONE
                 btnGoToCachedGames.visibility = if (state.proxyRunning) View.VISIBLE else View.GONE
