@@ -177,7 +177,7 @@ data class MainUiState(
     val flushInProgress: Boolean = false,
     val availableAppUpdate: AppUpdateInfo? = null
 ) {
-    val hasEnabledEmulator: Boolean = emulators.hasAnyEnabled
+    val canStartWithoutEmulator: Boolean = emulators.canStartProxy
     val hasShizukuManagedEnabledEmulator: Boolean = emulators.hasAnyShizukuManagedEnabled
 
     fun clearedPermissions(): MainUiState = copy(
@@ -1034,7 +1034,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 val emulatorSupport = loadEmulatorSupport(app)
                 prefs.edit { remove(PrefsConstants.KEY_SKIP_NEXT_CFG_REVERT) }
 
-                if (!emulatorSupport.hasAnyEnabled) {
+                if (!emulatorSupport.canStartProxy) {
                     pendingProxyStart = false
                     SnackbarManager.showError(str(R.string.proxy_start_requires_emulator))
                     return@launch

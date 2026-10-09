@@ -266,7 +266,7 @@ class MainActivity : AppCompatActivity() {
                     isOnline = state.isOnline,
                     proxyToggleInProgress = state.proxyToggleInProgress,
                     needsSafGrant = state.needsSafGrant,
-                    hasEnabledEmulator = state.hasEnabledEmulator,
+                    hasEnabledEmulator = state.canStartWithoutEmulator,
                     canStartProxy = !state.manualEmulatorPatchingEnabled || state.shizukuManualPatchingEnabled || !state.hasShizukuManagedEnabledEmulator
                 )
                 updateAppUpdateMenuItem(state.availableAppUpdate)
@@ -353,7 +353,7 @@ class MainActivity : AppCompatActivity() {
             isOnline = state.isOnline,
             proxyToggleInProgress = state.proxyToggleInProgress,
             needsSafGrant = state.needsSafGrant,
-            hasEnabledEmulator = state.hasEnabledEmulator,
+            hasEnabledEmulator = state.canStartWithoutEmulator,
             canStartProxy = !state.manualEmulatorPatchingEnabled || state.shizukuManualPatchingEnabled || !state.hasShizukuManagedEnabledEmulator
         )
         updateAppUpdateMenuItem(state.availableAppUpdate)
