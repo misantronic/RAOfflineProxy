@@ -3,6 +3,8 @@ from __future__ import annotations
 import contextlib
 import json
 import tempfile
+import threading
+import time
 import types
 import unittest
 from io import StringIO
@@ -60,11 +62,6 @@ class BudgetWindowTests(unittest.TestCase):
         self.assertEqual(0, window.remaining(NOW + CACHE_BUDGET_WINDOW_MS + 1))
         self.assertEqual(paused_until, window.next_available_at(NOW + 1))
         self.assertEqual(CACHE_BUDGET_LIMIT, window.remaining(paused_until))
-
-    def test_ends_at_is_the_later_of_window_end_and_pause(self) -> None:
-        window = BudgetWindow(window_start=NOW, used=5)
-
-        self.assertEqual(NOW + CACHE_BUDGET_WINDOW_MS, window.ends_at(NOW + 1))
 
     def test_json_round_trip_and_garbage(self) -> None:
         window = BudgetWindow(window_start=NOW, used=7, paused_until=NOW + 5)
@@ -150,13 +147,19 @@ class QueueTestCase(unittest.TestCase):
         )
         self._patches.enter_context(mock.patch.object(rom_browser, "fetch_game_id", self.fake_fetch_game_id))
         self._patches.enter_context(mock.patch.object(rom_browser, "cache_game", self.fake_cache_game))
-        self._patches.enter_context(mock.patch.object(rom_browser, "apply_scan_batch_cooldown", lambda _requested: False))
+        self.pace_waits: list[float] = []
+        self._patches.enter_context(mock.patch.object(cache_budget, "CACHE_BURST_GAMES", 0))
+        self._patches.enter_context(mock.patch.object(rom_browser, "wait_for_pace", self.fake_wait_for_pace))
 
     def tearDown(self) -> None:
         self._patches.close()
         self.store.close()
         self._temp_dir.cleanup()
         rate_limit.reset_for_tests()
+
+    def fake_wait_for_pace(self, ready_at, should_pause):
+        self.pace_waits.append(ready_at)
+        return not should_pause()
 
     def fake_fetch_game_id(self, hash_value, _credentials, _user_agent, _config_data, store):
         self.lookups.append(hash_value)
@@ -315,17 +318,20 @@ class DrainTests(QueueTestCase):
         self.assertEqual([], self.lookups)
         self.assertEqual(0, cache_queue.count(self.store))
 
-    def test_batch_time_limit_pauses_until_the_window_ends(self) -> None:
+    def test_batch_time_limit_ends_the_batch_without_a_pause(self) -> None:
         self.game_ids["a"] = 1
         self.queue("a")
+        self.use_budget(50)
         clock = iter([NOW, NOW + cache_budget.CACHE_BATCH_MAX_MS, NOW + cache_budget.CACHE_BATCH_MAX_MS])
 
         with mock.patch.object(rom_browser, "current_millis", lambda: next(clock)):
             result = self.drain()
 
         self.assertEqual(DrainStop.BUDGET_EXHAUSTED, result.stop)
+        self.assertTrue(result.time_limited)
         self.assertEqual([], self.cached)
-        self.assertGreaterEqual(cache_budget.load(self.store).paused_until, result.next_attempt_at)
+        self.assertEqual(0, cache_budget.load(self.store).paused_until)
+        self.assertLessEqual(result.next_attempt_at, cache_budget.current_millis())
 
     def test_rate_limit_stops_and_persists_the_pause(self) -> None:
         self.game_ids.update({"a": 1, "b": 2})
@@ -377,6 +383,120 @@ class DrainTests(QueueTestCase):
         self.assertEqual([2], self.cached)
         self.assertEqual(1, cache_queue.count(self.store))
 
+    def test_spaces_the_roms_that_need_retroachievements(self) -> None:
+        self.game_ids.update({"a": 1, "b": 2, "known": 3})
+        self.queue("known")
+        self.drain()
+        self.queue("a", "known", "unknown", "b")
+
+        with mock.patch.object(rom_browser.time, "monotonic", return_value=100.0):
+            self.drain()
+
+        expected = 100.0 + cache_budget.CACHE_PACE_SECONDS
+        self.assertEqual([expected, expected], self.pace_waits)
+
+    def test_a_single_rom_goes_out_at_once(self) -> None:
+        self.game_ids["a"] = 1
+        keys = self.queue("a")
+
+        self.drain(keys=keys)
+
+        self.assertEqual([1], self.cached)
+        self.assertEqual([], self.pace_waits)
+
+    def test_a_pause_while_waiting_keeps_the_rest_queued(self) -> None:
+        self.game_ids.update({"a": 1, "b": 2})
+        self.queue("a", "b")
+
+        with mock.patch.object(rom_browser, "wait_for_pace", lambda _ready_at, _should_pause: False):
+            result = self.drain()
+
+        self.assertEqual(DrainStop.PAUSED, result.stop)
+        self.assertEqual([1], self.cached)
+        self.assertEqual(1, cache_queue.count(self.store))
+
+    def test_the_lock_is_free_while_waiting_for_the_pace(self) -> None:
+        self.game_ids.update({"a": 1, "b": 2})
+        self.queue("a", "b")
+        seen = []
+
+        def wait(_ready_at, _should_pause):
+            seen.append((cache_queue.drain_lock.held_elsewhere(), cache_queue.draining_elsewhere()))
+            return True
+
+        with mock.patch.object(rom_browser, "wait_for_pace", wait):
+            result = self.drain()
+
+        self.assertEqual(DrainStop.EMPTY, result.stop)
+        self.assertEqual([(False, True)], seen)
+        self.assertEqual([1, 2], self.cached)
+
+    def test_a_game_cached_while_waiting_is_not_cached_again(self) -> None:
+        self.game_ids.update({"a": 1, "b": 2, "b-alt": 2})
+        self.queue("a", "b-alt")
+        hand = self.roms("b")[0]
+
+        def wait(_ready_at, _should_pause):
+            self.assertTrue(rom_browser.add_rom_to_cache(hand, self.store, {}).success)
+            return True
+
+        with mock.patch.object(rom_browser, "wait_for_pace", wait):
+            result = self.drain()
+
+        self.assertEqual(DrainStop.EMPTY, result.stop)
+        self.assertEqual([1, 2], self.cached)
+        self.assertEqual(0, cache_queue.count(self.store))
+
+    def test_a_pause_while_taking_the_lock_back_stops_the_drain(self) -> None:
+        self.game_ids.update({"a": 1, "b": 2})
+        self.queue("a", "b")
+        other = contextlib.ExitStack()
+        paused = []
+
+        def wait(_ready_at, _should_pause):
+            other.enter_context(cache_queue.drain_lock.hold())
+            paused.append(True)
+            return True
+
+        with other, mock.patch.object(rom_browser, "wait_for_pace", wait):
+            result = self.drain(should_pause=lambda: bool(paused))
+
+        self.assertEqual(DrainStop.PAUSED, result.stop)
+        self.assertEqual([1], self.cached)
+
+    def test_the_first_games_of_a_window_go_out_at_once(self) -> None:
+        self.game_ids.update({"a": 1, "b": 2, "c": 3, "d": 4})
+        self.queue("a", "b", "c", "d")
+
+        with mock.patch.object(cache_budget, "CACHE_BURST_GAMES", 2):
+            self.drain()
+
+        self.assertEqual([1, 2, 3, 4], self.cached)
+        self.assertEqual(2, len(self.pace_waits))
+
+    def test_a_used_burst_paces_the_next_drain(self) -> None:
+        self.game_ids.update({"a": 1, "b": 2})
+        self.queue("a", "b")
+        self.use_budget(2)
+
+        with mock.patch.object(cache_budget, "CACHE_BURST_GAMES", 2):
+            self.drain()
+
+        self.assertEqual(1, len(self.pace_waits))
+
+    def test_unknown_roms_count_toward_the_burst(self) -> None:
+        self.queue("x", "y", "z")
+
+        with mock.patch.object(cache_budget, "CACHE_BURST_GAMES", 2):
+            self.drain()
+
+        self.assertEqual(1, len(self.pace_waits))
+
+    def test_a_paced_window_fits_the_budget(self) -> None:
+        paced = (CACHE_BUDGET_LIMIT - cache_budget.CACHE_BURST_GAMES) * cache_budget.CACHE_PACE_SECONDS * 1000
+        self.assertLessEqual(paced, CACHE_BUDGET_WINDOW_MS)
+        self.assertGreaterEqual(cache_budget.CACHE_BATCH_MAX_MS, CACHE_BUDGET_WINDOW_MS)
+
     def test_busy_while_another_caller_drains(self) -> None:
         self.queue("a")
 
@@ -384,6 +504,31 @@ class DrainTests(QueueTestCase):
             result = self.drain()
 
         self.assertEqual(DrainStop.BUSY, result.stop)
+
+
+class WaitForPaceTests(unittest.TestCase):
+    def test_sleeps_until_ready_in_short_steps(self) -> None:
+        clock = [10.0]
+        sleeps: list[float] = []
+
+        def sleep(seconds):
+            sleeps.append(seconds)
+            clock[0] += seconds
+
+        with mock.patch.object(rom_browser.time, "monotonic", lambda: clock[0]), \
+                mock.patch.object(rom_browser.time, "sleep", sleep):
+            self.assertTrue(rom_browser.wait_for_pace(12.5, lambda: False))
+
+        self.assertEqual([1.0, 1.0, 0.5], sleeps)
+
+    def test_stops_waiting_when_asked_to_pause(self) -> None:
+        calls = iter([False, True])
+
+        with mock.patch.object(rom_browser.time, "monotonic", return_value=0.0), \
+                mock.patch.object(rom_browser.time, "sleep") as sleep:
+            self.assertFalse(rom_browser.wait_for_pace(60.0, lambda: next(calls)))
+
+        sleep.assert_called_once_with(1.0)
 
 
 class CoverTests(QueueTestCase):
@@ -626,6 +771,31 @@ class WorkerTests(QueueTestCase):
 
         with mock.patch.object(proxy_service.cache_queue, "bulk_run_active", lambda: True):
             self.assertIsNone(self.run_once(self.worker()))
+
+
+class StopWorkersTests(unittest.TestCase):
+    def test_waits_for_a_worker_to_finish_its_round(self) -> None:
+        finished = []
+
+        class Worker(threading.Thread):
+            def __init__(self) -> None:
+                super().__init__(daemon=True)
+                self.stop_event = threading.Event()
+
+            def stop(self) -> None:
+                self.stop_event.set()
+
+            def run(self) -> None:
+                self.stop_event.wait()
+                time.sleep(0.2)
+                finished.append(True)
+
+        worker = Worker()
+        worker.start()
+
+        proxy_service.stop_workers([worker, Worker()])
+
+        self.assertEqual([True], finished)
 
 
 class RefreshRateLimitTests(QueueTestCase):
