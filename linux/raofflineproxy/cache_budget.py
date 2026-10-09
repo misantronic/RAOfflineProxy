@@ -8,8 +8,9 @@ from .storage import Storage, current_millis
 
 CACHE_BUDGET_LIMIT = 100
 CACHE_BUDGET_WINDOW_MS = 30 * 60 * 1000
-# Games in a batch are spread over the window instead of sent as one burst, which
-# RetroAchievements answers with a 429.
+# The first games of a window go out at once, so a small run feels instant; the rest is spread
+# over the window instead of sent as one burst, which RetroAchievements answers with a 429.
+CACHE_BURST_GAMES = 20
 CACHE_PACE_SECONDS = CACHE_BUDGET_WINDOW_MS / CACHE_BUDGET_LIMIT / 1000
 # Bounds how long one batch runs, e.g. on a stretch of ROMs RetroAchievements doesn't know,
 # which cost lookups but never fill the budget. A whole window, so a paced batch can still use
@@ -59,7 +60,10 @@ class BudgetWindow:
         return max(self.paused_until, window_opens_at)
 
     def ends_at(self, now: int, window_ms: int = CACHE_BUDGET_WINDOW_MS) -> int:
-        return max(self.paused_until, self.current(now, window_ms).window_start + window_ms)
+        """When the open window ends; now once it has ended, instead of a whole next window."""
+        window = self.current(now, window_ms)
+        open_until = now if window is not self else window.window_start + window_ms
+        return max(self.paused_until, open_until)
 
     def to_json(self) -> str:
         return json.dumps(
@@ -101,6 +105,10 @@ def pause_until(storage: Storage, until: int) -> None:
     window = load(storage)
     if until > window.paused_until:
         save(storage, replace(window, paused_until=until))
+
+
+def used(storage: Storage, now: int | None = None) -> int:
+    return load(storage).current(now or current_millis()).used
 
 
 def remaining(storage: Storage, now: int | None = None) -> int:

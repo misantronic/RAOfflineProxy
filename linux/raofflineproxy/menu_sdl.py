@@ -1840,7 +1840,7 @@ class MenuSdlSession:
     def read_queue_status(self) -> str | None:
         if getattr(self, "queued_count", 0) <= 0:
             return None
-        if cache_queue.drain_lock.held_elsewhere():
+        if cache_queue.draining_elsewhere():
             return "CACHING NOW"
         next_batch_at = cache_budget.next_available_at(self.storage)
         if next_batch_at > current_millis():

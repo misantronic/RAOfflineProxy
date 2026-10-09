@@ -1417,12 +1417,12 @@ class MenuLayoutTests(unittest.TestCase):
         self.assertIsNone(menu_sdl.MenuSdlSession.read_queue_status(session))
 
         session.queued_count = 158
-        with patch.object(menu_sdl.cache_queue.drain_lock, "held_elsewhere", return_value=True):
+        with patch.object(menu_sdl.cache_queue, "draining_elsewhere", return_value=True):
             self.assertEqual(
                 "CACHING NOW", menu_sdl.MenuSdlSession.read_queue_status(session)
             )
 
-        with patch.object(menu_sdl.cache_queue.drain_lock, "held_elsewhere", return_value=False), \
+        with patch.object(menu_sdl.cache_queue, "draining_elsewhere", return_value=False), \
                 patch.object(menu_sdl, "current_millis", return_value=1_000), \
                 patch.object(menu_sdl, "format_clock_time", lambda millis: f"at {millis}"):
             with patch.object(menu_sdl.cache_budget, "next_available_at", return_value=5_000):
