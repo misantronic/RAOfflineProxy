@@ -12,17 +12,16 @@ CACHE_BUDGET_WINDOW_MS = 30 * 60 * 1000
 # over the window instead of sent as one burst, which RetroAchievements answers with a 429.
 CACHE_BURST_GAMES = 20
 CACHE_PACE_SECONDS = CACHE_BUDGET_WINDOW_MS / CACHE_BUDGET_LIMIT / 1000
-# Bounds how long one batch runs, e.g. on a stretch of ROMs RetroAchievements doesn't know,
-# which cost lookups but never fill the budget. A whole window, so a paced batch can still use
-# the full budget.
+# Bounds how long one batch runs, so a bulk run hands the rest to the proxy service. A whole
+# window, so a paced batch can still use the full budget.
 CACHE_BATCH_MAX_MS = CACHE_BUDGET_WINDOW_MS
 
 
 @dataclass(frozen=True)
 class BudgetWindow:
     """One budget window: used counts games cached; lookups for ROMs RetroAchievements doesn't
-    know are free. paused_until holds the queue back after a 429 or after a batch hit its time
-    limit, so no new batch starts before then, and outlives the window."""
+    know are free. paused_until holds the queue back after a 429, so no new batch starts before
+    then, and outlives the window."""
 
     window_start: int = 0
     used: int = 0
@@ -58,12 +57,6 @@ class BudgetWindow:
         window = self.current(now, window_ms)
         window_opens_at = now if window.used < limit else window.window_start + window_ms
         return max(self.paused_until, window_opens_at)
-
-    def ends_at(self, now: int, window_ms: int = CACHE_BUDGET_WINDOW_MS) -> int:
-        """When the open window ends; now once it has ended, instead of a whole next window."""
-        window = self.current(now, window_ms)
-        open_until = now if window is not self else window.window_start + window_ms
-        return max(self.paused_until, open_until)
 
     def to_json(self) -> str:
         return json.dumps(
@@ -117,7 +110,3 @@ def remaining(storage: Storage, now: int | None = None) -> int:
 
 def next_available_at(storage: Storage, now: int | None = None) -> int:
     return load(storage).next_available_at(now or current_millis())
-
-
-def window_ends_at(storage: Storage, now: int | None = None) -> int:
-    return load(storage).ends_at(now or current_millis())

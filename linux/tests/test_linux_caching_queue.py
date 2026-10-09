@@ -63,17 +63,6 @@ class BudgetWindowTests(unittest.TestCase):
         self.assertEqual(paused_until, window.next_available_at(NOW + 1))
         self.assertEqual(CACHE_BUDGET_LIMIT, window.remaining(paused_until))
 
-    def test_ends_at_is_the_later_of_window_end_and_pause(self) -> None:
-        window = BudgetWindow(window_start=NOW, used=5)
-
-        self.assertEqual(NOW + CACHE_BUDGET_WINDOW_MS, window.ends_at(NOW + 1))
-
-    def test_ends_at_after_the_window_is_now(self) -> None:
-        window = BudgetWindow(window_start=NOW, used=88)
-        later = NOW + CACHE_BUDGET_WINDOW_MS + 5_000
-
-        self.assertEqual(later, window.ends_at(later))
-
     def test_json_round_trip_and_garbage(self) -> None:
         window = BudgetWindow(window_start=NOW, used=7, paused_until=NOW + 5)
 
@@ -329,17 +318,20 @@ class DrainTests(QueueTestCase):
         self.assertEqual([], self.lookups)
         self.assertEqual(0, cache_queue.count(self.store))
 
-    def test_batch_time_limit_pauses_until_the_window_ends(self) -> None:
+    def test_batch_time_limit_ends_the_batch_without_a_pause(self) -> None:
         self.game_ids["a"] = 1
         self.queue("a")
+        self.use_budget(50)
         clock = iter([NOW, NOW + cache_budget.CACHE_BATCH_MAX_MS, NOW + cache_budget.CACHE_BATCH_MAX_MS])
 
         with mock.patch.object(rom_browser, "current_millis", lambda: next(clock)):
             result = self.drain()
 
         self.assertEqual(DrainStop.BUDGET_EXHAUSTED, result.stop)
+        self.assertTrue(result.time_limited)
         self.assertEqual([], self.cached)
-        self.assertGreaterEqual(cache_budget.load(self.store).paused_until, result.next_attempt_at)
+        self.assertEqual(0, cache_budget.load(self.store).paused_until)
+        self.assertLessEqual(result.next_attempt_at, cache_budget.current_millis())
 
     def test_rate_limit_stops_and_persists_the_pause(self) -> None:
         self.game_ids.update({"a": 1, "b": 2})

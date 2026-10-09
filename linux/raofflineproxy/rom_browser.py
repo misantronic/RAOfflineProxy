@@ -780,10 +780,12 @@ def _drain_locked(
         if stopped is not None:
             return stopped
         if current_millis() >= stop_at:
-            window_end = cache_budget.window_ends_at(storage)
-            cache_budget.pause_until(storage, window_end)
-            LOGGER.info("Cache queue: batch time limit reached, rest waits for the next window")
-            return result(DrainStop.BUDGET_EXHAUSTED, window_end, time_limited=True)
+            LOGGER.info("Cache queue: batch time limit reached")
+            return result(
+                DrainStop.BUDGET_EXHAUSTED,
+                cache_budget.next_available_at(storage),
+                time_limited=True,
+            )
         rom = next_rom()
         if rom is None:
             return result(DrainStop.EMPTY)
