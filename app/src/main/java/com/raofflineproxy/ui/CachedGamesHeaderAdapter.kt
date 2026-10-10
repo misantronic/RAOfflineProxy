@@ -11,7 +11,6 @@ import com.raofflineproxy.R
 class CachedGamesHeaderAdapter(
     private val onSmartCache: () -> Unit,
     private val onScan: () -> Unit,
-    private val onAdd: () -> Unit,
     private val onClear: () -> Unit
 ) : RecyclerView.Adapter<CachedGamesHeaderAdapter.ViewHolder>() {
 
@@ -28,7 +27,6 @@ class CachedGamesHeaderAdapter(
 
     inner class ViewHolder(view: View) : RecyclerView.ViewHolder(view) {
         val btnSmartCache: MaterialButton = view.findViewById(R.id.btn_smart_cache)
-        val btnAdd: MaterialButton = view.findViewById(R.id.btn_add_rom)
         val btnScan: MaterialButton = view.findViewById(R.id.btn_scan_roms)
         val btnClear: MaterialButton = view.findViewById(R.id.btn_clear_cache)
         val tvScanHint: TextView = view.findViewById(R.id.tv_scan_hint)
@@ -37,7 +35,6 @@ class CachedGamesHeaderAdapter(
         init {
             btnSmartCache.setOnClickListener { onSmartCache() }
             btnScan.setOnClickListener { onScan() }
-            btnAdd.setOnClickListener { onAdd() }
             btnClear.setOnClickListener { onClear() }
         }
 
@@ -47,9 +44,7 @@ class CachedGamesHeaderAdapter(
             btnSmartCache.alpha = if (s.smartCacheEnabled) 1f else 0.38f
 
             btnScan.isEnabled = s.scanEnabled
-            btnAdd.isEnabled = s.scanEnabled
             btnScan.alpha = if (s.scanEnabled) 1f else 0.38f
-            btnAdd.alpha = if (s.scanEnabled) 1f else 0.38f
 
             btnClear.isEnabled = s.clearEnabled
             btnClear.alpha = if (s.clearEnabled) 1f else 0.38f

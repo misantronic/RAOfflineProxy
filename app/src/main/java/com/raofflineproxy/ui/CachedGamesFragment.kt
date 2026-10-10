@@ -55,30 +55,6 @@ class CachedGamesFragment : Fragment() {
         viewModel.scanRoms(uri)
     }
 
-    private val addRomLauncher = registerForActivityResult(
-        ActivityResultContracts.StartActivityForResult()
-    ) { result ->
-        if (result.resultCode != Activity.RESULT_OK) return@registerForActivityResult
-        val data = result.data ?: return@registerForActivityResult
-        val uris = buildList {
-            data.data?.let(::add)
-            val clipData = data.clipData
-            if (clipData != null) {
-                for (index in 0 until clipData.itemCount) {
-                    add(clipData.getItemAt(index).uri)
-                }
-            }
-        }.distinct()
-        if (uris.isEmpty()) return@registerForActivityResult
-        romPickerUsed = true
-        uris.forEach { uri ->
-            requireContext().contentResolver.takePersistableUriPermission(
-                uri, Intent.FLAG_GRANT_READ_URI_PERMISSION
-            )
-        }
-        viewModel.addRom(uris)
-    }
-
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View =
         inflater.inflate(R.layout.fragment_cached_games, container, false)
 
@@ -121,9 +97,6 @@ class CachedGamesFragment : Fragment() {
         val headerAdapter = CachedGamesHeaderAdapter(
             onSmartCache = viewModel::startSmartCache,
             onScan = { romFolderPickerLauncher.launch(createRomFolderPickerIntent()) },
-            onAdd = {
-                addRomLauncher.launch(createAddRomIntent())
-            },
             onClear = {
                 AlertDialog.Builder(requireContext())
                     .setTitle(R.string.clear_cache_confirm_title)
@@ -269,17 +242,6 @@ class CachedGamesFragment : Fragment() {
         }
         return getString(R.string.cached_games_counter_with_queue_status, counter, batch)
     }
-
-    private fun createAddRomIntent(): Intent =
-        Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
-            val initialUri = guessRomFolderInitialUri()
-            Log.i(TAG, "Add ROM picker initialUri=$initialUri candidates=${romFolderCandidates(requireContext())}")
-            addCategory(Intent.CATEGORY_OPENABLE)
-            type = "*/*"
-            putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
-            initialUri?.let { putExtra(DocumentsContract.EXTRA_INITIAL_URI, it) }
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
-        }
 
     private fun guessRomFolderInitialUri() =
         if (romPickerUsed) null else {
