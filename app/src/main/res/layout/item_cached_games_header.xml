@@ -40,17 +40,6 @@
             app:iconTint="?attr/colorOnSurface" />
 
         <com.google.android.material.button.MaterialButton
-            android:id="@+id/btn_add_rom"
-            style="@style/Widget.RAOfflineProxy.Button.Icon"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="8dp"
-            android:contentDescription="@string/cached_games_add_rom"
-            android:tooltipText="@string/cached_games_add_rom"
-            app:icon="@drawable/ic_add"
-            app:iconTint="?attr/colorOnSurface" />
-
-        <com.google.android.material.button.MaterialButton
             android:id="@+id/btn_scan_roms"
             style="@style/Widget.RAOfflineProxy.Button.Icon"
             android:layout_width="wrap_content"

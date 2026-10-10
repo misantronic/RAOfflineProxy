@@ -47,7 +47,6 @@ import com.raofflineproxy.service.text
 import com.raofflineproxy.proxy.CACHE_BUDGET_LIMIT
 import com.raofflineproxy.proxy.CacheQueue
 import com.raofflineproxy.proxy.QueueEstimate
-import com.raofflineproxy.proxy.estimateQueueForDocuments
 import com.raofflineproxy.proxy.SmartCacheRunResult
 import com.raofflineproxy.proxy.ScanResult
 import com.raofflineproxy.proxy.drainCacheQueue
@@ -133,7 +132,6 @@ sealed interface MainUiEvent {
 
 private sealed interface PendingCredentialAction {
     data object SmartCache : PendingCredentialAction
-    data class AddRom(val uris: List<Uri>) : PendingCredentialAction
     data class ScanRoms(val treeUri: Uri) : PendingCredentialAction
     data class StartProxy(val treeUri: Uri?) : PendingCredentialAction
     data class FinishProxyStart(val alreadyRunning: Boolean) : PendingCredentialAction
@@ -230,7 +228,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private var pendingSmartCacheGrantTargets = emptyList<SafGrantTarget>()
     private var pendingPpssppShizukuRootModePrompt = false
     private var smartCacheAllFilesRejectedThisRun = false
-    private var pendingAddRomUris = emptyList<Uri>()
     private var pendingCredentialAction: PendingCredentialAction? = null
     private var credentialsPromptActive = false
     private var lastTokenValidationAttemptAt: Long = 0L
@@ -687,12 +684,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             needsSafGrant = remaining.isNotEmpty(),
             safGrantTarget = remaining.firstOrNull()
         )
-        if (pendingAddRomUris.isNotEmpty() && remaining.isEmpty()) {
-            val uris = pendingAddRomUris
-            pendingAddRomUris = emptyList()
-            addRom(uris)
-            return
-        }
         if (pendingSmartCacheStart && remaining.isEmpty()) {
             pendingSmartCacheGrantTargets = emptyList()
             pendingSmartCacheStart = false
@@ -781,7 +772,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         SnackbarManager.showMessage(str(R.string.smart_cache_requires_ppsspp_access), SnackbarDuration.Indefinite)
                     }
                     SafGrantTarget.AllFilesAccess -> {
-                        pendingAddRomUris = emptyList()
                         SnackbarManager.showMessage(str(R.string.smart_cache_requires_all_files_access), SnackbarDuration.Indefinite)
                     }
                     SafGrantTarget.SmartCacheRom -> {
@@ -844,7 +834,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 SnackbarManager.showMessage(str(R.string.proxy_start_aborted_ppsspp_saf_rejected), SnackbarDuration.Indefinite)
             }
             SafGrantTarget.AllFilesAccess -> {
-                pendingAddRomUris = emptyList()
                 pendingSmartCacheGrantTargets = emptyList()
                 pendingSmartCacheRomGrantPaths = emptyList()
                 SnackbarManager.showMessage(str(R.string.smart_cache_requires_all_files_access), SnackbarDuration.Indefinite)
@@ -1557,59 +1546,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val queued = withContext(Dispatchers.IO) { CacheQueue.count(db) }
         val summary = str(resId, firstBatch.cached, queued, skipped + firstBatch.noMatch)
         return if (queued > 0) "$summary ${str(R.string.caching_queue_hint, CACHE_BUDGET_LIMIT)}" else summary
-    }
-
-    fun addRom(fileUris: List<Uri>) {
-        val app = getApplication<Application>()
-        viewModelScope.launch {
-            val hasPlaylistFile = fileUris.any { uri ->
-                val name = DocumentFile.fromSingleUri(app, uri)?.name ?: ""
-                hasExtension(name, "cue", "m3u")
-            }
-            if (hasPlaylistFile && !hasAllFilesAccess()) {
-                pendingAddRomUris = fileUris
-                _state.value = _state.value.copy(
-                    needsSafGrant = true,
-                    safGrantTarget = SafGrantTarget.AllFilesAccess,
-                    pendingSafGrantTargets = listOf(SafGrantTarget.AllFilesAccess)
-                )
-                return@launch
-            }
-
-            val credentials = requireCredentials(PendingCredentialAction.AddRom(fileUris)) ?: return@launch
-            val estimate = withContext(Dispatchers.IO) { estimateQueueForDocuments(app, db, fileUris) }
-            if (estimate.needsConfirmation && !confirmLargeQueue(estimate)) {
-                SnackbarManager.showMessage(str(R.string.scan_cancelled), SnackbarDuration.Short)
-                return@launch
-            }
-            val total = fileUris.size
-            _state.value = _state.value.copy(scanInProgress = true)
-            val message = try {
-                val (skipped, firstBatch) = hashThenCacheFirstBatch(
-                    credentials,
-                    onAbort = null,
-                    shouldCache = { true }
-                ) { onHashed, onQueued ->
-                    var skipped = 0
-                    for ((index, uri) in fileUris.withIndex()) {
-                        val result = scanRomFolder(app, uri, db, singleFile = true, onQueued = onQueued) { _, _, fileName ->
-                            onHashed(CachingProgress(CachingPhase.Hashing, index + 1, total, fileName))
-                        }
-                        skipped += result.skipped
-                    }
-                    skipped
-                }
-                cachingResultMessage(R.string.scan_add_complete, firstBatch, skipped)
-            } finally {
-                CachingNotifications.report(app, null)
-                _state.value = _state.value.copy(
-                    scanInProgress = false,
-                    scanProgress = null
-                )
-                SnackbarManager.showProgress(null)
-            }
-            SnackbarManager.showMessage(message, SnackbarDuration.Indefinite)
-        }
     }
 
     fun clearCache() {
@@ -2352,7 +2288,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 is PendingCredentialAction.StartProxy -> startProxy(action.treeUri)
                 is PendingCredentialAction.FinishProxyStart -> finishAutoPatchedProxyStart(action.alreadyRunning)
                 PendingCredentialAction.SmartCache -> startSmartCache()
-                is PendingCredentialAction.AddRom -> addRom(action.uris)
                 is PendingCredentialAction.ScanRoms -> scanRoms(action.treeUri)
                 null -> Unit
             }

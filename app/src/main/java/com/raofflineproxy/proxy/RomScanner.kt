@@ -445,7 +445,6 @@ suspend fun scanRomFolder(
     context: Context,
     treeUri: Uri,
     db: AppDatabase,
-    singleFile: Boolean = false,
     confirmLargeQueue: suspend (QueueEstimate) -> Boolean = { true },
     onQueued: (key: String) -> Unit = {},
     onProgress: (current: Int, total: Int, fileName: String) -> Unit
@@ -453,13 +452,9 @@ suspend fun scanRomFolder(
     val cachedGameIds = loadCachedGameIds(db)
     val cachedRomPaths = loadCachedRomPaths(db)
     val queuedRomPaths = CacheQueue.queuedRomPaths(db)
-    val files: List<DocumentFile> = if (singleFile) {
-        val f = DocumentFile.fromSingleUri(context, treeUri)
-        if (f != null && shouldScanFile(f)) listOf(f) else emptyList()
-    } else {
+    val files: List<DocumentFile> =
         DocumentFile.fromTreeUri(context, treeUri)?.let { collectScannableFiles(it, MAX_SCAN_ENTRIES) }
             ?: emptyList()
-    }
     val total = files.size
     val sourceRomPaths = files.map(::resolveDocumentAbsolutePath)
     val estimate = estimateQueueForPaths(db, sourceRomPaths, cachedRomPaths, queuedRomPaths)
@@ -484,11 +479,6 @@ suspend fun scanRomFolder(
         if (enqueueRomIfNeeded(db, candidates, cachedGameIds, sourceRomPath, file.name ?: "", onQueued)) queued++ else skipped++
     }
     return ScanResult(total = total, skipped = skipped, queued = queued)
-}
-
-internal suspend fun estimateQueueForDocuments(context: Context, db: AppDatabase, uris: List<Uri>): QueueEstimate {
-    val sourceRomPaths = uris.map { uri -> DocumentFile.fromSingleUri(context, uri)?.let(::resolveDocumentAbsolutePath) }
-    return estimateQueueForPaths(db, sourceRomPaths, loadCachedRomPaths(db), CacheQueue.queuedRomPaths(db))
 }
 
 internal suspend fun estimateQueueForPaths(
