@@ -46,6 +46,7 @@ class CachedGamesFragment : Fragment() {
     private var searchOpen = false
     private var searchQuery = ""
     private var queueDialog: AlertDialog? = null
+    private var foldersDialog: AlertDialog? = null
 
     private val romFolderPickerLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -56,6 +57,7 @@ class CachedGamesFragment : Fragment() {
         requireContext().contentResolver.takePersistableUriPermission(
             uri, Intent.FLAG_GRANT_READ_URI_PERMISSION
         )
+        viewModel.rememberFolder(uri)
         viewModel.scanRoms(uri)
     }
 
@@ -113,6 +115,7 @@ class CachedGamesFragment : Fragment() {
                     .also { it.setCanceledOnTouchOutside(false) }
                     .show()
             },
+            onFolders = ::showFoldersDialog,
             onSearchChanged = { query ->
                 searchQuery = query
                 publishHeaderState(headerState)
@@ -142,6 +145,12 @@ class CachedGamesFragment : Fragment() {
         }
 
         viewLifecycleOwner.lifecycleScope.launch {
+            viewModel.watchedFolders.collect { folders ->
+                publishHeaderState(headerState.copy(folderCount = folders.size))
+            }
+        }
+
+        viewLifecycleOwner.lifecycleScope.launch {
             viewModel.state.collect { state ->
                 gamesAdapter?.showLocked = state.showLockedAchievements
                 gamesAdapter?.setOfflineEarnedAchievements(
@@ -152,14 +161,11 @@ class CachedGamesFragment : Fragment() {
                 val showSmartCache = !viewModel.isSmartCacheDisabledForShizuku(state)
                 val smartCacheEnabled = actionsEnabled && showSmartCache
                 val scanEnabled = state.isOnline && !state.scanInProgress
-                val statusText = when {
-                    !state.isOnline -> getString(R.string.cached_games_offline_hint)
-                    state.queuedRomCount == 0 -> getString(R.string.cached_games_counter, state.cachedGames.size)
-                    !state.proxyRunning -> getString(
-                        R.string.cached_games_counter_queued_paused,
-                        state.cachedGames.size,
-                        state.queuedRomCount
-                    )
+                val counter = getString(R.string.cached_games_counter, state.cachedGames.size)
+                val statusText = if (state.isOnline) counter else getString(R.string.cached_games_offline_hint)
+                val queueStatusText = when {
+                    !state.isOnline || state.queuedRomCount == 0 -> null
+                    !state.proxyRunning -> getString(R.string.cached_games_queued_paused, state.queuedRomCount)
                     else -> queuedStatusText(state)
                 }
                 publishHeaderState(
@@ -169,7 +175,9 @@ class CachedGamesFragment : Fragment() {
                         scanEnabled = scanEnabled,
                         clearEnabled = state.cachedGames.isNotEmpty() && !state.scanInProgress,
                         showNoCachedGames = state.cachedGames.isEmpty(),
-                        statusText = statusText
+                        statusText = statusText,
+                        folderCount = viewModel.watchedFolders.value.size,
+                        queueStatusText = queueStatusText
                     )
                 )
                 updateQueueDialog(state.pendingQueueConfirmation)
@@ -181,6 +189,8 @@ class CachedGamesFragment : Fragment() {
         super.onDestroyView()
         queueDialog?.dismiss()
         queueDialog = null
+        foldersDialog?.dismiss()
+        foldersDialog = null
         gamesAdapter = null
         headerAdapter = null
     }
@@ -192,6 +202,34 @@ class CachedGamesFragment : Fragment() {
 
     private fun submitGames() {
         gamesAdapter?.submitList(buildGroupedList(currentGames, collapsedConsoleIds, searchQuery))
+    }
+
+    private fun showFoldersDialog() {
+        if (foldersDialog != null) return
+        val content = layoutInflater.inflate(R.layout.dialog_watch_folders, null)
+        val adapter = WatchFoldersAdapter(
+            onToggleWatching = { folder -> viewModel.setFolderWatching(folder, !folder.watching) },
+            onRemove = viewModel::removeFolder
+        )
+        content.findViewById<RecyclerView>(R.id.rv_watch_folders).apply {
+            layoutManager = LinearLayoutManager(requireContext())
+            this.adapter = adapter
+        }
+        val collector = viewLifecycleOwner.lifecycleScope.launch {
+            viewModel.watchedFolders.collect { folders ->
+                adapter.submitList(folders)
+                if (folders.isEmpty()) foldersDialog?.dismiss()
+            }
+        }
+        foldersDialog = AlertDialog.Builder(requireContext())
+            .setTitle(R.string.watch_folders_title)
+            .setView(content)
+            .setPositiveButton(R.string.watch_folders_close, null)
+            .setOnDismissListener {
+                collector.cancel()
+                foldersDialog = null
+            }
+            .show()
     }
 
     private fun updateQueueDialog(estimate: QueueEstimate?) {
@@ -255,18 +293,18 @@ class CachedGamesFragment : Fragment() {
         }
 
     private fun queuedStatusText(state: MainUiState): String {
-        val counter = getString(R.string.cached_games_counter_queued, state.cachedGames.size, state.queuedRomCount)
+        val queued = getString(R.string.cached_games_queued, state.queuedRomCount)
         val nextBatchAt = state.nextQueueBatchAt
         val batch = when {
             state.queueCachingNow -> getString(R.string.cached_games_queue_caching_now)
-            nextBatchAt == null -> return counter
+            nextBatchAt == null -> return queued
             state.nextQueueBatchDue -> getString(R.string.cached_games_queue_next_batch_soon)
             else -> getString(
                 R.string.cached_games_queue_next_batch,
                 DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(nextBatchAt))
             )
         }
-        return getString(R.string.cached_games_counter_with_queue_status, counter, batch)
+        return getString(R.string.cached_games_counter_with_queue_status, queued, batch)
     }
 
     private fun guessRomFolderInitialUri() =

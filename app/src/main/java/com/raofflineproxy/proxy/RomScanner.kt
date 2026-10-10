@@ -40,7 +40,7 @@ private const val HTTP_RETRY_AFTER_HEADER = "Retry-After"
 private const val HTTP_GET_MAX_429_RETRIES = 4
 private const val HTTP_GET_INITIAL_429_BACKOFF_MS = 2_000L
 private const val HTTP_GET_MAX_429_BACKOFF_MS = 15_000L
-private const val MAX_SCAN_ENTRIES = 5000
+internal const val MAX_SCAN_ENTRIES = 5000
 private const val MAX_SCAN_DEPTH = 12
 // RetroAchievements adds hashes over time, so a "no match" is only cached long enough to
 // stop a repeated scan of the same folder from re-querying every unsupported ROM.
@@ -699,7 +699,7 @@ internal fun String.normalizeCachedRomPath(): String =
     replace('\\', '/')
         .trim()
 
-private fun collectScannableFiles(root: DocumentFile, maxEntries: Int): List<DocumentFile> {
+internal fun collectScannableFiles(root: DocumentFile, maxEntries: Int): List<DocumentFile> {
     val result = mutableListOf<DocumentFile>()
     if (maxEntries <= 0) return result
     val stack = ArrayDeque<Pair<DocumentFile, Int>>()

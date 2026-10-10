@@ -3,7 +3,12 @@ package com.raofflineproxy.ui
 import android.view.LayoutInflater
 import android.view.View
 import android.text.Editable
+import android.text.SpannableStringBuilder
+import android.text.Spanned
+import android.text.TextPaint
 import android.text.TextWatcher
+import android.text.method.LinkMovementMethod
+import android.text.style.ClickableSpan
 import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
@@ -11,12 +16,14 @@ import android.widget.EditText
 import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.button.MaterialButton
+import com.google.android.material.color.MaterialColors
 import com.raofflineproxy.R
 
 class CachedGamesHeaderAdapter(
     private val onSmartCache: () -> Unit,
     private val onScan: () -> Unit,
     private val onClear: () -> Unit,
+    private val onFolders: () -> Unit,
     private val onSearchChanged: (String) -> Unit,
     private val onSearchToggled: (Boolean) -> Unit
 ) : RecyclerView.Adapter<CachedGamesHeaderAdapter.ViewHolder>() {
@@ -30,6 +37,8 @@ class CachedGamesHeaderAdapter(
         val clearEnabled: Boolean = true,
         val showNoCachedGames: Boolean = false,
         val statusText: String? = null,
+        val folderCount: Int = 0,
+        val queueStatusText: String? = null,
         val searchOpen: Boolean = false,
         val searchQuery: String = ""
     )
@@ -81,6 +90,27 @@ class CachedGamesHeaderAdapter(
             if (!s.searchOpen && wasOpen) hideKeyboard(etSearch)
         }
 
+        private fun statusWithFolders(s: HeaderState): CharSequence? {
+            val status = s.statusText ?: return null
+            val context = tvScanHint.context
+            val text = SpannableStringBuilder(status)
+            if (s.folderCount > 0) {
+                val label = context.resources.getQuantityString(R.plurals.cached_games_folders, s.folderCount, s.folderCount)
+                text.append(" · ")
+                val start = text.length
+                text.append(label)
+                text.setSpan(object : ClickableSpan() {
+                    override fun onClick(widget: View) = onFolders()
+                    override fun updateDrawState(ds: TextPaint) {
+                        ds.color = MaterialColors.getColor(tvScanHint, androidx.appcompat.R.attr.colorPrimary)
+                        ds.isUnderlineText = true
+                    }
+                }, start, text.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            }
+            s.queueStatusText?.let { text.append(" · ").append(it) }
+            return text
+        }
+
         fun bind(s: HeaderState) {
             bindSearch(s)
             btnSmartCache.visibility = if (s.showSmartCache) View.VISIBLE else View.GONE
@@ -93,7 +123,8 @@ class CachedGamesHeaderAdapter(
             btnClear.isEnabled = s.clearEnabled
             btnClear.alpha = if (s.clearEnabled) 1f else 0.38f
 
-            tvScanHint.text = s.statusText
+            tvScanHint.text = statusWithFolders(s)
+            tvScanHint.movementMethod = LinkMovementMethod.getInstance()
             tvScanHint.visibility =
                 if (s.statusText.isNullOrEmpty() || s.searchOpen) View.GONE else View.VISIBLE
 

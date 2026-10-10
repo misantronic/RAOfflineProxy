@@ -59,6 +59,9 @@ internal val CacheQueueWakeLock = CachingWakeLock("RAOfflineProxy:cacheQueue")
  *  apart from the worker's lock, whose release at the end of every round would otherwise end it. */
 internal val BulkRunWakeLock = CachingWakeLock("RAOfflineProxy:bulkRun")
 
+/** Hashing a watched folder in the service; kept apart from the worker's lock for the same reason. */
+internal val FolderWatchWakeLock = CachingWakeLock("RAOfflineProxy:folderWatch")
+
 class CacheQueueAlarmReceiver : BroadcastReceiver() {
     // The system only holds a wake lock for onReceive, so take ours here: signalling the worker
     // alone could let the CPU fall asleep again before it runs.

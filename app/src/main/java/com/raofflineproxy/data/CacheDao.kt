@@ -49,6 +49,8 @@ interface CacheDao {
           AND cacheKey NOT LIKE 'startsession:%'
           AND cacheKey NOT LIKE 'gameid:%'
           AND cacheKey NOT LIKE 'cachequeue:%'
+          AND cacheKey NOT LIKE 'watchfolder:%'
+          AND cacheKey NOT LIKE 'watchseen:%'
         """
     )
     suspend fun evictOlderThan(before: Long)

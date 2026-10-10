@@ -329,12 +329,26 @@
 
     <string name="cached_games_offline_hint">Go online to add or scan games.</string>
     <string name="cached_games_counter">%1$d cached</string>
-    <string name="cached_games_counter_queued">%1$d cached · %2$d queued</string>
+    <string name="cached_games_queued">%1$d queued</string>
     <string name="cached_games_counter_with_queue_status">%1$s · %2$s</string>
     <string name="cached_games_queue_next_batch">next batch %1$s</string>
     <string name="cached_games_queue_next_batch_soon">next batch soon</string>
     <string name="cached_games_queue_caching_now">caching now</string>
-    <string name="cached_games_counter_queued_paused">%1$d cached · %2$d queued (paused while the proxy is stopped)</string>
+    <string name="cached_games_queued_paused">%1$d queued (paused while the proxy is stopped)</string>
+    <plurals name="cached_games_folders">
+        <item quantity="one">%d folder</item>
+        <item quantity="other">%d folders</item>
+    </plurals>
+    <string name="watch_folders_title">Folders</string>
+    <string name="watch_folders_hint">Watched folders are checked for new ROMs every 30 minutes while the proxy is running. New games are cached automatically.</string>
+    <string name="watch_folders_empty">No folders yet. Scan a ROM folder to add one.</string>
+    <string name="watch_folders_start">Watch folder</string>
+    <string name="watch_folders_stop">Stop watching folder</string>
+    <string name="watch_folders_remove">Remove folder</string>
+    <string name="watch_folders_not_checked">Not checked yet</string>
+    <string name="watch_folders_last_checked">Last checked %1$s</string>
+    <string name="watch_folders_not_watching">Not watched</string>
+    <string name="watch_folders_close">Close</string>
 
     <!-- Caching queue confirmation -->
     <string name="queue_confirm_title">Cache in the background?</string>

@@ -34,6 +34,7 @@ import com.raofflineproxy.data.CacheKeys
 import com.raofflineproxy.proxyUserAgent
 import com.raofflineproxy.proxy.AwardFlusher
 import com.raofflineproxy.proxy.CacheQueue
+import com.raofflineproxy.proxy.WatchFolders
 import com.raofflineproxy.proxy.RateLimitBackoff
 import com.raofflineproxy.proxy.GameActivity
 import com.raofflineproxy.proxy.ProxyServer
@@ -47,6 +48,7 @@ import com.raofflineproxy.proxy.DrainStop
 import com.raofflineproxy.update.AppUpdateNotifier
 import com.raofflineproxy.usage.UsageReporter
 import com.raofflineproxy.proxy.drainCacheQueue
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -89,6 +91,7 @@ class ProxyService : Service() {
     private var networkCallbackRegistered = false
     private var refreshJob: Job? = null
     private var cacheQueueJob: Job? = null
+    private var folderWatchJob: Job? = null
     private var cacheQueueRejectedToken: String? = null
     @Volatile private var queueLoginBlocked = false
         set(value) {
@@ -196,6 +199,10 @@ class ProxyService : Service() {
 
         if (cacheQueueJob?.isActive != true) {
             cacheQueueJob = serviceScope.launch { cacheQueueLoop() }
+        }
+
+        if (folderWatchJob?.isActive != true) {
+            folderWatchJob = serviceScope.launch { folderWatchLoop() }
         }
 
         CachingNotifications.clearStandalone(this)
@@ -360,6 +367,48 @@ class ProxyService : Service() {
         return (resumeAt - System.currentTimeMillis()).coerceAtLeast(1_000L)
     }
 
+    private suspend fun folderWatchLoop() {
+        while (true) {
+            try {
+                watchFoldersOnce()
+            } catch (c: CancellationException) {
+                throw c
+            } catch (t: Throwable) {
+                Log.e(TAG, "Watched folder round failed", t)
+            }
+            withTimeoutOrNull(CACHE_QUEUE_POLL_MS.milliseconds) { folderWatchWake.receive() }
+        }
+    }
+
+    /** Hashes and queues what watched folders gained since their last scan; the cache queue
+     *  then caches it within the budget. Runs as a bulk run so the queue worker doesn't drain
+     *  while it is still filling, and stands down whenever a game is being played. */
+    private suspend fun watchFoldersOnce() {
+        val folders = WatchFolders.due(db, System.currentTimeMillis())
+        if (folders.isEmpty() || !canWatchFolders()) return
+        val credentials = loadLoginCredentials(db) ?: return
+        if (credentials.token == cacheQueueRejectedToken) return
+        FolderWatchWakeLock.hold(this)
+        try {
+            CacheQueue.duringBulkRun {
+                for (folder in folders) {
+                    if (!canWatchFolders(ignoreBulkRun = true)) break
+                    val scan = WatchFolders.scan(this, db, folder, shouldAbort = { !canWatchFolders(ignoreBulkRun = true) })
+                    Log.i(
+                        TAG,
+                        "Watched folder ${folder.name}: " + (scan?.let { "${it.files} file(s), ${it.new} new, ${it.queued} queued" } ?: "unreadable")
+                    )
+                }
+            }
+        } finally {
+            FolderWatchWakeLock.release()
+            wakeCacheQueue()
+        }
+    }
+
+    private fun canWatchFolders(ignoreBulkRun: Boolean = false): Boolean =
+        (ignoreBulkRun || !CacheQueue.bulkRunActive) && isServerReachable() && onlineRefreshIdleDelayMs() <= 0
+
     private fun canWorkOnCacheQueue(): Boolean =
         !CacheQueue.bulkRunActive && isServerReachable() && onlineRefreshIdleDelayMs() <= 0
 
@@ -442,6 +491,7 @@ class ProxyService : Service() {
         }
         CacheQueueAlarm.cancel(this)
         CacheQueueWakeLock.release()
+        FolderWatchWakeLock.release()
         proxyServer.stop()
         if (networkCallbackRegistered) {
             runCatching { connectivityManager.unregisterNetworkCallback(networkCallback) }
@@ -679,6 +729,7 @@ class ProxyService : Service() {
         @Volatile
         private var runningInProcess = false
         private val cacheQueueWake = Channel<Unit>(Channel.CONFLATED)
+        private val folderWatchWake = Channel<Unit>(Channel.CONFLATED)
         private val runtimeLock = Any()
         private val _runtime = MutableStateFlow(ServiceRuntime())
 
@@ -693,6 +744,10 @@ class ProxyService : Service() {
 
         fun wakeCacheQueue() {
             cacheQueueWake.trySend(Unit)
+        }
+
+        fun wakeFolderWatch() {
+            folderWatchWake.trySend(Unit)
         }
 
         private fun restartPendingIntent(context: Context): PendingIntent = PendingIntent.getBroadcast(

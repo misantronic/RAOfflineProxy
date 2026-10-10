@@ -47,6 +47,8 @@ import com.raofflineproxy.service.text
 import com.raofflineproxy.proxy.CACHE_BUDGET_LIMIT
 import com.raofflineproxy.proxy.CacheQueue
 import com.raofflineproxy.proxy.QueueEstimate
+import com.raofflineproxy.proxy.WatchFolders
+import com.raofflineproxy.proxy.WatchedFolder
 import com.raofflineproxy.proxy.SmartCacheRunResult
 import com.raofflineproxy.proxy.ScanResult
 import com.raofflineproxy.proxy.drainCacheQueue
@@ -98,9 +100,11 @@ import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.concurrent.ConcurrentHashMap
@@ -211,6 +215,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     val events = _events.asSharedFlow()
     private val _cachedGames = MutableStateFlow<List<CachedGame>>(emptyList())
     val cachedGames: StateFlow<List<CachedGame>> = _cachedGames.asStateFlow()
+    val watchedFolders: StateFlow<List<WatchedFolder>> =
+        WatchFolders.observe(db).stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
     private val pendingDeletedGameIds: MutableSet<String> = ConcurrentHashMap.newKeySet()
     private val patchCache = mutableMapOf<Long, ParsedPatch>()
     private val unlockCache = mutableMapOf<Long, CachedUnlocks>()
@@ -1665,6 +1671,21 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 SnackbarManager.showMessage(it, completionDuration)
             }
         }
+    }
+
+    fun rememberFolder(treeUri: Uri) {
+        viewModelScope.launch(Dispatchers.IO) { WatchFolders.add(application, db, treeUri) }
+    }
+
+    fun setFolderWatching(folder: WatchedFolder, watching: Boolean) {
+        viewModelScope.launch(Dispatchers.IO) {
+            WatchFolders.setWatching(db, folder.uri, watching)
+            if (watching) ProxyService.wakeFolderWatch()
+        }
+    }
+
+    fun removeFolder(folder: WatchedFolder) {
+        viewModelScope.launch(Dispatchers.IO) { WatchFolders.remove(db, folder.uri) }
     }
 
     fun deleteCachedGame(game: CachedGame) {
