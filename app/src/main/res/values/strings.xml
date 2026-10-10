@@ -343,6 +343,8 @@
     <string name="queue_eta_minutes">%1$d minutes</string>
     <string name="queue_eta_hours">%1$d h %2$d min</string>
     <string name="cached_games_smart_cache">Start Smart Cache</string>
+    <string name="cached_games_search">Search games</string>
+    <string name="cached_games_search_hint">Search games</string>
     <string name="cached_games_scan_folder">Scan ROM folder</string>
     <string name="cached_games_clear_all">Clear all cache</string>
     <string name="cached_games_empty">No games cached yet. Add a ROM or scan your ROM folder while online.</string>

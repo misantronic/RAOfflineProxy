@@ -41,6 +41,10 @@ class CachedGamesFragment : Fragment() {
     private val collapsedConsoleIds = mutableSetOf<Int>()
     private var currentGames: List<CachedGame> = emptyList()
     private var gamesAdapter: CachedGamesAdapter? = null
+    private var headerAdapter: CachedGamesHeaderAdapter? = null
+    private var headerState = CachedGamesHeaderAdapter.HeaderState()
+    private var searchOpen = false
+    private var searchQuery = ""
     private var queueDialog: AlertDialog? = null
 
     private val romFolderPickerLauncher = registerForActivityResult(
@@ -65,7 +69,7 @@ class CachedGamesFragment : Fragment() {
             onHeaderClick = { consoleId ->
                 if (!collapsedConsoleIds.remove(consoleId)) collapsedConsoleIds.add(consoleId)
                 saveCollapsedState()
-                gamesAdapter?.submitList(buildGroupedList(currentGames, collapsedConsoleIds))
+                submitGames()
             },
             onDelete = viewModel::deleteCachedGame,
             onDeleteConsole = { header ->
@@ -108,8 +112,20 @@ class CachedGamesFragment : Fragment() {
                     .create()
                     .also { it.setCanceledOnTouchOutside(false) }
                     .show()
+            },
+            onSearchChanged = { query ->
+                searchQuery = query
+                publishHeaderState(headerState)
+                submitGames()
+            },
+            onSearchToggled = { open ->
+                searchOpen = open
+                if (!open) searchQuery = ""
+                publishHeaderState(headerState)
+                submitGames()
             }
         )
+        this.headerAdapter = headerAdapter
 
         view.findViewById<RecyclerView>(R.id.rv_cached_games).apply {
             layoutManager = LinearLayoutManager(requireContext())
@@ -121,7 +137,7 @@ class CachedGamesFragment : Fragment() {
         viewLifecycleOwner.lifecycleScope.launch {
             viewModel.cachedGames.collect { games ->
                 currentGames = games
-                gamesAdapter?.submitList(buildGroupedList(games, collapsedConsoleIds))
+                submitGames()
             }
         }
 
@@ -146,7 +162,7 @@ class CachedGamesFragment : Fragment() {
                     )
                     else -> queuedStatusText(state)
                 }
-                headerAdapter.update(
+                publishHeaderState(
                     CachedGamesHeaderAdapter.HeaderState(
                         smartCacheEnabled = smartCacheEnabled,
                         showSmartCache = showSmartCache,
@@ -166,6 +182,16 @@ class CachedGamesFragment : Fragment() {
         queueDialog?.dismiss()
         queueDialog = null
         gamesAdapter = null
+        headerAdapter = null
+    }
+
+    private fun publishHeaderState(base: CachedGamesHeaderAdapter.HeaderState) {
+        headerState = base.copy(searchOpen = searchOpen, searchQuery = searchQuery)
+        headerAdapter?.update(headerState)
+    }
+
+    private fun submitGames() {
+        gamesAdapter?.submitList(buildGroupedList(currentGames, collapsedConsoleIds, searchQuery))
     }
 
     private fun updateQueueDialog(estimate: QueueEstimate?) {
@@ -289,6 +315,17 @@ class CachedGamesFragment : Fragment() {
 }
 
 private fun buildGroupedList(
+    games: List<CachedGame>,
+    collapsedConsoleIds: Set<Int>,
+    query: String = ""
+): List<CachedGameListItem> {
+    val searching = query.isNotBlank()
+    val visibleGames = if (searching) games.filter { it.title.contains(query.trim(), ignoreCase = true) } else games
+    val collapsed = if (searching) emptySet() else collapsedConsoleIds
+    return groupByConsole(visibleGames, collapsed)
+}
+
+private fun groupByConsole(
     games: List<CachedGame>,
     collapsedConsoleIds: Set<Int>
 ): List<CachedGameListItem> {
