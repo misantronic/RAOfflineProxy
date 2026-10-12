@@ -319,19 +319,31 @@ class SprucePortTests(unittest.TestCase):
         self.assertEqual(written["proxyPort"], config.SPRUCE_DEFAULT_PROXY_PORT)
         self.assertEqual(written["proxyHost"], "127.0.0.1")
 
-    def test_start_reports_a_taken_port_instead_of_dying_silently(self) -> None:
+    def test_start_moves_to_a_free_port_when_the_configured_one_is_taken(self) -> None:
         listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.addCleanup(listener.close)
         listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         listener.bind(("127.0.0.1", 0))
         listener.listen(1)
         taken_port = listener.getsockname()[1]
+        config_data = {"proxy_port": taken_port}
+        saved: list[dict] = []
 
         with patch.object(service, "discover_service_pids", return_value=[]):
-            with self.assertRaises(RuntimeError) as caught:
-                service.start_service_process({"proxy_port": taken_port})
+            with patch.object(service, "save_config", saved.append):
+                with patch.object(service, "save_running_service_state"):
+                    with patch.object(service.subprocess, "Popen") as popen:
+                        popen.return_value.pid = 1
+                        service.start_service_process(config_data)
 
-        self.assertIn(str(taken_port), str(caught.exception))
+        self.assertGreater(config_data["proxy_port"], taken_port)
+        self.assertEqual(saved, [config_data])
+
+    def test_relocate_gives_up_when_every_candidate_is_taken(self) -> None:
+        with patch.object(service, "port_is_available", return_value=False):
+            with self.assertRaises(RuntimeError) as caught:
+                service.relocate_proxy_port({"proxy_port": 9000})
+
         self.assertIn("already in use", str(caught.exception))
 
 

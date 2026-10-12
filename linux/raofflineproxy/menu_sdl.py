@@ -493,6 +493,7 @@ def start_proxy_inline() -> bool:
     """Starts the proxy. Returns True when RetroArch's cfg was missing and skipped."""
     config_data, cfg_path = runtime_config()
     remove_stale_hook()
+    start_service_process(config_data)
     patch_result = patch_retroarch_cfg(cfg_path, config_data)
     enforce_patched_cfg(cfg_path, config_data)
     batocera = patch_batocera_conf(config_data)
@@ -503,7 +504,6 @@ def start_proxy_inline() -> bool:
     store_ppsspp_previous(patch_state, ppsspp)
     store_dolphin_previous(patch_state, dolphin)
     save_patch_state(patch_state)
-    start_service_process(config_data)
     return not patch_result.get("exists", True)
 
 
