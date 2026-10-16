@@ -54,6 +54,18 @@ DEFAULT_ROCKNIX_RETROARCH_CFG = Path("/storage/.config/retroarch/retroarch.cfg")
 DEFAULT_ROCKNIX_CONFIG_DIR = Path("/storage/.config/raofflineproxy")
 DEFAULT_ROCKNIX_PPSSPP_INI = Path("/storage/.config/ppsspp/PSP/SYSTEM/ppsspp.ini")
 DEFAULT_ROCKNIX_DOLPHIN_CONFIG_DIR = Path("/storage/.config/dolphin-emu")
+
+# Flatpak emulator configuration paths (SteamOS / EmuDeck).
+FLATPAK_RETROARCH_CFG = (
+    Path.home()
+    / ".var/app/org.libretro.RetroArch/config/retroarch/retroarch.cfg"
+)
+
+FLATPAK_DOLPHIN_CONFIG_DIR = (
+    Path.home()
+    / ".var/app/org.DolphinEmu.dolphin-emu/config/dolphin-emu"
+)
+
 # ROCKNIX's setsettings.sh strips cheevos_username/cheevos_password out of retroarch.cfg
 # on every game launch, so this is where the credentials the user entered actually live,
 # in Batocera's key format (global.retroachievements.username/password/token).
@@ -451,6 +463,9 @@ def detect_retroarch_cfg() -> str:
                 return str(candidate)
         return str(candidates[0])
 
+    if FLATPAK_RETROARCH_CFG.is_file():
+        return str(FLATPAK_RETROARCH_CFG)
+
     return str(Path.home() / ".config" / "retroarch" / "retroarch.cfg")
 
 
@@ -510,6 +525,11 @@ def detect_dolphin_config_dir(config_data: dict) -> str | None:
 
     if DEFAULT_ROCKNIX_DOLPHIN_CONFIG_DIR.exists():
         return str(DEFAULT_ROCKNIX_DOLPHIN_CONFIG_DIR)
+
+    if (
+        FLATPAK_DOLPHIN_CONFIG_DIR / "RetroAchievements.ini"
+    ).is_file():
+        return str(FLATPAK_DOLPHIN_CONFIG_DIR)
 
     return None
 
