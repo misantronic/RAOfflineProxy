@@ -1,0 +1,16 @@
+[Unit]
+Description=RAOfflineProxy for Steam Deck and EmuDeck
+
+[Service]
+Type=simple
+WorkingDirectory=%h/.local/share/raofflineproxy/linux
+
+ExecStartPre=/usr/bin/python3 -m raofflineproxy.main apply-emulator-config
+ExecStart=/usr/bin/python3 -m raofflineproxy.main run-service
+ExecStopPost=/usr/bin/python3 -m raofflineproxy.main stop-proxy
+
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=default.target
