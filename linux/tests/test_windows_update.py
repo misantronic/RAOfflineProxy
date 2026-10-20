@@ -2,6 +2,7 @@ import pytest
 
 from linux.raofflineproxy.windows.update import (
     GITHUB_RELEASES_URL,
+    WINDOWS_NIGHTLY_RELEASE_URL,
     allowed_download,
     find_checksum_asset,
 )
@@ -13,7 +14,7 @@ FORK_RELEASES = "https://api.github.com/repos/JoeysRetroHandhelds/RAOfflineProxy
     "url, releases_url, allowed",
     [
         ("https://github.com/misantronic/RAOfflineProxy/releases/download/v2.3/RAOfflineProxy-Windows-v2.3.zip", GITHUB_RELEASES_URL, True),
-        ("https://github.com/misantronic/RAOfflineProxy-nightly/releases/download/nightly-linux/x.zip", GITHUB_RELEASES_URL, True),
+        ("https://github.com/misantronic/RAOfflineProxy-nightly/releases/download/nightly-windows/x.zip", GITHUB_RELEASES_URL, True),
         ("https://github.com/someone/RAOfflineProxy/releases/download/v1/x.zip", GITHUB_RELEASES_URL, False),
         ("https://github.com/misantronic/RAOfflineProxy/archive/x.zip", GITHUB_RELEASES_URL, False),
         ("http://github.com/misantronic/RAOfflineProxy/releases/download/v1/x.zip", GITHUB_RELEASES_URL, False),
@@ -59,3 +60,7 @@ def test_an_official_release_without_a_checksum_is_refused(tmp_path):
         with pytest.raises(RuntimeError, match="no checksum file"):
             update.download_and_launch_installer(zip_url, checksum_url=None)
     download.assert_not_called()
+
+
+def test_nightly_installs_follow_the_windows_release():
+    assert WINDOWS_NIGHTLY_RELEASE_URL.endswith("/RAOfflineProxy-nightly/releases/tags/nightly-windows")

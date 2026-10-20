@@ -222,6 +222,13 @@ jobs:
             "linux/allium/dist/RAOfflineProxy-Allium-v${version}.zip" \
             "linux/muos/dist/RAOfflineProxy-muOS-v${version}.muxapp" \
             "linux/rocknix/dist/RAOfflineProxy-Rocknix-v${version}-Install.sh" \
-            "linux/darkos/dist/RAOfflineProxy-DarkOS-v${version}-Install.sh" \
+            "linux/darkos/dist/RAOfflineProxy-DarkOS-v${version}-Install.sh"
+
+      - name: Publish nightly-windows
+        env:
+          GH_TOKEN: ${{ secrets.NIGHTLY_REPO_TOKEN }}
+        run: |
+          version="${{ steps.version.outputs.version }}"
+          .github/scripts/publish-nightly.sh nightly-windows Windows "${version}" \
             "linux/windows/dist/RAOfflineProxy-Windows-v${version}.zip" \
             "linux/windows/dist/RAOfflineProxy-Windows-v${version}.zip.sha256"

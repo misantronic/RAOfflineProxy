@@ -20,13 +20,15 @@ from pathlib import Path
 from ..config import APP_VERSION, CONFIG_DIR, load_config
 from ..network import configured_ssl_context
 from ..update import (
-    GITHUB_NIGHTLY_RELEASE_URL,
     GITHUB_RELEASES_URL,
     fetch_github_json,
     nightly_version_name,
     parse_version,
 )
 
+WINDOWS_NIGHTLY_RELEASE_URL = (
+    "https://api.github.com/repos/misantronic/RAOfflineProxy-nightly/releases/tags/nightly-windows"
+)
 LOGGER = logging.getLogger("raofflineproxy")
 STATUS_FILE = CONFIG_DIR / "windows_update.json"
 CHECK_INTERVAL_SECONDS = 24 * 60 * 60
@@ -82,7 +84,7 @@ def allowed_download(url: str, releases_url: str) -> bool:
     target = urlsplit(url)
     source = urlsplit(releases_url)
     # The releases and the nightly builds (published to a repository of their own).
-    repos = {repo_of(GITHUB_RELEASES_URL), repo_of(GITHUB_NIGHTLY_RELEASE_URL), repo_of(releases_url)} - {None}
+    repos = {repo_of(GITHUB_RELEASES_URL), repo_of(WINDOWS_NIGHTLY_RELEASE_URL), repo_of(releases_url)} - {None}
     if target.scheme == "https" and target.netloc == "github.com":
         repo = "/".join(target.path.split("/")[1:3]).lower()
         return repo in repos and target.path.split("/")[3:5] == ["releases", "download"]
@@ -110,9 +112,8 @@ def check(force: bool = False) -> WindowsUpdate:
     releases = fetch_github_json(releases_url())
     candidates = [(release, str(release.get("tag_name") or "")) for release in releases or [] if isinstance(release, dict)]
     if current is not None and current.is_nightly and not override:
-        # Nightly installs also follow the nightly build, whose Windows zip is
-        # published alongside the Linux bundles (as the Linux checker does).
-        nightly = fetch_github_json(GITHUB_NIGHTLY_RELEASE_URL)
+        # Nightly installs also follow the nightly build, which has its own release.
+        nightly = fetch_github_json(WINDOWS_NIGHTLY_RELEASE_URL)
         if isinstance(nightly, dict):
             candidates.append((nightly, nightly_version_name(nightly)))
     for release, version_name in candidates:

@@ -69,6 +69,6 @@ This produces `linux/windows/dist/RAOfflineProxy-Windows-v<version>.zip`, about 
 
 ## Releases
 
-The in-app updater offers a release when it has a `RAOfflineProxy-Windows-v<version>.zip` asset, so stable releases need that zip attached alongside the device bundles. Nightly builds include it already: `nightly.yml` cross-builds the bundle on Linux and publishes it with the Linux bundles, and nightly installs follow that release.
+The in-app updater offers a release when it has a `RAOfflineProxy-Windows-v<version>.zip` asset, so stable releases need that zip attached alongside the device bundles. Nightly builds include it already: `nightly.yml` cross-builds the bundle on Linux and publishes it to its own `nightly-windows` release, and nightly installs follow that release.
 
 Every release also needs `RAOfflineProxy-Windows-v<version>.zip.sha256` (the output of `sha256sum` for the zip) attached next to it. Without it the updater refuses to install; `nightly.yml` creates and uploads it. The checksum comes from the same release as the zip, so it guards against a corrupted or truncated download, not against a compromised release. Test channels (`update_releases_url`) may leave it out.
