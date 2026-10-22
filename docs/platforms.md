@@ -18,6 +18,7 @@ This page tracks which emulators and Linux handheld platforms `RAOfflineProxy` c
 | <img class="platforms-table__logo platforms-table__logo--rounded" src="/argosy-launcher.png" alt="Argosy Launcher logo"> | **[Argosy Launcher](https://github.com/rommapp/argosy-launcher)**                                    | ✅ Supported via its built-in proxy URL setting, see [#40](https://github.com/misantronic/RAOfflineProxy/issues/40#issuecomment-4939346094) |
 |                       <img class="platforms-table__logo" src="/emucorex.svg" alt="EmuCoreX logo">                        | **[EmuCoreX](https://emucorex.web.app/)**                                                            | ✅ Supported release                                                                                                                        |
 |                                                                                                                          | **[NetherSX2](https://github.com/Trixarian/NetherSX2-patch)**                                        | ⏳ Awaiting the next NetherSX2 release, which ships [#343](https://github.com/Trixarian/NetherSX2-patch/pull/343); not yet verified         |
+|                                                                                                                          | **[SkyEmu](https://github.com/skylersaleh/SkyEmu)**                                                  | ⏳ Pending a SkyEmu release with the host-override receiver ([#242](https://github.com/misantronic/RAOfflineProxy/issues/242)) |
 
 ## [Linux](/linux-support/)
 

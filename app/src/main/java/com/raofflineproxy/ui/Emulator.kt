@@ -207,6 +207,19 @@ enum class Emulator(
             revertErrorRes = R.string.seedlessds_revert_error_unavailable,
             defaultReceiverClass = "com.seedlessds.app.ra.RaHostOverrideReceiver"
         )
+    ),
+    SkyEmu(
+        displayName = "SkyEmu",
+        labelRes = R.string.emulator_skyemu,
+        prefsId = "skyemu",
+        packageCandidates = listOf("com.sky.SkyEmu"),
+        broadcastOverride = BroadcastOverride(
+            patchSuccessRes = R.string.skyemu_patch_success,
+            patchErrorRes = R.string.skyemu_patch_error_unavailable,
+            revertSuccessRes = R.string.skyemu_revert_success,
+            revertErrorRes = R.string.skyemu_revert_error_unavailable,
+            defaultReceiverClass = "com.sky.SkyEmu.RetroAchievementsHostOverrideReceiver"
+        )
     );
 
     val enabledPrefsKey: String get() = "enable_$prefsId"
