@@ -337,5 +337,43 @@ class LinuxRocknixSystemConfigCredentialTests(unittest.TestCase):
                 store.close()
 
 
+class LinuxKnulliConfCredentialTests(unittest.TestCase):
+    """knulli.conf holds the login before the first libretro launch creates retroarchcustom.cfg."""
+
+    def test_password_read_from_knulli_conf_when_retroarch_cfg_missing(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            knulli_conf = root / "knulli.conf"
+            knulli_conf.write_text(
+                "global.retroachievements=1\n"
+                "global.retroachievements.username=misantronic\n"
+                "global.retroachievements.password=secret\n",
+                encoding="utf-8",
+            )
+            store = storage.Storage(database_path=root / "test.sqlite3")
+            original_login = auth.login_and_cache_token
+            try:
+                seen: dict = {}
+
+                def fake_login(storage_arg, config_data, credentials, user_agent):
+                    seen.update(credentials)
+                    return {"user": credentials["user"], "token": "issued"}
+
+                auth.login_and_cache_token = fake_login
+                resolved = auth.resolve_credentials(
+                    store,
+                    {
+                        "retroarch_cfg": str(root / "missing" / "retroarchcustom.cfg"),
+                        "batocera_conf": str(knulli_conf),
+                    },
+                )
+
+                self.assertEqual(seen, {"user": "misantronic", "password": "secret"})
+                self.assertEqual(resolved, {"user": "misantronic", "token": "issued"})
+            finally:
+                auth.login_and_cache_token = original_login
+                store.close()
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -7,7 +7,6 @@ from typing import Optional
 from .config import (
     detect_batocera_conf,
     detect_darkos_retroarch32_cfg,
-    detect_rocknix_system_cfg,
     proxy_value,
     running_on_spruce,
     spruce_setting,
@@ -21,9 +20,9 @@ HARDCORE_KEY = "cheevos_hardcore_mode_enable"
 USERNAME_KEY = "cheevos_username"
 TOKEN_KEY = "cheevos_token"
 PASSWORD_KEY = "cheevos_password"
-ROCKNIX_SYSTEM_USERNAME_KEY = "global.retroachievements.username"
-ROCKNIX_SYSTEM_TOKEN_KEY = "global.retroachievements.token"
-ROCKNIX_SYSTEM_PASSWORD_KEY = "global.retroachievements.password"
+SYSTEM_CONF_USERNAME_KEY = "global.retroachievements.username"
+SYSTEM_CONF_TOKEN_KEY = "global.retroachievements.token"
+SYSTEM_CONF_PASSWORD_KEY = "global.retroachievements.password"
 
 
 def cheevos_append_cfg_path(cfg_path: str | None) -> Path | None:
@@ -131,37 +130,38 @@ def load_spruce_credentials() -> dict | None:
     return {"user": user, "password": password}
 
 
-def load_rocknix_system_token_credentials(cfg_path: str | None = None) -> dict | None:
-    """ROCKNIX's EmulationStation settings, the only source before a game has launched."""
-    content = _read_rocknix_system_cfg(cfg_path)
+def load_system_conf_token_credentials(cfg_path: str | None = None) -> dict | None:
+    """EmulationStation's own settings (ROCKNIX system.cfg, knulli.conf, batocera.conf),
+    the only source before a game has launched."""
+    content = _read_system_conf(cfg_path)
     if content is None:
         return None
 
-    user = _extract_config_value(content, ROCKNIX_SYSTEM_USERNAME_KEY)
-    token = _extract_config_value(content, ROCKNIX_SYSTEM_TOKEN_KEY)
+    user = _extract_config_value(content, SYSTEM_CONF_USERNAME_KEY)
+    token = _extract_config_value(content, SYSTEM_CONF_TOKEN_KEY)
     if not user or not token:
         return None
 
     return {"user": user, "token": token}
 
 
-def load_rocknix_system_password_credentials(
+def load_system_conf_password_credentials(
     cfg_path: str | None = None,
 ) -> dict | None:
-    content = _read_rocknix_system_cfg(cfg_path)
+    content = _read_system_conf(cfg_path)
     if content is None:
         return None
 
-    user = _extract_config_value(content, ROCKNIX_SYSTEM_USERNAME_KEY)
-    password = _extract_config_value(content, ROCKNIX_SYSTEM_PASSWORD_KEY)
+    user = _extract_config_value(content, SYSTEM_CONF_USERNAME_KEY)
+    password = _extract_config_value(content, SYSTEM_CONF_PASSWORD_KEY)
     if not user or not password:
         return None
 
     return {"user": user, "password": password}
 
 
-def _read_rocknix_system_cfg(cfg_path: str | None) -> str | None:
-    path = cfg_path or detect_rocknix_system_cfg()
+def _read_system_conf(cfg_path: str | None) -> str | None:
+    path = cfg_path or detect_batocera_conf({})
     if not path:
         return None
 
@@ -174,8 +174,9 @@ def _read_rocknix_system_cfg(cfg_path: str | None) -> str | None:
 
 def load_retroarch_credentials(cfg_path: str | None) -> dict | None:
     # Try main cfg first, then the cheevos appendconfig (muOS stores credentials
-    # there), then ROCKNIX's EmulationStation settings (it strips the cheevos keys
-    # out of retroarch.cfg on every game launch, leaving that file the only source),
+    # there), then EmulationStation's own settings (ROCKNIX strips the cheevos keys
+    # out of retroarch.cfg on every game launch, and Knulli/Batocera only write
+    # retroarchcustom.cfg at the first libretro launch),
     # then dArkOS's second (32-bit) RetroArch build, which keeps a separate config
     # tree — a user who set achievements up under a 32-bit core has credentials
     # only there, and reading just the main cfg reports them as logged out.
@@ -190,7 +191,7 @@ def load_retroarch_credentials(cfg_path: str | None) -> dict | None:
     if token_credentials is not None:
         return token_credentials
 
-    token_credentials = load_rocknix_system_token_credentials()
+    token_credentials = load_system_conf_token_credentials()
     if token_credentials is not None:
         return token_credentials
 
@@ -206,7 +207,7 @@ def load_retroarch_credentials(cfg_path: str | None) -> dict | None:
     if password_credentials is not None:
         return password_credentials
 
-    password_credentials = load_rocknix_system_password_credentials()
+    password_credentials = load_system_conf_password_credentials()
     if password_credentials is not None:
         return password_credentials
 

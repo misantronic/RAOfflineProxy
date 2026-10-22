@@ -89,7 +89,7 @@ class TestInstall:
     def test_credentials_are_read_from_system_cfg(self, installed):
         result = installed.app_python(
             "from raofflineproxy import retroarch_cfg as rc;"
-            "print(rc.load_rocknix_system_token_credentials('%s'))"
+            "print(rc.load_system_conf_token_credentials('%s'))"
             % installed.device.batocera_conf,
             check=True,
         )

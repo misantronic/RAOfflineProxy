@@ -244,7 +244,7 @@ class LinuxRocknixMenuCredentialTests(unittest.TestCase):
             )
 
             with mock.patch.object(
-                retroarch_cfg, "detect_rocknix_system_cfg", return_value=str(system_cfg)
+                retroarch_cfg, "detect_batocera_conf", return_value=str(system_cfg)
             ):
                 credentials = retroarch_cfg.load_retroarch_credentials(str(cfg))
 
@@ -257,9 +257,33 @@ class LinuxRocknixMenuCredentialTests(unittest.TestCase):
             cfg.write_text('cheevos_token = "orphan"\n', encoding="utf-8")
 
             with mock.patch.object(
-                retroarch_cfg, "detect_rocknix_system_cfg", return_value=None
+                retroarch_cfg, "detect_batocera_conf", return_value=None
             ):
                 self.assertIsNone(retroarch_cfg.load_retroarch_credentials(str(cfg)))
+
+
+class LinuxKnulliMenuCredentialTests(unittest.TestCase):
+    """Knulli only writes retroarchcustom.cfg at the first libretro launch, so before
+    that the menu has to find the login in knulli.conf."""
+
+    def test_falls_back_to_knulli_conf_when_retroarch_cfg_missing(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            knulli_conf = root / "knulli.conf"
+            knulli_conf.write_text(
+                "global.retroachievements.username=misantronic\n"
+                "global.retroachievements.password=hunter2\n",
+                encoding="utf-8",
+            )
+
+            with mock.patch.object(
+                retroarch_cfg, "detect_batocera_conf", return_value=str(knulli_conf)
+            ):
+                credentials = retroarch_cfg.load_retroarch_credentials(
+                    str(root / "retroarchcustom.cfg")
+                )
+
+            self.assertEqual(credentials, {"user": "misantronic", "password": "hunter2"})
 
 
 class CheevosAppendCfgRevertTests(unittest.TestCase):
@@ -371,7 +395,7 @@ class LinuxDarkosRetroarch32CredentialTests(unittest.TestCase):
 
     def _stub_other_sources(self, stack: ExitStack) -> None:
         stack.enter_context(
-            mock.patch.object(retroarch_cfg, "detect_rocknix_system_cfg", return_value=None)
+            mock.patch.object(retroarch_cfg, "detect_batocera_conf", return_value=None)
         )
         stack.enter_context(
             mock.patch.object(retroarch_cfg, "load_spruce_credentials", return_value=None)
