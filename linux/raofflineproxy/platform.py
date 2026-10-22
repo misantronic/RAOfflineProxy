@@ -162,7 +162,7 @@ def is_autostart_enabled(config_data: dict) -> bool:
     if running_on_windows():
         from .windows import process as windows_process
 
-        return windows_process.autostart_enabled()
+        return windows_process.autostart_enabled(config_data)
     # systemd owns this on dArkOS: the unit's enabled state is the truth, not the
     # config flag, so that toggling it outside the app is still reflected here.
     if running_on_darkos():

@@ -58,6 +58,11 @@ user32 = ctypes.WinDLL("user32", use_last_error=True)
 shell32 = ctypes.WinDLL("shell32", use_last_error=True)
 kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
 user32.DefWindowProcW.argtypes = [wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM]
+user32.RegisterWindowMessageW.restype = wintypes.UINT
+# Sent to every top-level window when the taskbar is (re)created: at sign-in the
+# tray can start before it exists, and Explorer can restart. Icons added before
+# then are gone, so they're added again on this.
+TASKBAR_CREATED = user32.RegisterWindowMessageW("TaskbarCreated")
 user32.DefWindowProcW.restype = LRESULT
 user32.CreateWindowExW.restype = wintypes.HWND
 user32.LoadImageW.restype = wintypes.HANDLE
@@ -240,13 +245,18 @@ class Tray:
             else None
         ) or user32.LoadIconW(None, ctypes.c_void_p(32512))  # IDI_APPLICATION
         self.data = NOTIFYICONDATAW(cbSize=ctypes.sizeof(NOTIFYICONDATAW), hWnd=self.hwnd, uID=1)
-        self.data.uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP
         self.data.uCallbackMessage = WM_TRAY
         self.data.hIcon = self.icon
         self.data.szTip = "RAOfflineProxy"
-        shell32.Shell_NotifyIconW(NIM_ADD, ctypes.byref(self.data))
+        self.icon_added = False
+        self.add_icon()
         self.poll()
         user32.SetTimer(self.hwnd, 1, POLL_MS, None)
+
+    def add_icon(self) -> None:
+        """Fails while there's no taskbar yet; poll() keeps trying until it works."""
+        self.data.uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP
+        self.icon_added = bool(shell32.Shell_NotifyIconW(NIM_ADD, ctypes.byref(self.data)))
 
     def notify(self, title: str, text: str, flag: int) -> None:
         self.data.uFlags = NIF_INFO
@@ -260,6 +270,8 @@ class Tray:
             QUIT_REQUEST_FILE.unlink(missing_ok=True)
             user32.DestroyWindow(self.hwnd)
             return
+        if not self.icon_added:
+            self.add_icon()
         try:
             current = read_snapshot(self.storage)
         except Exception:
@@ -354,6 +366,9 @@ class Tray:
             return 0
         if message == WM_TIMER:
             self.poll()
+            return 0
+        if message == TASKBAR_CREATED:
+            self.add_icon()
             return 0
         if message == WM_DESTROY:
             shell32.Shell_NotifyIconW(NIM_DELETE, ctypes.byref(self.data))

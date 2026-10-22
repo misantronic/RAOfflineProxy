@@ -62,7 +62,7 @@ BACK = "Back"
 # Android app shows under each setting.
 ROW_CAPTIONS = {
     PORT_ROW: "Local port the emulators use to reach the proxy. Stop the proxy to change it.",
-    AUTOSTART_ROW: "Starts the proxy when you sign in to Windows.",
+    AUTOSTART_ROW: "Starts the proxy when you sign in to Windows. Off, sign-in only puts the emulators back after a crash.",
     SMART_CACHE_ROW: "Prefetches achievement data for recently played games whenever the proxy starts.",
     SHOW_LOCKED_ROW: "Includes achievements you haven't unlocked yet in a game's achievement list.",
     UPDATE_CHECK_ROW: "Checks for new versions at startup and about once a day.",
@@ -198,8 +198,11 @@ class SettingsMixin:
                     self.turn_off_autostart()
             except Exception as exc:  # e.g. the prompt left unanswered past the timeout
                 self.flash(f"Start with Windows failed: {exc}", ERROR_SECONDS)
+            # The setting lives in config.json, which the Settings rows read from here.
+            self.config_data = load_config()
 
-        self.flash("Waiting for the admin prompt...", 300)
+        if enable:
+            self.flash("Waiting for the admin prompt...", 300)
         self.autostart_thread = threading.Thread(target=worker, daemon=True)
         self.autostart_thread.start()
 
@@ -216,10 +219,8 @@ class SettingsMixin:
     def turn_off_autostart(self) -> None:
         from . import autostart as windows_autostart
 
-        if windows_autostart.disable():
-            self.flash("Start with Windows is off", 3)
-        else:
-            self.flash("Still on: removing it needs the admin prompt", ERROR_SECONDS)
+        windows_autostart.disable()
+        self.flash("Start with Windows is off", 3)
 
     # Add to Steam ---------------------------------------------------------------
 

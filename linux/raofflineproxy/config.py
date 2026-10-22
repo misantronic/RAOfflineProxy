@@ -323,12 +323,17 @@ def ensure_config_dir() -> Path:
 
 def configure_logging() -> None:
     ensure_config_dir()
-    handler = logging.handlers.RotatingFileHandler(
-        str(LOG_FILE),
-        maxBytes=2 * 1024 * 1024,
-        backupCount=1,
-        encoding="utf-8",
-    )
+    if running_on_windows():
+        from .windows.process import rotating_log_handler
+
+        handler = rotating_log_handler(str(LOG_FILE), 2 * 1024 * 1024, 1, "utf-8")
+    else:
+        handler = logging.handlers.RotatingFileHandler(
+            str(LOG_FILE),
+            maxBytes=2 * 1024 * 1024,
+            backupCount=1,
+            encoding="utf-8",
+        )
     handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s %(message)s"))
     logging.basicConfig(handlers=[handler], level=logging.INFO, force=True)
 

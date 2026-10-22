@@ -315,10 +315,13 @@ def start_service_process(config_data: dict) -> dict:
         # arrives while the service is still starting isn't wiped unread.
         windows_process.clear_stop_request(STOP_REQUEST_FILE)
         detach = windows_process.detached_popen_kwargs()
+        # The service holds this for its whole life: it must not block the log's rollover.
+        log_handle = windows_process.open_log_for_append(str(LOG_FILE), "utf-8", None)
     else:
         detach = {"start_new_session": True, "pass_fds": pass_fds}
+        log_handle = LOG_FILE.open("a", encoding="utf-8")
 
-    with LOG_FILE.open("a", encoding="utf-8") as log_handle:
+    with log_handle:
         process = subprocess.Popen(
             [sys.executable, "-m", "raofflineproxy.main", "run-service"],
             stdout=log_handle,

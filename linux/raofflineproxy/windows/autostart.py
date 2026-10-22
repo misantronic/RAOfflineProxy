@@ -21,6 +21,7 @@ import subprocess
 import uuid
 from pathlib import Path
 
+from ..config import load_config, save_config
 from .paths import PORTABLE_MARKER, portable_root
 
 RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
@@ -49,7 +50,7 @@ foreach ($disk in Get-CimInstance Win32_LogicalDisk -Filter 'DriveType = 2 OR Dr
 foreach ($root in $candidates) {
     if (Test-Folder $root) {
         Start-Process -FilePath (Join-Path $root 'python\pythonw.exe') `
-            -ArgumentList '-m', 'raofflineproxy.windows.launch', '--autostart' `
+            -ArgumentList '-m', 'raofflineproxy.windows.launch', '--sign-in' `
             -WorkingDirectory $root
         break
     }
@@ -181,6 +182,8 @@ TASK_CACHE_SECONDS = 5
 def task_exists() -> bool:
     import time
 
+    if os.environ.get(MODE_ENV) == "run":
+        return False  # the Run entry only, whatever tasks this machine has
     global _task_cache
     if _task_cache is not None and time.monotonic() - _task_cache[0] < TASK_CACHE_SECONDS:
         return _task_cache[1]
@@ -210,8 +213,23 @@ def _run_entry_exists() -> bool:
         return False
 
 
-def is_enabled() -> bool:
+# The setting in config.json. The sign-in check is installed either way; this
+# decides whether it starts the proxy or only puts the emulator configs back.
+SETTING_KEY = "start_with_windows"
+
+
+def is_enabled(config_data: dict | None = None) -> bool:
+    config_data = load_config() if config_data is None else config_data
+    if SETTING_KEY in config_data:
+        return bool(config_data[SETTING_KEY])
+    # Installed before the setting existed: a sign-in entry meant it was on.
     return _run_entry_exists() or task_exists()
+
+
+def _set_setting(enabled: bool) -> None:
+    config_data = load_config()
+    config_data[SETTING_KEY] = enabled
+    save_config(config_data)
 
 
 def _set_run_entry(enabled: bool) -> None:
@@ -236,10 +254,13 @@ def enable() -> str:
     root = portable_root()
     if root is None:
         raise OSError("Start with Windows needs the portable RAOfflineProxy folder")
+    _set_setting(True)
     _write_location(root)
     (launcher_dir() / "start.ps1").write_text(LAUNCHER_SCRIPT.lstrip(), encoding="utf-8")
 
     _forget_task()
+    if task_exists():
+        return "task"  # kept from before (turning it off keeps it): no admin prompt needed
     if os.environ.get(MODE_ENV) != "run":
         command = _launcher_command()
         # Passed in, not read inside: an elevated prompt answered with another
@@ -256,23 +277,30 @@ def enable() -> str:
 
 
 def disable() -> bool:
-    """False when the logon task couldn't be removed (admin prompt declined);
-    the Run entry and launcher are removed either way only on success."""
-    import shutil
-
-    _forget_task()
-    if task_exists() and not _run_elevated(REMOVE_SCRIPT):
-        return False
-    _forget_task()
-    _set_run_entry(False)
-    shutil.rmtree(launcher_dir(), ignore_errors=True)
+    """Turns the setting off. The sign-in check stays (the logon task too, with
+    no admin prompt to remove it): from now on it only puts back emulator
+    configs a crash left pointing at a proxy that isn't running."""
+    _set_setting(False)
     return True
+
+
+def ensure_sign_in_check(root: Path) -> None:
+    """Installs the sign-in check when nothing runs at sign-in yet: the Run
+    entry, which needs no admin rights (only the logon task, from turning Start
+    with Windows on, also runs in Xbox full screen mode)."""
+    _write_location(root)
+    (launcher_dir() / "start.ps1").write_text(LAUNCHER_SCRIPT.lstrip(), encoding="utf-8")
+    if not task_exists() and not _run_entry_exists():
+        _set_run_entry(True)
 
 
 def refresh_location() -> None:
     """Called on every start, so the launcher's first guess is where the folder
-    is now, and the launcher itself is the current version's."""
+    is now, the launcher itself is the current version's, and the sign-in check
+    is in place."""
     root = portable_root()
-    if root is not None and is_enabled():
-        _write_location(root)
-        (launcher_dir() / "start.ps1").write_text(LAUNCHER_SCRIPT.lstrip(), encoding="utf-8")
+    if root is None:
+        return
+    if SETTING_KEY not in load_config():
+        _set_setting(is_enabled())  # before the check is added, which would read as "on"
+    ensure_sign_in_check(root)
