@@ -39,24 +39,28 @@ fun checkIsBroadcastPatched(context: Context, emulator: Emulator): Boolean =
     context.getSharedPreferences(PrefsConstants.PREFS_NAME, Context.MODE_PRIVATE)
         .getBoolean(emulator.patchedThisRunPrefsKey, false)
 
-internal fun supportsBroadcastOverride(context: Context, emulator: Emulator, packageName: String): Boolean {
-    val override = emulator.broadcastOverride ?: return false
-    val receiverComponent = ComponentName(packageName, override.receiverClassFor(packageName))
-    return try {
+internal fun supportsBroadcastOverride(context: Context, emulator: Emulator, packageName: String): Boolean =
+    resolveReceiverClass(context, emulator, packageName) != null
+
+private fun resolveReceiverClass(context: Context, emulator: Emulator, packageName: String): String? {
+    val override = emulator.broadcastOverride ?: return null
+    return override.receiverClassesFor(packageName).firstOrNull { receiverClass ->
+        receiverExists(context, ComponentName(packageName, receiverClass))
+    }
+}
+
+private fun receiverExists(context: Context, component: ComponentName): Boolean =
+    try {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            context.packageManager.getReceiverInfo(
-                receiverComponent,
-                PackageManager.ComponentInfoFlags.of(0)
-            )
+            context.packageManager.getReceiverInfo(component, PackageManager.ComponentInfoFlags.of(0))
         } else {
             @Suppress("DEPRECATION")
-            context.packageManager.getReceiverInfo(receiverComponent, 0)
+            context.packageManager.getReceiverInfo(component, 0)
         }
         true
     } catch (_: PackageManager.NameNotFoundException) {
         false
     }
-}
 
 private fun sendHostOverride(
     context: Context,
@@ -72,7 +76,8 @@ private fun sendHostOverride(
             message = "${emulator.displayName} not installed.",
             skippedNotInstalled = true
         )
-    if (!supportsBroadcastOverride(context, emulator, packageName)) {
+    val receiverClass = resolveReceiverClass(context, emulator, packageName)
+    if (receiverClass == null) {
         return BroadcastPatchResult(
             success = false,
             message = context.getString(if (clear) override.revertErrorRes else override.patchErrorRes)
@@ -81,7 +86,7 @@ private fun sendHostOverride(
 
     val intent = Intent(packageName + if (clear) CLEAR_ACTION_SUFFIX else SET_ACTION_SUFFIX)
         .setPackage(packageName)
-        .setComponent(ComponentName(packageName, override.receiverClassFor(packageName)))
+        .setComponent(ComponentName(packageName, receiverClass))
         .addFlags(Intent.FLAG_RECEIVER_FOREGROUND)
     if (!clear) {
         intent.putExtra(HOST_OVERRIDE_EXTRA, override.hostValue(context))

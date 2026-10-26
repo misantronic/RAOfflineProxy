@@ -28,10 +28,11 @@ internal class BroadcastOverride(
     val revertErrorRes: Int,
     private val defaultReceiverClass: String,
     private val receiverClassByPackage: Map<String, String> = emptyMap(),
+    private val alternateReceiverClasses: List<String> = emptyList(),
     val hostValue: (Context) -> String = { context -> proxyBase(proxyPort(context)) }
 ) {
-    fun receiverClassFor(packageName: String): String =
-        receiverClassByPackage[packageName] ?: defaultReceiverClass
+    fun receiverClassesFor(packageName: String): List<String> =
+        (listOfNotNull(receiverClassByPackage[packageName], defaultReceiverClass) + alternateReceiverClasses).distinct()
 }
 
 enum class Emulator(
@@ -114,7 +115,7 @@ enum class Emulator(
         displayName = "ARMSX2",
         labelRes = R.string.emulator_armsx2,
         prefsId = "armsx2",
-        packageCandidates = listOf("come.nanodata.armsx2", "com.armsx2"),
+        packageCandidates = listOf("come.nanodata.armsx2", "com.armsx2", "com.armsx2.nightly"),
         broadcastOverride = BroadcastOverride(
             patchSuccessRes = R.string.armsx2_patch_success,
             patchErrorRes = R.string.armsx2_patch_error_unavailable,
@@ -124,8 +125,10 @@ enum class Emulator(
             // legacy line (come.nanodata.armsx2) keeps the upstream kr.co.iefriends path.
             defaultReceiverClass = "kr.co.iefriends.pcsx2.utils.RetroAchievementsHostOverrideReceiver",
             receiverClassByPackage = mapOf(
-                "com.armsx2" to "com.armsx2.RetroAchievementsHostOverrideReceiver"
-            )
+                "com.armsx2" to "com.armsx2.RetroAchievementsHostOverrideReceiver",
+                "com.armsx2.nightly" to "com.armsx2.RetroAchievementsHostOverrideReceiver"
+            ),
+            alternateReceiverClasses = listOf("com.armsx2.RetroAchievementsHostOverrideReceiver")
         )
     ),
     Flycast(
