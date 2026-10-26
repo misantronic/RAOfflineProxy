@@ -61,6 +61,9 @@ class MainActivity : AppCompatActivity() {
     private var suppressNextDismissCallback = false
     private var activeSafGrantTarget: SafGrantTarget? = null
     private var usageStatsDialogShown = false
+    private var usageStatsDialog: AlertDialog? = null
+    private var smartCachePromptDialog: AlertDialog? = null
+    private var smartCachePromptPending = false
     private var attemptedGenericAllFilesAccess = false
     private var pendingQuit = false
     private val shizukuPermissionListener = Shizuku.OnRequestPermissionResultListener { requestCode, grantResult ->
@@ -281,7 +284,9 @@ class MainActivity : AppCompatActivity() {
                 } else {
                     activeSafGrantTarget = null
                 }
-                if (state.hasLoginCredentials && state.usageStatsConsent == null && !usageStatsDialogShown) {
+                if (state.hasLoginCredentials && state.usageStatsConsent == null && !usageStatsDialogShown &&
+                    smartCachePromptDialog?.isShowing != true
+                ) {
                     usageStatsDialogShown = true
                     showUsageStatsConsentDialog()
                 }
@@ -613,7 +618,11 @@ class MainActivity : AppCompatActivity() {
         Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)
 
     private fun showSmartCacheAfterProxyStartDialog() {
-        AlertDialog.Builder(this)
+        if (usageStatsDialog?.isShowing == true) {
+            smartCachePromptPending = true
+            return
+        }
+        smartCachePromptDialog = AlertDialog.Builder(this)
             .setTitle(R.string.smart_cache_prompt_title)
             .setMessage(R.string.smart_cache_prompt_message)
             .setPositiveButton(R.string.smart_cache_prompt_start) { _, _ ->
@@ -621,8 +630,18 @@ class MainActivity : AppCompatActivity() {
             }
             .setNegativeButton(R.string.smart_cache_prompt_not_now, null)
             .create()
-            .also { it.setCanceledOnTouchOutside(false) }
-            .show()
+            .also {
+                it.setCanceledOnTouchOutside(false)
+                it.setOnDismissListener {
+                    smartCachePromptDialog = null
+                    val state = viewModel.state.value
+                    if (state.hasLoginCredentials && state.usageStatsConsent == null && !usageStatsDialogShown) {
+                        usageStatsDialogShown = true
+                        showUsageStatsConsentDialog()
+                    }
+                }
+                it.show()
+            }
     }
 
     private fun showManualCredentialsDialog() {
@@ -740,6 +759,14 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+        dialog.setOnDismissListener {
+            usageStatsDialog = null
+            if (smartCachePromptPending) {
+                smartCachePromptPending = false
+                showSmartCacheAfterProxyStartDialog()
+            }
+        }
+        usageStatsDialog = dialog
         dialog.show()
     }
 
