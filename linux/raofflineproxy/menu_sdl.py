@@ -76,6 +76,7 @@ from .rom_browser import (
     remove_cached_game,
 )
 from .service import service_status, start_service_process, stop_service_process
+from .watch_folders import normalize_folder, unwatch_folder, watch_folder, watched_folders
 from .knulli_service import (
     disable_service_autostart,
     enable_service_autostart,
@@ -153,6 +154,8 @@ STATUS_COLOR = (180, 180, 180)
 SECONDARY_TEXT_COLOR = (110, 110, 110)
 ERROR_COLOR = (200, 70, 60)
 ERROR_SECONDS = 3
+BROWSER_MODE_ADD = "add"
+BROWSER_MODE_WATCH = "watch"
 FPS = 60
 LEFT_MARGIN = 32
 GROUP_GAP = 14
@@ -588,6 +591,8 @@ class MenuSdlSession:
         self.key_log: list[int] = []
         self.browser_dir: Path | None = None
         self.browser_root: Path | None = None
+        self.browser_mode = BROWSER_MODE_ADD
+        self.browser_watched: set[str] = set()
         self.browser_entries: list[Path] = []
         self.view_positions: dict[str, tuple[int, int]] = {}
         self.browser_positions: dict[str, tuple[int, int]] = {}
@@ -803,7 +808,7 @@ class MenuSdlSession:
         if self.view == "cached_games":
             cached = [game.title for game in self.cached_games]
             if getattr(self, "main_online", False):
-                return ["Add ROM", "Start Smart Cache", *cached, "Clear cache", "Back"]
+                return ["Add ROMs", "Watch folders", "Start Smart Cache", *cached, "Clear cache", "Back"]
             return [*cached, "Clear cache", "Back"]
 
         if self.view == "pending_awards":
@@ -864,11 +869,11 @@ class MenuSdlSession:
 
             labels = []
             if self.browser_has_cacheable_files():
-                labels.append("Add folder")
+                labels.append(self.browser_action_label())
             effective_root = self.browser_root or resolve_rom_root(load_config())
             if self.browser_dir.parent != self.browser_dir and self.browser_dir != effective_root:
                 labels.append("..")
-            labels.extend(entry.name for entry in self.browser_entries)
+            labels.extend(self.browser_entry_labels())
             labels.append("Cancel")
             return labels
 
@@ -948,7 +953,7 @@ class MenuSdlSession:
                 else "Cached Game"
             )
         if self.view == "file_browser":
-            return "Add ROM"
+            return "Watch folders" if self.browser_watch_mode() else "Add ROMs"
         if self.view == "update_prompt":
             return "Update Available"
         if self.view == "usage_consent":
@@ -1427,14 +1432,18 @@ class MenuSdlSession:
         self.restore_view_position(self.support_qr_return_view)
 
     def cached_games_header_count(self) -> int:
-        return 2 if getattr(self, "main_online", False) else 0
+        return 3 if getattr(self, "main_online", False) else 0
 
     def activate_cached_games_selected(self) -> None:
         labels = self.current_labels()
         selected_label = labels[self.selected_index] if labels else ""
 
-        if selected_label == "Add ROM":
-            self.open_file_browser()
+        if selected_label == "Add ROMs":
+            self.open_file_browser(BROWSER_MODE_ADD)
+            return
+
+        if selected_label == "Watch folders":
+            self.open_file_browser(BROWSER_MODE_WATCH)
             return
 
         if selected_label == "Start Smart Cache":
@@ -1715,7 +1724,10 @@ class MenuSdlSession:
             first_entry_index += 1
         cancel_index = first_entry_index + len(self.browser_entries)
         if has_add_folder and self.selected_index == 0:
-            self.start_folder_cache_for_browser_dir()
+            if self.browser_watch_mode():
+                self.toggle_watch_for_browser_dir()
+            else:
+                self.start_folder_cache_for_browser_dir()
             return
         if parent_index is not None and self.selected_index == parent_index:
             self.save_browser_position()
@@ -1736,10 +1748,11 @@ class MenuSdlSession:
 
         self.start_single_rom_cache(entry)
 
-    def open_file_browser(self) -> None:
+    def open_file_browser(self, mode: str = BROWSER_MODE_ADD) -> None:
         try:
             self.save_view_position("cached_games")
             root = resolve_rom_root(load_config())
+            self.browser_mode = mode
             self.browser_root = root
             self.set_browser_dir(root, restore=True)
             self.view = "file_browser"
@@ -1823,9 +1836,59 @@ class MenuSdlSession:
         self.browser_root = new_root
         self.set_browser_dir(new_root, restore=False)
 
+    def browser_watch_mode(self) -> bool:
+        return getattr(self, "browser_mode", BROWSER_MODE_ADD) == BROWSER_MODE_WATCH
+
+    def browser_is_watched(self, path: Path) -> bool:
+        return normalize_folder(path) in getattr(self, "browser_watched", ())
+
+    def browser_action_label(self) -> str:
+        if not self.browser_watch_mode():
+            return "Add folder"
+        if self.browser_dir is not None and self.browser_is_watched(self.browser_dir):
+            return "Stop watching this folder"
+        return "Watch this folder"
+
+    def browser_entry_labels(self) -> list[str]:
+        if not self.browser_watch_mode():
+            return [entry.name for entry in self.browser_entries]
+        return [
+            f"{entry.name} (watching)" if self.browser_is_watched(entry) else entry.name
+            for entry in self.browser_entries
+        ]
+
+    def refresh_browser_watched(self) -> None:
+        self.browser_watched = {normalize_folder(folder) for folder in watched_folders(load_config())}
+
+    def toggle_watch_for_browser_dir(self) -> None:
+        if self.browser_dir is None:
+            return
+        folder = self.browser_dir
+        config_data = load_config()
+        try:
+            if self.browser_is_watched(folder):
+                unwatch_folder(config_data, self.storage, folder)
+                text = "Stopped watching folder"
+            else:
+                watch_folder(config_data, folder)
+                text = (
+                    "Watching folder"
+                    if self.proxy_running()
+                    else "Watching folder, starts with the proxy"
+                )
+        except Exception as exc:
+            self.message = (f"Watch failed: {exc}", time.monotonic() + ERROR_SECONDS)
+            return
+        self.refresh_browser_watched()
+        self.message = (text, time.monotonic() + 1.5)
+
     def set_browser_dir(self, path: Path, restore: bool = False) -> None:
         self.browser_dir = path
-        self.browser_entries = list_browser_entries(path)
+        entries = list_browser_entries(path)
+        if self.browser_watch_mode():
+            self.refresh_browser_watched()
+            entries = [entry for entry in entries if entry.is_dir()]
+        self.browser_entries = entries
         if restore:
             self.restore_browser_position(path)
             return

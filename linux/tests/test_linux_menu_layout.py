@@ -1,8 +1,10 @@
+import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
 from linux.raofflineproxy import menu_sdl
+from linux.raofflineproxy.storage import Storage
 
 
 class DummyFont:
@@ -37,13 +39,13 @@ class MenuLayoutTests(unittest.TestCase):
         session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
         session.view = "cached_games"
         session.cached_games = [type("Game", (), {"title": "Game One", "game_id": 1})()]
-        session.selected_index = 2
+        session.selected_index = 3
         session.scroll_offset = 0
         session.height = 480
         session.message = None
         session.item_font = DummyFont(22)
 
-        items = ["Add ROM", "Game One", "Clear cache", "Back"]
+        items = ["Add ROMs", "Watch folders", "Start Smart Cache", "Game One", "Clear cache", "Back"]
         start_y = 100
         gap = 28
 
@@ -306,7 +308,7 @@ class MenuLayoutTests(unittest.TestCase):
     def test_activate_cached_games_selected_opens_clear_cache_confirm_on_knulli(self) -> None:
         session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
         session.view = "cached_games"
-        session.selected_index = 2
+        session.selected_index = 3
         session.cached_games = []
         session.clear_cache_return_view = "cached_games"
 
@@ -316,7 +318,8 @@ class MenuLayoutTests(unittest.TestCase):
         original_is_knulli_platform = menu_sdl.MenuSdlSession.is_knulli_platform
         try:
             menu_sdl.MenuSdlSession.current_labels = lambda self: [
-                "Add ROM",
+                "Add ROMs",
+                "Watch folders",
                 "Start Smart Cache",
                 "Clear cache",
                 "Back",
@@ -1175,7 +1178,7 @@ class MenuLayoutTests(unittest.TestCase):
             menu_sdl.resolve_rom_root = original_resolve_rom_root
             menu_sdl.load_config = original_load_config
 
-    def test_cached_games_labels_include_start_smart_cache_after_add_rom(self) -> None:
+    def test_cached_games_labels_list_add_roms_watch_folders_and_smart_cache(self) -> None:
         session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
         session.view = "cached_games"
         session.main_online = True
@@ -1183,7 +1186,7 @@ class MenuLayoutTests(unittest.TestCase):
 
         self.assertEqual(
             menu_sdl.MenuSdlSession.labels(session, running=False),
-            ["Add ROM", "Start Smart Cache", "Tetris", "Clear cache", "Back"],
+            ["Add ROMs", "Watch folders", "Start Smart Cache", "Tetris", "Clear cache", "Back"],
         )
 
     def test_preview_target_game_matches_selected_row_when_offline(self) -> None:
@@ -1202,7 +1205,7 @@ class MenuLayoutTests(unittest.TestCase):
         session.main_online = True
         games = [type("Game", (), {"title": t, "game_id": i})() for i, t in enumerate("ABCD")]
         session.cached_games = games
-        session.selected_index = 3
+        session.selected_index = 4
 
         self.assertIs(menu_sdl.MenuSdlSession.preview_target_game(session), games[1])
 
@@ -1295,13 +1298,14 @@ class MenuLayoutTests(unittest.TestCase):
 
         self.assertEqual(loads, [7, 8])
 
-    def test_activate_cached_games_selected_starts_smart_cache_from_second_item(self) -> None:
+    def test_activate_cached_games_selected_starts_smart_cache_from_third_item(self) -> None:
         session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
         session.view = "cached_games"
         session.cached_games = []
-        session.selected_index = 1
+        session.selected_index = 2
         session.current_labels = lambda: [
-            "Add ROM",
+            "Add ROMs",
+            "Watch folders",
             "Start Smart Cache",
             "Clear cache",
             "Back",
@@ -2052,6 +2056,123 @@ class SupportMeTests(unittest.TestCase):
             ),
             "SMALL_SURFACE",
         )
+
+
+class WatchBrowserTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self._temp_dir = tempfile.TemporaryDirectory()
+        self.store = Storage(database_path=Path(self._temp_dir.name) / "test.sqlite3")
+
+    def tearDown(self) -> None:
+        self.store.close()
+        self._temp_dir.cleanup()
+
+    def make_session(self, folder: Path, mode: str = menu_sdl.BROWSER_MODE_WATCH):
+        session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
+        session.view = "file_browser"
+        session.browser_mode = mode
+        session.browser_dir = folder
+        session.browser_root = folder
+        session.browser_entries = []
+        session.browser_watched = set()
+        session.storage = self.store
+        session.message = None
+        session.browser_has_cacheable_files = lambda: True
+        session.proxy_running = lambda: True
+        return session
+
+    def labels(self, session) -> list[str]:
+        with patch.object(menu_sdl, "resolve_rom_root", lambda _config: session.browser_root), patch.object(
+            menu_sdl, "load_config", lambda: {}
+        ):
+            return menu_sdl.MenuSdlSession.labels(session, running=False)
+
+    def test_watch_mode_offers_watch_this_folder_first(self) -> None:
+        session = self.make_session(Path("/roms"))
+        session.browser_entries = [Path("/roms/gba")]
+
+        self.assertEqual(self.labels(session), ["Watch this folder", "gba", "Cancel"])
+
+    def test_watch_mode_offers_stop_for_a_watched_folder_and_marks_watched_subfolders(self) -> None:
+        session = self.make_session(Path("/roms"))
+        session.browser_watched = {"/roms", "/roms/gba"}
+        session.browser_entries = [Path("/roms/gba"), Path("/roms/nes")]
+
+        self.assertEqual(
+            self.labels(session),
+            ["Stop watching this folder", "gba (watching)", "nes", "Cancel"],
+        )
+
+    def test_add_mode_keeps_add_folder_and_plain_names(self) -> None:
+        session = self.make_session(Path("/roms"), mode=menu_sdl.BROWSER_MODE_ADD)
+        session.browser_watched = {"/roms/gba"}
+        session.browser_entries = [Path("/roms/gba")]
+
+        self.assertEqual(self.labels(session), ["Add folder", "gba", "Cancel"])
+
+    def test_title_depends_on_mode(self) -> None:
+        session = self.make_session(Path("/roms"))
+        self.assertEqual(menu_sdl.MenuSdlSession.title_for_view(session), "Watch folders")
+
+        session.browser_mode = menu_sdl.BROWSER_MODE_ADD
+        self.assertEqual(menu_sdl.MenuSdlSession.title_for_view(session), "Add ROMs")
+
+    def test_selecting_the_first_entry_toggles_watching_in_watch_mode(self) -> None:
+        session = self.make_session(Path("/roms"))
+        session.selected_index = 0
+        session.toggle_watch_for_browser_dir = lambda: setattr(session, "toggled", True)
+        session.start_folder_cache_for_browser_dir = lambda: setattr(session, "cached", True)
+
+        with patch.object(menu_sdl, "resolve_rom_root", lambda _config: Path("/roms")), patch.object(
+            menu_sdl, "load_config", lambda: {}
+        ):
+            menu_sdl.MenuSdlSession.activate_file_browser_selected(session)
+
+        self.assertTrue(getattr(session, "toggled", False))
+        self.assertFalse(getattr(session, "cached", False))
+
+    def test_toggle_watches_then_stops_watching(self) -> None:
+        session = self.make_session(Path("/roms"))
+        config: dict = {}
+        saved: list[dict] = []
+
+        with patch.object(menu_sdl, "load_config", lambda: config), patch(
+            "linux.raofflineproxy.watch_folders.save_config", lambda data: saved.append(dict(data))
+        ):
+            menu_sdl.MenuSdlSession.toggle_watch_for_browser_dir(session)
+            self.assertEqual(session.browser_watched, {"/roms"})
+            self.assertEqual(session.message[0], "Watching folder")
+
+            menu_sdl.MenuSdlSession.toggle_watch_for_browser_dir(session)
+            self.assertEqual(session.browser_watched, set())
+            self.assertEqual(session.message[0], "Stopped watching folder")
+
+        self.assertEqual(saved[0]["watched_folders"], ["/roms"])
+        self.assertEqual(saved[1]["watched_folders"], [])
+
+    def test_toggle_tells_the_user_when_the_proxy_is_stopped(self) -> None:
+        session = self.make_session(Path("/roms"))
+        session.proxy_running = lambda: False
+
+        with patch.object(menu_sdl, "load_config", lambda: {}), patch(
+            "linux.raofflineproxy.watch_folders.save_config", lambda _data: None
+        ):
+            menu_sdl.MenuSdlSession.toggle_watch_for_browser_dir(session)
+
+        self.assertEqual(session.message[0], "Watching folder, starts with the proxy")
+
+    def test_set_browser_dir_hides_files_in_watch_mode(self) -> None:
+        session = self.make_session(Path("/roms"))
+        session.restore_browser_position = lambda _path: None
+        session.reset_selection = lambda: None
+        entries = [Path("/roms/gba"), Path("/roms/game.gba")]
+
+        with patch.object(menu_sdl, "list_browser_entries", lambda _path: entries), patch.object(
+            Path, "is_dir", lambda self: self.name == "gba"
+        ), patch.object(menu_sdl, "load_config", lambda: {}):
+            menu_sdl.MenuSdlSession.set_browser_dir(session, Path("/roms"))
+
+        self.assertEqual(session.browser_entries, [Path("/roms/gba")])
 
 
 if __name__ == "__main__":
