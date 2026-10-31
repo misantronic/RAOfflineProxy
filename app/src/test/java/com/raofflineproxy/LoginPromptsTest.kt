@@ -19,7 +19,7 @@ class LoginPromptsTest {
 
     private val broadcastOnly = supportWithEnabled(
         *Emulator.entries.filter {
-            it !in listOf(Emulator.RetroArch, Emulator.Dolphin, Emulator.Ppsspp)
+            it !in listOf(Emulator.RetroArch, Emulator.Dolphin, Emulator.Ppsspp, Emulator.DuckStation)
         }.toTypedArray()
     )
 
