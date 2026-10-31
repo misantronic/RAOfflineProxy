@@ -94,6 +94,21 @@ enum class Emulator(
             }
         )
     ),
+    DuckStation(
+        displayName = "DuckStation",
+        labelRes = R.string.emulator_duckstation,
+        prefsId = "duckstation",
+        packageCandidates = listOf("com.github.stenzek.duckstation"),
+        configOverride = ConfigOverride(
+            shizukuKey = "duckstation",
+            loadSafUri = { context -> PrefsConstants.loadDuckStationSafUri(context) },
+            detectHardcoreEnabled = ::detectDuckStationHardcoreEnabled,
+            patch = { context, treeUri, _ -> patchDuckStationCfg(context, treeUri) },
+            revert = { context, treeUri, restoreHardcore ->
+                revertDuckStationCfg(context, treeUri, restoreHardcore)
+            }
+        )
+    ),
     Armsx1(
         displayName = "ARMSX1",
         labelRes = R.string.emulator_armsx1,

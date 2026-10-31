@@ -142,6 +142,19 @@ class MainActivity : AppCompatActivity() {
         viewModel.onSafGranted(SafGrantTarget.Dolphin)
     }
 
+    private val duckStationSafLauncher = registerForActivityResult(OpenDuckStationConfigTree()) { uri ->
+        if (uri == null) {
+            viewModel.onSafRejected(SafGrantTarget.DuckStation)
+            return@registerForActivityResult
+        }
+        contentResolver.takePersistableUriPermission(
+            uri,
+            Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+        )
+        PrefsConstants.saveDuckStationSafUri(this, uri)
+        viewModel.onSafGranted(SafGrantTarget.DuckStation)
+    }
+
     private val ppssppSafLauncher = registerForActivityResult(OpenPpssppRootTree()) { uri ->
         if (uri == null) {
             viewModel.onSafRejected(SafGrantTarget.Ppsspp)
@@ -525,6 +538,7 @@ class MainActivity : AppCompatActivity() {
             SafGrantTarget.SmartCacheRetroArch -> R.string.smart_cache_retroarch_access_message
             SafGrantTarget.Dolphin -> R.string.dolphin_saf_dialog_message
             SafGrantTarget.Ppsspp -> R.string.ppsspp_saf_dialog_message
+            SafGrantTarget.DuckStation -> R.string.duckstation_saf_dialog_message
             SafGrantTarget.AllFilesAccess -> R.string.all_files_access_message
             SafGrantTarget.SmartCacheRom -> R.string.smart_cache_rom_saf_dialog_message
         }
@@ -538,6 +552,7 @@ class MainActivity : AppCompatActivity() {
                     SafGrantTarget.SmartCacheRetroArch -> smartCacheRetroArchSafLauncher.launch(Unit)
                     SafGrantTarget.Dolphin -> dolphinSafLauncher.launch(Unit)
                     SafGrantTarget.Ppsspp -> ppssppSafLauncher.launch(Unit)
+                    SafGrantTarget.DuckStation -> duckStationSafLauncher.launch(Unit)
                     SafGrantTarget.AllFilesAccess -> launchAllFilesAccessSettings()
                     SafGrantTarget.SmartCacheRom -> smartCacheRomSafLauncher.launch(viewModel.consumePendingSmartCacheRomGrantPath())
                 }
@@ -549,6 +564,7 @@ class MainActivity : AppCompatActivity() {
                     SafGrantTarget.SmartCacheRetroArch -> viewModel.onSafRejected(SafGrantTarget.SmartCacheRetroArch)
                     SafGrantTarget.Dolphin -> viewModel.onSafRejected(SafGrantTarget.Dolphin)
                     SafGrantTarget.Ppsspp -> viewModel.onSafRejected(SafGrantTarget.Ppsspp)
+                    SafGrantTarget.DuckStation -> viewModel.onSafRejected(SafGrantTarget.DuckStation)
                     SafGrantTarget.AllFilesAccess -> viewModel.onSafRejected(SafGrantTarget.AllFilesAccess)
                     SafGrantTarget.SmartCacheRom -> viewModel.onSafRejected(SafGrantTarget.SmartCacheRom)
                 }
@@ -1070,6 +1086,25 @@ private class OpenDolphinConfigTree : ActivityResultContract<Unit, Uri?>() {
             runCatching { context.packageManager.getPackageInfo(packageName, 0) }
                 .isSuccess
         } ?: Emulator.Dolphin.packageCandidates.first()
+}
+
+private class OpenDuckStationConfigTree : ActivityResultContract<Unit, Uri?>() {
+    override fun createIntent(context: Context, input: Unit): Intent =
+        Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).apply {
+            val duckStationPackage = resolveInstalledPackage(context, Emulator.DuckStation.packageCandidates)
+                ?: Emulator.DuckStation.packageCandidates.first()
+            initialTreeUriForPath("/storage/emulated/0/Android/data/$duckStationPackage")
+                ?.let { putExtra(DocumentsContract.EXTRA_INITIAL_URI, it) }
+            addFlags(
+                Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                    Intent.FLAG_GRANT_WRITE_URI_PERMISSION or
+                    Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION or
+                    Intent.FLAG_GRANT_PREFIX_URI_PERMISSION
+            )
+        }
+
+    override fun parseResult(resultCode: Int, intent: Intent?): Uri? =
+        if (resultCode == android.app.Activity.RESULT_OK) intent?.data else null
 }
 
 private class OpenPpssppRootTree : ActivityResultContract<Unit, Uri?>() {

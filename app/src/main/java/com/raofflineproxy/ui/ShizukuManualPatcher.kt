@@ -11,6 +11,8 @@ import androidx.annotation.Keep
 import androidx.core.content.edit
 import com.raofflineproxy.PrefsConstants
 import com.raofflineproxy.R
+import com.raofflineproxy.proxyBase
+import com.raofflineproxy.proxyPort
 import com.raofflineproxy.proxyValue
 import java.io.File
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -47,6 +49,7 @@ internal suspend fun executeShizukuManualPatch(
     val requestJson = JSONObject()
         .put("action", action)
         .put("proxyAddress", proxyValue(context))
+        .put("proxyBase", proxyBase(proxyPort(context)))
         .put("ppssppRootMode", ppssppRootMode.name)
         .put("ppssppIniPath", ppssppIniPath)
         .put("enabledEmulators", JSONArray().apply {
@@ -189,6 +192,7 @@ class ShizukuManualPatcherService() : IShizukuManualPatcher.Stub() {
             val request = JSONObject(requestJson)
             val action = request.getString("action")
             val proxyAddress = request.getString("proxyAddress")
+            val proxyBaseUrl = request.getString("proxyBase")
             val ppssppRootMode = request.optString("ppssppRootMode")
                 .takeIf { it.isNotBlank() }
                 ?.let { stored -> PrefsConstants.PpssppRootMode.entries.firstOrNull { it.name == stored } }
@@ -308,6 +312,25 @@ class ShizukuManualPatcherService() : IShizukuManualPatcher.Stub() {
                             transform = {
                                 if (action == SHIZUKU_ACTION_PATCH) buildPatchedPpssppContent(it, proxyAddress)
                                 else buildRevertedPpssppContent(it, restoreHardcore)
+                            }
+                        )
+                    }
+
+                    Emulator.DuckStation -> {
+                        transformFirstExistingFile(
+                            candidates = DUCKSTATION_SHIZUKU_SOURCE_CANDIDATES,
+                            patchMessage = "DuckStation patched successfully.",
+                            revertMessage = "DuckStation reverted successfully.",
+                            unavailableMessage = if (action == SHIZUKU_ACTION_PATCH) {
+                                "Could not patch DuckStation automatically."
+                            } else {
+                                "Could not revert DuckStation automatically."
+                            },
+                            action = action,
+                            detectHardcore = detectHardcore,
+                            transform = {
+                                if (action == SHIZUKU_ACTION_PATCH) buildPatchedDuckStationContent(it, proxyBaseUrl)
+                                else buildRevertedDuckStationContent(it, restoreHardcore)
                             }
                         )
                     }
