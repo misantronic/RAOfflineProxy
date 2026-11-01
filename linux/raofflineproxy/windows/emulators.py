@@ -52,7 +52,8 @@ DUCKSTATION = EmulatorKind(
     ("duckstation-qt-x64-releaseltcg.exe", "duckstation-qt-arm64-releaseltcg.exe"),
     "duckstation_ini",
 )
-KINDS = (RETROARCH, DOLPHIN, PPSSPP, PCSX2, DUCKSTATION)
+FLYCAST = EmulatorKind("flycast", "Flycast", ("flycast.exe",), "flycast_cfg")
+KINDS = (RETROARCH, DOLPHIN, PPSSPP, PCSX2, DUCKSTATION, FLYCAST)
 
 SCAN_DEPTH = 3
 SKIP_DIRS = {"windows", "$recycle.bin", "system volume information", "programdata", "node_modules", ".git"}
@@ -89,6 +90,10 @@ def config_for_exe(kind: EmulatorKind, exe: Path) -> Path:
     if kind is DUCKSTATION:
         # Before its first run there's no settings.ini yet, as for PCSX2.
         return windows_paths.duckstation_ini(folder) or windows_paths.duckstation_local_ini()
+    if kind is FLYCAST:
+        # Before its first run there's no emu.cfg yet: beside the exe, where it
+        # creates one when none is in APPDATA.
+        return windows_paths.flycast_cfg(folder) or folder / "emu.cfg"
     # PPSSPP uses a memstick folder beside the exe unless installed.txt says it
     # was installed, in which case it uses Documents\PPSSPP.
     if (folder / "memstick").is_dir() and not (folder / "installed.txt").exists():
@@ -108,7 +113,7 @@ def _registry_install_dirs() -> list[Path]:
         (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall"),
         (winreg.HKEY_CURRENT_USER, r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall"),
     )
-    names = ("retroarch", "dolphin", "ppsspp", "pcsx2", "duckstation")
+    names = ("retroarch", "dolphin", "ppsspp", "pcsx2", "duckstation", "flycast")
     for hive, path in roots:
         try:
             root = winreg.OpenKey(hive, path)

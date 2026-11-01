@@ -604,6 +604,27 @@ def detect_duckstation_ini(config_data: dict) -> str | None:
     return None
 
 
+def detect_flycast_cfg(config_data: dict) -> str | None:
+    """Flycast's emu.cfg. Like PCSX2.ini: found on Windows, elsewhere only
+    where it's configured."""
+    configured = config_data.get("flycast_cfg")
+    if configured:
+        return str(configured)
+
+    env_override = os.environ.get("RAOFFLINEPROXY_FLYCAST_CFG")
+    if env_override:
+        return env_override
+
+    if running_on_windows():
+        from .windows import paths
+
+        windows_cfg = paths.flycast_cfg()
+        if windows_cfg is not None:
+            return str(windows_cfg)
+
+    return None
+
+
 def detect_dolphin_ini(config_data: dict) -> str | None:
     configured = config_data.get("dolphin_ini")
     if configured:

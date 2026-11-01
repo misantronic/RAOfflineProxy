@@ -113,6 +113,20 @@ def duckstation_ini(folder: Path | None = None) -> Path | None:
     return next((candidate for candidate in candidates if candidate.exists()), None)
 
 
+def flycast_appdata_cfg() -> Path:
+    roaming = os.environ.get("APPDATA")
+    base = Path(roaming) if roaming else Path.home() / "AppData" / "Roaming"
+    return base / "flycast" / "emu.cfg"
+
+
+def flycast_cfg(folder: Path | None = None) -> Path | None:
+    """The emu.cfg that exists: beside flycast.exe (when folder is its folder),
+    else the one in APPDATA."""
+    candidates = [folder / "emu.cfg"] if folder is not None else []
+    candidates.append(flycast_appdata_cfg())
+    return next((candidate for candidate in candidates if candidate.exists()), None)
+
+
 def pcsx2_documents_ini() -> Path:
     return Path.home() / "Documents" / "PCSX2" / "inis" / "PCSX2.ini"
 
