@@ -98,6 +98,21 @@ def dolphin_config_dir() -> Path | None:
     return None
 
 
+def duckstation_local_ini() -> Path:
+    local = os.environ.get("LOCALAPPDATA")
+    base = Path(local) if local else Path.home() / "AppData" / "Local"
+    return base / "DuckStation" / "settings.ini"
+
+
+def duckstation_ini(folder: Path | None = None) -> Path | None:
+    """The settings.ini that exists: a portable copy's (portable.txt beside the
+    exe, when folder is that exe's folder), else the one in LOCALAPPDATA."""
+    candidates = [duckstation_local_ini()]
+    if folder is not None and (folder / "portable.txt").exists():
+        candidates.insert(0, folder / "settings.ini")
+    return next((candidate for candidate in candidates if candidate.exists()), None)
+
+
 def pcsx2_documents_ini() -> Path:
     return Path.home() / "Documents" / "PCSX2" / "inis" / "PCSX2.ini"
 

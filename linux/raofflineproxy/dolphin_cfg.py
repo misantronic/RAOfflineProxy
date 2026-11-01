@@ -107,11 +107,14 @@ def build_reverted_dolphin_ini(content: str, previous: dict) -> str:
     )
 
 
-def _update_achievements_section(content: str, updates: dict[str, str | None]) -> str:
-    """Apply key updates within [Achievements]; a `None` value removes the key."""
+def _update_achievements_section(
+    content: str, updates: dict[str, str | None], section: str = ACHIEVEMENTS_SECTION
+) -> str:
+    """Apply key updates within [Achievements] (or another section); a `None`
+    value removes the key."""
     lines = content.split("\n")
     section_index = next(
-        (i for i, line in enumerate(lines) if line.strip() == ACHIEVEMENTS_SECTION),
+        (i for i, line in enumerate(lines) if line.strip() == section),
         None,
     )
 
@@ -120,7 +123,7 @@ def _update_achievements_section(content: str, updates: dict[str, str | None]) -
         if not additions:
             return content
         suffix = "\n".join(f"{key} = {value}" for key, value in additions.items())
-        return content.rstrip("\n") + f"\n{ACHIEVEMENTS_SECTION}\n{suffix}\n"
+        return content.rstrip("\n") + f"\n{section}\n{suffix}\n"
 
     section_end = next(
         (
@@ -154,12 +157,14 @@ def _update_achievements_section(content: str, updates: dict[str, str | None]) -
     return "\n".join(result)
 
 
-def _extract_achievements_value(content: str, key: str) -> str | None:
+def _extract_achievements_value(
+    content: str, key: str, section: str = ACHIEVEMENTS_SECTION
+) -> str | None:
     in_section = False
     for line in content.splitlines():
         stripped = line.strip()
         if stripped.startswith("[") and stripped.endswith("]"):
-            in_section = stripped == ACHIEVEMENTS_SECTION
+            in_section = stripped == section
             continue
         if not in_section:
             continue

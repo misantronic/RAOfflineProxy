@@ -88,6 +88,8 @@ def metadata_overrides(config_data: dict) -> dict:
         emulators.append("PPSSPP")
     if state.get("pcsx2_ini_path"):
         emulators.append("PCSX2")
+    if state.get("duckstation_ini_path"):
+        emulators.append("DuckStation")
     if emulators:
         overrides["emulator"] = emulators
     return overrides

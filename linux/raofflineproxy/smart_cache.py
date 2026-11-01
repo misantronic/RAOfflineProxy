@@ -10,7 +10,7 @@ from pathlib import Path
 
 from . import cache_budget, cache_queue, rom_browser
 from .auth import resolve_credentials
-from .config import detect_dolphin_config_dir, detect_pcsx2_ini, detect_ppsspp_ini
+from .config import detect_dolphin_config_dir, detect_duckstation_ini, detect_pcsx2_ini, detect_ppsspp_ini
 from .platform import read_retroarch_cfg_values, resolve_retroarch_cfg
 from .rom_browser import (
     QueuedRomOutcome,
@@ -40,6 +40,9 @@ DOLPHIN_DISC_ROM_SUFFIXES = (".rvz", ".wia", ".iso", ".gcm")
 # PCSX2's gamelist.cache: "GLCE", then this version (PCSX2 2.x), then entries.
 PCSX2_CACHE_SIGNATURE = 0x45434C47
 PCSX2_CACHE_VERSION = 34
+# DuckStation's gamelist.cache: "HLCE", then this version, then entries.
+DUCKSTATION_CACHE_SIGNATURE = 0x45434C48
+DUCKSTATION_CACHE_VERSION = 41
 # .wad (WAD installer package) has no disc header; its game code lives in the
 # TMD's title ID instead. Only the near-universal RSA-2048 signature type is
 # handled — every commercial Wii TMD/ticket uses it.
@@ -320,6 +323,7 @@ def load_content_history_paths(config_data: dict) -> list[Path]:
         *_load_ppsspp_recent_paths(config_data),
         *_load_dolphin_recent_paths(config_data),
         *_load_pcsx2_recent_paths(config_data),
+        *_load_duckstation_recent_paths(config_data),
     ):
         normalized = str(extra_path)
         if normalized in seen:
@@ -437,6 +441,61 @@ def parse_pcsx2_gamelist_cache(data: bytes) -> dict[str, Path]:
                 strings.append(data[offset : offset + length].decode("utf-8", errors="replace"))
                 offset += length
             offset += 1 + 1 + 8 + 8 + 4 + 1
+            if offset > len(data):
+                return files
+            path, serial = strings[0], strings[1]
+            if serial and path:
+                files.setdefault(serial, Path(path))
+    except struct.error:
+        pass
+    return files
+
+
+def _load_duckstation_recent_paths(config_data: dict) -> list[Path]:
+    """DuckStation's played games, most recent first. playtime.dat has PCSX2's
+    layout; it sits beside settings.ini, with gamelist.cache in the cache folder."""
+    ini_path = detect_duckstation_ini(config_data)
+    if ini_path is None:
+        return []
+    data_dir = Path(ini_path).parent
+    try:
+        playtime = (data_dir / "playtime.dat").read_text(encoding="utf-8", errors="replace")
+        cache = (data_dir / "cache" / "gamelist.cache").read_bytes()
+    except OSError:
+        return []
+    files = parse_duckstation_gamelist_cache(cache)
+    paths = []
+    for serial in parse_pcsx2_playtime(playtime):
+        path = files.get(serial)
+        if path is not None and path.exists():
+            paths.append(path)
+    return paths
+
+
+def parse_duckstation_gamelist_cache(data: bytes) -> dict[str, Path]:
+    """Serial -> disc file from gamelist.cache, known version only, as for
+    PCSX2. Each entry: u8 type, u8 region, path, serial and title (u32 length +
+    UTF-8 each), then u64 hash, s64 size, u64 uncompressed size, u64 modified
+    time, s8 disc set index and a 16-byte achievements hash, all little-endian."""
+    if len(data) < 8 or struct.unpack_from("<II", data) != (
+        DUCKSTATION_CACHE_SIGNATURE,
+        DUCKSTATION_CACHE_VERSION,
+    ):
+        return {}
+    files: dict[str, Path] = {}
+    offset = 8
+    try:
+        while offset < len(data):
+            offset += 1 + 1
+            strings = []
+            for _ in range(3):
+                (length,) = struct.unpack_from("<I", data, offset)
+                offset += 4
+                if offset + length > len(data):
+                    return files
+                strings.append(data[offset : offset + length].decode("utf-8", errors="replace"))
+                offset += length
+            offset += 8 + 8 + 8 + 8 + 1 + 16
             if offset > len(data):
                 return files
             path, serial = strings[0], strings[1]

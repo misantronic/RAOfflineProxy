@@ -583,6 +583,27 @@ def detect_pcsx2_ini(config_data: dict) -> str | None:
     return None
 
 
+def detect_duckstation_ini(config_data: dict) -> str | None:
+    """DuckStation's settings.ini. Like PCSX2.ini: found on Windows, elsewhere
+    only where it's configured."""
+    configured = config_data.get("duckstation_ini")
+    if configured:
+        return str(configured)
+
+    env_override = os.environ.get("RAOFFLINEPROXY_DUCKSTATION_INI")
+    if env_override:
+        return env_override
+
+    if running_on_windows():
+        from .windows import paths
+
+        windows_ini = paths.duckstation_ini()
+        if windows_ini is not None:
+            return str(windows_ini)
+
+    return None
+
+
 def detect_dolphin_ini(config_data: dict) -> str | None:
     configured = config_data.get("dolphin_ini")
     if configured:
