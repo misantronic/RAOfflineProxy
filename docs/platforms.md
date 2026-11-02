@@ -26,6 +26,8 @@ This page tracks which emulators and Linux handheld platforms `RAOfflineProxy` c
 |        <img class="platforms-table__logo" src="/retroarch.png" alt="RetroArch logo">  | **RetroArch** | 🧪 Supported (experimental) |
 |          <img class="platforms-table__logo" src="/dolphin.png" alt="Dolphin logo">    | **Dolphin**   | 🧪 Supported (experimental) |
 |          <img class="platforms-table__logo" src="/pcsx2.webp" alt="PCSX2 logo">       | **PCSX2**     | 🧪 Supported (experimental) |
+|                                                                                       | **DuckStation** | 🧪 Supported (experimental) |
+| <img class="platforms-table__logo platforms-table__logo--rounded" src="/flycast.png" alt="Flycast logo"> | **Flycast** | 🧪 Supported (experimental) |
 |           <img class="platforms-table__logo" src="/ppsspp.png" alt="PPSSPP logo">     | **PPSSPP**    | 🧪 Detected, untested       |
 
 ## [Linux](/linux-support/)
