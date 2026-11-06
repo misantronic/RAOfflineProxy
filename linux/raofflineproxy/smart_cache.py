@@ -10,7 +10,12 @@ from pathlib import Path
 
 from . import cache_budget, cache_queue, rom_browser
 from .auth import resolve_credentials
-from .config import detect_dolphin_config_dir, detect_duckstation_ini, detect_pcsx2_ini, detect_ppsspp_ini
+from .config import (
+    detect_dolphin_config_dir,
+    detect_duckstation_ini,
+    detect_pcsx2_ini,
+    detect_ppsspp_ini,
+)
 from .platform import read_retroarch_cfg_values, resolve_retroarch_cfg
 from .rom_browser import (
     QueuedRomOutcome,
@@ -40,7 +45,6 @@ DOLPHIN_DISC_ROM_SUFFIXES = (".rvz", ".wia", ".iso", ".gcm")
 # PCSX2's gamelist.cache: "GLCE", then this version (PCSX2 2.x), then entries.
 PCSX2_CACHE_SIGNATURE = 0x45434C47
 PCSX2_CACHE_VERSION = 34
-# DuckStation's gamelist.cache: "HLCE", then this version, then entries.
 DUCKSTATION_CACHE_SIGNATURE = 0x45434C48
 DUCKSTATION_CACHE_VERSION = 41
 # .wad (WAD installer package) has no disc header; its game code lives in the
@@ -420,13 +424,31 @@ def parse_pcsx2_playtime(content: str) -> list[str]:
     return [serial for _, serial in sorted(played, reverse=True)]
 
 
+def _known_cache_version(data: bytes, emulator: str, signature: int, version: int) -> bool:
+    if len(data) < 8:
+        return False
+    found_signature, found_version = struct.unpack_from("<II", data)
+    if (found_signature, found_version) == (signature, version):
+        return True
+    LOGGER.warning(
+        "Smart Cache: skipping %s gamelist.cache (signature %#x, version %d;"
+        " reads %#x, version %d)",
+        emulator,
+        found_signature,
+        found_version,
+        signature,
+        version,
+    )
+    return False
+
+
 def parse_pcsx2_gamelist_cache(data: bytes) -> dict[str, Path]:
     """Serial -> disc file from gamelist.cache. Only the layout of the known
     version is read; another one (a PCSX2 that changed it) gives nothing
     rather than a misread. Each entry: path, serial, title, title_sort and
     title_en (u32 length + UTF-8 each), then u8 type, u8 region, u64 size,
     u64 modified time, u32 CRC and u8 compatibility, all little-endian."""
-    if len(data) < 8 or struct.unpack_from("<II", data) != (PCSX2_CACHE_SIGNATURE, PCSX2_CACHE_VERSION):
+    if not _known_cache_version(data, "PCSX2", PCSX2_CACHE_SIGNATURE, PCSX2_CACHE_VERSION):
         return {}
     files: dict[str, Path] = {}
     offset = 8
@@ -452,8 +474,7 @@ def parse_pcsx2_gamelist_cache(data: bytes) -> dict[str, Path]:
 
 
 def _load_duckstation_recent_paths(config_data: dict) -> list[Path]:
-    """DuckStation's played games, most recent first. playtime.dat has PCSX2's
-    layout; it sits beside settings.ini, with gamelist.cache in the cache folder."""
+    """playtime.dat (PCSX2's layout) and cache/gamelist.cache, beside settings.ini."""
     ini_path = detect_duckstation_ini(config_data)
     if ini_path is None:
         return []
@@ -473,13 +494,11 @@ def _load_duckstation_recent_paths(config_data: dict) -> list[Path]:
 
 
 def parse_duckstation_gamelist_cache(data: bytes) -> dict[str, Path]:
-    """Serial -> disc file from gamelist.cache, known version only, as for
-    PCSX2. Each entry: u8 type, u8 region, path, serial and title (u32 length +
-    UTF-8 each), then u64 hash, s64 size, u64 uncompressed size, u64 modified
-    time, s8 disc set index and a 16-byte achievements hash, all little-endian."""
-    if len(data) < 8 or struct.unpack_from("<II", data) != (
-        DUCKSTATION_CACHE_SIGNATURE,
-        DUCKSTATION_CACHE_VERSION,
+    """Each entry: u8 type, u8 region, path, serial and title (u32 length +
+    UTF-8 each), u64 hash, s64 size, u64 uncompressed size, u64 modified time,
+    s8 disc set index, 16-byte achievements hash; little-endian."""
+    if not _known_cache_version(
+        data, "DuckStation", DUCKSTATION_CACHE_SIGNATURE, DUCKSTATION_CACHE_VERSION
     ):
         return {}
     files: dict[str, Path] = {}

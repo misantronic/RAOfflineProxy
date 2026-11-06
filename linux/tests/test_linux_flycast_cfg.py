@@ -32,7 +32,8 @@ class FlycastCfgTests(unittest.TestCase):
     def test_reverting_after_patching_twice_restores_the_file(self) -> None:
         patch_state: dict = {}
         for _ in range(2):
-            flycast_cfg.store_flycast_previous(patch_state, flycast_cfg.patch_flycast_cfg(self.config))
+            result = flycast_cfg.patch_flycast_cfg(self.config)
+            flycast_cfg.store_flycast_previous(patch_state, result)
         flycast_cfg.revert_flycast_cfg(self.config, patch_state["flycast_previous"])
         self.assertEqual(self.cfg.read_text(encoding="utf-8"), EMU_CFG)
 

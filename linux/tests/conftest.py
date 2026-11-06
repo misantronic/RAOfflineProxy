@@ -13,6 +13,7 @@ def no_real_windows_emulator_configs(request, monkeypatch):
         return
     from linux.raofflineproxy.windows import paths
 
-    for name in ("dolphin_config_dir", "ppsspp_ini", "pcsx2_ini", "duckstation_ini", "flycast_cfg"):
+    names = ("dolphin_config_dir", "ppsspp_ini", "pcsx2_ini", "duckstation_ini", "flycast_cfg")
+    for name in names:
         monkeypatch.setattr(paths, name, lambda *args, **kwargs: None)
     monkeypatch.setattr(paths, "retroarch_cfg_candidates", lambda *args, **kwargs: ())

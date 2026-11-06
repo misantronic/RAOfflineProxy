@@ -21,8 +21,8 @@ def patch_dolphin_ini(config_data: dict) -> dict:
 
     original = target.read_text(encoding="utf-8", errors="replace")
     previous = {
-        HOST_KEY: _extract_achievements_value(original, HOST_KEY),
-        HARDCORE_KEY: _extract_achievements_value(original, HARDCORE_KEY),
+        HOST_KEY: extract_achievements_value(original, HOST_KEY),
+        HARDCORE_KEY: extract_achievements_value(original, HARDCORE_KEY),
     }
     transformed = build_patched_dolphin_ini(original, config_data)
     if transformed != original:
@@ -72,7 +72,7 @@ def revert_dolphin_ini(config_data: dict, previous: dict | None = None) -> dict:
 
 
 def build_patched_dolphin_ini(content: str, config_data: dict) -> str:
-    return _update_achievements_section(
+    return update_achievements_section(
         content,
         {
             HOST_KEY: proxy_value(config_data),
@@ -98,7 +98,7 @@ def build_reverted_dolphin_ini(content: str, previous: dict) -> str:
     # Unlike PPSSPP, Dolphin's default ini has no HostUrl key at all until
     # patched, so a captured `None` (never set / sanitized away) means the
     # key should be removed entirely rather than restored as an empty value.
-    return _update_achievements_section(
+    return update_achievements_section(
         content,
         {
             HOST_KEY: previous.get(HOST_KEY),
@@ -107,7 +107,7 @@ def build_reverted_dolphin_ini(content: str, previous: dict) -> str:
     )
 
 
-def _update_achievements_section(
+def update_achievements_section(
     content: str, updates: dict[str, str | None], section: str = ACHIEVEMENTS_SECTION
 ) -> str:
     """Apply key updates within [Achievements] (or another section); a `None`
@@ -157,7 +157,7 @@ def _update_achievements_section(
     return "\n".join(result)
 
 
-def _extract_achievements_value(
+def extract_achievements_value(
     content: str, key: str, section: str = ACHIEVEMENTS_SECTION
 ) -> str | None:
     in_section = False

@@ -105,8 +105,7 @@ def duckstation_local_ini() -> Path:
 
 
 def duckstation_ini(folder: Path | None = None) -> Path | None:
-    """The settings.ini that exists: a portable copy's (portable.txt beside the
-    exe, when folder is that exe's folder), else the one in LOCALAPPDATA."""
+    """A portable copy (portable.txt beside the exe in folder) keeps it beside the exe."""
     candidates = [duckstation_local_ini()]
     if folder is not None and (folder / "portable.txt").exists():
         candidates.insert(0, folder / "settings.ini")
@@ -120,8 +119,6 @@ def flycast_appdata_cfg() -> Path:
 
 
 def flycast_cfg(folder: Path | None = None) -> Path | None:
-    """The emu.cfg that exists: beside flycast.exe (when folder is its folder),
-    else the one in APPDATA."""
     candidates = [folder / "emu.cfg"] if folder is not None else []
     candidates.append(flycast_appdata_cfg())
     return next((candidate for candidate in candidates if candidate.exists()), None)

@@ -33,7 +33,9 @@ def cache_entry(path: str, serial: str) -> bytes:
     )
 
 
-def gamelist_cache(*entries: tuple[str, str], version: int = smart_cache.DUCKSTATION_CACHE_VERSION) -> bytes:
+def gamelist_cache(
+    *entries: tuple[str, str], version: int = smart_cache.DUCKSTATION_CACHE_VERSION
+) -> bytes:
     return struct.pack("<II", smart_cache.DUCKSTATION_CACHE_SIGNATURE, version) + b"".join(
         cache_entry(path, serial) for path, serial in entries
     )
@@ -81,7 +83,10 @@ class DuckStationRecentGamesTests(unittest.TestCase):
 
     def test_an_unknown_cache_version_is_not_guessed_at(self) -> None:
         data = gamelist_cache(("C:/ps1/a.chd", "SLUS-00958"), version=99)
-        self.assertEqual(smart_cache.parse_duckstation_gamelist_cache(data), {})
+        with self.assertLogs("raofflineproxy", "WARNING") as logs:
+            self.assertEqual(smart_cache.parse_duckstation_gamelist_cache(data), {})
+        self.assertIn("DuckStation gamelist.cache", logs.output[0])
+        self.assertIn("version 99", logs.output[0])
 
     def test_a_truncated_cache_keeps_the_entries_before_the_damage(self) -> None:
         data = gamelist_cache(("C:/ps1/a.chd", "SLUS-00958"), ("C:/ps1/b.chd", "SCUS-94503"))
@@ -101,7 +106,8 @@ class DuckStationRecentGamesTests(unittest.TestCase):
         (root / "cache" / "gamelist.cache").write_bytes(
             gamelist_cache((str(game), "SLUS-00958"), (str(root / "gone.chd"), "SLUS-00292"))
         )
-        paths = smart_cache._load_duckstation_recent_paths({"duckstation_ini": str(root / "settings.ini")})
+        config_data = {"duckstation_ini": str(root / "settings.ini")}
+        paths = smart_cache._load_duckstation_recent_paths(config_data)
         self.assertEqual(paths, [game])
 
 

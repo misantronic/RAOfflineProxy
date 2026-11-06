@@ -24,7 +24,11 @@ from .dolphin_cfg import (
     revert_dolphin_ini,
     store_dolphin_previous,
 )
-from .duckstation_cfg import patch_duckstation_ini, revert_duckstation_ini, store_duckstation_previous
+from .duckstation_cfg import (
+    patch_duckstation_ini,
+    revert_duckstation_ini,
+    store_duckstation_previous,
+)
 from .flycast_cfg import patch_flycast_cfg, revert_flycast_cfg, store_flycast_previous
 from .pcsx2_cfg import patch_pcsx2_ini, revert_pcsx2_ini, store_pcsx2_previous
 from .config import (

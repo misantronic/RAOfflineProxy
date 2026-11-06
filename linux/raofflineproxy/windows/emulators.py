@@ -88,11 +88,8 @@ def config_for_exe(kind: EmulatorKind, exe: Path) -> Path:
         # installed PCSX2 will create it, so it still shows on the Emulators screen.
         return windows_paths.pcsx2_ini(folder) or windows_paths.pcsx2_documents_ini()
     if kind is DUCKSTATION:
-        # Before its first run there's no settings.ini yet, as for PCSX2.
         return windows_paths.duckstation_ini(folder) or windows_paths.duckstation_local_ini()
     if kind is FLYCAST:
-        # Before its first run there's no emu.cfg yet: beside the exe, where it
-        # creates one when none is in APPDATA.
         return windows_paths.flycast_cfg(folder) or folder / "emu.cfg"
     # PPSSPP uses a memstick folder beside the exe unless installed.txt says it
     # was installed, in which case it uses Documents\PPSSPP.
