@@ -4,6 +4,7 @@ from pathlib import Path
 from unittest import mock
 
 from linux.raofflineproxy import config, pcsx2_cfg
+from linux.raofflineproxy.dolphin_cfg import extract_achievements_value
 
 # The [Achievements] section as PCSX2 writes it: no Host until one is set.
 PCSX2_INI = """[UI]
@@ -31,7 +32,7 @@ class Pcsx2CfgTests(unittest.TestCase):
     def values(self) -> dict:
         text = self.ini.read_text(encoding="utf-8")
         return {
-            key: pcsx2_cfg._extract_achievements_value(text, key)
+            key: extract_achievements_value(text, key)
             for key in ("Host", "ChallengeMode", "Enabled", "Token")
         }
 

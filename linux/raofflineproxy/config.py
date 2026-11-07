@@ -562,25 +562,37 @@ def detect_dolphin_config_dir(config_data: dict) -> str | None:
     return None
 
 
-def detect_pcsx2_ini(config_data: dict) -> str | None:
-    """PCSX2.ini. Found on Windows; elsewhere only where it's configured, so
-    nothing starts patching a PCSX2.ini on the handhelds."""
-    configured = config_data.get("pcsx2_ini")
+def _detect_windows_only_config(config_data: dict, key: str, finder: str) -> str | None:
+    """Found on Windows; elsewhere only where it's configured, so nothing
+    starts patching these emulators' files on the handhelds."""
+    configured = config_data.get(key)
     if configured:
         return str(configured)
 
-    env_override = os.environ.get("RAOFFLINEPROXY_PCSX2_INI")
+    env_override = os.environ.get(f"RAOFFLINEPROXY_{key.upper()}")
     if env_override:
         return env_override
 
     if running_on_windows():
         from .windows import paths
 
-        windows_ini = paths.pcsx2_ini()
-        if windows_ini is not None:
-            return str(windows_ini)
+        found = getattr(paths, finder)()
+        if found is not None:
+            return str(found)
 
     return None
+
+
+def detect_pcsx2_ini(config_data: dict) -> str | None:
+    return _detect_windows_only_config(config_data, "pcsx2_ini", "pcsx2_ini")
+
+
+def detect_duckstation_ini(config_data: dict) -> str | None:
+    return _detect_windows_only_config(config_data, "duckstation_ini", "duckstation_ini")
+
+
+def detect_flycast_cfg(config_data: dict) -> str | None:
+    return _detect_windows_only_config(config_data, "flycast_cfg", "flycast_cfg")
 
 
 def detect_dolphin_ini(config_data: dict) -> str | None:

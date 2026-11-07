@@ -4,7 +4,7 @@
 Windows support is experimental. It is new and has had little testing, so expect rough edges.
 :::
 
-RAOfflineProxy for Windows is a **portable folder**: nothing is installed, and settings and cached games stay in the folder. It works with RetroArch, Dolphin, PCSX2 and PPSSPP (PPSSPP is untested).
+RAOfflineProxy for Windows is a **portable folder**: nothing is installed, and settings and cached games stay in the folder. It works with RetroArch, Dolphin, PCSX2, DuckStation, Flycast and PPSSPP (PPSSPP is untested).
 
 ## Setup
 
@@ -23,7 +23,7 @@ The proxy runs in the background with a tray icon. The menu works with a control
 
 ## Features
 
-- Supports RetroArch, Dolphin, PCSX2 and PPSSPP
+- Supports RetroArch, Dolphin, PCSX2, DuckStation, Flycast and PPSSPP
 - Works in the Windows **full screen experience** (Xbox mode on handhelds)
 - **Settings > Add to Steam** adds RAOfflineProxy to Steam as a non-Steam game, so you can open it from Steam or Big Picture
 - **Portable**: runs from a USB stick, even when its drive letter changes. A folder copied to another PC finds that PC's emulators and keeps its cache

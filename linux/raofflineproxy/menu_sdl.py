@@ -24,6 +24,12 @@ from .dolphin_cfg import (
     revert_dolphin_ini,
     store_dolphin_previous,
 )
+from .duckstation_cfg import (
+    patch_duckstation_ini,
+    revert_duckstation_ini,
+    store_duckstation_previous,
+)
+from .flycast_cfg import patch_flycast_cfg, revert_flycast_cfg, store_flycast_previous
 from .pcsx2_cfg import patch_pcsx2_ini, revert_pcsx2_ini, store_pcsx2_previous
 from .config import (
     APP_VERSION,
@@ -522,11 +528,15 @@ def start_proxy_inline() -> bool:
     ppsspp = patch_ppsspp_ini(config_data)
     dolphin = patch_dolphin_ini(config_data)
     pcsx2 = patch_pcsx2_ini(config_data)
+    duckstation = patch_duckstation_ini(config_data)
+    flycast = patch_flycast_cfg(config_data)
     patch_state = load_patch_state() or {}
     store_batocera_previous(patch_state, batocera)
     store_ppsspp_previous(patch_state, ppsspp)
     store_dolphin_previous(patch_state, dolphin)
     store_pcsx2_previous(patch_state, pcsx2)
+    store_duckstation_previous(patch_state, duckstation)
+    store_flycast_previous(patch_state, flycast)
     save_patch_state(patch_state)
     return not patch_result.get("exists", True)
 
@@ -542,6 +552,8 @@ def stop_proxy_inline() -> None:
     revert_ppsspp_ini(config_data, patch_state.get("ppsspp_previous", {}))
     revert_dolphin_ini(config_data, patch_state.get("dolphin_previous", {}))
     revert_pcsx2_ini(config_data, patch_state.get("pcsx2_previous", {}))
+    revert_duckstation_ini(config_data, patch_state.get("duckstation_previous", {}))
+    revert_flycast_cfg(config_data, patch_state.get("flycast_previous", {}))
 
     if patch_state:
         revert_retroarch_cfg(revert_cfg_path, patch_state, config_data=config_data)

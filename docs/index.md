@@ -139,6 +139,13 @@ features:
           <span>PCSX2</span>
         </div>
         <div class="supported-platforms__item">
+          <span>DuckStation</span>
+        </div>
+        <div class="supported-platforms__item">
+          <img class="supported-platforms__logo--rounded" src="/flycast.png" alt="Flycast logo">
+          <span>Flycast</span>
+        </div>
+        <div class="supported-platforms__item">
           <img src="/ppsspp.png" alt="PPSSPP logo">
           <span>PPSSPP</span>
         </div>
