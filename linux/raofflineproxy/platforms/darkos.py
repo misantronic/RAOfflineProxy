@@ -33,6 +33,8 @@ DARKOS_USER = "ark"
 class DarkosPlatform(Platform):
     id = "darkos"
     name = "dArkOS"
+    support_label = "dArkOS"
+    update_asset_suffix = ".sh"
 
     def detect(self) -> bool:
         # dArkMoss keeps dArkOS's home directory, but spruce owns the service there.
@@ -65,6 +67,15 @@ class DarkosPlatform(Platform):
 
     def on_autostart_disabled(self) -> None:
         systemd_disable_service()
+
+    def service_start(self, config_data: dict) -> dict | None:
+        return darkos_service_start()
+
+    def service_stop(self) -> dict | None:
+        return darkos_service_stop()
+
+    def service_status(self) -> dict | None:
+        return darkos_service_status()
 
     def install_service_unit(self) -> bool:
         systemd_install_service()

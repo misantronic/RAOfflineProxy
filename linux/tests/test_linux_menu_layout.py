@@ -3,7 +3,10 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+from platform_helpers import use_platform
+
 from linux.raofflineproxy import menu_sdl
+from linux.raofflineproxy.platforms import knulli as knulli_platform
 from linux.raofflineproxy.storage import Storage
 
 
@@ -567,6 +570,7 @@ class MenuLayoutTests(unittest.TestCase):
         self.assertEqual(session.calibration_step, "done")
 
     def test_refresh_main_menu_state_checks_update_only_on_force(self) -> None:
+        use_platform(self, knulli_platform.PLATFORM)
         session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
         session.view = "main"
         session.usage_consent_seen = True
@@ -615,6 +619,7 @@ class MenuLayoutTests(unittest.TestCase):
         self.assertEqual(update_calls, ["knulli"])
 
     def test_refresh_main_menu_state_rechecks_update_when_forced_again(self) -> None:
+        use_platform(self, knulli_platform.PLATFORM)
         session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
         session.view = "main"
         session.usage_consent_seen = True

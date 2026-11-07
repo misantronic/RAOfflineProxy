@@ -5,6 +5,11 @@ from pathlib import Path
 from . import boot_hooks
 
 OS_RELEASE_PATH = Path("/etc/os-release")
+# The standard Linux hardware-identity files (ARM devicetree, x86 DMI), the same pair
+# ROCKNIX's own rocknix-info script uses to label a device.
+DEVICETREE_MODEL_FILE = Path("/sys/firmware/devicetree/base/model")
+DMI_SYS_VENDOR_FILE = Path("/sys/class/dmi/id/sys_vendor")
+DMI_PRODUCT_NAME_FILE = Path("/sys/class/dmi/id/product_name")
 
 
 def existing_dir(path: Path) -> Path | None:
@@ -18,12 +23,52 @@ def read_os_release() -> str:
         return ""
 
 
+def os_release_field(*keys: str) -> str | None:
+    values: dict[str, str] = {}
+    for line in read_os_release().splitlines():
+        if "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        values[key.strip()] = value.strip().strip('"')
+
+    for key in keys:
+        if values.get(key):
+            return values[key]
+    return None
+
+
+def read_stripped(path: Path) -> str | None:
+    try:
+        # Devicetree properties are null-terminated C strings, hence the explicit
+        # strip("\0"): plain .strip() only trims whitespace.
+        text = path.read_text(encoding="utf-8", errors="replace").strip().strip("\0")
+    except OSError:
+        return None
+    return text or None
+
+
+def hardware_device_label(fallback: str) -> str:
+    model = read_stripped(DEVICETREE_MODEL_FILE)
+    if model:
+        return model
+    vendor = read_stripped(DMI_SYS_VENDOR_FILE)
+    product = read_stripped(DMI_PRODUCT_NAME_FILE)
+    combined = " ".join(part for part in (vendor, product) if part)
+    return combined or fallback
+
+
 class Platform:
     """One supported system. Everything that differs between systems belongs on a subclass,
     so the core never has to ask which system it runs on."""
 
     id: str = "generic"
     name: str = "Linux device"
+    # What support tickets and usage reports call this system. Kept stable even where the
+    # platform's own name differs ("OnionOS").
+    support_label: str = "Linux"
+    # The suffix of this platform's release asset ("RAOfflineProxy-<id>-v1.2.3.zip"), or None
+    # where updates are not shipped through the app.
+    update_asset_suffix: str | None = None
 
     def detect(self) -> bool:
         return False
@@ -67,6 +112,20 @@ class Platform:
     def flycast_cfg(self) -> Path | None:
         return None
 
+    @property
+    def update_channel(self) -> str | None:
+        return self.id if self.update_asset_suffix else None
+
+    def os_version(self) -> str | None:
+        return os_release_field("OS_VERSION", "VERSION", "PRETTY_NAME", "VERSION_ID")
+
+    def device_label(self) -> str:
+        return hardware_device_label(self.support_label)
+
+    def unsupported_reason(self) -> str | None:
+        """Why this system cannot be supported (e.g. an old firmware build), or None."""
+        return None
+
     def own_credentials(self) -> dict | None:
         """RetroAchievements credentials kept in the platform's own settings, the only source
         before a game launch copies them into the RetroArch config. Password only."""
@@ -85,6 +144,22 @@ class Platform:
 
     def recent_rom_paths(self) -> list[Path] | None:
         """ROMs from history_source(), or None to fall back to RetroArch's content history."""
+        return None
+
+    def process_backend(self):
+        """Module implementing process handling where the POSIX default does not work
+        (Windows), or None."""
+        return None
+
+    def service_start(self, config_data: dict) -> dict | None:
+        """Starts the service where something other than a detached process owns it (a
+        systemd unit). None means the generic process start applies."""
+        return None
+
+    def service_stop(self) -> dict | None:
+        return None
+
+    def service_status(self) -> dict | None:
         return None
 
     def on_proxy_started(self, config_data: dict) -> None:

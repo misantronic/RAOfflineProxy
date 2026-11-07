@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from . import boot_hooks, miyoo
-from .base import Platform, existing_dir
+from .base import Platform, existing_dir, read_stripped
 
 MARKER_DIR = Path("/mnt/SDCARD/.allium")
 # Allium packages apps as .pak directories under Apps/, not Onion's App/ layout, but runs
@@ -12,6 +12,8 @@ APP_DIR = Path("/mnt/SDCARD/Apps/RAOfflineProxy.pak")
 
 STARTUP_SCRIPT = Path("/mnt/SDCARD/.tmp_update/updater")
 AUTOSTART_LAUNCHER = APP_DIR / "autostart-launch.sh"
+# Allium's own version marker, the same file its updater migrations check against.
+VERSION_FILE = MARKER_DIR / "version.txt"
 # The drop file Allium's own updater looks for before handing off to ota-update.sh. Our
 # boot hook sits above that check, so it has to test the same path to stay out of the way.
 OTA_ARCHIVE = Path("/mnt/SDCARD/allium-ota.zip")
@@ -28,6 +30,8 @@ def boot_hook_block() -> str:
 class AlliumPlatform(Platform):
     id = "allium"
     name = "Allium"
+    support_label = "Allium"
+    update_asset_suffix = ".zip"
 
     def detect(self) -> bool:
         return MARKER_DIR.is_dir()
@@ -41,6 +45,9 @@ class AlliumPlatform(Platform):
     def retroarch_cfg_candidates(self, config_dir: Path) -> tuple[Path, ...]:
         return miyoo.RETROARCH_CFG_CANDIDATES
 
+
+    def os_version(self) -> str | None:
+        return read_stripped(VERSION_FILE)
 
     def default_rom_root(self) -> Path | None:
         return existing_dir(miyoo.ROMS_ROOT)

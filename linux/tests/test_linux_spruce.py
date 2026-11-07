@@ -541,15 +541,15 @@ class SpruceUpdateTests(unittest.TestCase):
     ]
 
     def test_validate_platform_accepts_spruce(self) -> None:
-        self.assertEqual(update.validate_platform("Spruce"), update.PLATFORM_SPRUCE)
+        self.assertEqual(update.validate_platform("Spruce"), "spruce")
 
     def test_asset_lookup_does_not_cross_match_onion_and_spruce(self) -> None:
         self.assertEqual(
-            update.find_platform_asset_url(update.PLATFORM_SPRUCE, self.ASSETS),
+            update.find_platform_asset_url("spruce", self.ASSETS),
             "https://example.test/spruce.zip",
         )
         self.assertEqual(
-            update.find_platform_asset_url(update.PLATFORM_ONION, self.ASSETS),
+            update.find_platform_asset_url("onion", self.ASSETS),
             "https://example.test/onion.zip",
         )
 
@@ -560,11 +560,10 @@ class SpruceLogMetadataTests(unittest.TestCase):
             version_file = Path(temp_dir) / "spruce"
             version_file.write_text("4.3.3\n", encoding="utf-8")
             with patch.object(spruce_platform, "VERSION_FILE", version_file):
-                with patch.object(spruce_platform.PLATFORM, "detect", return_value=True):
-                    with patch.object(config, "spruce_platform", return_value="MiyooMini"):
-                        self.assertEqual(log_uploader._platform_label(), "spruce")
-                        self.assertEqual(log_uploader._os_version_value("spruce"), "4.3.3")
-                        self.assertEqual(log_uploader._device_label("spruce"), "MiyooMini")
+                with patch.object(spruce_platform, "device_name", return_value="MiyooMini"):
+                    self.assertEqual(spruce_platform.PLATFORM.support_label, "spruce")
+                    self.assertEqual(spruce_platform.PLATFORM.os_version(), "4.3.3")
+                    self.assertEqual(spruce_platform.PLATFORM.device_label(), "MiyooMini")
 
 
 if __name__ == "__main__":

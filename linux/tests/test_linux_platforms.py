@@ -121,6 +121,54 @@ class PlatformHookTests(unittest.TestCase):
             self.assertIsNone(muos.PLATFORM.recent_rom_paths())
 
 
+class UpdateChannelTests(unittest.TestCase):
+    def test_update_channels_are_the_platforms_that_ship_a_release_asset(self) -> None:
+        channels = {p.update_channel for p in platforms.PLATFORMS if p.update_channel}
+        self.assertEqual(
+            channels, {"allium", "darkos", "knulli", "muos", "onion", "rocknix", "spruce"}
+        )
+        self.assertIsNone(windows.PLATFORM.update_channel)
+        self.assertIsNone(generic.PLATFORM.update_channel)
+
+    def test_asset_names_match_the_channel_and_suffix(self) -> None:
+        from linux.raofflineproxy import update
+
+        assets = [
+            {"name": "RAOfflineProxy-Onion-v1.zip", "browser_download_url": "https://x/onion.zip"},
+            {"name": "RAOfflineProxy-muOS-v1.muxapp", "browser_download_url": "https://x/muos"},
+            {"name": "RAOfflineProxy-Knulli-v1-Install.sh", "browser_download_url": "https://x/k.sh"},
+        ]
+        self.assertEqual(update.find_platform_asset_url("onion", assets), "https://x/onion.zip")
+        self.assertEqual(update.find_platform_asset_url("muos", assets), "https://x/muos")
+        self.assertEqual(update.find_platform_asset_url("knulli", assets), "https://x/k.sh")
+        self.assertIsNone(update.find_platform_asset_url("windows", assets))
+        self.assertIsNone(update.find_platform_asset_url("nope", assets))
+
+    def test_validate_platform_rejects_unknown_and_channelless_platforms(self) -> None:
+        from linux.raofflineproxy import update
+
+        self.assertEqual(update.validate_platform(" Spruce "), "spruce")
+        for name in ("windows", "generic", "nope"):
+            with self.assertRaises(ValueError):
+                update.validate_platform(name)
+
+
+class ServiceHookTests(unittest.TestCase):
+    def test_only_dArkOS_owns_the_service(self) -> None:
+        for module in (allium, knulli, muos, onion, rocknix, spruce, windows, generic):
+            self.assertIsNone(module.PLATFORM.service_status())
+        with patch.object(darkos, "darkos_service_status", return_value={"running": True}):
+            self.assertEqual(darkos.PLATFORM.service_status(), {"running": True})
+
+    def test_only_windows_has_a_process_backend(self) -> None:
+        for module in (allium, darkos, knulli, muos, onion, rocknix, spruce, generic):
+            self.assertIsNone(module.PLATFORM.process_backend())
+        # Importing the Windows process module needs ctypes.WinDLL, so only the override is checked.
+        self.assertIsNot(
+            type(windows.PLATFORM).process_backend, platforms.base.Platform.process_backend
+        )
+
+
 class StartupScriptTests(unittest.TestCase):
     def test_generic_has_no_startup_script(self) -> None:
         self.assertIsNone(generic.PLATFORM.startup_script())

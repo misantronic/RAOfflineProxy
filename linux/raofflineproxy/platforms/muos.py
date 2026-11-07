@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from .base import Platform, existing_dir
+from .base import Platform, existing_dir, hardware_device_label, read_stripped
 
 MARKER_PATH = Path("/opt/muos/script/archive")
 
@@ -14,6 +14,10 @@ STARTUP_SCRIPT = INIT_DIR / "raofflineproxy.sh"
 ROMS_ROOT = Path("/mnt/mmc/ROMS")
 LAUNCHER = APP_DIR / "launch.sh"
 HISTORY_DIR = Path("/run/muos/storage/info/history")
+# muOS's own board/name config value (confirmed on real hardware, see MustardOS/internal's
+# script/var/func.sh GET_VAR "device" "board/name"). Its devicetree model property only holds
+# the bare SoC codename (e.g. "sun50iw9"), not a useful device label.
+BOARD_NAME_FILE = Path("/opt/muos/device/config/board/name")
 
 
 def history_paths() -> list[Path]:
@@ -73,6 +77,8 @@ def boot_hook_script(launcher: str) -> str:
 class MuosPlatform(Platform):
     id = "muos"
     name = "muOS"
+    support_label = "muOS"
+    update_asset_suffix = ".muxapp"
 
     def detect(self) -> bool:
         return MARKER_PATH.exists()
@@ -104,6 +110,12 @@ class MuosPlatform(Platform):
 
     def remove_boot_hook(self, startup_script: Path) -> None:
         startup_script.unlink()
+
+    def device_label(self) -> str:
+        # e.g. "rg40xx-h" -> "RG40XX-H": muOS's own device/build-target slug, not a marketing
+        # name, but the closest thing available and far more useful than the bare SoC codename.
+        raw = read_stripped(BOARD_NAME_FILE)
+        return raw.upper() if raw else hardware_device_label(self.support_label)
 
     def history_source(self) -> Path | None:
         return HISTORY_DIR if HISTORY_DIR.exists() else None

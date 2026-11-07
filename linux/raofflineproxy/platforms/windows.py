@@ -12,6 +12,7 @@ class WindowsPlatform(Platform):
 
     id = "windows"
     name = "Windows"
+    support_label = "Windows"
 
     def detect(self) -> bool:
         return sys.platform == "win32"
@@ -41,6 +42,11 @@ class WindowsPlatform(Platform):
         from ..windows import paths
 
         return paths.pcsx2_ini()
+
+    def process_backend(self):
+        from ..windows import process
+
+        return process
 
     def preferred_rom_root(self, config_data: dict) -> Path | None:
         # A Windows ROM library can be anywhere, so it is configured ("rom_root" in config.json).

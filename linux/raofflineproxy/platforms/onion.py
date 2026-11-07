@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from . import miyoo, spruce
-from .base import Platform, existing_dir
+from .base import Platform, existing_dir, read_stripped
 
 APP_DIR = Path("/mnt/SDCARD/App/RAOfflineProxy")
 # Onion's own version marker, used to break a tie when both firmwares have left traces on
@@ -12,6 +12,12 @@ VERSION_FILE = Path("/mnt/SDCARD/.tmp_update/onionVersion/version.txt")
 
 STARTUP_SCRIPT = Path("/mnt/SDCARD/.tmp_update/startup/raofflineproxy.sh")
 AUTOSTART_LAUNCHER = APP_DIR / "autostart-launch.sh"
+# Confirmed from OnionUI/Onion's own diagnostics script
+# (static/build/.tmp_update/script/diagnostics/util_snapshot.sh), which reads the same two files.
+DEVICE_MODEL_FILE = Path("/tmp/deviceModel")
+# OnionOS v4.3.1-1 ships a bundled RetroArch build whose achievements client is not
+# reliably compatible with a custom host, so only the build after it is supported.
+SUPPORTED_VERSION_PREFIX = "v4.4.0"
 
 
 def boot_hook_script() -> str:
@@ -32,6 +38,8 @@ def boot_hook_script() -> str:
 class OnionPlatform(Platform):
     id = "onion"
     name = "OnionOS"
+    support_label = "Onion"
+    update_asset_suffix = ".zip"
 
     def detect(self) -> bool:
         # spruceOS reuses Onion's /mnt/SDCARD/App layout, so the app directory alone does not
@@ -48,6 +56,32 @@ class OnionPlatform(Platform):
     def retroarch_cfg_candidates(self, config_dir: Path) -> tuple[Path, ...]:
         return miyoo.RETROARCH_CFG_CANDIDATES
 
+
+    def os_version(self) -> str | None:
+        # Onion has no /etc/os-release; its own diagnostics tool reads this file instead.
+        return read_stripped(VERSION_FILE)
+
+    def device_label(self) -> str:
+        # /tmp/deviceModel holds just the raw numeric chip/model code Onion itself uses (283 =
+        # Miyoo Mini, 354 = Miyoo Mini Plus/Flip, see OnionUI/Onion's device_model.h). Onion's
+        # own System Settings -> About Device screen prefixes it with "MY"; match that.
+        raw = read_stripped(DEVICE_MODEL_FILE)
+        if raw and raw.isdigit():
+            return f"MY{raw}"
+        return raw or self.support_label
+
+    def version_supported(self) -> bool:
+        version = self.os_version()
+        return bool(version) and version.lower().startswith(SUPPORTED_VERSION_PREFIX)
+
+    def unsupported_reason(self) -> str | None:
+        if self.version_supported():
+            return None
+        detected = self.os_version() or "unknown"
+        return (
+            f"Unsupported OnionOS build ({detected}). RAOfflineProxy requires Onion "
+            "v4.4.0-beta-20260120 or newer."
+        )
 
     def default_rom_root(self) -> Path | None:
         return existing_dir(miyoo.ROMS_ROOT)

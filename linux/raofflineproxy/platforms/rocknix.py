@@ -193,6 +193,8 @@ def boot_hook_script(launcher: str) -> str:
 class RocknixPlatform(Platform):
     id = "rocknix"
     name = "ROCKNIX"
+    support_label = "ROCKNIX"
+    update_asset_suffix = ".sh"
 
     def detect(self) -> bool:
         return 'OS_NAME="ROCKNIX"' in read_os_release()

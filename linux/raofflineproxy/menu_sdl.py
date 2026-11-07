@@ -115,9 +115,6 @@ from .update import (
     update_status,
 )
 from .log_uploader import (
-    SUPPORTED_ONION_VERSION_PREFIX,
-    onion_os_version,
-    onion_version_supported,
     report_storage_corruption,
     upload_logs,
 )
@@ -583,7 +580,7 @@ class MenuSdlSession:
         self.pygame = pygame
         self.config_data = load_config()
         self.running = True
-        self.onion_unsupported = running_on_onion() and not onion_version_supported()
+        self.onion_unsupported = platforms.current().unsupported_reason() is not None
         if self.onion_unsupported:
             self.view = "unsupported_onion"
         else:
@@ -1590,19 +1587,7 @@ class MenuSdlSession:
         platform name that `update.validate_platform()` rejects, because every caller
         would then log a spurious "update check failed" line on each refresh.
         """
-        if running_on_muos():
-            return "muos"
-        if running_on_spruce():
-            return "spruce"
-        if running_on_onion():
-            return "onion"
-        if running_on_allium():
-            return "allium"
-        if running_on_rocknix():
-            return "rocknix"
-        if running_on_darkos():
-            return "darkos"
-        return "knulli"
+        return platforms.current().update_channel
 
     def calibration_complete(self) -> bool:
         return (
@@ -1787,10 +1772,10 @@ class MenuSdlSession:
         title_rect = title.get_rect(topleft=(LEFT_MARGIN, max(36, self.height // 12)))
         self.surface.blit(title, title_rect)
 
-        detected = onion_os_version() or "unknown"
+        detected = onion_platform.PLATFORM.os_version() or "unknown"
         message = (
             f"This OnionOS build ({detected}) is not supported.\n"
-            f"RAOfflineProxy requires Onion {SUPPORTED_ONION_VERSION_PREFIX} or newer — "
+            f"RAOfflineProxy requires Onion {onion_platform.SUPPORTED_VERSION_PREFIX} or newer — "
             "older builds ship a RetroArch achievements client that is not reliably "
             "compatible with a custom host.\n"
             "All functionality is disabled until Onion is updated."

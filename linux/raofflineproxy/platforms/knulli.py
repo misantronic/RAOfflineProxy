@@ -4,7 +4,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from .base import Platform, existing_dir
+from .base import Platform, existing_dir, read_stripped
 
 USERDATA_SYSTEM = Path("/userdata/system")
 STARTUP_SCRIPT = Path("/userdata/system/custom.sh")
@@ -14,6 +14,11 @@ KNULLI_CONF = Path("/userdata/system/knulli.conf")
 ROMS_ROOT = Path("/userdata/roms")
 LAUNCHER = Path("/userdata/system/raofflineproxy/bin/raofflineproxy")
 STALE_HOOK_PATH = Path("/userdata/system/scripts/RAOfflineProxy_game_hook.sh")
+# /etc/os-release's OS_VERSION is deliberately truncated to just the leading number by Knulli's
+# own build script (board/scripts/post-build-script.sh in knulli-cfw/knulli-linux); this
+# untruncated file (version + build date + time) is what Knulli's own knulli-report-stats tool
+# reads instead.
+VERSION_FILE = Path("/usr/share/knulli/knulli.version")
 # Knulli/Batocera generate retroarchcustom.cfg at the first libretro launch, so a
 # freshly flashed device has none of these yet. Keep the canonical path as the
 # fallback: /userdata already established the platform, and falling
@@ -36,6 +41,8 @@ SYSTEM_SERVICE_FILES = (
 class KnulliPlatform(Platform):
     id = "knulli"
     name = "Knulli"
+    support_label = "Knulli"
+    update_asset_suffix = ".sh"
 
     def detect(self) -> bool:
         return USERDATA_SYSTEM.exists()
@@ -57,6 +64,9 @@ class KnulliPlatform(Platform):
             return str(BATOCERA_CONF)
 
         return None
+
+    def os_version(self) -> str | None:
+        return read_stripped(VERSION_FILE) or super().os_version()
 
     def default_rom_root(self) -> Path | None:
         return existing_dir(ROMS_ROOT)

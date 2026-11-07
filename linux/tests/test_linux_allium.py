@@ -9,6 +9,7 @@ from unittest.mock import patch
 from linux.raofflineproxy import config, log_uploader, menu_sdl, platform, platforms, update
 from linux.raofflineproxy.platforms import boot_hooks
 from linux.raofflineproxy.platforms import allium as allium_platform
+from linux.raofflineproxy.platforms import base as platform_base
 from linux.raofflineproxy.platforms import onion as onion_platform
 from linux.raofflineproxy.platforms import spruce as spruce_platform
 from platform_helpers import use_platform
@@ -208,14 +209,11 @@ class AlliumUpdateSafetyTests(unittest.TestCase):
         # A "knulli" fallback here would make install_update()'s generic branch download
         # and exec a Knulli installer binary on Miyoo Mini hardware.
         session = self._session()
-        with patch.object(menu_sdl, "running_on_muos", return_value=False):
-            with patch.object(menu_sdl, "running_on_spruce", return_value=False):
-                with patch.object(menu_sdl, "running_on_onion", return_value=False):
-                    with patch.object(menu_sdl, "running_on_allium", return_value=True):
-                        self.assertEqual(session.update_platform(), "allium")
+        use_platform(self, allium_platform.PLATFORM)
+        self.assertEqual(session.update_platform(), "allium")
 
     def test_allium_is_an_installable_update_platform(self) -> None:
-        self.assertEqual(update.validate_platform("Allium"), update.PLATFORM_ALLIUM)
+        self.assertEqual(update.validate_platform("Allium"), "allium")
 
     def test_asset_lookup_does_not_cross_match_allium_and_onion(self) -> None:
         assets = [
@@ -229,11 +227,11 @@ class AlliumUpdateSafetyTests(unittest.TestCase):
             },
         ]
         self.assertEqual(
-            update.find_platform_asset_url(update.PLATFORM_ALLIUM, assets),
+            update.find_platform_asset_url("allium", assets),
             "https://example.test/allium.zip",
         )
         self.assertEqual(
-            update.find_platform_asset_url(update.PLATFORM_ONION, assets),
+            update.find_platform_asset_url("onion", assets),
             "https://example.test/onion.zip",
         )
 
@@ -455,25 +453,24 @@ class AlliumLogMetadataTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             version_file = Path(temp_dir) / "version.txt"
             version_file.write_text("v1.0.1\n", encoding="utf-8")
-            with patch.object(log_uploader, "ALLIUM_VERSION_FILE", version_file):
-                with patch.object(allium_platform.PLATFORM, "detect", return_value=True):
-                    self.assertEqual(log_uploader._platform_label(), "Allium")
-                    self.assertEqual(log_uploader._os_version_value("Allium"), "v1.0.1")
+            with patch.object(allium_platform, "VERSION_FILE", version_file):
+                self.assertEqual(allium_platform.PLATFORM.support_label, "Allium")
+                self.assertEqual(allium_platform.PLATFORM.os_version(), "v1.0.1")
 
     def test_device_label_does_not_fall_back_to_the_string_onion(self) -> None:
         # /tmp/deviceModel is written by Onion's own runtime and does not exist on Allium
-        # (verified on a Miyoo Mini Plus), so routing Allium through _onion_device_label()
-        # would label every Allium device "Onion" in support logs.
+        # (verified on a Miyoo Mini Plus), so reading it for Allium would label every Allium
+        # device "Onion" in support logs.
         with tempfile.TemporaryDirectory() as temp_dir:
             missing = Path(temp_dir) / "deviceModel"
             model_file = Path(temp_dir) / "model"
             model_file.write_text("INFINITY2M SSC011A-S01A-S\0", encoding="utf-8")
-            with patch.object(log_uploader, "ONION_DEVICE_MODEL_FILE", missing):
-                with patch.object(log_uploader, "DEVICETREE_MODEL_FILE", model_file):
+            with patch.object(onion_platform, "DEVICE_MODEL_FILE", missing):
+                with patch.object(platform_base, "DEVICETREE_MODEL_FILE", model_file):
                     self.assertEqual(
-                        log_uploader._device_label("Allium"), "INFINITY2M SSC011A-S01A-S"
+                        allium_platform.PLATFORM.device_label(), "INFINITY2M SSC011A-S01A-S"
                     )
-                    self.assertEqual(log_uploader._device_label("Onion"), "Onion")
+                    self.assertEqual(onion_platform.PLATFORM.device_label(), "Onion")
 
 
 if __name__ == "__main__":

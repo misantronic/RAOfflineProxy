@@ -18,7 +18,6 @@ from .config import (
 )
 from . import platforms, usage_stats
 from .platforms import onion
-from .log_uploader import onion_os_version, onion_version_supported
 from .platform import (
     disable_autostart,
     enable_autostart,
@@ -191,12 +190,9 @@ def _patch_emulator_configs(config_data: dict, cfg_path: str) -> list[str]:
 
 
 def _apply_proxy(config_data: dict, cfg_path: str) -> list[str]:
-    if running_on_onion() and not onion_version_supported():
-        detected = onion_os_version() or "unknown"
-        raise RuntimeError(
-            f"Unsupported OnionOS build ({detected}). RAOfflineProxy requires Onion "
-            "v4.4.0-beta-20260120 or newer."
-        )
+    unsupported = platforms.current().unsupported_reason()
+    if unsupported is not None:
+        raise RuntimeError(unsupported)
 
     output: list[str] = []
 

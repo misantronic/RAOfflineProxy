@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from pathlib import Path
 import shutil
 
+from . import platforms
 from .config import APP_VERSION, CONFIG_DIR
 from .network import configured_ssl_context
 from .state import load_update_status, save_update_status
@@ -25,13 +26,6 @@ GITHUB_NIGHTLY_RELEASE_URL = "https://api.github.com/repos/misantronic/RAOffline
 NIGHTLY_VERSION_SEPARATOR = "-nightly."
 STABLE_NIGHTLY_NUMBER = -1
 UPDATE_CHECK_INTERVAL_SECONDS = 24 * 60 * 60
-PLATFORM_KNULLI = "knulli"
-PLATFORM_ONION = "onion"
-PLATFORM_SPRUCE = "spruce"
-PLATFORM_MUOS = "muos"
-PLATFORM_ROCKNIX = "rocknix"
-PLATFORM_ALLIUM = "allium"
-PLATFORM_DARKOS = "darkos"
 KNULLI_UPDATE_INSTALLER_PATH = CONFIG_DIR / "update-installer.sh"
 ONION_UPDATE_ARCHIVE_PATH = CONFIG_DIR / "update-onion.zip"
 MUOS_UPDATE_ARCHIVE_PATH = CONFIG_DIR / "update-muos.muxapp"
@@ -290,31 +284,15 @@ def should_retry_release_fetch(error: urllib.error.HTTPError) -> bool:
 
 
 def find_platform_asset_url(platform: str, assets: list[dict]) -> str | None:
+    target = platforms.by_id(platform)
+    suffix = target.update_asset_suffix if target is not None else None
+    if suffix is None:
+        return None
+
     for asset in assets:
         name = str(asset.get("name") or "")
         lower_name = name.lower()
-        if platform == PLATFORM_KNULLI:
-            if "knulli" not in lower_name or not lower_name.endswith(".sh"):
-                continue
-        elif platform == PLATFORM_ONION:
-            if "onion" not in lower_name or not lower_name.endswith(".zip"):
-                continue
-        elif platform == PLATFORM_SPRUCE:
-            if "spruce" not in lower_name or not lower_name.endswith(".zip"):
-                continue
-        elif platform == PLATFORM_MUOS:
-            if "muos" not in lower_name or not lower_name.endswith(".muxapp"):
-                continue
-        elif platform == PLATFORM_ROCKNIX:
-            if "rocknix" not in lower_name or not lower_name.endswith(".sh"):
-                continue
-        elif platform == PLATFORM_ALLIUM:
-            if "allium" not in lower_name or not lower_name.endswith(".zip"):
-                continue
-        elif platform == PLATFORM_DARKOS:
-            if "darkos" not in lower_name or not lower_name.endswith(".sh"):
-                continue
-        else:
+        if platform not in lower_name or not lower_name.endswith(suffix):
             continue
 
         asset_url = str(asset.get("browser_download_url") or "").strip()
@@ -714,15 +692,8 @@ def parse_base_version(normalized: str) -> ParsedVersion | None:
 
 def validate_platform(platform: str) -> str:
     lowered = platform.strip().lower()
-    if lowered not in {
-        PLATFORM_KNULLI,
-        PLATFORM_ONION,
-        PLATFORM_SPRUCE,
-        PLATFORM_MUOS,
-        PLATFORM_ROCKNIX,
-        PLATFORM_ALLIUM,
-        PLATFORM_DARKOS,
-    }:
+    target = platforms.by_id(lowered)
+    if target is None or target.update_channel is None:
         raise ValueError(f"Unsupported update platform: {platform}")
     return lowered
 

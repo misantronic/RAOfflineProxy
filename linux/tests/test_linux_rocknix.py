@@ -203,12 +203,12 @@ class RocknixUpdateTests(unittest.TestCase):
         ]
 
         self.assertEqual(
-            update.find_platform_asset_url(update.PLATFORM_ROCKNIX, assets),
+            update.find_platform_asset_url("rocknix", assets),
             "rocknix-url",
         )
 
     def test_validate_platform_accepts_rocknix(self) -> None:
-        self.assertEqual(update.validate_platform("rocknix"), update.PLATFORM_ROCKNIX)
+        self.assertEqual(update.validate_platform("rocknix"), "rocknix")
 
 
 if __name__ == "__main__":

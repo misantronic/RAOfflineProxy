@@ -5,7 +5,7 @@ import os
 from pathlib import Path
 
 from . import boot_hooks, miyoo, onion
-from .base import Platform, existing_dir, read_os_release
+from .base import Platform, existing_dir, read_os_release, read_stripped
 
 # spruceOS keeps its bare version string ("4.3.3") in this file, the same one its own
 # updater and spruceRestore upgrade scripts read.
@@ -165,6 +165,8 @@ def setting(name: str) -> str | None:
 class SprucePlatform(Platform):
     id = "spruce"
     name = "spruce"
+    support_label = "spruce"
+    update_asset_suffix = ".zip"
 
     def detect(self) -> bool:
         if not VERSION_FILE.exists():
@@ -202,6 +204,13 @@ class SprucePlatform(Platform):
 
     def default_rom_root(self) -> Path | None:
         return existing_dir(miyoo.ROMS_ROOT)
+
+    def os_version(self) -> str | None:
+        # spruce has no /etc/os-release either; this is the file its own updater reads.
+        return read_stripped(VERSION_FILE)
+
+    def device_label(self) -> str:
+        return device_name()
 
     def own_credentials(self) -> dict | None:
         # spruce's own settings hold the credentials before any game launch has copied them
