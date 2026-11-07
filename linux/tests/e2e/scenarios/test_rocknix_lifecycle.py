@@ -57,6 +57,17 @@ class TestInstall:
         assert container.exists(device.base_dir + "/app/raofflineproxy/main.py")
         assert container.is_executable(device.tools_entry)
 
+    def test_reinstalling_drops_files_a_release_no_longer_ships(self, installed):
+        container, device = installed.container, installed.device
+        stale = device.base_dir + "/app/raofflineproxy/removed_in_a_later_release.py"
+        container.write_file(stale, "# left behind by an earlier release\n")
+
+        installed.reinstall()
+
+        assert not container.exists(stale)
+        assert container.exists(device.base_dir + "/app/raofflineproxy/main.py")
+        installed.cli.run("status", check=True)
+
     def test_detects_rocknix_and_its_config_paths(self, installed):
         result = installed.app_python(
             "from raofflineproxy import batocera_conf, config;from raofflineproxy.emulators import dolphin_cfg, ppsspp_cfg, retroarch_cfg;"

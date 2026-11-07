@@ -52,6 +52,12 @@ if [ -x "${OLD_BIN}" ]; then
   ${OLD_BIN} stop-proxy >/dev/null 2>&1 || true
 fi
 
+# Replace rather than overlay, so modules a release removed or moved do not linger in the
+# app folder. Everything in these two folders ships with the bundle; user data lives elsewhere.
+rm -rf "${APP_DIR}" "${LIB_DIR}"
+mkdir -p "${APP_DIR}"
+mkdir -p "${LIB_DIR}"
+
 cp -r "${SCRIPT_DIR}/app/"* "${APP_DIR}/"
 cp -r "${SCRIPT_DIR}/lib/"* "${LIB_DIR}/"
 
