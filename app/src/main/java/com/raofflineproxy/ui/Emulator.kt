@@ -171,6 +171,20 @@ enum class Emulator(
             defaultReceiverClass = "paulscode.android.mupen64plusae.jni.RetroAchievementsHostOverrideReceiver"
         )
     ),
+    Joey64(
+        displayName = "Joey64",
+        labelRes = R.string.emulator_joey64,
+        prefsId = "joey64",
+        packageCandidates = listOf("com.joeysretro.joey64"),
+        broadcastOverride = BroadcastOverride(
+            patchSuccessRes = R.string.joey64_patch_success,
+            patchErrorRes = R.string.joey64_patch_error_unavailable,
+            revertSuccessRes = R.string.joey64_revert_success,
+            revertErrorRes = R.string.joey64_revert_error_unavailable,
+            // Joey64 only takes hosts on the device (127.0.0.1, localhost, [::1]).
+            defaultReceiverClass = "com.joeysretro.joey64.achievements.RetroAchievementsHostOverrideReceiver"
+        )
+    ),
     EmuCoreX(
         displayName = "EmuCoreX",
         labelRes = R.string.emulator_emucorex,
