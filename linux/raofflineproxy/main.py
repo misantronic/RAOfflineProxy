@@ -10,15 +10,14 @@ from pathlib import Path
 from .auth import resolve_credentials
 from .config import (
     CONFIG_FILE,
-    DEFAULT_ONION_APP_DIR,
     configure_logging,
-    detect_retroarch_cfg,
     load_config,
     proxy_value,
     running_on_darkos,
     running_on_onion,
 )
-from .darkos_service import systemd_install_service
+from .platforms.darkos import systemd_install_service
+from .platforms import onion
 from . import usage_stats
 from .log_uploader import onion_os_version, onion_version_supported
 from .platform import (
@@ -35,24 +34,25 @@ from .batocera_conf import (
     revert_batocera_conf,
     store_batocera_previous,
 )
-from .ppsspp_cfg import (
+from .emulators.ppsspp_cfg import (
     patch_ppsspp_ini,
     revert_ppsspp_ini,
     store_ppsspp_previous,
 )
-from .dolphin_cfg import (
+from .emulators.dolphin_cfg import (
     patch_dolphin_ini,
     revert_dolphin_ini,
     store_dolphin_previous,
 )
-from .duckstation_cfg import (
+from .emulators.duckstation_cfg import (
     patch_duckstation_ini,
     revert_duckstation_ini,
     store_duckstation_previous,
 )
-from .flycast_cfg import patch_flycast_cfg, revert_flycast_cfg, store_flycast_previous
-from .pcsx2_cfg import patch_pcsx2_ini, revert_pcsx2_ini, store_pcsx2_previous
-from .retroarch_cfg import (
+from .emulators.flycast_cfg import patch_flycast_cfg, revert_flycast_cfg, store_flycast_previous
+from .emulators.pcsx2_cfg import patch_pcsx2_ini, revert_pcsx2_ini, store_pcsx2_previous
+from .emulators.retroarch_cfg import (
+    detect_retroarch_cfg,
     enforce_patched_cfg,
     enforce_secondary_retroarch_cfgs,
     patch_retroarch_cfg,
@@ -1044,7 +1044,7 @@ def main() -> None:
 
             stop_service_process()
             archive = download_onion_update_archive(info.asset_url)
-            install_onion_update_archive(archive, DEFAULT_ONION_APP_DIR, "App")
+            install_onion_update_archive(archive, onion.APP_DIR, "App")
 
             result = {"installed": True, "version": info.latest_version}
             print(json.dumps(result, separators=(",", ":")) if args.as_json

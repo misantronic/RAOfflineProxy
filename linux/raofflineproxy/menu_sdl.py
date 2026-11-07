@@ -9,34 +9,35 @@ import time
 from collections import OrderedDict
 from pathlib import Path
 
+from .platforms import allium as allium_platform
+from .platforms import knulli as knulli_platform
+from .platforms import muos as muos_platform
+from .platforms import onion as onion_platform
 from .batocera_conf import (
     patch_batocera_conf,
     revert_batocera_conf,
     store_batocera_previous,
 )
-from .ppsspp_cfg import (
+from .emulators.ppsspp_cfg import (
     patch_ppsspp_ini,
     revert_ppsspp_ini,
     store_ppsspp_previous,
 )
-from .dolphin_cfg import (
+from .emulators.dolphin_cfg import (
     patch_dolphin_ini,
     revert_dolphin_ini,
     store_dolphin_previous,
 )
-from .duckstation_cfg import (
+from .emulators.duckstation_cfg import (
     patch_duckstation_ini,
     revert_duckstation_ini,
     store_duckstation_previous,
 )
-from .flycast_cfg import patch_flycast_cfg, revert_flycast_cfg, store_flycast_previous
-from .pcsx2_cfg import patch_pcsx2_ini, revert_pcsx2_ini, store_pcsx2_previous
+from .emulators.flycast_cfg import patch_flycast_cfg, revert_flycast_cfg, store_flycast_previous
+from .emulators.pcsx2_cfg import patch_pcsx2_ini, revert_pcsx2_ini, store_pcsx2_previous
 from .config import (
     APP_VERSION,
     CONFIG_DIR,
-    DEFAULT_ALLIUM_APP_DIR,
-    DEFAULT_DARKOS_HOME,
-    DEFAULT_ONION_APP_DIR,
     load_config,
     running_on_allium,
     running_on_onion,
@@ -58,7 +59,7 @@ from .platform import (
 )
 from .pending_awards import delete_pending_award, list_pending_awards
 from .network import online_check
-from .retroarch_cfg import (
+from .emulators.retroarch_cfg import (
     enforce_patched_cfg,
     load_retroarch_credentials,
     patch_retroarch_cfg,
@@ -83,7 +84,7 @@ from .rom_browser import (
 )
 from .service import service_status, start_service_process, stop_service_process
 from .watch_folders import normalize_folder, unwatch_folder, watch_folder, watched_folders
-from .knulli_service import (
+from .platforms.knulli import (
     disable_service_autostart,
     enable_service_autostart,
     service_autostart_enabled,
@@ -496,7 +497,7 @@ def remove_stale_hook() -> None:
 
 
 def running_on_muos() -> bool:
-    return Path("/opt/muos/script/archive").exists()
+    return muos_platform.PLATFORM.detect()
 
 
 def restart_muos_frontend() -> None:
@@ -1581,7 +1582,7 @@ class MenuSdlSession:
         self.message = ("Cache cleared", time.monotonic() + 1.5)
 
     def is_knulli_platform(self) -> bool:
-        return Path("/userdata/system").exists()
+        return knulli_platform.PLATFORM.detect()
 
     def update_platform(self) -> str | None:
         """The release channel to check for updates, or None where there is none.
@@ -3183,10 +3184,10 @@ class MenuSdlSession:
         # Each target passes its own layout: Onion and spruce share App/RAOfflineProxy,
         # Allium ships Apps/RAOfflineProxy.pak. Everything else about the flow is common.
         if running_on_allium():
-            self.install_update_archive(DEFAULT_ALLIUM_APP_DIR, "Apps")
+            self.install_update_archive(allium_platform.APP_DIR, "Apps")
             return
         if running_on_onion() or running_on_spruce():
-            self.install_update_archive(DEFAULT_ONION_APP_DIR, "App")
+            self.install_update_archive(onion_platform.APP_DIR, "App")
             return
 
         self.show_update_progress("Checking for update...")

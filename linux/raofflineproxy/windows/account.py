@@ -121,7 +121,7 @@ def retroarch_account_note(user: str) -> str:
     """The proxy prefers the login saved in RetroArch's config over the one
     from this menu, so say so when RetroArch is signed in as someone else."""
     from ..platform import resolve_retroarch_cfg
-    from ..retroarch_cfg import load_retroarch_credentials
+    from ..emulators.retroarch_cfg import load_retroarch_credentials
 
     try:
         saved = load_retroarch_credentials(resolve_retroarch_cfg(load_config()))

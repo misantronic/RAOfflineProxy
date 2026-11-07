@@ -67,7 +67,8 @@ linux/
   raofflineproxy/
     main.py
     config.py
-    retroarch_cfg.py
+    emulators/        # per-emulator config patching (retroarch_cfg.py, dolphin_cfg.py, ...)
+    platforms/        # per-firmware detection, paths and hooks
     state.py
 ```
 

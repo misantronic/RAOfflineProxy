@@ -19,14 +19,12 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 OFF_WINDOWS_PROBE = """
 import json, sys
 sys.platform = "linux"
-from linux.raofflineproxy import (
-    cache_queue, config, dolphin_cfg, flusher, log_uploader, ppsspp_cfg, proxy_service,
-    retroarch_cfg, service, usage_report, utils, watch_folders,
-)
+from linux.raofflineproxy import cache_queue, config, flusher, log_uploader, proxy_service, service, usage_report, utils, watch_folders
+from linux.raofflineproxy.emulators import dolphin_cfg, ppsspp_cfg, retroarch_cfg
 from linux.raofflineproxy import platform as rap_platform
 config.resolve_config_dir()
-config.detect_ppsspp_ini({})
-config.detect_dolphin_config_dir({})
+ppsspp_cfg.detect_ppsspp_ini({})
+dolphin_cfg.detect_dolphin_config_dir({})
 log_uploader._log_file_paths()
 print(json.dumps({
     "ua": config.PROXY_UA_TAG,

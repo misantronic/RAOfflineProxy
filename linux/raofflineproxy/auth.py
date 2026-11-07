@@ -6,12 +6,12 @@ import logging
 from . import cache_keys
 from .config import (
     FALLBACK_USER_AGENT,
-    detect_batocera_conf,
-    detect_retroarch_cfg,
     upstream_host,
 )
 from .network import build_api_url, http_get
-from .retroarch_cfg import (
+from .batocera_conf import detect_batocera_conf
+from .emulators.retroarch_cfg import (
+    detect_retroarch_cfg,
     cheevos_append_cfg_path,
     load_retroarch_password_credentials,
     load_retroarch_token_credentials,

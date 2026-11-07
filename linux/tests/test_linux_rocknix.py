@@ -5,6 +5,11 @@ from pathlib import Path
 from unittest.mock import patch
 
 from linux.raofflineproxy import config, platform, update
+from linux.raofflineproxy.emulators import retroarch_cfg
+from linux.raofflineproxy.platforms import muos as muos_platform
+from linux.raofflineproxy.platforms import rocknix as rocknix_platform
+from linux.raofflineproxy.platforms import base as platform_base
+from platform_helpers import use_platform
 
 
 class RocknixDetectionTests(unittest.TestCase):
@@ -12,41 +17,42 @@ class RocknixDetectionTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             os_release = Path(temp_dir) / "os-release"
             os_release.write_text('OS_NAME="ROCKNIX"\nOS_VERSION="20260701"\n', encoding="utf-8")
-            original = config.OS_RELEASE_PATH
+            original = platform_base.OS_RELEASE_PATH
             try:
-                config.OS_RELEASE_PATH = os_release
+                platform_base.OS_RELEASE_PATH = os_release
                 self.assertTrue(config.running_on_rocknix())
             finally:
-                config.OS_RELEASE_PATH = original
+                platform_base.OS_RELEASE_PATH = original
 
     def test_running_on_rocknix_false_when_os_release_differs(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             os_release = Path(temp_dir) / "os-release"
             os_release.write_text('OS_NAME="KNULLI"\n', encoding="utf-8")
-            original = config.OS_RELEASE_PATH
+            original = platform_base.OS_RELEASE_PATH
             try:
-                config.OS_RELEASE_PATH = os_release
+                platform_base.OS_RELEASE_PATH = os_release
                 self.assertFalse(config.running_on_rocknix())
             finally:
-                config.OS_RELEASE_PATH = original
+                platform_base.OS_RELEASE_PATH = original
 
     def test_running_on_rocknix_false_when_os_release_missing(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
-            original = config.OS_RELEASE_PATH
+            original = platform_base.OS_RELEASE_PATH
             try:
-                config.OS_RELEASE_PATH = Path(temp_dir) / "missing-os-release"
+                platform_base.OS_RELEASE_PATH = Path(temp_dir) / "missing-os-release"
                 self.assertFalse(config.running_on_rocknix())
             finally:
-                config.OS_RELEASE_PATH = original
+                platform_base.OS_RELEASE_PATH = original
 
 
 class RocknixConfigPathTests(unittest.TestCase):
     def test_detect_retroarch_cfg_uses_rocknix_path(self) -> None:
-        original_muos = config.DEFAULT_MUOS_RETROARCH_CFG
+        use_platform(self, rocknix_platform.PLATFORM)
+        original_muos = muos_platform.RETROARCH_CFG
         original_userdata_exists = Path.exists
         try:
             with tempfile.TemporaryDirectory() as temp_dir:
-                config.DEFAULT_MUOS_RETROARCH_CFG = Path(temp_dir) / "missing-muos.cfg"
+                muos_platform.RETROARCH_CFG = Path(temp_dir) / "missing-muos.cfg"
 
                 def fake_exists(path: Path) -> bool:
                     if str(path) == "/userdata":
@@ -56,19 +62,19 @@ class RocknixConfigPathTests(unittest.TestCase):
                 with patch.object(Path, "exists", fake_exists):
                     with patch.object(config, "running_on_rocknix", return_value=True):
                         self.assertEqual(
-                            config.detect_retroarch_cfg(),
-                            str(config.DEFAULT_ROCKNIX_RETROARCH_CFG),
+                            retroarch_cfg.detect_retroarch_cfg(),
+                            str(rocknix_platform.RETROARCH_CFG),
                         )
         finally:
-            config.DEFAULT_MUOS_RETROARCH_CFG = original_muos
+            muos_platform.RETROARCH_CFG = original_muos
 
     def test_detect_retroarch_cfg_uses_storage_layout_when_name_check_fails(self) -> None:
         """running_on_rocknix() returns False on an unreadable /etc/os-release."""
-        original_muos = config.DEFAULT_MUOS_RETROARCH_CFG
+        original_muos = muos_platform.RETROARCH_CFG
         original_exists = Path.exists
         try:
             with tempfile.TemporaryDirectory() as temp_dir:
-                config.DEFAULT_MUOS_RETROARCH_CFG = Path(temp_dir) / "missing-muos.cfg"
+                muos_platform.RETROARCH_CFG = Path(temp_dir) / "missing-muos.cfg"
 
                 def fake_exists(path: Path) -> bool:
                     if str(path) == "/storage":
@@ -80,13 +86,14 @@ class RocknixConfigPathTests(unittest.TestCase):
                 with patch.object(Path, "exists", fake_exists):
                     with patch.object(config, "running_on_rocknix", return_value=False):
                         self.assertEqual(
-                            config.detect_retroarch_cfg(),
-                            str(config.DEFAULT_ROCKNIX_RETROARCH_CFG),
+                            retroarch_cfg.detect_retroarch_cfg(),
+                            str(rocknix_platform.RETROARCH_CFG),
                         )
         finally:
-            config.DEFAULT_MUOS_RETROARCH_CFG = original_muos
+            muos_platform.RETROARCH_CFG = original_muos
 
     def test_resolve_config_dir_uses_rocknix_dir(self) -> None:
+        use_platform(self, rocknix_platform.PLATFORM)
         import os
 
         original_override = os.environ.get("RAOFFLINEPROXY_CONFIG_DIR")
@@ -97,7 +104,7 @@ class RocknixConfigPathTests(unittest.TestCase):
             with patch.object(config, "running_on_rocknix", return_value=True):
                 self.assertEqual(
                     config.resolve_config_dir(),
-                    config.DEFAULT_ROCKNIX_CONFIG_DIR,
+                    rocknix_platform.CONFIG_DIR,
                 )
         finally:
             if original_override is None:
@@ -140,24 +147,24 @@ class RocknixAutostartTests(unittest.TestCase):
             startup_script = Path(temp_dir) / "raofflineproxy.sh"
             config_data = {"startup_script": str(startup_script)}
 
-            original_rocknix_startup = platform.DEFAULT_ROCKNIX_STARTUP_SCRIPT
+            original_rocknix_startup = rocknix_platform.STARTUP_SCRIPT
             try:
-                platform.DEFAULT_ROCKNIX_STARTUP_SCRIPT = startup_script
+                rocknix_platform.STARTUP_SCRIPT = startup_script
                 self.assertEqual(
                     platform.autostart_command(config_data),
                     ("/storage/.local/share/raofflineproxy/bin/raofflineproxy",),
                 )
             finally:
-                platform.DEFAULT_ROCKNIX_STARTUP_SCRIPT = original_rocknix_startup
+                rocknix_platform.STARTUP_SCRIPT = original_rocknix_startup
 
     def test_rocknix_ensure_boot_hook_writes_executable_script(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             startup_script = Path(temp_dir) / "autostart" / "raofflineproxy.sh"
             config_data = {"startup_script": str(startup_script)}
 
-            original_rocknix_startup = platform.DEFAULT_ROCKNIX_STARTUP_SCRIPT
+            original_rocknix_startup = rocknix_platform.STARTUP_SCRIPT
             try:
-                platform.DEFAULT_ROCKNIX_STARTUP_SCRIPT = startup_script
+                rocknix_platform.STARTUP_SCRIPT = startup_script
                 platform.enable_autostart(config_data)
 
                 content = startup_script.read_text(encoding="utf-8")
@@ -169,16 +176,16 @@ class RocknixAutostartTests(unittest.TestCase):
                     "autostart script must be user-executable",
                 )
             finally:
-                platform.DEFAULT_ROCKNIX_STARTUP_SCRIPT = original_rocknix_startup
+                rocknix_platform.STARTUP_SCRIPT = original_rocknix_startup
 
     def test_rocknix_boot_hook_reinjects_tools_launcher(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             startup_script = Path(temp_dir) / "autostart" / "raofflineproxy.sh"
             config_data = {"startup_script": str(startup_script)}
 
-            original_rocknix_startup = platform.DEFAULT_ROCKNIX_STARTUP_SCRIPT
+            original_rocknix_startup = rocknix_platform.STARTUP_SCRIPT
             try:
-                platform.DEFAULT_ROCKNIX_STARTUP_SCRIPT = startup_script
+                rocknix_platform.STARTUP_SCRIPT = startup_script
                 platform.ensure_boot_hook(config_data)
 
                 content = startup_script.read_text(encoding="utf-8")
@@ -187,16 +194,16 @@ class RocknixAutostartTests(unittest.TestCase):
                 self.assertIn("cp ", content)
                 self.assertIn("boot-reconcile", content)
             finally:
-                platform.DEFAULT_ROCKNIX_STARTUP_SCRIPT = original_rocknix_startup
+                rocknix_platform.STARTUP_SCRIPT = original_rocknix_startup
 
     def test_rocknix_remove_boot_hook_deletes_script(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             startup_script = Path(temp_dir) / "autostart" / "raofflineproxy.sh"
             config_data = {"startup_script": str(startup_script)}
 
-            original_rocknix_startup = platform.DEFAULT_ROCKNIX_STARTUP_SCRIPT
+            original_rocknix_startup = rocknix_platform.STARTUP_SCRIPT
             try:
-                platform.DEFAULT_ROCKNIX_STARTUP_SCRIPT = startup_script
+                rocknix_platform.STARTUP_SCRIPT = startup_script
                 platform.ensure_boot_hook(config_data)
                 self.assertTrue(startup_script.exists())
 
@@ -204,14 +211,14 @@ class RocknixAutostartTests(unittest.TestCase):
 
                 self.assertFalse(startup_script.exists())
             finally:
-                platform.DEFAULT_ROCKNIX_STARTUP_SCRIPT = original_rocknix_startup
+                rocknix_platform.STARTUP_SCRIPT = original_rocknix_startup
 
     def test_resolve_startup_script_path_uses_rocknix_when_detected(self) -> None:
-        with patch.object(platform, "running_on_rocknix", return_value=True):
+        with patch.object(rocknix_platform.PLATFORM, "detect", return_value=True):
             with patch("pathlib.Path.exists", return_value=False):
                 self.assertEqual(
                     platform.resolve_startup_script_path({}),
-                    platform.DEFAULT_ROCKNIX_STARTUP_SCRIPT,
+                    rocknix_platform.STARTUP_SCRIPT,
                 )
 
 

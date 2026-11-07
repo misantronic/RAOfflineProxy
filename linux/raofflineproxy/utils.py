@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import os
 import re
 from pathlib import Path
 from urllib.parse import parse_qsl, quote_plus, unquote_plus, urlencode, urlsplit
@@ -140,3 +141,16 @@ def write_emulator_config(target: Path, content: str) -> None:
         write_preserving_newlines(target, content)
     else:
         target.write_text(content, encoding="utf-8")
+
+
+def detect_emulator_path(config_data: dict, key: str, env_name: str, platform_path) -> str | None:
+    configured = config_data.get(key)
+    if configured:
+        return str(configured)
+
+    env_override = os.environ.get(env_name)
+    if env_override:
+        return env_override
+
+    detected = platform_path()
+    return str(detected) if detected is not None else None

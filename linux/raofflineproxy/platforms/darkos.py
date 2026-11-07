@@ -7,16 +7,56 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-from .config import DEFAULT_DARKOS_HOME, load_config, proxy_host, proxy_port
+from . import spruce
+from .base import Platform
 
-DEFAULT_DARKOS_SERVICE_UNIT = Path("/etc/systemd/system/raofflineproxy.service")
+HOME = Path("/home/ark")
+SERVICE_UNIT = Path("/etc/systemd/system/raofflineproxy.service")
+# ArkOS-family images ship a second, 32-bit RetroArch build with its own config tree.
+# EmulationStation dispatches part of the library to it (es_systems.cfg carries both
+# <emulator name="retroarch"> and <emulator name="retroarch32"> entries), so it holds
+# its own achievements credentials and needs its own proxy patch.
+RETROARCH32_CFG = HOME / ".config" / "retroarch32" / "retroarch.cfg"
+
 DARKOS_SERVICE_NAME = "raofflineproxy.service"
 # The launcher already exports HOME, XDG_CONFIG_HOME, PYTHONPATH and
 # LD_LIBRARY_PATH, so the unit runs it rather than restating that environment.
-DARKOS_LAUNCHER = DEFAULT_DARKOS_HOME / "raofflineproxy" / "bin" / "raofflineproxy"
+DARKOS_LAUNCHER = HOME / "raofflineproxy" / "bin" / "raofflineproxy"
 # dArkOS's own user. The menu runs as this account, so the service must too:
 # anything it creates in the config dir as root would be unwritable from the menu.
 DARKOS_USER = "ark"
+
+
+class DarkosPlatform(Platform):
+    id = "darkos"
+    name = "dArkOS"
+
+    def detect(self) -> bool:
+        # dArkMoss keeps dArkOS's home directory, but spruce owns the service there.
+        if spruce.PLATFORM.detect():
+            return False
+        return HOME.exists()
+
+    def startup_script(self) -> Path | None:
+        return SERVICE_UNIT
+
+    def config_dir(self) -> Path | None:
+        return HOME / ".config" / "raofflineproxy"
+
+    def secondary_retroarch_cfg(self, config_data: dict | None = None) -> str | None:
+        configured = (config_data or {}).get("darkos_retroarch32_cfg")
+        if configured:
+            return str(configured)
+
+        env_override = os.environ.get("RAOFFLINEPROXY_DARKOS_RETROARCH32_CFG")
+        if env_override:
+            return env_override
+
+        if RETROARCH32_CFG.exists():
+            return str(RETROARCH32_CFG)
+
+        return None
+
 
 
 def _run_privileged(args: list[str]) -> tuple[bool, str]:
@@ -104,16 +144,16 @@ def darkos_systemd_unit() -> str:
 
 
 def systemd_install_service() -> None:
-    if not _write_privileged(DEFAULT_DARKOS_SERVICE_UNIT, darkos_systemd_unit()):
+    if not _write_privileged(SERVICE_UNIT, darkos_systemd_unit()):
         return
     _run_privileged(["systemctl", "daemon-reload"])
 
 
 def systemd_remove_service() -> None:
     _run_privileged(["systemctl", "disable", "--now", DARKOS_SERVICE_NAME])
-    if not _run_privileged(["rm", "-f", str(DEFAULT_DARKOS_SERVICE_UNIT)])[0]:
+    if not _run_privileged(["rm", "-f", str(SERVICE_UNIT)])[0]:
         try:
-            DEFAULT_DARKOS_SERVICE_UNIT.unlink(missing_ok=True)
+            SERVICE_UNIT.unlink(missing_ok=True)
         except OSError:
             pass
     _run_privileged(["systemctl", "daemon-reload"])
@@ -160,7 +200,7 @@ def systemd_service_start_time() -> int:
 
 
 def _ensure_unit_installed() -> None:
-    if not DEFAULT_DARKOS_SERVICE_UNIT.exists():
+    if not SERVICE_UNIT.exists():
         systemd_install_service()
 
 
@@ -189,6 +229,8 @@ def wait_until_listening(timeout: float = 60.0) -> bool:
     reports success while the very next emulator request is still refused,
     which is easy to hit on hardware slow to start an interpreter.
     """
+    from ..config import load_config, proxy_host, proxy_port
+
     config_data = load_config()
     address = (proxy_host(config_data), proxy_port(config_data))
     deadline = time.monotonic() + timeout
@@ -249,6 +291,8 @@ def _systemd_show(properties: list[str]) -> dict[str, str]:
 
 
 def darkos_service_status() -> dict:
+    from ..config import load_config, proxy_host, proxy_port
+
     config_data = load_config()
     props = _systemd_show(["ActiveState", "MainPID", "ActiveEnterTimestamp"])
 
@@ -270,3 +314,6 @@ def darkos_service_status() -> dict:
         "proxyHost": proxy_host(config_data),
         "proxyPort": proxy_port(config_data),
     }
+
+
+PLATFORM = DarkosPlatform()

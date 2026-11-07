@@ -5,6 +5,12 @@ from pathlib import Path
 from unittest import mock
 
 from linux.raofflineproxy import log_uploader
+from linux.raofflineproxy import platforms
+from linux.raofflineproxy.platforms import base as platform_base
+from linux.raofflineproxy.platforms import darkos as darkos_platform
+from linux.raofflineproxy.platforms import muos as muos_platform
+from linux.raofflineproxy.platforms import onion as onion_platform
+from linux.raofflineproxy.platforms import rocknix as rocknix_platform
 
 
 @contextmanager
@@ -163,48 +169,47 @@ class LinuxLogUploaderTests(unittest.TestCase):
             self.assertEqual(archive.read("service.log.1").decode("utf-8"), "old")
             self.assertEqual(archive.read("service.log").decode("utf-8"), "new")
 
+    def _detecting(self, *matching):
+        stack = ExitStack()
+        self.addCleanup(stack.close)
+        for platform in platforms.PLATFORMS:
+            stack.enter_context(
+                mock.patch.object(platform, "detect", return_value=platform in matching)
+            )
+
     def test_platform_label_falls_back_to_knulli(self) -> None:
-        with ExitStack() as stack:
-            stack.enter_context(mock.patch.object(log_uploader.config, "running_on_onion", return_value=False))
-            stack.enter_context(mock.patch.object(log_uploader.config, "running_on_rocknix", return_value=False))
-            stack.enter_context(mock.patch.object(log_uploader.config, "running_on_darkos", return_value=False))
-            stack.enter_context(mock.patch.object(log_uploader, "MUOS_MARKER_PATH", Path("/nonexistent")))
-            self.assertEqual(log_uploader._platform_label(), "Knulli")
+        self._detecting()
+        self.assertEqual(log_uploader._platform_label(), "Knulli")
 
     def test_platform_label_detects_darkos(self) -> None:
         # Without its own branch a dArkOS device falls through to the Knulli
         # default, and every support ticket from one is filed against Knulli.
-        with ExitStack() as stack:
-            stack.enter_context(mock.patch.object(log_uploader.config, "running_on_onion", return_value=False))
-            stack.enter_context(mock.patch.object(log_uploader.config, "running_on_rocknix", return_value=False))
-            stack.enter_context(mock.patch.object(log_uploader.config, "running_on_darkos", return_value=True))
-            stack.enter_context(mock.patch.object(log_uploader, "MUOS_MARKER_PATH", Path("/nonexistent")))
-            self.assertEqual(log_uploader._platform_label(), "dArkOS")
+        self._detecting(darkos_platform.PLATFORM)
+        self.assertEqual(log_uploader._platform_label(), "dArkOS")
 
     def test_platform_label_detects_onion_first(self) -> None:
-        with ExitStack() as stack:
-            stack.enter_context(mock.patch.object(log_uploader.config, "running_on_onion", return_value=True))
-            stack.enter_context(mock.patch.object(log_uploader.config, "running_on_rocknix", return_value=True))
-            self.assertEqual(log_uploader._platform_label(), "Onion")
+        self._detecting(onion_platform.PLATFORM, rocknix_platform.PLATFORM)
+        self.assertEqual(log_uploader._platform_label(), "Onion")
 
     def test_platform_label_detects_rocknix(self) -> None:
-        with ExitStack() as stack:
-            stack.enter_context(mock.patch.object(log_uploader.config, "running_on_onion", return_value=False))
-            stack.enter_context(mock.patch.object(log_uploader.config, "running_on_rocknix", return_value=True))
-            stack.enter_context(mock.patch.object(log_uploader, "MUOS_MARKER_PATH", Path("/nonexistent")))
-            self.assertEqual(log_uploader._platform_label(), "ROCKNIX")
+        self._detecting(rocknix_platform.PLATFORM)
+        self.assertEqual(log_uploader._platform_label(), "ROCKNIX")
+
+    def test_platform_label_detects_muos(self) -> None:
+        self._detecting(muos_platform.PLATFORM)
+        self.assertEqual(log_uploader._platform_label(), "muOS")
 
     def test_os_release_field_prefers_first_matching_key(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             os_release = Path(tmp_dir) / "os-release"
             os_release.write_text('PRETTY_NAME="Knulli 24.1"\nVERSION_ID=24.1\n', encoding="utf-8")
 
-            with mock.patch.object(log_uploader.config, "OS_RELEASE_PATH", os_release):
+            with mock.patch.object(platform_base, "OS_RELEASE_PATH", os_release):
                 self.assertEqual(log_uploader._os_release_field("VERSION", "PRETTY_NAME"), "Knulli 24.1")
                 self.assertIsNone(log_uploader._os_release_field("VERSION"))
 
     def test_os_release_field_tolerates_missing_file(self) -> None:
-        with mock.patch.object(log_uploader.config, "OS_RELEASE_PATH", Path("/nonexistent/os-release")):
+        with mock.patch.object(platform_base, "OS_RELEASE_PATH", Path("/nonexistent/os-release")):
             self.assertIsNone(log_uploader._os_release_field("VERSION"))
 
     def test_upload_metadata_omits_os_version_when_undetectable(self) -> None:
@@ -344,11 +349,11 @@ class LinuxLogUploaderTests(unittest.TestCase):
             path = Path(tmp_dir) / "version.txt"
             path.write_text("v4.4.0-beta-20260120-07505ea5\n", encoding="utf-8")
 
-            with mock.patch.object(log_uploader, "ONION_VERSION_FILE", path):
+            with mock.patch.object(onion_platform, "VERSION_FILE", path):
                 self.assertEqual(log_uploader._onion_os_version(), "v4.4.0-beta-20260120-07505ea5")
 
     def test_onion_os_version_returns_none_when_file_missing(self) -> None:
-        with mock.patch.object(log_uploader, "ONION_VERSION_FILE", Path("/nonexistent")):
+        with mock.patch.object(onion_platform, "VERSION_FILE", Path("/nonexistent")):
             self.assertIsNone(log_uploader._onion_os_version())
 
     def test_onion_version_supported_accepts_matching_build(self) -> None:
@@ -356,7 +361,7 @@ class LinuxLogUploaderTests(unittest.TestCase):
             path = Path(tmp_dir) / "version.txt"
             path.write_text("v4.4.0-beta-20260120-07505ea5\n", encoding="utf-8")
 
-            with mock.patch.object(log_uploader, "ONION_VERSION_FILE", path):
+            with mock.patch.object(onion_platform, "VERSION_FILE", path):
                 self.assertTrue(log_uploader.onion_version_supported())
 
     def test_onion_version_supported_rejects_older_build(self) -> None:
@@ -364,11 +369,11 @@ class LinuxLogUploaderTests(unittest.TestCase):
             path = Path(tmp_dir) / "version.txt"
             path.write_text("v4.3.1-1\n", encoding="utf-8")
 
-            with mock.patch.object(log_uploader, "ONION_VERSION_FILE", path):
+            with mock.patch.object(onion_platform, "VERSION_FILE", path):
                 self.assertFalse(log_uploader.onion_version_supported())
 
     def test_onion_version_supported_rejects_missing_file(self) -> None:
-        with mock.patch.object(log_uploader, "ONION_VERSION_FILE", Path("/nonexistent")):
+        with mock.patch.object(onion_platform, "VERSION_FILE", Path("/nonexistent")):
             self.assertFalse(log_uploader.onion_version_supported())
 
     def test_knulli_os_version_reads_full_version_file(self) -> None:

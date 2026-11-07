@@ -7,24 +7,29 @@ from pathlib import Path
 from unittest.mock import patch
 
 from linux.raofflineproxy import config, log_uploader, menu_sdl, platform, update
+from linux.raofflineproxy.platforms import allium as allium_platform
+from linux.raofflineproxy.platforms import onion as onion_platform
+from linux.raofflineproxy.platforms import spruce as spruce_platform
+from platform_helpers import use_platform
 
 
 class AlliumDetectionTests(unittest.TestCase):
     def test_running_on_allium_requires_the_marker_dir(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             marker = Path(temp_dir) / ".allium"
-            with patch.object(config, "ALLIUM_MARKER_DIR", marker):
+            with patch.object(allium_platform, "MARKER_DIR", marker):
                 self.assertFalse(config.running_on_allium())
                 marker.mkdir()
                 self.assertTrue(config.running_on_allium())
 
     def test_running_on_shared_miyoo_stack_includes_allium(self) -> None:
-        with patch.object(config, "running_on_allium", return_value=True):
-            with patch.object(config, "running_on_onion", return_value=False):
-                with patch.object(config, "running_on_spruce", return_value=False):
+        with patch.object(allium_platform.PLATFORM, "detect", return_value=True):
+            with patch.object(onion_platform.PLATFORM, "detect", return_value=False):
+                with patch.object(spruce_platform.PLATFORM, "detect", return_value=False):
                     self.assertTrue(config.running_on_shared_miyoo_stack())
 
     def test_resolve_config_dir_uses_allium_pak_data_dir(self) -> None:
+        use_platform(self, allium_platform.PLATFORM)
         with tempfile.TemporaryDirectory() as temp_dir:
             app_dir = Path(temp_dir) / "RAOfflineProxy.pak"
             app_dir.mkdir()
@@ -34,8 +39,8 @@ class AlliumDetectionTests(unittest.TestCase):
             with patch.dict(os.environ):
                 os.environ.pop("RAOFFLINEPROXY_CONFIG_DIR", None)
                 os.environ.pop("XDG_CONFIG_HOME", None)
-                with patch.object(config, "DEFAULT_ONION_APP_DIR", Path(temp_dir) / "absent"):
-                    with patch.object(config, "DEFAULT_ALLIUM_APP_DIR", app_dir):
+                with patch.object(onion_platform, "APP_DIR", Path(temp_dir) / "absent"):
+                    with patch.object(allium_platform, "APP_DIR", app_dir):
                         self.assertEqual(config.resolve_config_dir(), app_dir / "data")
 
 
@@ -154,7 +159,7 @@ class AlliumBootHookTests(unittest.TestCase):
         path = self._updater()
         platform.install_allium_boot_hook(path)
         with patch.object(platform, "running_on_allium", return_value=True):
-            with patch.object(platform, "DEFAULT_ALLIUM_STARTUP_SCRIPT", path):
+            with patch.object(allium_platform, "STARTUP_SCRIPT", path):
                 platform.remove_boot_hook({"startup_script": str(path)})
 
         content = path.read_text(encoding="utf-8")
@@ -173,11 +178,12 @@ class AlliumBootHookTests(unittest.TestCase):
         self.assertNotIn(platform.AUTOSTART_SENTINEL_START, path.read_text(encoding="utf-8"))
 
     def test_autostart_is_supported_on_allium(self) -> None:
-        with patch.object(platform, "running_on_allium", return_value=True):
+        with patch.object(allium_platform.PLATFORM, "detect", return_value=True):
+          with patch.object(platform, "running_on_allium", return_value=True):
             with patch.object(platform, "running_on_spruce", return_value=False):
                 self.assertEqual(
                     platform.resolve_startup_script_path({}),
-                    platform.DEFAULT_ALLIUM_STARTUP_SCRIPT,
+                    allium_platform.STARTUP_SCRIPT,
                 )
                 self.assertTrue(platform.autostart_supported({}))
                 self.assertEqual(
@@ -189,7 +195,9 @@ class AlliumBootHookTests(unittest.TestCase):
         # DEFAULT_ALLIUM_STARTUP_SCRIPT and DEFAULT_SPRUCE_STARTUP_SCRIPT are literally the
         # same path on real hardware (.tmp_update/updater), so the dispatch must key off
         # running_on_allium() rather than path equality alone.
-        with patch.object(platform, "running_on_allium", return_value=False):
+        with patch.object(allium_platform.PLATFORM, "detect", return_value=False):
+          with patch.object(spruce_platform.PLATFORM, "detect", return_value=True):
+           with patch.object(platform, "running_on_allium", return_value=False):
             with patch.object(platform, "running_on_spruce", return_value=True):
                 self.assertEqual(
                     platform.autostart_command({}),
@@ -244,7 +252,7 @@ class AlliumUpdateSafetyTests(unittest.TestCase):
             )
             session.install_update()
 
-        install.assert_called_once_with(config.DEFAULT_ALLIUM_APP_DIR, "Apps")
+        install.assert_called_once_with(allium_platform.APP_DIR, "Apps")
 
     def test_onion_and_spruce_still_get_the_app_layout(self) -> None:
         # The archive_root parameter was added for Allium; these two must keep the layout
@@ -270,7 +278,7 @@ class AlliumUpdateSafetyTests(unittest.TestCase):
                     )
                     session.install_update()
 
-                install.assert_called_once_with(config.DEFAULT_ONION_APP_DIR, "App")
+                install.assert_called_once_with(onion_platform.APP_DIR, "App")
 
     def test_no_update_channel_is_silent_not_a_logged_failure(self) -> None:
         # Signalling "no update channel" by returning a name validate_platform() rejects
@@ -397,7 +405,7 @@ class AlliumUpdateInstallTests(unittest.TestCase):
         self.assertIn('APP_DIR="${BUILD_DIR}/Apps/RAOfflineProxy.pak"', build_bundle)
         self.assertIn("RAOfflineProxy-Allium-v${APP_VERSION}.zip", build_bundle)
         self.assertEqual(
-            str(config.DEFAULT_ALLIUM_APP_DIR), "/mnt/SDCARD/Apps/RAOfflineProxy.pak"
+            str(allium_platform.APP_DIR), "/mnt/SDCARD/Apps/RAOfflineProxy.pak"
         )
 
 
@@ -453,13 +461,9 @@ class AlliumLogMetadataTests(unittest.TestCase):
             version_file = Path(temp_dir) / "version.txt"
             version_file.write_text("v1.0.1\n", encoding="utf-8")
             with patch.object(log_uploader, "ALLIUM_VERSION_FILE", version_file):
-                with patch.object(config, "running_on_spruce", return_value=False):
-                    with patch.object(config, "running_on_onion", return_value=False):
-                        with patch.object(config, "running_on_allium", return_value=True):
-                            self.assertEqual(log_uploader._platform_label(), "Allium")
-                            self.assertEqual(
-                                log_uploader._os_version_value("Allium"), "v1.0.1"
-                            )
+                with patch.object(allium_platform.PLATFORM, "detect", return_value=True):
+                    self.assertEqual(log_uploader._platform_label(), "Allium")
+                    self.assertEqual(log_uploader._os_version_value("Allium"), "v1.0.1")
 
     def test_device_label_does_not_fall_back_to_the_string_onion(self) -> None:
         # /tmp/deviceModel is written by Onion's own runtime and does not exist on Allium

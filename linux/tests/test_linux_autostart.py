@@ -5,6 +5,9 @@ from pathlib import Path
 from unittest.mock import patch
 
 from linux.raofflineproxy import platform
+from linux.raofflineproxy.platforms import onion as onion_platform
+from linux.raofflineproxy.platforms import muos as muos_platform
+from linux.raofflineproxy.platforms import darkos as darkos_platform
 
 
 class LinuxAutostartTests(unittest.TestCase):
@@ -115,24 +118,24 @@ class LinuxAutostartTests(unittest.TestCase):
             startup_script = Path(temp_dir) / "raofflineproxy.sh"
             config_data = {"startup_script": str(startup_script)}
 
-            original_onion_startup = platform.DEFAULT_ONION_STARTUP_SCRIPT
+            original_onion_startup = onion_platform.STARTUP_SCRIPT
             try:
-                platform.DEFAULT_ONION_STARTUP_SCRIPT = startup_script
+                onion_platform.STARTUP_SCRIPT = startup_script
                 self.assertEqual(
                     platform.autostart_command(config_data),
                     ("/mnt/SDCARD/App/RAOfflineProxy/autostart-launch.sh",),
                 )
             finally:
-                platform.DEFAULT_ONION_STARTUP_SCRIPT = original_onion_startup
+                onion_platform.STARTUP_SCRIPT = original_onion_startup
 
     def test_onion_ensure_boot_hook_writes_startup_script(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             startup_script = Path(temp_dir) / "raofflineproxy.sh"
             config_data = {"startup_script": str(startup_script)}
 
-            original_onion_startup = platform.DEFAULT_ONION_STARTUP_SCRIPT
+            original_onion_startup = onion_platform.STARTUP_SCRIPT
             try:
-                platform.DEFAULT_ONION_STARTUP_SCRIPT = startup_script
+                onion_platform.STARTUP_SCRIPT = startup_script
                 platform.enable_autostart(config_data)
 
                 content = startup_script.read_text(encoding="utf-8")
@@ -140,38 +143,38 @@ class LinuxAutostartTests(unittest.TestCase):
                 self.assertIn('sh "$APP_DIR/autostart-launch.sh"', content)
                 self.assertTrue(platform.is_autostart_enabled(config_data))
             finally:
-                platform.DEFAULT_ONION_STARTUP_SCRIPT = original_onion_startup
+                onion_platform.STARTUP_SCRIPT = original_onion_startup
 
     def test_onion_disable_autostart_keeps_startup_script(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             startup_script = Path(temp_dir) / "raofflineproxy.sh"
             config_data = {"startup_script": str(startup_script)}
 
-            original_onion_startup = platform.DEFAULT_ONION_STARTUP_SCRIPT
+            original_onion_startup = onion_platform.STARTUP_SCRIPT
             try:
-                platform.DEFAULT_ONION_STARTUP_SCRIPT = startup_script
+                onion_platform.STARTUP_SCRIPT = startup_script
                 platform.enable_autostart(config_data)
                 platform.disable_autostart(config_data)
 
                 self.assertTrue(startup_script.exists())
                 self.assertFalse(platform.is_autostart_enabled(config_data))
             finally:
-                platform.DEFAULT_ONION_STARTUP_SCRIPT = original_onion_startup
+                onion_platform.STARTUP_SCRIPT = original_onion_startup
 
     def test_autostart_command_uses_muos_launcher(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             startup_script = Path(temp_dir) / "raofflineproxy.sh"
             config_data = {"startup_script": str(startup_script)}
 
-            original_muos_startup = platform.DEFAULT_MUOS_STARTUP_SCRIPT
+            original_muos_startup = muos_platform.STARTUP_SCRIPT
             try:
-                platform.DEFAULT_MUOS_STARTUP_SCRIPT = startup_script
+                muos_platform.STARTUP_SCRIPT = startup_script
                 self.assertEqual(
                     platform.autostart_command(config_data),
                     ("/run/muos/storage/application/RAOfflineProxy/launch.sh",),
                 )
             finally:
-                platform.DEFAULT_MUOS_STARTUP_SCRIPT = original_muos_startup
+                muos_platform.STARTUP_SCRIPT = original_muos_startup
 
     def test_muos_ensure_boot_hook_writes_init_script(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -180,11 +183,11 @@ class LinuxAutostartTests(unittest.TestCase):
             user_init_config.write_text("0\n", encoding="utf-8")
             config_data = {"startup_script": str(startup_script)}
 
-            original_muos_startup = platform.DEFAULT_MUOS_STARTUP_SCRIPT
-            original_user_init_config = platform.MUOS_USER_INIT_CONFIG
+            original_muos_startup = muos_platform.STARTUP_SCRIPT
+            original_user_init_config = muos_platform.USER_INIT_CONFIG
             try:
-                platform.DEFAULT_MUOS_STARTUP_SCRIPT = startup_script
-                platform.MUOS_USER_INIT_CONFIG = user_init_config
+                muos_platform.STARTUP_SCRIPT = startup_script
+                muos_platform.USER_INIT_CONFIG = user_init_config
                 platform.enable_autostart(config_data)
 
                 content = startup_script.read_text(encoding="utf-8")
@@ -201,8 +204,8 @@ class LinuxAutostartTests(unittest.TestCase):
                     "init script must be user-executable",
                 )
             finally:
-                platform.DEFAULT_MUOS_STARTUP_SCRIPT = original_muos_startup
-                platform.MUOS_USER_INIT_CONFIG = original_user_init_config
+                muos_platform.STARTUP_SCRIPT = original_muos_startup
+                muos_platform.USER_INIT_CONFIG = original_user_init_config
 
     def test_muos_disable_autostart_keeps_init_script_and_flag(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -211,11 +214,11 @@ class LinuxAutostartTests(unittest.TestCase):
             user_init_config.write_text("0\n", encoding="utf-8")
             config_data = {"startup_script": str(startup_script)}
 
-            original_muos_startup = platform.DEFAULT_MUOS_STARTUP_SCRIPT
-            original_user_init_config = platform.MUOS_USER_INIT_CONFIG
+            original_muos_startup = muos_platform.STARTUP_SCRIPT
+            original_user_init_config = muos_platform.USER_INIT_CONFIG
             try:
-                platform.DEFAULT_MUOS_STARTUP_SCRIPT = startup_script
-                platform.MUOS_USER_INIT_CONFIG = user_init_config
+                muos_platform.STARTUP_SCRIPT = startup_script
+                muos_platform.USER_INIT_CONFIG = user_init_config
                 platform.enable_autostart(config_data)
                 platform.disable_autostart(config_data)
 
@@ -223,8 +226,8 @@ class LinuxAutostartTests(unittest.TestCase):
                 self.assertEqual(user_init_config.read_text(encoding="utf-8").strip(), "1")
                 self.assertFalse(platform.is_autostart_enabled(config_data))
             finally:
-                platform.DEFAULT_MUOS_STARTUP_SCRIPT = original_muos_startup
-                platform.MUOS_USER_INIT_CONFIG = original_user_init_config
+                muos_platform.STARTUP_SCRIPT = original_muos_startup
+                muos_platform.USER_INIT_CONFIG = original_user_init_config
 
     def test_darkos_autostart_state_comes_from_systemd(self) -> None:
         # The unit's enabled state is the truth, so a stale config flag written
@@ -237,7 +240,7 @@ class LinuxAutostartTests(unittest.TestCase):
             self.assertTrue(platform.is_autostart_enabled(config_data))
 
     def test_darkos_enable_autostart_enables_the_unit(self) -> None:
-        config_data = {"startup_script": str(platform.DEFAULT_DARKOS_SERVICE_UNIT)}
+        config_data = {"startup_script": str(darkos_platform.SERVICE_UNIT)}
         calls: list[str] = []
 
         with patch.object(platform, "running_on_darkos", lambda: True), patch.object(
@@ -250,7 +253,7 @@ class LinuxAutostartTests(unittest.TestCase):
         self.assertEqual(calls, ["enable"])
 
     def test_darkos_disable_autostart_disables_the_unit(self) -> None:
-        config_data = {"startup_script": str(platform.DEFAULT_DARKOS_SERVICE_UNIT)}
+        config_data = {"startup_script": str(darkos_platform.SERVICE_UNIT)}
         calls: list[str] = []
 
         with patch.object(platform, "running_on_darkos", lambda: True), patch.object(
@@ -268,9 +271,9 @@ class LinuxAutostartTests(unittest.TestCase):
             config_data = {"startup_script": str(unit_path)}
             calls: list[str] = []
 
-            original_unit = platform.DEFAULT_DARKOS_SERVICE_UNIT
+            original_unit = darkos_platform.SERVICE_UNIT
             try:
-                platform.DEFAULT_DARKOS_SERVICE_UNIT = unit_path
+                darkos_platform.SERVICE_UNIT = unit_path
                 with patch.object(
                     platform, "running_on_darkos", lambda: True
                 ), patch.object(
@@ -278,7 +281,7 @@ class LinuxAutostartTests(unittest.TestCase):
                 ):
                     platform.remove_boot_hook(config_data)
             finally:
-                platform.DEFAULT_DARKOS_SERVICE_UNIT = original_unit
+                darkos_platform.SERVICE_UNIT = original_unit
 
             self.assertEqual(calls, ["remove"])
 

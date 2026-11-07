@@ -3,7 +3,8 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from linux.raofflineproxy import knulli_service, menu_sdl
+from linux.raofflineproxy import menu_sdl
+from linux.raofflineproxy.platforms import knulli as knulli_service
 
 
 class KnulliServiceModeDetectionTests(unittest.TestCase):

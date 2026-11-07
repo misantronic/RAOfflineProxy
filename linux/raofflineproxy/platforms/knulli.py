@@ -4,12 +4,57 @@ import shutil
 import subprocess
 from pathlib import Path
 
+from .base import Platform
+
+USERDATA_SYSTEM = Path("/userdata/system")
+STARTUP_SCRIPT = Path("/userdata/system/custom.sh")
+CONFIG_DIR = Path("/userdata/system/.config/raofflineproxy")
+BATOCERA_CONF = Path("/userdata/system/batocera.conf")
+KNULLI_CONF = Path("/userdata/system/knulli.conf")
+# Knulli/Batocera generate retroarchcustom.cfg at the first libretro launch, so a
+# freshly flashed device has none of these yet. Keep the canonical path as the
+# fallback: /userdata already established the platform, and falling
+# through to the other platforms' branches would hand back a path Knulli never uses.
+RETROARCH_CFG_CANDIDATES = (
+    Path("/userdata/system/configs/retroarch/retroarchcustom.cfg"),
+    Path("/userdata/system/configs/retroarch/retroarch.cfg"),
+    Path("/userdata/system/.config/retroarch/retroarchcustom.cfg"),
+    Path("/userdata/system/.config/retroarch/retroarch.cfg"),
+)
+
 SERVICE_NAME = "raofflineproxy"
 USER_SERVICE_FILE = Path("/userdata/system/services/raofflineproxy")
 SYSTEM_SERVICE_FILES = (
     Path("/usr/share/knulli/services/raofflineproxy"),
     Path("/usr/share/batocera/services/raofflineproxy"),
 )
+
+
+class KnulliPlatform(Platform):
+    id = "knulli"
+    name = "Knulli"
+
+    def detect(self) -> bool:
+        return USERDATA_SYSTEM.exists()
+
+    def startup_script(self) -> Path | None:
+        return STARTUP_SCRIPT
+
+    def config_dir(self) -> Path | None:
+        return CONFIG_DIR
+
+    def retroarch_cfg_candidates(self, config_dir: Path) -> tuple[Path, ...]:
+        return RETROARCH_CFG_CANDIDATES
+
+    def batocera_conf(self, config_data: dict) -> str | None:
+        if KNULLI_CONF.exists():
+            return str(KNULLI_CONF)
+
+        if BATOCERA_CONF.exists():
+            return str(BATOCERA_CONF)
+
+        return None
+
 
 
 def services_binary() -> str | None:
@@ -70,3 +115,6 @@ def start_service() -> None:
 
 def stop_service() -> None:
     _run("stop")
+
+
+PLATFORM = KnulliPlatform()

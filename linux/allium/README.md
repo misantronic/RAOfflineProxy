@@ -70,7 +70,7 @@ Unlike spruce, Allium does not run its own settings UI in front of RetroArch: th
 `RetroArch.pak` entry execs the stock `retroarch` binary directly, so RetroArch's own
 Achievements login writes `cheevos_username`/`cheevos_password` straight into
 `.retroarch/retroarch.cfg`. No separate credentials source or mode-patcher is needed — the
-existing Onion-style `retroarch_cfg.py` flow (`cheevos_custom_host`, `cheevos_enable`,
+existing Onion-style `emulators/retroarch_cfg.py` flow (`cheevos_custom_host`, `cheevos_enable`,
 etc.) applies unchanged.
 
 ## Build

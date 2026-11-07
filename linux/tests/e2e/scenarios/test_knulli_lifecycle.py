@@ -54,7 +54,7 @@ class TestInstall:
     def test_detects_knulli_from_os_release(self, installed):
         result = installed.container.exec(
             "cd %s/app && python3 -c "
-            "'from raofflineproxy import config; print(config.detect_retroarch_cfg())'"
+            "'from raofflineproxy.emulators import retroarch_cfg; print(retroarch_cfg.detect_retroarch_cfg())'"
             % installed.device.base_dir
         )
         assert installed.device.retroarch_cfg in result.stdout

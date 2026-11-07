@@ -2,22 +2,18 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from . import platforms
+from .emulators.retroarch_cfg import detect_retroarch_cfg
+from .platforms import allium, darkos, muos, onion, rocknix, spruce
 from .config import (
-    DEFAULT_DARKOS_HOME,
-    DEFAULT_MUOS_INIT_DIR,
-    DEFAULT_ONION_STARTUP_SCRIPT,
-    MUOS_USER_INIT_CONFIG,
-    detect_retroarch_cfg,
     running_on_allium,
     running_on_darkos,
     running_on_rocknix,
     running_on_spruce,
     save_config,
-    spruce_platform,
     running_on_windows,
 )
-from .darkos_service import (
-    DEFAULT_DARKOS_SERVICE_UNIT,
+from .platforms.darkos import (
     systemd_disable_service,
     systemd_enable_service,
     systemd_remove_service,
@@ -31,32 +27,9 @@ DEFAULT_ROCKNIX_ROMS_ROOT = Path("/storage/roms")
 DEFAULT_DARKOS_ROMS_ROOT = Path("/roms")
 DARKOS_SD2_ROMS_ROOT = Path("/roms2")
 DARKOS_TOOLS_MOUNT = Path("/opt/system/Tools")
-DEFAULT_KNULLI_STARTUP_SCRIPT = Path("/userdata/system/custom.sh")
-DEFAULT_MUOS_STARTUP_SCRIPT = DEFAULT_MUOS_INIT_DIR / "raofflineproxy.sh"
-DEFAULT_ROCKNIX_STARTUP_SCRIPT = Path("/storage/.config/autostart/raofflineproxy.sh")
-# spruce has no drop-in boot directory: its boot entry point is one script that dispatches
-# straight into the per-device startup path without returning. So the hook is inserted into
-# that file, above the dispatch, rather than appended.
-#
-# Which file that is depends on what boots the device. Most spruce hardware comes up
-# through .tmp_update/updater, but the Anbernic H700 line runs under BaseOS, which execs
-# .system/h700/paks/MinUI.pak/launch.sh and reaches .tmp_update/anbernic.sh, and the RGB30
-# comes up under MossySpruce via .tmp_update/rgb30.sh. Neither of those ever reads
-# "updater", so a hook placed there is installed, reported as enabled, and never runs.
-# One spruce card also boots all of these devices, so the hook goes into every entry point
-# present rather than only the current device's (see install_spruce_boot_hook).
-DEFAULT_SPRUCE_STARTUP_SCRIPT = Path("/mnt/SDCARD/.tmp_update/updater")
-SPRUCE_H700_STARTUP_SCRIPT = Path("/mnt/SDCARD/.tmp_update/anbernic.sh")
-SPRUCE_RGB30_STARTUP_SCRIPT = Path("/mnt/SDCARD/.tmp_update/rgb30.sh")
-SPRUCE_STARTUP_SCRIPTS = (
-    DEFAULT_SPRUCE_STARTUP_SCRIPT,
-    SPRUCE_H700_STARTUP_SCRIPT,
-    SPRUCE_RGB30_STARTUP_SCRIPT,
-)
 SPRUCE_AUTOSTART_LAUNCHER = Path("/mnt/SDCARD/App/RAOfflineProxy/autostart-launch.sh")
 # Allium's alliumd is exec'd from the same .tmp_update/updater file spruce uses (both are
 # Miyoo Mini firmwares built on the same base), so the boot hook is installed the same way.
-DEFAULT_ALLIUM_STARTUP_SCRIPT = Path("/mnt/SDCARD/.tmp_update/updater")
 ALLIUM_AUTOSTART_LAUNCHER = Path("/mnt/SDCARD/Apps/RAOfflineProxy.pak/autostart-launch.sh")
 # The drop file Allium's own updater looks for before handing off to ota-update.sh. Our
 # boot hook sits above that check, so it has to test the same path to stay out of the way.
@@ -181,13 +154,13 @@ def _legacy_autostart_present(config_data: dict) -> bool:
     if startup_script is None or not startup_script.exists():
         return False
 
-    if startup_script == DEFAULT_ONION_STARTUP_SCRIPT:
+    if startup_script == onion.STARTUP_SCRIPT:
         return True
 
-    if startup_script == DEFAULT_MUOS_STARTUP_SCRIPT:
-        if MUOS_USER_INIT_CONFIG.exists():
+    if startup_script == muos.STARTUP_SCRIPT:
+        if muos.USER_INIT_CONFIG.exists():
             try:
-                if MUOS_USER_INIT_CONFIG.read_text(encoding="utf-8").strip() != "1":
+                if muos.USER_INIT_CONFIG.read_text(encoding="utf-8").strip() != "1":
                     return False
             except OSError:
                 pass
@@ -232,33 +205,33 @@ def ensure_boot_hook(config_data: dict) -> None:
         config_data[AUTOSTART_CONFIG_KEY] = _legacy_autostart_present(config_data)
         save_config(config_data)
 
-    if startup_script == DEFAULT_ONION_STARTUP_SCRIPT:
+    if startup_script == onion.STARTUP_SCRIPT:
         startup_script.parent.mkdir(parents=True, exist_ok=True)
         startup_script.write_text(onion_boot_hook_script(), encoding="utf-8")
         return
 
-    if startup_script == DEFAULT_ALLIUM_STARTUP_SCRIPT and running_on_allium():
+    if startup_script == allium.STARTUP_SCRIPT and running_on_allium():
         install_allium_boot_hook(startup_script)
         return
 
-    if startup_script in SPRUCE_STARTUP_SCRIPTS:
+    if startup_script in spruce.STARTUP_SCRIPTS:
         install_spruce_boot_hook(startup_script)
         return
 
-    if startup_script == DEFAULT_MUOS_STARTUP_SCRIPT:
+    if startup_script == muos.STARTUP_SCRIPT:
         startup_script.parent.mkdir(parents=True, exist_ok=True)
         startup_script.write_text(muos_boot_hook_script(config_data), encoding="utf-8")
         startup_script.chmod(0o755)
         _muos_enable_user_init()
         return
 
-    if startup_script == DEFAULT_ROCKNIX_STARTUP_SCRIPT:
+    if startup_script == rocknix.STARTUP_SCRIPT:
         startup_script.parent.mkdir(parents=True, exist_ok=True)
         startup_script.write_text(rocknix_boot_hook_script(config_data), encoding="utf-8")
         startup_script.chmod(0o755)
         return
 
-    if startup_script == DEFAULT_DARKOS_SERVICE_UNIT and running_on_darkos():
+    if startup_script == darkos.SERVICE_UNIT and running_on_darkos():
         systemd_enable_service()
         return
 
@@ -280,18 +253,18 @@ def remove_boot_hook(config_data: dict) -> None:
         return
 
     if startup_script in (
-        DEFAULT_ONION_STARTUP_SCRIPT,
-        DEFAULT_MUOS_STARTUP_SCRIPT,
-        DEFAULT_ROCKNIX_STARTUP_SCRIPT,
+        onion.STARTUP_SCRIPT,
+        muos.STARTUP_SCRIPT,
+        rocknix.STARTUP_SCRIPT,
     ):
         startup_script.unlink()
         return
 
-    if startup_script == DEFAULT_DARKOS_SERVICE_UNIT and running_on_darkos():
+    if startup_script == darkos.SERVICE_UNIT and running_on_darkos():
         systemd_remove_service()
         return
 
-    if startup_script in SPRUCE_STARTUP_SCRIPTS and running_on_spruce():
+    if startup_script in spruce.STARTUP_SCRIPTS and running_on_spruce():
         _remove_spruce_boot_hooks()
         return
 
@@ -300,52 +273,12 @@ def remove_boot_hook(config_data: dict) -> None:
     startup_script.write_text(f"{cleaned}\n" if cleaned else "", encoding="utf-8")
 
 
-def spruce_startup_script() -> Path:
-    """spruce names the Anbernic H700 family "Anbernic*" in its own device table
-    (helperFunctions.sh), so the prefix is spruce's own idiom rather than ours."""
-    platform_name = spruce_platform()
-
-    if platform_name.startswith("Anbernic"):
-        return SPRUCE_H700_STARTUP_SCRIPT
-
-    if platform_name == "RGB30":
-        return SPRUCE_RGB30_STARTUP_SCRIPT
-
-    return DEFAULT_SPRUCE_STARTUP_SCRIPT
-
-
 def resolve_startup_script_path(config_data: dict) -> Path | None:
     configured = config_data.get("startup_script")
     if configured:
         return Path(str(configured))
 
-    # Checked before spruce/Onion: Allium also ships a /mnt/SDCARD/.tmp_update of its own,
-    # never sources the startup/ directory Onion uses, and packages apps as .pak
-    # directories rather than spruce/Onion's shared App/ layout.
-    if running_on_allium():
-        return DEFAULT_ALLIUM_STARTUP_SCRIPT
-
-    # Checked before Onion: spruce ships a /mnt/SDCARD/.tmp_update of its own, but never
-    # sources the startup/ directory Onion uses, so an Onion hook there would never fire.
-    if running_on_spruce():
-        return spruce_startup_script()
-
-    if Path("/mnt/SDCARD/.tmp_update").exists():
-        return DEFAULT_ONION_STARTUP_SCRIPT
-
-    if Path("/opt/muos/script/archive").exists():
-        return DEFAULT_MUOS_STARTUP_SCRIPT
-
-    if DEFAULT_DARKOS_HOME.exists():
-        return DEFAULT_DARKOS_SERVICE_UNIT
-
-    if Path("/userdata/system").exists():
-        return DEFAULT_KNULLI_STARTUP_SCRIPT
-
-    if running_on_rocknix():
-        return DEFAULT_ROCKNIX_STARTUP_SCRIPT
-
-    return None
+    return platforms.current().startup_script()
 
 
 def autostart_block(config_data: dict) -> str:
@@ -363,16 +296,16 @@ def autostart_block(config_data: dict) -> str:
 
 def autostart_command(config_data: dict) -> tuple[str]:
     startup_script = resolve_startup_script_path(config_data)
-    if startup_script == DEFAULT_ONION_STARTUP_SCRIPT:
+    if startup_script == onion.STARTUP_SCRIPT:
         return ("/mnt/SDCARD/App/RAOfflineProxy/autostart-launch.sh",)
 
-    if startup_script == DEFAULT_ALLIUM_STARTUP_SCRIPT and running_on_allium():
+    if startup_script == allium.STARTUP_SCRIPT and running_on_allium():
         return (str(ALLIUM_AUTOSTART_LAUNCHER),)
 
-    if startup_script in SPRUCE_STARTUP_SCRIPTS:
+    if startup_script in spruce.STARTUP_SCRIPTS:
         return (str(SPRUCE_AUTOSTART_LAUNCHER),)
 
-    if startup_script == DEFAULT_MUOS_STARTUP_SCRIPT:
+    if startup_script == muos.STARTUP_SCRIPT:
         return (
             str(
                 config_data.get("autostart_launcher")
@@ -380,7 +313,7 @@ def autostart_command(config_data: dict) -> tuple[str]:
             ),
         )
 
-    if startup_script == DEFAULT_ROCKNIX_STARTUP_SCRIPT:
+    if startup_script == rocknix.STARTUP_SCRIPT:
         return (
             str(
                 config_data.get("autostart_launcher")
@@ -442,7 +375,7 @@ def install_spruce_boot_hook(startup_script: Path) -> None:
 
     _prepend_spruce_boot_hook(startup_script)
 
-    for sibling in SPRUCE_STARTUP_SCRIPTS:
+    for sibling in spruce.STARTUP_SCRIPTS:
         if sibling == startup_script or not sibling.exists():
             continue
 
@@ -468,7 +401,7 @@ def _prepend_spruce_boot_hook(script: Path) -> None:
 
 
 def _remove_spruce_boot_hooks() -> None:
-    for script in SPRUCE_STARTUP_SCRIPTS:
+    for script in spruce.STARTUP_SCRIPTS:
         if not script.exists():
             continue
 
@@ -538,8 +471,8 @@ def onion_boot_hook_script() -> str:
 
 
 def _muos_enable_user_init() -> None:
-    if MUOS_USER_INIT_CONFIG.parent.exists():
-        MUOS_USER_INIT_CONFIG.write_text("1\n", encoding="utf-8")
+    if muos.USER_INIT_CONFIG.parent.exists():
+        muos.USER_INIT_CONFIG.write_text("1\n", encoding="utf-8")
 
 
 def muos_boot_hook_script(config_data: dict) -> str:

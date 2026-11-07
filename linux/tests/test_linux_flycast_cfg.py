@@ -1,9 +1,10 @@
 import tempfile
 import unittest
 from pathlib import Path
-from unittest import mock
 
-from linux.raofflineproxy import config, flycast_cfg
+from linux.raofflineproxy import config
+from linux.raofflineproxy.emulators import flycast_cfg
+from platform_helpers import use_platform
 
 EMU_CFG = """[achievements]
 Enabled = yes
@@ -38,9 +39,9 @@ class FlycastCfgTests(unittest.TestCase):
         self.assertEqual(self.cfg.read_text(encoding="utf-8"), EMU_CFG)
 
     def test_no_flycast_means_nothing_happens(self) -> None:
-        with mock.patch.object(config, "running_on_windows", return_value=False):
-            self.assertIsNone(config.detect_flycast_cfg({}))
-            self.assertFalse(flycast_cfg.patch_flycast_cfg({})["exists"])
+        use_platform(self)
+        self.assertIsNone(flycast_cfg.detect_flycast_cfg({}))
+        self.assertFalse(flycast_cfg.patch_flycast_cfg({})["exists"])
 
 
 if __name__ == "__main__":

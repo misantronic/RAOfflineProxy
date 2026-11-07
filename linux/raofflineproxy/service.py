@@ -21,7 +21,7 @@ from .config import (
     save_config,
     running_on_windows,
 )
-from .darkos_service import (
+from .platforms.darkos import (
     darkos_service_start,
     darkos_service_status,
     darkos_service_stop,

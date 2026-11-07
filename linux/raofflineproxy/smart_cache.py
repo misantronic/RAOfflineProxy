@@ -10,12 +10,10 @@ from pathlib import Path
 
 from . import cache_budget, cache_queue, rom_browser
 from .auth import resolve_credentials
-from .config import (
-    detect_dolphin_config_dir,
-    detect_duckstation_ini,
-    detect_pcsx2_ini,
-    detect_ppsspp_ini,
-)
+from .emulators.dolphin_cfg import detect_dolphin_config_dir
+from .emulators.duckstation_cfg import detect_duckstation_ini
+from .emulators.pcsx2_cfg import detect_pcsx2_ini
+from .emulators.ppsspp_cfg import detect_ppsspp_ini
 from .platform import read_retroarch_cfg_values, resolve_retroarch_cfg
 from .rom_browser import (
     QueuedRomOutcome,

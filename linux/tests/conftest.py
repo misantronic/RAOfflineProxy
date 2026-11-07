@@ -5,7 +5,7 @@ import pytest
 
 @pytest.fixture(autouse=True)
 def no_real_windows_emulator_configs(request, monkeypatch):
-    """On a Windows machine, config.detect_* falls back to that machine's own
+    """On a Windows machine, the emulator detect_* functions fall back to that machine's own
     RetroArch, Dolphin, PPSSPP, PCSX2, DuckStation and Flycast configs. Tests that aren't about
     Windows must never find (or patch) those, so there they find nothing. The
     Windows tests (test_windows_*) check those lookups themselves."""

@@ -3,7 +3,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from linux.raofflineproxy import lowerdeck
+from linux.raofflineproxy.platforms import rocknix as lowerdeck
 
 
 class LinuxLowerdeckTests(unittest.TestCase):

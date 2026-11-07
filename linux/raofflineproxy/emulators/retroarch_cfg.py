@@ -1,18 +1,16 @@
 from __future__ import annotations
 
+import os
 import re
 from pathlib import Path
 from typing import Optional
 
-from .config import (
-    detect_batocera_conf,
-    detect_darkos_retroarch32_cfg,
-    proxy_value,
-    running_on_spruce,
-    spruce_setting,
-)
-from .state import clear_patch_state, load_patch_state, save_patch_state
-from .utils import write_emulator_config
+from .. import config, platforms
+from ..batocera_conf import detect_batocera_conf
+from ..config import proxy_value
+from ..platforms import spruce
+from ..state import clear_patch_state, load_patch_state, save_patch_state
+from ..utils import write_emulator_config
 
 HOST_KEY = "cheevos_custom_host"
 ENABLE_KEY = "cheevos_enable"
@@ -23,6 +21,23 @@ PASSWORD_KEY = "cheevos_password"
 SYSTEM_CONF_USERNAME_KEY = "global.retroachievements.username"
 SYSTEM_CONF_TOKEN_KEY = "global.retroachievements.token"
 SYSTEM_CONF_PASSWORD_KEY = "global.retroachievements.password"
+
+
+def detect_retroarch_cfg() -> str:
+    env_override = os.environ.get("RAOFFLINEPROXY_RETROARCH_CFG")
+    if env_override:
+        return env_override
+
+    candidates = platforms.current().retroarch_cfg_candidates(config.CONFIG_DIR)
+    # Candidates are scoped to the detected platform on purpose: several firmwares share a
+    # card and leave stale folders behind, so a flat "first path that exists wins" list would
+    # hand back another firmware's config. The first candidate doubles as the fallback, which
+    # is what a device that has not generated its cfg yet gets.
+    for candidate in candidates:
+        if candidate.exists():
+            return str(candidate)
+
+    return str(candidates[0])
 
 
 def cheevos_append_cfg_path(cfg_path: str | None) -> Path | None:
@@ -119,11 +134,11 @@ def detect_hardcore_enabled(content: str) -> bool:
 def load_spruce_credentials() -> dict | None:
     """spruce's own settings, which hold the credentials before any game launch has
     copied them into the RetroArch config. Password-only — spruce stores no token."""
-    if not running_on_spruce():
+    if not spruce.PLATFORM.detect():
         return None
 
-    user = spruce_setting("username")
-    password = spruce_setting("password")
+    user = spruce.setting("username")
+    password = spruce.setting("password")
     if not user or not password:
         return None
 
@@ -181,7 +196,7 @@ def load_retroarch_credentials(cfg_path: str | None) -> dict | None:
     # tree — a user who set achievements up under a 32-bit core has credentials
     # only there, and reading just the main cfg reports them as logged out.
     cheevos_cfg = str(cheevos_append_cfg_path(cfg_path)) if cfg_path else None
-    darkos32_cfg = detect_darkos_retroarch32_cfg()
+    secondary_cfg = platforms.current().secondary_retroarch_cfg()
 
     token_credentials = load_retroarch_token_credentials(cfg_path)
     if token_credentials is not None:
@@ -195,7 +210,7 @@ def load_retroarch_credentials(cfg_path: str | None) -> dict | None:
     if token_credentials is not None:
         return token_credentials
 
-    token_credentials = load_retroarch_token_credentials(darkos32_cfg)
+    token_credentials = load_retroarch_token_credentials(secondary_cfg)
     if token_credentials is not None:
         return token_credentials
 
@@ -211,7 +226,7 @@ def load_retroarch_credentials(cfg_path: str | None) -> dict | None:
     if password_credentials is not None:
         return password_credentials
 
-    password_credentials = load_retroarch_password_credentials(darkos32_cfg)
+    password_credentials = load_retroarch_password_credentials(secondary_cfg)
     if password_credentials is not None:
         return password_credentials
 
@@ -291,9 +306,9 @@ def _ensure_cheevos_token(content: str, config_data: dict) -> str:
     if not username or not password:
         return content
 
-    from .auth import login_and_cache_token
-    from .config import FALLBACK_USER_AGENT
-    from .storage import Storage
+    from ..auth import login_and_cache_token
+    from ..config import FALLBACK_USER_AGENT
+    from ..storage import Storage
 
     storage = Storage()
     try:
@@ -336,8 +351,8 @@ def secondary_retroarch_cfgs(config_data: dict | None = None) -> list[str]:
     primary cfg leaves every 32-bit core talking to retroachievements.org
     directly, bypassing the proxy entirely. Empty on every other platform.
     """
-    darkos32 = detect_darkos_retroarch32_cfg(config_data)
-    return [darkos32] if darkos32 else []
+    secondary = platforms.current().secondary_retroarch_cfg(config_data)
+    return [secondary] if secondary else []
 
 
 def patch_secondary_retroarch_cfgs(

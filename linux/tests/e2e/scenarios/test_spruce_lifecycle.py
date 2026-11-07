@@ -117,8 +117,8 @@ class TestSpruceSpecific:
         probe = installed.container.exec(
             "cd %s && . ./common.sh && prepare_env >/dev/null 2>&1 && "
             'resolve_python_bin && "$RESOLVED_PYTHON_BIN" -c '
-            "'from raofflineproxy import config; "
-            "print(config.spruce_platform()); print(config.spruce_retroarch_cfg())'"
+            "'from raofflineproxy.platforms import spruce; "
+            "print(spruce.device_name()); print(spruce.retroarch_cfg())'"
             % installed.device.base_dir,
             check=True,
         )

@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
-from .config import detect_batocera_conf, proxy_value
+from . import platforms
+from .config import proxy_value
 
 RETROACHIEVEMENTS_KEY = "global.retroachievements"
 RETROACHIEVEMENTS_HARDCORE_KEY = "global.retroachievements.hardcore"
@@ -14,6 +16,18 @@ OBSOLETE_KEYS = [
     RETROARCH_CHEEVOS_ENABLE_KEY,
     CHEEVOS_HARDCORE_KEY,
 ]
+
+
+def detect_batocera_conf(config_data: dict) -> str | None:
+    configured = config_data.get("batocera_conf")
+    if configured:
+        return str(configured)
+
+    env_override = os.environ.get("RAOFFLINEPROXY_BATOCERA_CONF")
+    if env_override:
+        return env_override
+
+    return platforms.current().batocera_conf(config_data)
 
 
 def patch_batocera_conf(config_data: dict) -> dict:

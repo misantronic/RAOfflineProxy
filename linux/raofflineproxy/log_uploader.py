@@ -9,7 +9,11 @@ import urllib.request
 import zipfile
 from pathlib import Path
 
-from . import config, ppsspp_cfg, retroarch_cfg
+from . import config
+from .emulators import ppsspp_cfg, retroarch_cfg
+from . import platforms
+from .platforms import base as platform_base
+from .platforms import onion, spruce
 from .network import configured_ssl_context
 from .utils import redact_query_tokens
 
@@ -17,13 +21,9 @@ LOGGER = logging.getLogger(__name__)
 
 REQUEST_UPLOAD_URL = "https://ud63psmdb5.execute-api.eu-central-1.amazonaws.com/logs/request-upload"
 REQUEST_TIMEOUT_SECONDS = 15
-# Not config.running_on_muos() (doesn't exist) or menu_sdl.running_on_muos() (would create a
-# circular import, since menu_sdl imports upload_logs from this module) — duplicated here.
-MUOS_MARKER_PATH = Path("/opt/muos/script/archive")
 # Both confirmed from OnionUI/Onion's own diagnostics script
 # (static/build/.tmp_update/script/diagnostics/util_snapshot.sh), which reads the exact same
 # two files for its "System log snapshot" support tool.
-ONION_VERSION_FILE = config.ONION_VERSION_FILE
 ONION_DEVICE_MODEL_FILE = Path("/tmp/deviceModel")
 # Allium's own version marker, the same file its updater migrations check against.
 ALLIUM_VERSION_FILE = Path("/mnt/SDCARD/.allium/version.txt")
@@ -159,25 +159,26 @@ def _request_upload_target() -> tuple[str, str]:
     return upload_id, upload_url
 
 
+# The label is what support tickets and the log upload show, and what the helpers below
+# dispatch on, so it stays stable even where a platform's own name differs ("OnionOS").
+_PLATFORM_LABELS = {
+    "spruce": "spruce",
+    "onion": "Onion",
+    "allium": "Allium",
+    "muos": "muOS",
+    "rocknix": "ROCKNIX",
+    "darkos": "dArkOS",
+    "knulli": "Knulli",
+}
+
+
 def _platform_label() -> str:
-    if config.running_on_spruce():
-        return "spruce"
-    if config.running_on_onion():
-        return "Onion"
-    if config.running_on_allium():
-        return "Allium"
-    if MUOS_MARKER_PATH.exists():
-        return "muOS"
-    if config.running_on_rocknix():
-        return "ROCKNIX"
-    if config.running_on_darkos():
-        return "dArkOS"
-    return "Knulli"
+    return _PLATFORM_LABELS.get(platforms.current().id, "Knulli")
 
 
 def _os_release_field(*keys: str) -> str | None:
     try:
-        content = config.OS_RELEASE_PATH.read_text(encoding="utf-8", errors="replace")
+        content = platform_base.OS_RELEASE_PATH.read_text(encoding="utf-8", errors="replace")
     except OSError:
         return None
 
@@ -215,11 +216,11 @@ def _onion_device_label() -> str:
 
 
 def _onion_os_version() -> str | None:
-    return _read_stripped(ONION_VERSION_FILE)
+    return _read_stripped(onion.VERSION_FILE)
 
 
 def _spruce_os_version() -> str | None:
-    return _read_stripped(config.SPRUCE_VERSION_FILE)
+    return _read_stripped(spruce.VERSION_FILE)
 
 
 def spruce_os_version() -> str | None:
@@ -323,7 +324,7 @@ def device_metadata() -> dict[str, str | list[str]]:
 
     config_data = config.load_config()
     emulators: list[str] = []
-    if retroarch_cfg.is_retroarch_patched(config.detect_retroarch_cfg(), config_data):
+    if retroarch_cfg.is_retroarch_patched(retroarch_cfg.detect_retroarch_cfg(), config_data):
         emulators.append("RetroArch")
     if ppsspp_cfg.is_ppsspp_patched(config_data):
         emulators.append("PPSSPP")

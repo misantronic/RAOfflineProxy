@@ -78,7 +78,7 @@ if ! /usr/bin/python3 -c "import pygame" >/dev/null 2>&1; then
   fi
 fi
 
-# Written from the app's own template (darkos_service.darkos_systemd_unit) so
+# Written from the app's own template (platforms.darkos.darkos_systemd_unit) so
 # there is exactly one definition of the unit, and an upgrade refreshes a unit
 # an older installer wrote.
 "${BIN_DIR}/raofflineproxy" install-service-unit >/dev/null 2>&1 || true
