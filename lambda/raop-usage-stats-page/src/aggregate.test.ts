@@ -126,6 +126,23 @@ test('a platform view only counts that platform', () => {
     assert.deepEqual(linux.model.firmwares, [{ label: 'Knulli', value: 1 }], 'within the six most used, a single-person firmware is listed');
 });
 
+test('Windows reports as linux but gets its own view', () => {
+    const windows = {
+        ...monthRow('c', 'ROG Ally'),
+        platform: 'linux',
+        os: 'Windows',
+        os_version: 'Windows 11 24H2 (build 26100)',
+        sk: 'c#linux#ROG Ally'
+    };
+    const rows = [monthRow('a', 'AYN Thor'), { ...monthRow('b', 'RG40XX-H'), platform: 'linux', os: 'Knulli', sk: 'b#linux#RG40XX-H' }, windows];
+    const [all, android, linux, win] = statsViews(rows, NOW);
+    assert.deepEqual([all.key, android.key, linux.key, win.key], ['all', 'android', 'linux', 'windows']);
+    assert.equal(linux.model.peopleThisMonth, 1);
+    assert.equal(win.model.peopleThisMonth, 1);
+    assert.deepEqual(win.model.firmwares, [{ label: 'Windows 11 24H2', value: 1 }]);
+    assert.deepEqual(all.model.platforms.map((c) => c.label).sort(), ['Android', 'Linux', 'Windows']);
+});
+
 test('the page has one tab per view with All selected by default', () => {
     const html = renderPage(statsViews([monthRow('a', 'AYN Thor')], NOW));
     assert.match(html, /id="tab-all"[^>]*aria-selected="true"/);

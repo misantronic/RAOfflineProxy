@@ -1,4 +1,4 @@
-import { aggregate, Count, DailyLoad, PLATFORMS, REQUEST_SOURCES, Row, StatsModel } from './aggregate';
+import { aggregate, Count, DailyLoad, Platform, PLATFORMS, REQUEST_SOURCES, Row, StatsModel } from './aggregate';
 
 interface Series {
     name: string;
@@ -226,7 +226,7 @@ function dailyColumns(daily: DailyLoad[], series: Series[]): string {
     );
 }
 
-export type ViewKey = 'all' | 'android' | 'linux';
+export type ViewKey = 'all' | Platform;
 
 export interface StatsView {
     key: ViewKey;
@@ -256,8 +256,13 @@ function renderPanel(view: StatsView): string {
     const totalBatches = daily.reduce((sum, day) => sum + day.batches, 0);
     const timeLimited = daily.reduce((sum, day) => sum + day.batchesTimeLimited, 0);
     const month = longMonth(model.month);
-    const firmwareTitle =
-        view.key === 'android' ? 'Android versions' : view.key === 'linux' ? 'Firmware' : 'Android and firmware versions';
+    const firmwareTitles: Record<ViewKey, string> = {
+        all: 'Android, Windows and firmware versions',
+        android: 'Android versions',
+        linux: 'Firmware',
+        windows: 'Windows versions'
+    };
+    const firmwareTitle = firmwareTitles[view.key];
 
     const tiles = [
         tile('People this month', formatNumber(model.peopleThisMonth), month),
@@ -372,7 +377,7 @@ export function renderPage(views: StatsView[]): string {
 <header class="page-header">
 <a class="home" href="/"><img src="/logo.png" alt="" width="40" height="40">RAOfflineProxy</a>
 <h1>Usage statistics</h1>
-<p class="lede">Anonymous, opt-in statistics from the Android and Linux apps. Only people who agreed to share are counted, so real usage is higher. Updated daily · last update ${escapeHtml(generatedLabel)}.</p>
+<p class="lede">Anonymous, opt-in statistics from the Android, Linux and Windows apps. Only people who agreed to share are counted, so real usage is higher. Updated daily · last update ${escapeHtml(generatedLabel)}.</p>
 </header>
 <div class="tabs" role="tablist" aria-label="Platform">${tabs}</div>
 <p class="tab-note">Counters show people this month. Someone using both platforms counts once in All and once in each platform tab.</p>

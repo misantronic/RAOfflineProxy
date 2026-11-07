@@ -6,11 +6,18 @@ export type Row = Record<string, unknown>;
 export const MIN_GROUP_SIZE = 2;
 export const MIN_SHOWN = 6;
 
-export type Platform = 'android' | 'linux';
+export type Platform = 'android' | 'linux' | 'windows';
 export const PLATFORMS: { key: Platform; label: string }[] = [
     { key: 'android', label: 'Android' },
-    { key: 'linux', label: 'Linux' }
+    { key: 'linux', label: 'Linux' },
+    { key: 'windows', label: 'Windows' }
 ];
+
+/** The backend only knows "android" and "linux": the Windows app reports as linux with os "Windows". */
+export function rowPlatform(row: Row): Platform {
+    if (row.platform === 'android') return 'android';
+    return row.os === 'Windows' ? 'windows' : 'linux';
+}
 export const DAILY_WINDOW_DAYS = 30;
 export const MONTHLY_WINDOW_MONTHS = 12;
 
@@ -137,10 +144,12 @@ export function deviceLabel(raw: string): string {
     return spelling && model.length > 0 ? [spelling, ...model].join(' ') : label;
 }
 
-/** "Android 13" stays as it is; Linux firmwares are grouped by name, not by build string. */
+/** "Android 13" stays as it is; Windows drops the build number ("Windows 11 24H2 (build 26100)");
+ *  Linux firmwares are grouped by name, not by build string. */
 export function firmwareLabel(row: Row): string {
     const os = text(row, 'os');
     if (os === 'Android') return `Android ${text(row, 'os_version')}`;
+    if (os === 'Windows') return text(row, 'os_version').replace(/\s*\(build [^)]*\)/, '');
     return os;
 }
 
@@ -217,7 +226,7 @@ function dailyLoad(date: string, rows: Row[]): DailyLoad {
 /** Only release rows ("month#…", "day#…") count; dev builds ("dev#…") and secrets are skipped.
  *  With a platform, only that platform's rows count. */
 export function aggregate(rows: Row[], now: Date, platform?: Platform): StatsModel {
-    if (platform) rows = rows.filter((row) => row.platform === platform);
+    if (platform) rows = rows.filter((row) => rowPlatform(row) === platform);
     const today = now.toISOString().slice(0, 10);
     const month = today.slice(0, 7);
     const monthRows = rows.filter((row) => partition(row).startsWith('month#'));
@@ -264,7 +273,7 @@ export function aggregate(rows: Row[], now: Date, platform?: Platform): StatsMod
         rateLimitedLast30Days: daily.reduce((sum, day) => sum + day.rateLimited, 0),
         monthly,
         daily,
-        platforms: peopleCounts(currentMonth, (row) => (row.platform === 'linux' ? 'Linux' : 'Android')),
+        platforms: peopleCounts(currentMonth, (row) => PLATFORMS.find((p) => p.key === rowPlatform(row))!.label),
         devices: foldKeepingTop(peopleCounts(currentMonth, (row) => deviceLabel(text(row, 'device')))),
         firmwares: foldKeepingTop(peopleCounts(currentMonth, firmwareLabel)),
         appVersions: peopleCounts(currentMonth, (row) => text(row, 'app_version')),
