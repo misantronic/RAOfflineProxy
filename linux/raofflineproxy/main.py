@@ -16,9 +16,8 @@ from .config import (
     running_on_darkos,
     running_on_onion,
 )
-from .platforms.darkos import systemd_install_service
+from . import platforms, usage_stats
 from .platforms import onion
-from . import usage_stats
 from .log_uploader import onion_os_version, onion_version_supported
 from .platform import (
     disable_autostart,
@@ -111,7 +110,6 @@ from .update import (
     update_status,
 )
 
-STALE_HOOK_PATH = Path("/userdata/system/scripts/RAOfflineProxy_game_hook.sh")
 LOGGER = logging.getLogger("raofflineproxy")
 
 
@@ -121,8 +119,7 @@ def should_abort_from_env() -> bool:
 
 
 def remove_stale_hook() -> None:
-    if STALE_HOOK_PATH.exists():
-        STALE_HOOK_PATH.unlink()
+    platforms.current().remove_stale_files()
 
 
 def _patch_emulator_configs(config_data: dict, cfg_path: str) -> list[str]:
@@ -481,8 +478,7 @@ def main() -> None:
             # Keeps the unit definition in one place: the installer calls this
             # rather than writing its own copy, so an upgrade always lands the
             # current template instead of whatever the old installer shipped.
-            if running_on_darkos():
-                systemd_install_service()
+            if platforms.current().install_service_unit():
                 print("Service unit installed")
             else:
                 print("No service unit to install on this platform")

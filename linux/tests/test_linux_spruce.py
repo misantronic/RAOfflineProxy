@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from linux.raofflineproxy import config, log_uploader, platform, service, update
+from linux.raofflineproxy import config, log_uploader, platform, platforms, service, update
 from linux.raofflineproxy.emulators import retroarch_cfg
 from linux.raofflineproxy.platforms import darkos as darkos_platform
 from linux.raofflineproxy.platforms import onion as onion_platform
@@ -216,14 +216,14 @@ class SpruceCredentialTests(unittest.TestCase):
         with self._with_settings(self.SETTINGS):
             with patch.object(spruce_platform.PLATFORM, "detect", return_value=True):
                 self.assertEqual(
-                    retroarch_cfg.load_spruce_credentials(),
+                    spruce_platform.PLATFORM.own_credentials(),
                     {"user": "markadia", "password": "hunter2"},
                 )
 
-    def test_ignored_when_not_on_spruce(self) -> None:
+    def test_other_platforms_have_no_own_credentials(self) -> None:
         with self._with_settings(self.SETTINGS):
-            with patch.object(spruce_platform.PLATFORM, "detect", return_value=False):
-                self.assertIsNone(retroarch_cfg.load_spruce_credentials())
+            use_platform(self, None)
+            self.assertIsNone(platforms.current().own_credentials())
 
     def test_blank_credentials_are_not_returned(self) -> None:
         payload = {
@@ -236,7 +236,7 @@ class SpruceCredentialTests(unittest.TestCase):
         }
         with self._with_settings(payload):
             with patch.object(spruce_platform.PLATFORM, "detect", return_value=True):
-                self.assertIsNone(retroarch_cfg.load_spruce_credentials())
+                self.assertIsNone(spruce_platform.PLATFORM.own_credentials())
 
     def test_missing_or_corrupt_settings_file_is_tolerated(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

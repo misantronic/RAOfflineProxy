@@ -1,4 +1,6 @@
+import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 from linux.raofflineproxy import platform, platforms
@@ -75,6 +77,48 @@ class RetroarchCfgTests(unittest.TestCase):
             darkos.PLATFORM.retroarch_cfg_candidates(darkos.HOME),
             (darkos.HOME / ".config" / "retroarch" / "retroarch.cfg",),
         )
+
+
+class PlatformHookTests(unittest.TestCase):
+    def test_hooks_default_to_doing_nothing(self) -> None:
+        self.assertIsNone(generic.PLATFORM.own_credentials())
+        self.assertIsNone(generic.PLATFORM.history_source())
+        self.assertIsNone(generic.PLATFORM.recent_rom_paths())
+        self.assertFalse(generic.PLATFORM.install_service_unit())
+        self.assertIsNone(generic.PLATFORM.remove_stale_files())
+
+    def test_knulli_removes_the_stale_game_hook(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            hook = Path(temp_dir) / "RAOfflineProxy_game_hook.sh"
+            hook.write_text("#!/bin/sh\n", encoding="utf-8")
+            with patch.object(knulli, "STALE_HOOK_PATH", hook):
+                knulli.PLATFORM.remove_stale_files()
+                knulli.PLATFORM.remove_stale_files()
+            self.assertFalse(hook.exists())
+
+    def test_darkos_installs_its_service_unit(self) -> None:
+        with patch.object(darkos, "systemd_install_service") as install:
+            self.assertTrue(darkos.PLATFORM.install_service_unit())
+        install.assert_called_once_with()
+
+    def test_muos_reads_its_own_history(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            rom = root / "game.gba"
+            rom.write_text("rom", encoding="utf-8")
+            history = root / "history"
+            history.mkdir()
+            (history / "one.cfg").write_text(f"{rom}\ngba\nGame", encoding="utf-8")
+            (history / "again.cfg").write_text(f"{rom}\ngba\nGame", encoding="utf-8")
+            (history / "gone.cfg").write_text(f"{root / 'missing.gba'}\ngba\nGone", encoding="utf-8")
+            with patch.object(muos, "HISTORY_DIR", history):
+                self.assertEqual(muos.PLATFORM.history_source(), history)
+                self.assertEqual(muos.PLATFORM.recent_rom_paths(), [rom])
+
+    def test_muos_without_a_history_dir_defers_to_retroarch(self) -> None:
+        with patch.object(muos, "HISTORY_DIR", Path("/nonexistent/history")):
+            self.assertIsNone(muos.PLATFORM.history_source())
+            self.assertIsNone(muos.PLATFORM.recent_rom_paths())
 
 
 class StartupScriptTests(unittest.TestCase):

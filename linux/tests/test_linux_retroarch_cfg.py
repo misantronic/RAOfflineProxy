@@ -402,9 +402,6 @@ class LinuxDarkosRetroarch32CredentialTests(unittest.TestCase):
         stack.enter_context(
             mock.patch.object(retroarch_cfg, "detect_batocera_conf", return_value=None)
         )
-        stack.enter_context(
-            mock.patch.object(retroarch_cfg, "load_spruce_credentials", return_value=None)
-        )
 
     def test_reads_a_token_from_the_32_bit_config(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir, ExitStack() as stack:

@@ -203,6 +203,16 @@ class SprucePlatform(Platform):
     def default_rom_root(self) -> Path | None:
         return existing_dir(miyoo.ROMS_ROOT)
 
+    def own_credentials(self) -> dict | None:
+        # spruce's own settings hold the credentials before any game launch has copied them
+        # into the RetroArch config. Password-only: spruce stores no token.
+        user = setting("username")
+        password = setting("password")
+        if not user or not password:
+            return None
+
+        return {"user": user, "password": password}
+
     def autostart_launcher(self, config_data: dict) -> str:
         return str(AUTOSTART_LAUNCHER)
 

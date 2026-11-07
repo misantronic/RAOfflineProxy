@@ -13,6 +13,39 @@ USER_INIT_CONFIG = Path("/opt/muos/config/settings/advanced/user_init")
 STARTUP_SCRIPT = INIT_DIR / "raofflineproxy.sh"
 ROMS_ROOT = Path("/mnt/mmc/ROMS")
 LAUNCHER = APP_DIR / "launch.sh"
+HISTORY_DIR = Path("/run/muos/storage/info/history")
+
+
+def history_paths() -> list[Path]:
+    """Read ROM paths from muOS per-game history cfg files in HISTORY_DIR.
+
+    Each .cfg file has three lines:
+        line 1: absolute path to the ROM file
+        line 2: platform/system name (e.g. "gba")
+        line 3: display name (no trailing newline)
+    """
+    unique_paths: list[Path] = []
+    seen: set[str] = set()
+    try:
+        entries = sorted(HISTORY_DIR.iterdir())
+    except OSError:
+        return []
+    for cfg_file in entries:
+        if not cfg_file.name.endswith(".cfg"):
+            continue
+        try:
+            lines = cfg_file.read_text(encoding="utf-8", errors="replace").splitlines()
+        except OSError:
+            continue
+        if not lines:
+            continue
+        path = Path(lines[0].strip())
+        normalized = str(path)
+        if normalized in seen or not path.exists() or not path.is_file():
+            continue
+        seen.add(normalized)
+        unique_paths.append(path)
+    return unique_paths
 
 
 def boot_hook_script(launcher: str) -> str:
@@ -71,6 +104,12 @@ class MuosPlatform(Platform):
 
     def remove_boot_hook(self, startup_script: Path) -> None:
         startup_script.unlink()
+
+    def history_source(self) -> Path | None:
+        return HISTORY_DIR if HISTORY_DIR.exists() else None
+
+    def recent_rom_paths(self) -> list[Path] | None:
+        return history_paths() if HISTORY_DIR.exists() else None
 
     def boot_hook_installed(self, startup_script: Path) -> bool:
         if USER_INIT_CONFIG.exists():

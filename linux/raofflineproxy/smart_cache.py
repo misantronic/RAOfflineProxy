@@ -8,7 +8,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
-from . import cache_budget, cache_queue, rom_browser
+from . import cache_budget, cache_queue, platforms, rom_browser
 from .auth import resolve_credentials
 from .emulators.dolphin_cfg import detect_dolphin_config_dir
 from .emulators.duckstation_cfg import detect_duckstation_ini
@@ -31,7 +31,6 @@ PHASE_CACHING = "caching"
 ROM_RESULT_OK = "ok"
 ROM_RESULT_FAIL = "fail"
 ROM_RESULT_QUEUED = "queued"
-MUOS_HISTORY_DIR = Path("/run/muos/storage/info/history")
 DOLPHIN_RECENT_WINDOW_SECONDS = 60 * 24 * 60 * 60
 DOLPHIN_GCI_CODE_REGEX = re.compile(r"^\d{2}-([A-Za-z0-9]{4})-.*\.gci$", re.IGNORECASE)
 DOLPHIN_WII_TITLE_ID_REGEX = re.compile(r"^[0-9A-Fa-f]{8}$")
@@ -315,9 +314,8 @@ def run_cache_paths(
 
 
 def load_content_history_paths(config_data: dict) -> list[Path]:
-    if MUOS_HISTORY_DIR.exists():
-        paths = _load_muos_history_paths()
-    else:
+    paths = platforms.current().recent_rom_paths()
+    if paths is None:
         paths = _load_retroarch_history_paths(config_data)
 
     seen = {str(path) for path in paths}
@@ -369,9 +367,10 @@ def _load_retroarch_history_paths(config_data: dict) -> list[Path]:
 
 
 def _find_history_source(config_data: dict) -> Path | None:
-    """Returns the muOS history dir, content_history.lpl, ppsspp.ini, or Dolphin.ini, whichever is available."""
-    if MUOS_HISTORY_DIR.exists():
-        return MUOS_HISTORY_DIR
+    """Returns the platform's history dir, content_history.lpl, ppsspp.ini, or Dolphin.ini, whichever is available."""
+    platform_source = platforms.current().history_source()
+    if platform_source is not None:
+        return platform_source
 
     retroarch_source = find_content_history_lpl(config_data)
     if retroarch_source is not None:
@@ -856,38 +855,6 @@ def _read_wad_game_code(path: Path) -> str | None:
 
 def _align_up_64(value: int) -> int:
     return (value + 63) & ~63
-
-
-def _load_muos_history_paths() -> list[Path]:
-    """Read ROM paths from muOS per-game history cfg files in MUOS_HISTORY_DIR.
-
-    Each .cfg file has three lines:
-        line 1 — absolute path to the ROM file
-        line 2 — platform/system name (e.g. "gba")
-        line 3 — display name (no trailing newline)
-    """
-    unique_paths: list[Path] = []
-    seen: set[str] = set()
-    try:
-        entries = sorted(MUOS_HISTORY_DIR.iterdir())
-    except OSError:
-        return []
-    for cfg_file in entries:
-        if not cfg_file.name.endswith(".cfg"):
-            continue
-        try:
-            lines = cfg_file.read_text(encoding="utf-8", errors="replace").splitlines()
-        except OSError:
-            continue
-        if not lines:
-            continue
-        path = Path(lines[0].strip())
-        normalized = str(path)
-        if normalized in seen or not path.exists() or not path.is_file():
-            continue
-        seen.add(normalized)
-        unique_paths.append(path)
-    return unique_paths
 
 
 def find_content_history_lpl(config_data: dict) -> Path | None:

@@ -67,6 +67,26 @@ class Platform:
     def flycast_cfg(self) -> Path | None:
         return None
 
+    def own_credentials(self) -> dict | None:
+        """RetroAchievements credentials kept in the platform's own settings, the only source
+        before a game launch copies them into the RetroArch config. Password only."""
+        return None
+
+    def remove_stale_files(self) -> None:
+        """Deletes files an earlier release installed and no longer wants."""
+
+    def install_service_unit(self) -> bool:
+        """Installs the platform's service definition. Returns False where there is none."""
+        return False
+
+    def history_source(self) -> Path | None:
+        """The platform's own recently-played store, when it keeps one."""
+        return None
+
+    def recent_rom_paths(self) -> list[Path] | None:
+        """ROMs from history_source(), or None to fall back to RetroArch's content history."""
+        return None
+
     def on_proxy_started(self, config_data: dict) -> None:
         """Called once the proxy listens, for platform-specific setup."""
 

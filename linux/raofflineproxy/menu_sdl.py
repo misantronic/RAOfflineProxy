@@ -9,6 +9,7 @@ import time
 from collections import OrderedDict
 from pathlib import Path
 
+from . import platforms
 from .platforms import allium as allium_platform
 from .platforms import knulli as knulli_platform
 from .platforms import muos as muos_platform
@@ -151,7 +152,6 @@ if running_on_windows():
     from .windows.input import close_input_devices, open_input_devices, read_keys
 
 SDL_LOG_PATH = CONFIG_DIR / "menu-sdl.log"
-STALE_HOOK_PATH = Path("/userdata/system/scripts/RAOfflineProxy_game_hook.sh")
 BACKGROUND_COLOR = (0, 0, 0)
 PRIMARY_COLOR = (28, 81, 130)
 SECONDARY_COLOR = (210, 164, 72)
@@ -492,8 +492,7 @@ def log_action_failure(action: str, exc: Exception) -> None:
 
 
 def remove_stale_hook() -> None:
-    if STALE_HOOK_PATH.exists():
-        STALE_HOOK_PATH.unlink()
+    platforms.current().remove_stale_files()
 
 
 def running_on_muos() -> bool:

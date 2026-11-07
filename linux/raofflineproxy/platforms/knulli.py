@@ -13,6 +13,7 @@ BATOCERA_CONF = Path("/userdata/system/batocera.conf")
 KNULLI_CONF = Path("/userdata/system/knulli.conf")
 ROMS_ROOT = Path("/userdata/roms")
 LAUNCHER = Path("/userdata/system/raofflineproxy/bin/raofflineproxy")
+STALE_HOOK_PATH = Path("/userdata/system/scripts/RAOfflineProxy_game_hook.sh")
 # Knulli/Batocera generate retroarchcustom.cfg at the first libretro launch, so a
 # freshly flashed device has none of these yet. Keep the canonical path as the
 # fallback: /userdata already established the platform, and falling
@@ -59,6 +60,10 @@ class KnulliPlatform(Platform):
 
     def default_rom_root(self) -> Path | None:
         return existing_dir(ROMS_ROOT)
+
+    def remove_stale_files(self) -> None:
+        if STALE_HOOK_PATH.exists():
+            STALE_HOOK_PATH.unlink()
 
     def autostart_launcher(self, config_data: dict) -> str:
         return str(config_data.get("autostart_launcher") or LAUNCHER)

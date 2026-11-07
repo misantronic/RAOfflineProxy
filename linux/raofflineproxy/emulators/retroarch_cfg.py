@@ -8,7 +8,6 @@ from typing import Optional
 from .. import config, platforms
 from ..batocera_conf import detect_batocera_conf
 from ..config import proxy_value
-from ..platforms import spruce
 from ..state import clear_patch_state, load_patch_state, save_patch_state
 from ..utils import write_emulator_config
 
@@ -133,20 +132,6 @@ def detect_hardcore_enabled(content: str) -> bool:
     return _extract_config_value(content, HARDCORE_KEY) == "true"
 
 
-def load_spruce_credentials() -> dict | None:
-    """spruce's own settings, which hold the credentials before any game launch has
-    copied them into the RetroArch config. Password-only — spruce stores no token."""
-    if not spruce.PLATFORM.detect():
-        return None
-
-    user = spruce.setting("username")
-    password = spruce.setting("password")
-    if not user or not password:
-        return None
-
-    return {"user": user, "password": password}
-
-
 def load_system_conf_token_credentials(cfg_path: str | None = None) -> dict | None:
     """EmulationStation's own settings (ROCKNIX system.cfg, knulli.conf, batocera.conf),
     the only source before a game has launched."""
@@ -232,7 +217,7 @@ def load_retroarch_credentials(cfg_path: str | None) -> dict | None:
     if password_credentials is not None:
         return password_credentials
 
-    return load_spruce_credentials()
+    return platforms.current().own_credentials()
 
 
 def load_retroarch_token_credentials(cfg_path: str | None) -> dict | None:

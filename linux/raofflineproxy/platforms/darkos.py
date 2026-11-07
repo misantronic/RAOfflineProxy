@@ -66,6 +66,10 @@ class DarkosPlatform(Platform):
     def on_autostart_disabled(self) -> None:
         systemd_disable_service()
 
+    def install_service_unit(self) -> bool:
+        systemd_install_service()
+        return True
+
     def secondary_retroarch_cfg(self, config_data: dict | None = None) -> str | None:
         configured = (config_data or {}).get("darkos_retroarch32_cfg")
         if configured:
