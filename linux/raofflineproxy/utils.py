@@ -6,7 +6,8 @@ import re
 from pathlib import Path
 from urllib.parse import parse_qsl, quote_plus, unquote_plus, urlencode, urlsplit
 
-from .config import FALLBACK_USER_AGENT, PROXY_UA_TAG, running_on_windows
+from . import platforms
+from .config import FALLBACK_USER_AGENT, PROXY_UA_TAG
 
 
 def sha256_hex(value: str) -> str:
@@ -135,12 +136,7 @@ def decode_value(value: str) -> str:
 
 
 def write_emulator_config(target: Path, content: str) -> None:
-    if running_on_windows():
-        from .windows.paths import write_preserving_newlines
-
-        write_preserving_newlines(target, content)
-    else:
-        target.write_text(content, encoding="utf-8")
+    platforms.current().write_emulator_config(target, content)
 
 
 def detect_emulator_path(config_data: dict, key: str, env_name: str, platform_path) -> str | None:

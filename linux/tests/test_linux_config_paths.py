@@ -5,6 +5,7 @@ from pathlib import Path
 from unittest import mock
 
 from linux.raofflineproxy import batocera_conf, config
+from linux.raofflineproxy.platforms import rocknix as rocknix_platform
 from linux.raofflineproxy.emulators import retroarch_cfg
 from linux.raofflineproxy.platforms import darkos as darkos_platform
 from linux.raofflineproxy.platforms import knulli as knulli_platform
@@ -213,9 +214,7 @@ class LinuxConfigPathTests(unittest.TestCase):
                     return original_exists(path)
 
                 with mock.patch.object(Path, "exists", fake_exists):
-                    with mock.patch.object(
-                        config, "running_on_rocknix", return_value=False
-                    ):
+                    with mock.patch.object(rocknix_platform.PLATFORM, "detect", return_value=False):
                         self.assertEqual(
                             retroarch_cfg.detect_retroarch_cfg(),
                             str(miyoo_platform.RETROARCH_CFG_CANDIDATES[0]),

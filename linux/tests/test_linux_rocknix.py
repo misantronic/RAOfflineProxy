@@ -20,7 +20,7 @@ class RocknixDetectionTests(unittest.TestCase):
             original = platform_base.OS_RELEASE_PATH
             try:
                 platform_base.OS_RELEASE_PATH = os_release
-                self.assertTrue(config.running_on_rocknix())
+                self.assertTrue(rocknix_platform.PLATFORM.detect())
             finally:
                 platform_base.OS_RELEASE_PATH = original
 
@@ -31,7 +31,7 @@ class RocknixDetectionTests(unittest.TestCase):
             original = platform_base.OS_RELEASE_PATH
             try:
                 platform_base.OS_RELEASE_PATH = os_release
-                self.assertFalse(config.running_on_rocknix())
+                self.assertFalse(rocknix_platform.PLATFORM.detect())
             finally:
                 platform_base.OS_RELEASE_PATH = original
 
@@ -40,7 +40,7 @@ class RocknixDetectionTests(unittest.TestCase):
             original = platform_base.OS_RELEASE_PATH
             try:
                 platform_base.OS_RELEASE_PATH = Path(temp_dir) / "missing-os-release"
-                self.assertFalse(config.running_on_rocknix())
+                self.assertFalse(rocknix_platform.PLATFORM.detect())
             finally:
                 platform_base.OS_RELEASE_PATH = original
 
@@ -60,7 +60,7 @@ class RocknixConfigPathTests(unittest.TestCase):
                     return original_userdata_exists(path)
 
                 with patch.object(Path, "exists", fake_exists):
-                    with patch.object(config, "running_on_rocknix", return_value=True):
+                    with patch.object(rocknix_platform.PLATFORM, "detect", return_value=True):
                         self.assertEqual(
                             retroarch_cfg.detect_retroarch_cfg(),
                             str(rocknix_platform.RETROARCH_CFG),
@@ -84,7 +84,7 @@ class RocknixConfigPathTests(unittest.TestCase):
                     return original_exists(path)
 
                 with patch.object(Path, "exists", fake_exists):
-                    with patch.object(config, "running_on_rocknix", return_value=False):
+                    with patch.object(rocknix_platform.PLATFORM, "detect", return_value=False):
                         self.assertEqual(
                             retroarch_cfg.detect_retroarch_cfg(),
                             str(rocknix_platform.RETROARCH_CFG),
@@ -101,7 +101,7 @@ class RocknixConfigPathTests(unittest.TestCase):
         try:
             os.environ.pop("RAOFFLINEPROXY_CONFIG_DIR", None)
             os.environ.pop("XDG_CONFIG_HOME", None)
-            with patch.object(config, "running_on_rocknix", return_value=True):
+            with patch.object(rocknix_platform.PLATFORM, "detect", return_value=True):
                 self.assertEqual(
                     config.resolve_config_dir(),
                     rocknix_platform.CONFIG_DIR,

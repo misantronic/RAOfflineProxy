@@ -94,6 +94,10 @@ class Platform:
     menu_font: str = "default"
     # Whether the menu has to ask the user to map their confirm and cancel buttons.
     needs_controller_calibration: bool = True
+    # Names the operating system in the User-Agent the proxy sends.
+    user_agent_os: str = "Linux"
+    # Windows lets a second listener bind over a live one with SO_REUSEADDR, so it must not.
+    reuse_listen_address: bool = True
 
     def detect(self) -> bool:
         return False
@@ -170,6 +174,36 @@ class Platform:
     def recent_rom_paths(self) -> list[Path] | None:
         """ROMs from history_source(), or None to fall back to RetroArch's content history."""
         return None
+
+    def write_emulator_config(self, target: Path, content: str) -> None:
+        target.write_text(content, encoding="utf-8")
+
+    def adjust_config(self, config_data: dict) -> None:
+        """Rewrites freshly loaded settings in place where the platform derives part of them
+        from the machine (Windows points each emulator at its real config)."""
+
+    def extra_log_files(self) -> list[Path]:
+        """Files besides the service logs that belong in a support upload."""
+        return []
+
+    def metadata_overrides(self, config_data: dict) -> dict:
+        """Device metadata that replaces what the generic probes report."""
+        return {}
+
+    def native_library_dirs(self) -> tuple[Path, ...]:
+        """Directories to look in for the native zstd and crypto libraries."""
+        return ()
+
+    def watch_folder_prefix(self, folder: str) -> str:
+        """The folder path as scanned file paths are prefixed with it."""
+        return f"{folder.rstrip('/')}/"
+
+    def is_test_build(self) -> bool:
+        """A build that must stay out of the real usage numbers."""
+        return False
+
+    def on_award_synced(self, storage, award: dict) -> None:
+        """Called after a queued award reached RetroAchievements."""
 
     def process_backend(self):
         """Module implementing process handling where the POSIX default does not work

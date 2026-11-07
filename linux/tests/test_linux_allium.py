@@ -20,15 +20,15 @@ class AlliumDetectionTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             marker = Path(temp_dir) / ".allium"
             with patch.object(allium_platform, "MARKER_DIR", marker):
-                self.assertFalse(config.running_on_allium())
+                self.assertFalse(allium_platform.PLATFORM.detect())
                 marker.mkdir()
-                self.assertTrue(config.running_on_allium())
+                self.assertTrue(allium_platform.PLATFORM.detect())
 
     def test_running_on_shared_miyoo_stack_includes_allium(self) -> None:
         with patch.object(allium_platform.PLATFORM, "detect", return_value=True):
             with patch.object(onion_platform.PLATFORM, "detect", return_value=False):
                 with patch.object(spruce_platform.PLATFORM, "detect", return_value=False):
-                    self.assertTrue(config.running_on_shared_miyoo_stack())
+                    self.assertTrue(platforms.running_on_shared_miyoo_stack())
 
     def test_resolve_config_dir_uses_allium_pak_data_dir(self) -> None:
         use_platform(self, allium_platform.PLATFORM)

@@ -65,13 +65,14 @@ class OffWindowsTests(unittest.TestCase):
 class EmulatorConfigWriteTests(unittest.TestCase):
     def test_off_windows_writes_exactly_as_write_text_did(self) -> None:
         from linux.raofflineproxy import utils
+        from linux.raofflineproxy.platforms import windows as windows_platform
 
         content = 'cheevos_enable = "true"\nmenu_driver = "ozone"\n'
         with tempfile.TemporaryDirectory() as folder:
             target = Path(folder) / "retroarch.cfg"
             expected = Path(folder) / "expected.cfg"
             expected.write_text(content, encoding="utf-8")
-            with mock.patch.object(utils, "running_on_windows", return_value=False):
+            with mock.patch.object(windows_platform.PLATFORM, "detect", return_value=False):
                 utils.write_emulator_config(target, content)
             self.assertEqual(target.read_bytes(), expected.read_bytes())
 

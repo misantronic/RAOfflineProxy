@@ -54,10 +54,7 @@ def _log_file_paths() -> list[Path]:
         menu_stdout_log,
         config.UPDATE_STATUS_FILE,
         config.STATUS_FILE,
-    ] + (
-        # The Windows in-place updater's transcript.
-        [config.CONFIG_DIR / "update.log"] if config.running_on_windows() else []
-    )
+    ] + platforms.current().extra_log_files()
 
 
 def _redact_storage_json(text: str) -> str:
@@ -162,10 +159,7 @@ def device_metadata() -> dict[str, str | list[str]]:
     if emulators:
         metadata["emulator"] = emulators
 
-    if config.running_on_windows():
-        from .windows.account import metadata_overrides
-
-        metadata.update(metadata_overrides(config_data))
+    metadata.update(platform.metadata_overrides(config_data))
 
     return metadata
 

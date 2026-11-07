@@ -8,7 +8,8 @@ from dataclasses import dataclass
 from . import usage_stats
 from .auth import resolve_credentials
 from .award_signing import public_key_base64, sign_award, verify_award
-from .config import FALLBACK_USER_AGENT, MAX_PROXY_PORT, running_on_windows, upstream_host
+from . import platforms
+from .config import FALLBACK_USER_AGENT, MAX_PROXY_PORT, upstream_host
 from .network import build_api_url, http_post
 from .rom_cache import (
     CacheGameAuthError,
@@ -433,10 +434,7 @@ def flush_pending_awards(storage: Storage, config_data: dict) -> FlushOutcome:
             storage.clear_invalid_token()
             flushed += 1
             LOGGER.info("Flush succeeded: achievementId=%s", achievement_id)
-            if running_on_windows():
-                from .windows.history import record_synced_award
-
-                record_synced_award(storage, award)
+            platforms.current().on_award_synced(storage, award)
         elif outcome == "auth_error":
             award["status"] = PENDING_AWARD_STATUS_PENDING
             award["lastError"] = message

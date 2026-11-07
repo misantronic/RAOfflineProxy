@@ -60,7 +60,8 @@ class TestInstall:
     def test_detects_rocknix_and_its_config_paths(self, installed):
         result = installed.app_python(
             "from raofflineproxy import batocera_conf, config;from raofflineproxy.emulators import dolphin_cfg, ppsspp_cfg, retroarch_cfg;"
-            "print(config.running_on_rocknix());"
+            "from raofflineproxy.platforms import rocknix;"
+            "print(rocknix.PLATFORM.detect());"
             "print(retroarch_cfg.detect_retroarch_cfg());"
             "print(batocera_conf.detect_batocera_conf({}));"
             "print(ppsspp_cfg.detect_ppsspp_ini({}));"

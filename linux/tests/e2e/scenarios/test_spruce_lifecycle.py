@@ -69,9 +69,9 @@ class TestSpruceSpecific:
         probe = installed.container.exec(
             "cd %s && . ./common.sh && prepare_env >/dev/null 2>&1 && "
             'resolve_python_bin && "$RESOLVED_PYTHON_BIN" -c '
-            "'from raofflineproxy import config; "
-            "print(config.running_on_spruce(), config.running_on_onion(), "
-            "config.running_on_allium())'" % installed.device.base_dir,
+            "'from raofflineproxy.platforms import allium, onion, spruce; "
+            "print(spruce.PLATFORM.detect(), onion.PLATFORM.detect(), "
+            "allium.PLATFORM.detect())'" % installed.device.base_dir,
             check=True,
         )
         assert probe.stdout.strip().splitlines()[-1] == "True False False"
@@ -88,8 +88,8 @@ class TestSpruceSpecific:
         probe = installed.container.exec(
             "cd %s && . ./common.sh && prepare_env >/dev/null 2>&1 && "
             'resolve_python_bin && "$RESOLVED_PYTHON_BIN" -c '
-            "'from raofflineproxy import config; "
-            "print(config.running_on_spruce(), config.running_on_onion())'"
+            "'from raofflineproxy.platforms import onion, spruce; "
+            "print(spruce.PLATFORM.detect(), onion.PLATFORM.detect())'"
             % installed.device.base_dir,
             check=True,
         )

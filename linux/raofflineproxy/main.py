@@ -13,8 +13,6 @@ from .config import (
     configure_logging,
     load_config,
     proxy_value,
-    running_on_darkos,
-    running_on_onion,
 )
 from . import platforms, usage_stats
 from .platforms import onion

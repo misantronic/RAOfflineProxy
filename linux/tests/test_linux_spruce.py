@@ -21,14 +21,14 @@ class SpruceDetectionTests(unittest.TestCase):
     def test_running_on_onion_is_false_when_spruce_marker_present(self) -> None:
         with patch.object(spruce_platform.PLATFORM, "detect", return_value=True):
             with patch.object(Path, "exists", return_value=True):
-                self.assertFalse(config.running_on_onion())
-                self.assertTrue(config.running_on_shared_miyoo_stack())
+                self.assertFalse(onion_platform.PLATFORM.detect())
+                self.assertTrue(platforms.running_on_shared_miyoo_stack())
 
     def test_running_on_onion_still_true_without_spruce_marker(self) -> None:
         with patch.object(spruce_platform.PLATFORM, "detect", return_value=False):
             with patch.object(Path, "exists", return_value=True):
-                self.assertTrue(config.running_on_onion())
-                self.assertTrue(config.running_on_shared_miyoo_stack())
+                self.assertTrue(onion_platform.PLATFORM.detect())
+                self.assertTrue(platforms.running_on_shared_miyoo_stack())
 
     def test_onion_wins_when_a_stale_spruce_directory_is_left_on_the_card(self) -> None:
         # Reinstalling Onion over a card that once ran spruce leaves /mnt/SDCARD/spruce
@@ -42,9 +42,9 @@ class SpruceDetectionTests(unittest.TestCase):
 
             with patch.object(spruce_platform, "VERSION_FILE", spruce_marker):
                 with patch.object(onion_platform, "VERSION_FILE", onion_marker):
-                    self.assertFalse(config.running_on_spruce())
+                    self.assertFalse(spruce_platform.PLATFORM.detect())
                     with patch.object(Path, "exists", return_value=True):
-                        self.assertTrue(config.running_on_onion())
+                        self.assertTrue(onion_platform.PLATFORM.detect())
 
     def test_spruce_detected_when_only_its_marker_is_present(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -52,7 +52,7 @@ class SpruceDetectionTests(unittest.TestCase):
             spruce_marker.write_text("4.3.4\n", encoding="utf-8")
             with patch.object(spruce_platform, "VERSION_FILE", spruce_marker):
                 with patch.object(onion_platform, "VERSION_FILE", Path(temp_dir) / "absent"):
-                    self.assertTrue(config.running_on_spruce())
+                    self.assertTrue(spruce_platform.PLATFORM.detect())
 
     def test_mini_sdl_stack_follows_the_selected_driver_not_the_firmware(self) -> None:
         # The aarch64 spruce bundle ships a stock SDL2 with no "Mini" driver, so keying
@@ -85,7 +85,7 @@ class SpruceDetectionTests(unittest.TestCase):
                 with patch.object(spruce_platform, "BASEOS_RELEASE_PATH", baseos_path):
                     with patch.object(platform_base, "OS_RELEASE_PATH", os_release_path):
                         with patch.object(spruce_platform, "LOONG_DAEMON", root / "absent"):
-                            return config.spruce_platform()
+                            return spruce_platform.device_name()
 
     def test_spruce_platform_reads_cpuinfo_tokens(self) -> None:
         cases = {
@@ -131,9 +131,9 @@ class SpruceDetectionTests(unittest.TestCase):
             ark_home.mkdir()
             with patch.object(darkos_platform, "HOME", ark_home):
                 with patch.object(spruce_platform.PLATFORM, "detect", return_value=True):
-                    self.assertFalse(config.running_on_darkos())
+                    self.assertFalse(darkos_platform.PLATFORM.detect())
                 with patch.object(spruce_platform.PLATFORM, "detect", return_value=False):
-                    self.assertTrue(config.running_on_darkos())
+                    self.assertTrue(darkos_platform.PLATFORM.detect())
 
     def test_spruce_platform_prefers_the_platform_spruce_exports(self) -> None:
         with patch.dict(os.environ, {"SPRUCE_PLATFORM": "Miniloong"}, clear=False):
@@ -148,7 +148,7 @@ class SpruceDetectionTests(unittest.TestCase):
             cpuinfo_path.write_text("Hardware\t: unknown\n", encoding="utf-8")
             with patch.object(spruce_platform, "CPUINFO_PATH", cpuinfo_path):
                 with patch.object(spruce_platform, "MAGICX_MARKER", Path(temp_dir) / "absent"):
-                    self.assertEqual(config.spruce_platform(), "MiyooMini")
+                    self.assertEqual(spruce_platform.device_name(), "MiyooMini")
 
     def test_boot_hook_follows_the_devices_real_entry_point(self) -> None:
         # The H700 boards boot through BaseOS, which execs MinUI.pak/launch.sh into
@@ -294,7 +294,7 @@ class SprucePortTests(unittest.TestCase):
             self.assertEqual(config.proxy_port({}), 8080)
 
     def test_explicit_port_still_wins_on_spruce(self) -> None:
-        with patch.object(config, "running_on_spruce", return_value=True):
+        with patch.object(spruce_platform.PLATFORM, "detect", return_value=True):
             self.assertEqual(config.proxy_port({"proxy_port": 9000}), 9000)
 
     def test_port_availability_probe_detects_a_live_listener(self) -> None:
@@ -319,7 +319,7 @@ class SprucePortTests(unittest.TestCase):
         written: dict = {}
         with patch.object(service, "save_pid", lambda *_a: None):
             with patch.object(service, "save_service_status", written.update):
-                with patch.object(config, "running_on_spruce", return_value=True):
+                with patch.object(spruce_platform.PLATFORM, "detect", return_value=True):
                     service.save_running_service_state(123, {})
 
         self.assertEqual(written["proxyPort"], spruce_platform.DEFAULT_PROXY_PORT)

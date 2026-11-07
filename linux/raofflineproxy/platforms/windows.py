@@ -16,6 +16,8 @@ class WindowsPlatform(Platform):
     # SDL's GameController mapping already puts A/B at BTN_SOUTH/BTN_EAST, which the menu's
     # confirm and cancel keys default to.
     needs_controller_calibration = False
+    user_agent_os = "Windows"
+    reuse_listen_address = False
 
     def detect(self) -> bool:
         return sys.platform == "win32"
@@ -62,6 +64,48 @@ class WindowsPlatform(Platform):
         from ..windows.menu import WindowsMenuSession
 
         return WindowsMenuSession
+
+    def write_emulator_config(self, target: Path, content: str) -> None:
+        from ..windows.paths import write_preserving_newlines
+
+        write_preserving_newlines(target, content)
+
+    def adjust_config(self, config_data: dict) -> None:
+        # Points each emulator at its real config, or at a placeholder when it's turned off
+        # or its config doesn't exist yet (e.g. never launched).
+        from ..windows.emulators import apply_state
+
+        apply_state(config_data)
+
+    def extra_log_files(self) -> list[Path]:
+        from ..config import CONFIG_DIR
+
+        # The in-place updater's transcript.
+        return [CONFIG_DIR / "update.log"]
+
+    def metadata_overrides(self, config_data: dict) -> dict:
+        from ..windows.account import metadata_overrides
+
+        return metadata_overrides(config_data)
+
+    def native_library_dirs(self) -> tuple[Path, ...]:
+        # Windows has no system libzstd/libcrypto: zstd.dll ships next to the app, and
+        # libcrypto comes from the Python install's DLLs directory (the copy its ssl module uses).
+        return (Path(__file__).resolve().parent.parent, Path(sys.base_prefix) / "DLLs")
+
+    def watch_folder_prefix(self, folder: str) -> str:
+        # Scanned paths are built with os.path.join, which uses backslashes there.
+        return folder.rstrip("\\/") + "\\"
+
+    def is_test_build(self) -> bool:
+        from ..windows.paths import test_channel
+
+        return bool(test_channel())
+
+    def on_award_synced(self, storage, award: dict) -> None:
+        from ..windows.history import record_synced_award
+
+        record_synced_award(storage, award)
 
     def process_backend(self):
         from ..windows import process

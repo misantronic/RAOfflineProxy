@@ -216,7 +216,7 @@ SPRUCE = _miyoo(
     # spruce launches RetroArch with --config pointing at a per-device file, so
     # .retroarch/retroarch.cfg is never read.
     "/mnt/SDCARD/Saves/ra-configs/retroarch-MiyooMini.cfg",
-    # Same path Allium uses; platform.py dispatches on running_on_allium().
+    # Same path Allium uses; the boot hook comes from the detected platform.
     "/mnt/SDCARD/.tmp_update/updater",
     # spruce ships SFTPGo bound to 0.0.0.0:8080, so the proxy moves to 8099.
     proxy_port=8099,

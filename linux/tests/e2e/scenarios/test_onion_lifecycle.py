@@ -29,9 +29,10 @@ class TestOnionSpecific:
         probe = installed.container.exec(
             "cd %s && . ./common.sh && prepare_env >/dev/null 2>&1 && "
             'resolve_python_bin && "$RESOLVED_PYTHON_BIN" -c '
-            "'from raofflineproxy import config; "
-            "print(config.running_on_onion(), config.running_on_spruce(), "
-            "config.running_on_allium(), config.running_on_shared_miyoo_stack())'"
+            "'from raofflineproxy import platforms; "
+            "from raofflineproxy.platforms import allium, onion, spruce; "
+            "print(onion.PLATFORM.detect(), spruce.PLATFORM.detect(), "
+            "allium.PLATFORM.detect(), platforms.running_on_shared_miyoo_stack())'"
             % installed.device.base_dir,
             check=True,
         )
