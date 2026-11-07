@@ -104,8 +104,6 @@ from .watch_folders import (
 from .state import load_online_state, load_patch_state, save_patch_state, save_online_state
 from .ui import write_status_image, write_text_image
 from .update import (
-    download_onion_update_archive,
-    install_onion_update_archive,
     update_status,
 )
 
@@ -1034,9 +1032,12 @@ def main() -> None:
             if not info.asset_url:
                 raise RuntimeError(f"No {args.platform} asset in the latest release")
 
+            target = platforms.by_id(args.platform)
+            if target is None or target.update_install_kind != "archive":
+                raise ValueError(f"install-update does not support {args.platform}")
+
             stop_service_process()
-            archive = download_onion_update_archive(info.asset_url)
-            install_onion_update_archive(archive, onion.APP_DIR, "App")
+            target.install_update(info.asset_url, lambda _message: None)
 
             result = {"installed": True, "version": info.latest_version}
             print(json.dumps(result, separators=(",", ":")) if args.as_json

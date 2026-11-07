@@ -9,6 +9,7 @@ from unittest.mock import patch
 from linux.raofflineproxy import config, log_uploader, platform, platforms, service, update
 from linux.raofflineproxy.emulators import retroarch_cfg
 from linux.raofflineproxy.platforms import darkos as darkos_platform
+from linux.raofflineproxy.platforms import miyoo as miyoo_platform
 from linux.raofflineproxy.platforms import onion as onion_platform
 from linux.raofflineproxy.platforms import base as platform_base
 from linux.raofflineproxy.platforms import boot_hooks
@@ -58,15 +59,15 @@ class SpruceDetectionTests(unittest.TestCase):
         # the Renderer display path on "is this spruce" sent it down a path that cannot
         # work and crashed the menu on every 64-bit device.
         with patch.dict(os.environ, {"SDL_VIDEODRIVER": "Mini"}, clear=False):
-            self.assertTrue(config.running_on_mini_sdl_stack())
+            self.assertTrue(miyoo_platform.running_on_mini_sdl_stack())
 
         with patch.dict(os.environ, {"SDL_VIDEODRIVER": "mali"}, clear=False):
-            self.assertFalse(config.running_on_mini_sdl_stack())
+            self.assertFalse(miyoo_platform.running_on_mini_sdl_stack())
 
         environ = dict(os.environ)
         environ.pop("SDL_VIDEODRIVER", None)
         with patch.dict(os.environ, environ, clear=True):
-            self.assertFalse(config.running_on_mini_sdl_stack())
+            self.assertFalse(miyoo_platform.running_on_mini_sdl_stack())
 
     def _platform_for(self, cpuinfo: str, baseos: str = "", os_release: str = "") -> str:
         with tempfile.TemporaryDirectory() as temp_dir:

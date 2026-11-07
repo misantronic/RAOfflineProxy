@@ -439,7 +439,7 @@ class LinuxUpdateTests(unittest.TestCase):
         self.assertEqual(result.checked_at, 0)
         self.assertEqual(saved, [])
 
-    def test_download_knulli_update_installer_retries_after_connection_error(self) -> None:
+    def test_download_update_installer_retries_after_connection_error(self) -> None:
         attempts = []
         sleeps = []
 
@@ -454,7 +454,7 @@ class LinuxUpdateTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as temp_dir:
             destination = Path(temp_dir) / "installer.sh"
-            written = update.download_knulli_update_installer(
+            written = update.download_update_installer(
                 "https://example.com/installer.sh",
                 destination=destination,
             )
@@ -473,7 +473,7 @@ class LinuxUpdateTests(unittest.TestCase):
 
             self.assertEqual(destination.read_bytes(), b"#!/bin/sh\nexit 0\n")
 
-    def test_install_onion_update_archive_replaces_app_dir(self) -> None:
+    def test_install_archive_update_replaces_app_dir(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             app_dir = root / "RAOfflineProxy"
@@ -495,7 +495,7 @@ class LinuxUpdateTests(unittest.TestCase):
             original_current_version = update.current_version
             try:
                 update.current_version = lambda: "1.1.0-alpha1"
-                update.install_onion_update_archive(archive_path, app_dir)
+                update.install_archive_update(archive_path, app_dir, "App")
             finally:
                 update.current_version = original_current_version
 
@@ -504,7 +504,7 @@ class LinuxUpdateTests(unittest.TestCase):
             self.assertEqual((app_dir / "data" / "proxy.sqlite3").read_text(encoding="utf-8"), "cached-db")
             self.assertEqual((app_dir / "launch.sh").stat().st_mode & 0o777, 0o755)
 
-    def test_install_onion_update_archive_clears_stale_update_status(self) -> None:
+    def test_install_archive_update_clears_stale_update_status(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             app_dir = root / "RAOfflineProxy"
@@ -520,7 +520,7 @@ class LinuxUpdateTests(unittest.TestCase):
             original_current_version = update.current_version
             try:
                 update.current_version = lambda: "1.2.0-alpha4"
-                update.install_onion_update_archive(archive_path, app_dir)
+                update.install_archive_update(archive_path, app_dir, "App")
             finally:
                 update.current_version = original_current_version
 
@@ -536,7 +536,7 @@ class LinuxUpdateTests(unittest.TestCase):
             contents,
         )
 
-    def test_install_onion_update_archive_resets_data_for_major_upgrade(self) -> None:
+    def test_install_archive_update_resets_data_for_major_upgrade(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             app_dir = root / "RAOfflineProxy"
@@ -553,13 +553,13 @@ class LinuxUpdateTests(unittest.TestCase):
             original_current_version = update.current_version
             try:
                 update.current_version = lambda: "1.3.0-alpha1"
-                update.install_onion_update_archive(archive_path, app_dir)
+                update.install_archive_update(archive_path, app_dir, "App")
             finally:
                 update.current_version = original_current_version
 
             self.assertEqual((app_dir / "data" / "proxy.sqlite3").read_text(encoding="utf-8"), "fresh-db")
 
-    def test_install_muos_update_archive_replaces_app_dir_and_preserves_data(self) -> None:
+    def test_install_top_level_archive_replaces_app_dir_and_preserves_data(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             app_dir = root / "RAOfflineProxy"
@@ -576,7 +576,9 @@ class LinuxUpdateTests(unittest.TestCase):
                 launch_info.external_attr = 0o755 << 16
                 archive.writestr(launch_info, "#!/bin/sh\nexit 0\n")
 
-            update.install_muos_update_archive(archive_path, app_dir)
+            update.install_archive_update(
+                archive_path, app_dir, "", preserve_data=True, delete_archive=True
+            )
 
             self.assertFalse((app_dir / "old.txt").exists())
             self.assertEqual(
@@ -592,7 +594,7 @@ class LinuxUpdateTests(unittest.TestCase):
             # the downloaded archive is cleaned up
             self.assertFalse(archive_path.exists())
 
-    def test_install_muos_update_archive_clears_stale_update_status(self) -> None:
+    def test_install_top_level_archive_clears_stale_update_status(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             app_dir = root / "RAOfflineProxy"
@@ -604,11 +606,13 @@ class LinuxUpdateTests(unittest.TestCase):
             with zipfile.ZipFile(archive_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
                 archive.writestr("RAOfflineProxy/launch.sh", "#!/bin/sh\nexit 0\n")
 
-            update.install_muos_update_archive(archive_path, app_dir)
+            update.install_archive_update(
+                archive_path, app_dir, "", preserve_data=True, delete_archive=True
+            )
 
             self.assertFalse((app_dir / "data" / "update_status.json").exists())
 
-    def test_install_muos_update_archive_rejects_archive_missing_app_dir(self) -> None:
+    def test_install_top_level_archive_rejects_archive_missing_app_dir(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             app_dir = root / "RAOfflineProxy"
@@ -620,17 +624,19 @@ class LinuxUpdateTests(unittest.TestCase):
                 archive.writestr("WrongTopDir/launch.sh", "#!/bin/sh\nexit 0\n")
 
             with self.assertRaises(RuntimeError):
-                update.install_muos_update_archive(archive_path, app_dir)
+                update.install_archive_update(
+                archive_path, app_dir, "", preserve_data=True, delete_archive=True
+            )
 
             # original install is left intact on failure
             self.assertEqual((app_dir / "keep.txt").read_text(encoding="utf-8"), "keep")
 
-    def test_download_muos_update_archive_writes_muxapp_non_executable(self) -> None:
+    def test_download_update_archive_writes_muxapp_non_executable(self) -> None:
         update.read_update_asset = lambda _asset_url: b"muxapp-bytes"
 
         with tempfile.TemporaryDirectory() as temp_dir:
             destination = Path(temp_dir) / "update.muxapp"
-            written = update.download_muos_update_archive(
+            written = update.download_update_archive(
                 "https://example.com/muos.muxapp",
                 destination=destination,
             )
@@ -639,12 +645,12 @@ class LinuxUpdateTests(unittest.TestCase):
             self.assertEqual(destination.read_bytes(), b"muxapp-bytes")
             self.assertEqual(destination.stat().st_mode & 0o777, 0o644)
 
-    def test_download_onion_update_archive_writes_zip_non_executable(self) -> None:
+    def test_download_update_archive_writes_zip_non_executable(self) -> None:
         update.read_update_asset = lambda _asset_url: b"zip-bytes"
 
         with tempfile.TemporaryDirectory() as temp_dir:
             destination = Path(temp_dir) / "update.zip"
-            written = update.download_onion_update_archive(
+            written = update.download_update_archive(
                 "https://example.com/onion.zip",
                 destination=destination,
             )

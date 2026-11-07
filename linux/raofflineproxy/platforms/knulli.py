@@ -65,6 +65,13 @@ class KnulliPlatform(Platform):
 
         return None
 
+    def service_manager(self):
+        return SERVICE_MANAGER
+
+    def uninstall_launcher(self, service_mode: bool) -> Path | None:
+        # Under the service manager the services tool owns removal, not this script.
+        return None if service_mode else LAUNCHER.parent / "raofflineproxy-uninstall"
+
     def os_version(self) -> str | None:
         return read_stripped(VERSION_FILE) or super().os_version()
 
@@ -138,5 +145,32 @@ def start_service() -> None:
 def stop_service() -> None:
     _run("stop")
 
+
+
+class ServiceManager:
+    """Knulli's own service manager, which owns the proxy once the service is installed."""
+
+    status_label = "KNULLI SERVICE"
+
+    def active(self) -> bool:
+        return service_mode_active()
+
+    def start(self) -> None:
+        start_service()
+
+    def stop(self) -> None:
+        stop_service()
+
+    def autostart_enabled(self) -> bool:
+        return service_autostart_enabled()
+
+    def set_autostart(self, enabled: bool) -> None:
+        if enabled:
+            enable_service_autostart()
+        else:
+            disable_service_autostart()
+
+
+SERVICE_MANAGER = ServiceManager()
 
 PLATFORM = KnulliPlatform()

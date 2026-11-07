@@ -36,14 +36,6 @@ def running_on_shared_miyoo_stack() -> bool:
     return _running_on_shared_miyoo_stack()
 
 
-def running_on_mini_sdl_stack() -> bool:
-    """The Renderer + streaming-texture display path in menu_sdl exists for the vendored
-    "Mini" SDL2 video driver, not for the firmware as a whole. Onion and Allium always
-    select that driver; spruce only does on MiyooMini, because its aarch64 bundle ships a
-    stock SDL2 that has no such driver and would fail at Renderer creation."""
-    return os.environ.get("SDL_VIDEODRIVER") == "Mini"
-
-
 def running_on_darkos() -> bool:
     return _darkos.PLATFORM.detect()
 

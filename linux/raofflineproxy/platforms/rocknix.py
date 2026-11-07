@@ -195,6 +195,7 @@ class RocknixPlatform(Platform):
     name = "ROCKNIX"
     support_label = "ROCKNIX"
     update_asset_suffix = ".sh"
+    menu_font = "system"
 
     def detect(self) -> bool:
         return 'OS_NAME="ROCKNIX"' in read_os_release()
@@ -228,6 +229,9 @@ class RocknixPlatform(Platform):
     def on_proxy_stopped(self) -> None:
         stop_ra_proxy_chain()
 
+
+    def uninstall_launcher(self, service_mode: bool) -> Path | None:
+        return LAUNCHER.parent / "raofflineproxy-uninstall"
 
     def default_rom_root(self) -> Path | None:
         return existing_dir(ROMS_ROOT)

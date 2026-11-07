@@ -13,6 +13,9 @@ class WindowsPlatform(Platform):
     id = "windows"
     name = "Windows"
     support_label = "Windows"
+    # SDL's GameController mapping already puts A/B at BTN_SOUTH/BTN_EAST, which the menu's
+    # confirm and cancel keys default to.
+    needs_controller_calibration = False
 
     def detect(self) -> bool:
         return sys.platform == "win32"
@@ -42,6 +45,23 @@ class WindowsPlatform(Platform):
         from ..windows import paths
 
         return paths.pcsx2_ini()
+
+    def open_display(self, pygame, log):
+        from ..config import load_config
+        from ..windows import input
+
+        return input.open_menu_window(pygame, load_config())
+
+    def menu_window_backend(self):
+        # No /dev/input on Windows: gamepads come through SDL instead, as the same codes.
+        from ..windows import input
+
+        return input
+
+    def menu_session_class(self):
+        from ..windows.menu import WindowsMenuSession
+
+        return WindowsMenuSession
 
     def process_backend(self):
         from ..windows import process

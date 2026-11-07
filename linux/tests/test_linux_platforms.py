@@ -5,6 +5,7 @@ from unittest.mock import patch
 
 from linux.raofflineproxy import platform, platforms
 from linux.raofflineproxy.emulators import retroarch_cfg
+from linux.raofflineproxy.platforms import miyoo
 from linux.raofflineproxy.platforms import (
     allium,
     darkos,
@@ -167,6 +168,167 @@ class ServiceHookTests(unittest.TestCase):
         self.assertIsNot(
             type(windows.PLATFORM).process_backend, platforms.base.Platform.process_backend
         )
+
+
+class MenuHookTests(unittest.TestCase):
+    def test_uninstall_launchers(self) -> None:
+        self.assertEqual(
+            muos.PLATFORM.uninstall_launcher(False), muos.APP_DIR / "uninstall.sh"
+        )
+        self.assertEqual(
+            rocknix.PLATFORM.uninstall_launcher(False),
+            rocknix.LAUNCHER.parent / "raofflineproxy-uninstall",
+        )
+        for module in (knulli, darkos):
+            with self.subTest(platform=module.PLATFORM.id):
+                self.assertIsNotNone(module.PLATFORM.uninstall_launcher(False))
+                self.assertIsNone(module.PLATFORM.uninstall_launcher(True))
+        for module in (allium, onion, spruce, windows, generic):
+            with self.subTest(platform=module.PLATFORM.id):
+                self.assertIsNone(module.PLATFORM.uninstall_launcher(False))
+
+    def test_update_install_layouts(self) -> None:
+        self.assertEqual(
+            (onion.PLATFORM.app_dir(), onion.PLATFORM.update_archive_root),
+            (onion.APP_DIR, "App"),
+        )
+        self.assertEqual(
+            (spruce.PLATFORM.app_dir(), spruce.PLATFORM.update_archive_root),
+            (onion.APP_DIR, "App"),
+        )
+        self.assertEqual(
+            (allium.PLATFORM.app_dir(), allium.PLATFORM.update_archive_root),
+            (allium.APP_DIR, "Apps"),
+        )
+        self.assertEqual(muos.PLATFORM.update_install_kind, "archive")
+        self.assertEqual(muos.PLATFORM.update_archive_root, "")
+        self.assertTrue(muos.PLATFORM.preserve_app_data_on_update)
+        self.assertTrue(muos.PLATFORM.delete_update_archive)
+        self.assertEqual(
+            muos.PLATFORM.update_archive_path(), muos.APP_DIR.parent / ".raofflineproxy-update.muxapp"
+        )
+        for module in (knulli, rocknix, darkos):
+            self.assertEqual(module.PLATFORM.update_install_kind, "installer")
+
+    def test_installer_platforms_run_the_downloaded_installer(self) -> None:
+        from linux.raofflineproxy import update
+
+        steps = []
+        with patch.object(update, "download_update_installer", return_value=Path("/tmp/i.sh")):
+            command = knulli.PLATFORM.install_update("https://x/k.sh", steps.append)
+        self.assertEqual(command, ["/tmp/i.sh"])
+        self.assertEqual(steps, ["Downloading update...", "Installing update..."])
+
+    def test_archive_platforms_swap_their_app_dir_and_relaunch(self) -> None:
+        from linux.raofflineproxy import update
+
+        steps = []
+        with patch.object(update, "download_update_archive", return_value=Path("/tmp/a.muxapp")) as download:
+            with patch.object(update, "install_archive_update") as install:
+                command = muos.PLATFORM.install_update("https://x/m.muxapp", steps.append)
+        download.assert_called_once_with("https://x/m.muxapp", muos.PLATFORM.update_archive_path())
+        install.assert_called_once_with(
+            Path("/tmp/a.muxapp"), muos.APP_DIR, "", preserve_data=True, delete_archive=True
+        )
+        self.assertEqual(command, ["/bin/sh", str(muos.APP_DIR / "launch.sh"), "menu-sdl"])
+        self.assertEqual(steps, ["Downloading update...", "Installing update..."])
+
+    def test_menu_fonts(self) -> None:
+        self.assertEqual(
+            {m.PLATFORM.id: m.PLATFORM.menu_font for m in (onion, spruce, allium, muos, rocknix, knulli)},
+            {
+                "onion": "bundled",
+                "spruce": "bundled",
+                "allium": "bundled",
+                "muos": "system",
+                "rocknix": "system",
+                "knulli": "default",
+            },
+        )
+
+    def test_only_muos_switches_between_two_rom_roots(self) -> None:
+        self.assertEqual(muos.PLATFORM.alternate_rom_root(), muos.SDCARD_ROMS_ROOT)
+        for module in (allium, darkos, knulli, onion, rocknix, spruce, windows, generic):
+            self.assertIsNone(module.PLATFORM.alternate_rom_root())
+
+    def test_muos_brings_its_frontend_back(self) -> None:
+        with patch.object(muos.subprocess, "Popen") as popen:
+            muos.PLATFORM.restart_frontend()
+        self.assertEqual(popen.call_args.args[0][:3], ["setsid", "-f", str(muos.FRONTEND_SCRIPT)])
+        with patch.object(muos.subprocess, "Popen") as popen:
+            generic.PLATFORM.restart_frontend()
+        popen.assert_not_called()
+
+    def test_only_windows_skips_controller_calibration(self) -> None:
+        self.assertFalse(windows.PLATFORM.needs_controller_calibration)
+        for module in (allium, darkos, knulli, muos, onion, rocknix, spruce, generic):
+            self.assertTrue(module.PLATFORM.needs_controller_calibration)
+
+
+class DisplayHookTests(unittest.TestCase):
+    def test_miyoo_panel_size_reads_the_probe_result(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            probe = Path(temp_dir) / "screen_resolution"
+            probe.write_text("750x560\n", encoding="utf-8")
+            with patch.object(miyoo, "SCREEN_RESOLUTION_FILE", probe):
+                self.assertEqual(miyoo.panel_size(), (750, 560))
+
+    def test_miyoo_panel_size_falls_back_to_the_default(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            probe = Path(temp_dir) / "screen_resolution"
+            for content in (None, "garbage", "0x480"):
+                if content is not None:
+                    probe.write_text(content, encoding="utf-8")
+                with patch.object(miyoo, "SCREEN_RESOLUTION_FILE", probe):
+                    self.assertEqual(miyoo.panel_size(), miyoo.DEFAULT_PANEL_SIZE)
+
+    def test_only_the_mini_sdl_driver_takes_the_renderer_path(self) -> None:
+        for module in (onion, spruce, allium):
+            with self.subTest(platform=module.PLATFORM.id):
+                with patch.object(miyoo, "running_on_mini_sdl_stack", return_value=False):
+                    self.assertIsNone(module.PLATFORM.open_display(object(), print))
+                    self.assertFalse(module.PLATFORM.reads_input_directly())
+                with patch.object(miyoo, "running_on_mini_sdl_stack", return_value=True):
+                    self.assertTrue(module.PLATFORM.reads_input_directly())
+                    with patch.object(miyoo, "open_mini_display", return_value="surface"):
+                        self.assertEqual(module.PLATFORM.open_display(object(), print), "surface")
+        for module in (darkos, knulli, muos, rocknix, generic):
+            self.assertIsNone(module.PLATFORM.open_display(object(), print))
+            self.assertFalse(module.PLATFORM.reads_input_directly())
+
+    def test_onion_explains_an_unsupported_build(self) -> None:
+        with patch.object(onion.PLATFORM, "os_version", return_value="v4.3.1-1"):
+            heading, message = onion.PLATFORM.unsupported_notice()
+        self.assertEqual(heading, "Unsupported Onion version")
+        self.assertIn("v4.3.1-1", message)
+        self.assertIn(onion.SUPPORTED_VERSION_PREFIX, message)
+        with patch.object(onion.PLATFORM, "os_version", return_value="v4.4.0-beta"):
+            self.assertIsNone(onion.PLATFORM.unsupported_notice())
+        self.assertIsNone(generic.PLATFORM.unsupported_notice())
+
+
+class ServiceManagerTests(unittest.TestCase):
+    def test_only_knulli_has_a_service_manager(self) -> None:
+        for module in (allium, darkos, muos, onion, rocknix, spruce, windows, generic):
+            self.assertIsNone(module.PLATFORM.service_manager())
+        manager = knulli.PLATFORM.service_manager()
+        self.assertEqual(manager.status_label, "KNULLI SERVICE")
+
+    def test_the_manager_drives_the_services_tool(self) -> None:
+        manager = knulli.PLATFORM.service_manager()
+        with patch.object(knulli, "service_mode_active", return_value=True):
+            self.assertTrue(manager.active())
+        with patch.object(knulli, "enable_service_autostart") as enable:
+            manager.set_autostart(True)
+        enable.assert_called_once_with()
+        with patch.object(knulli, "disable_service_autostart") as disable:
+            manager.set_autostart(False)
+        disable.assert_called_once_with()
+        with patch.object(knulli, "start_service") as start, patch.object(knulli, "stop_service") as stop:
+            manager.start()
+            manager.stop()
+        start.assert_called_once_with()
+        stop.assert_called_once_with()
 
 
 class StartupScriptTests(unittest.TestCase):

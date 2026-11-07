@@ -77,6 +77,9 @@ class DarkosPlatform(Platform):
     def service_status(self) -> dict | None:
         return darkos_service_status()
 
+    def uninstall_launcher(self, service_mode: bool) -> Path | None:
+        return None if service_mode else DARKOS_LAUNCHER.parent / "raofflineproxy-uninstall"
+
     def install_service_unit(self) -> bool:
         systemd_install_service()
         return True

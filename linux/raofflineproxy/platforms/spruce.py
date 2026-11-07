@@ -167,6 +167,9 @@ class SprucePlatform(Platform):
     name = "spruce"
     support_label = "spruce"
     update_asset_suffix = ".zip"
+    update_install_kind = "archive"
+    update_archive_root = "App"
+    menu_font = "bundled"
 
     def detect(self) -> bool:
         if not VERSION_FILE.exists():
@@ -202,6 +205,17 @@ class SprucePlatform(Platform):
     def default_proxy_port(self) -> int | None:
         return DEFAULT_PROXY_PORT
 
+    def open_display(self, pygame, log):
+        # No fallback: the vendored SDL2 carries no driver but "Mini", which presents only
+        # through this renderer path. A plain surface would come back as a menu that runs but
+        # never draws, so failing and returning to the launcher is the better outcome.
+        if miyoo.running_on_mini_sdl_stack():
+            return miyoo.open_mini_display(pygame, log)
+        return None
+
+    def reads_input_directly(self) -> bool:
+        return miyoo.running_on_mini_sdl_stack()
+
     def default_rom_root(self) -> Path | None:
         return existing_dir(miyoo.ROMS_ROOT)
 
@@ -211,6 +225,10 @@ class SprucePlatform(Platform):
 
     def device_label(self) -> str:
         return device_name()
+
+    def app_dir(self) -> Path | None:
+        # spruce reuses Onion's App/RAOfflineProxy layout.
+        return onion.APP_DIR
 
     def own_credentials(self) -> dict | None:
         # spruce's own settings hold the credentials before any game launch has copied them

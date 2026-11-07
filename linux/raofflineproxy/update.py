@@ -26,9 +26,8 @@ GITHUB_NIGHTLY_RELEASE_URL = "https://api.github.com/repos/misantronic/RAOffline
 NIGHTLY_VERSION_SEPARATOR = "-nightly."
 STABLE_NIGHTLY_NUMBER = -1
 UPDATE_CHECK_INTERVAL_SECONDS = 24 * 60 * 60
-KNULLI_UPDATE_INSTALLER_PATH = CONFIG_DIR / "update-installer.sh"
-ONION_UPDATE_ARCHIVE_PATH = CONFIG_DIR / "update-onion.zip"
-MUOS_UPDATE_ARCHIVE_PATH = CONFIG_DIR / "update-muos.muxapp"
+UPDATE_INSTALLER_PATH = CONFIG_DIR / "update-installer.sh"
+UPDATE_ARCHIVE_PATH = CONFIG_DIR / "update-archive.zip"
 INSTALLER_DOWNLOAD_RETRIES = 3
 INSTALLER_DOWNLOAD_RETRY_DELAY_SECONDS = 1.5
 RELEASES_FETCH_RETRIES = 3
@@ -302,13 +301,13 @@ def find_platform_asset_url(platform: str, assets: list[dict]) -> str | None:
     return None
 
 
-def download_knulli_update_installer(
-    asset_url: str, destination: Path | None = None
+def download_update_asset(
+    asset_url: str, destination_path: Path, executable: bool, kind: str
 ) -> Path:
-    destination_path = destination or KNULLI_UPDATE_INSTALLER_PATH
     destination_path.parent.mkdir(parents=True, exist_ok=True)
     LOGGER.info(
-        "Downloading KNULLI update installer asset_url=%s destination=%s",
+        "Downloading update %s asset_url=%s destination=%s",
+        kind,
         asset_url,
         destination_path,
     )
@@ -317,12 +316,13 @@ def download_knulli_update_installer(
     for attempt in range(1, INSTALLER_DOWNLOAD_RETRIES + 1):
         try:
             body = read_update_asset(asset_url)
-            atomic_write_executable(destination_path, body)
+            atomic_write_executable(destination_path, body, executable=executable)
             return destination_path
         except (urllib.error.URLError, http.client.IncompleteRead, ConnectionResetError, TimeoutError, OSError) as error:
             last_error = error
             LOGGER.warning(
-                "Installer download failed attempt=%s/%s reason=%s",
+                "Update %s download failed attempt=%s/%s reason=%s",
+                kind,
                 attempt,
                 INSTALLER_DOWNLOAD_RETRIES,
                 error,
@@ -333,6 +333,14 @@ def download_knulli_update_installer(
     if last_error is not None:
         raise RuntimeError(f"download failed: {last_error}") from last_error
     return destination_path
+
+
+def download_update_installer(asset_url: str, destination: Path | None = None) -> Path:
+    return download_update_asset(asset_url, destination or UPDATE_INSTALLER_PATH, True, "installer")
+
+
+def download_update_archive(asset_url: str, destination: Path | None = None) -> Path:
+    return download_update_asset(asset_url, destination or UPDATE_ARCHIVE_PATH, False, "archive")
 
 
 def read_update_asset(asset_url: str) -> bytes:
@@ -346,37 +354,6 @@ def read_update_asset(asset_url: str) -> bytes:
     )
     with urllib.request.urlopen(request, timeout=30, context=configured_ssl_context()) as response:
         return response.read()
-
-
-def download_onion_update_archive(asset_url: str, destination: Path | None = None) -> Path:
-    destination_path = destination or ONION_UPDATE_ARCHIVE_PATH
-    destination_path.parent.mkdir(parents=True, exist_ok=True)
-    LOGGER.info(
-        "Downloading Onion update archive asset_url=%s destination=%s",
-        asset_url,
-        destination_path,
-    )
-
-    last_error: Exception | None = None
-    for attempt in range(1, INSTALLER_DOWNLOAD_RETRIES + 1):
-        try:
-            body = read_update_asset(asset_url)
-            atomic_write_executable(destination_path, body, executable=False)
-            return destination_path
-        except (urllib.error.URLError, http.client.IncompleteRead, ConnectionResetError, TimeoutError, OSError) as error:
-            last_error = error
-            LOGGER.warning(
-                "Onion archive download failed attempt=%s/%s reason=%s",
-                attempt,
-                INSTALLER_DOWNLOAD_RETRIES,
-                error,
-            )
-            if attempt < INSTALLER_DOWNLOAD_RETRIES:
-                time.sleep(INSTALLER_DOWNLOAD_RETRY_DELAY_SECONDS)
-
-    if last_error is not None:
-        raise RuntimeError(f"download failed: {last_error}") from last_error
-    return destination_path
 
 
 CLEANUP_RETRIES = 3
@@ -407,104 +384,19 @@ def remove_tree_best_effort(path: Path) -> None:
     LOGGER.warning("Could not fully remove temporary update directory path=%s", path)
 
 
-def install_onion_update_archive(
-    archive_path: Path, app_dir: Path, archive_root: str = "App"
+def install_archive_update(
+    archive_path: Path,
+    app_dir: Path,
+    archive_root: str,
+    preserve_data: bool | None = None,
+    delete_archive: bool = False,
 ) -> None:
     """Swap `app_dir` for the copy inside the archive, atomically and with rollback.
 
     Everything here is layout-agnostic except where the app directory sits inside the
-    archive, which is what `archive_root` names: Onion and spruce ship `App/RAOfflineProxy`,
-    Allium ships `Apps/RAOfflineProxy.pak`.
-    """
-    app_dir = Path(app_dir)
-    parent_dir = app_dir.parent
-    temp_extract_dir = parent_dir / f".{app_dir.name}.update"
-    backup_dir = parent_dir / f".{app_dir.name}.backup"
-    preserved_data_dir = parent_dir / f".{app_dir.name}.data"
-    data_dir_name = "data"
-
-    if temp_extract_dir.exists():
-        shutil.rmtree(temp_extract_dir)
-    if backup_dir.exists():
-        shutil.rmtree(backup_dir)
-    if preserved_data_dir.exists():
-        shutil.rmtree(preserved_data_dir)
-
-    temp_extract_dir.mkdir(parents=True, exist_ok=True)
-    with zipfile.ZipFile(archive_path, "r") as archive:
-        archive.extractall(temp_extract_dir)
-        restore_archive_permissions(archive, temp_extract_dir)
-
-    extracted_app_dir = temp_extract_dir / archive_root / app_dir.name
-    if not extracted_app_dir.exists():
-        raise RuntimeError(f"update archive missing {archive_root}/{app_dir.name}")
-
-    preserve_data = should_preserve_onion_data(current_version(), extracted_app_dir)
-
-    if app_dir.exists():
-        os.replace(app_dir, backup_dir)
-    try:
-        os.replace(extracted_app_dir, app_dir)
-        backup_data_dir = backup_dir / data_dir_name
-        new_data_dir = app_dir / data_dir_name
-        if preserve_data and backup_data_dir.exists():
-            os.replace(backup_data_dir, preserved_data_dir)
-            if new_data_dir.exists():
-                shutil.rmtree(new_data_dir)
-            os.replace(preserved_data_dir, new_data_dir)
-    except Exception:
-        if backup_dir.exists():
-            backup_data_dir = backup_dir / data_dir_name
-            if preserved_data_dir.exists() and not backup_data_dir.exists():
-                os.replace(preserved_data_dir, backup_data_dir)
-            if app_dir.exists():
-                shutil.rmtree(app_dir, ignore_errors=True)
-            os.replace(backup_dir, app_dir)
-        raise
-    finally:
-        remove_tree_best_effort(temp_extract_dir)
-        remove_tree_best_effort(backup_dir)
-        remove_tree_best_effort(preserved_data_dir)
-
-    clear_stale_update_status(app_dir)
-
-
-def download_muos_update_archive(asset_url: str, destination: Path | None = None) -> Path:
-    destination_path = destination or MUOS_UPDATE_ARCHIVE_PATH
-    destination_path.parent.mkdir(parents=True, exist_ok=True)
-    LOGGER.info(
-        "Downloading muOS update archive asset_url=%s destination=%s",
-        asset_url,
-        destination_path,
-    )
-
-    last_error: Exception | None = None
-    for attempt in range(1, INSTALLER_DOWNLOAD_RETRIES + 1):
-        try:
-            body = read_update_asset(asset_url)
-            atomic_write_executable(destination_path, body, executable=False)
-            return destination_path
-        except (urllib.error.URLError, http.client.IncompleteRead, ConnectionResetError, TimeoutError, OSError) as error:
-            last_error = error
-            LOGGER.warning(
-                "muOS archive download failed attempt=%s/%s reason=%s",
-                attempt,
-                INSTALLER_DOWNLOAD_RETRIES,
-                error,
-            )
-            if attempt < INSTALLER_DOWNLOAD_RETRIES:
-                time.sleep(INSTALLER_DOWNLOAD_RETRY_DELAY_SECONDS)
-
-    if last_error is not None:
-        raise RuntimeError(f"download failed: {last_error}") from last_error
-    return destination_path
-
-
-def install_muos_update_archive(archive_path: Path, app_dir: Path) -> None:
-    """Install a muOS .muxapp (a zip whose top-level dir is the app dir) over app_dir.
-
-    The app's data/ directory (config, database, queued awards, secrets) is always
-    preserved across the upgrade. The downloaded archive is removed on completion.
+    archive, which is what `archive_root` names (empty when it is the archive's top level).
+    `preserve_data` keeps the app's data/ directory across the swap; None decides by version,
+    keeping it only within the same major version.
     """
     archive_path = Path(archive_path)
     app_dir = Path(app_dir)
@@ -513,6 +405,7 @@ def install_muos_update_archive(archive_path: Path, app_dir: Path) -> None:
     backup_dir = parent_dir / f".{app_dir.name}.backup"
     preserved_data_dir = parent_dir / f".{app_dir.name}.data"
     data_dir_name = "data"
+    relative_app_dir = f"{archive_root}/{app_dir.name}" if archive_root else app_dir.name
 
     if temp_extract_dir.exists():
         shutil.rmtree(temp_extract_dir)
@@ -527,9 +420,15 @@ def install_muos_update_archive(archive_path: Path, app_dir: Path) -> None:
             archive.extractall(temp_extract_dir)
             restore_archive_permissions(archive, temp_extract_dir)
 
-        extracted_app_dir = temp_extract_dir / app_dir.name
+        extracted_app_dir = temp_extract_dir / relative_app_dir
         if not extracted_app_dir.exists():
-            raise RuntimeError(f"update archive missing {app_dir.name}")
+            raise RuntimeError(f"update archive missing {relative_app_dir}")
+
+        keep_data = (
+            should_preserve_data(current_version(), extracted_app_dir)
+            if preserve_data is None
+            else preserve_data
+        )
 
         if app_dir.exists():
             os.replace(app_dir, backup_dir)
@@ -537,7 +436,7 @@ def install_muos_update_archive(archive_path: Path, app_dir: Path) -> None:
             os.replace(extracted_app_dir, app_dir)
             backup_data_dir = backup_dir / data_dir_name
             new_data_dir = app_dir / data_dir_name
-            if backup_data_dir.exists():
+            if keep_data and backup_data_dir.exists():
                 os.replace(backup_data_dir, preserved_data_dir)
                 if new_data_dir.exists():
                     shutil.rmtree(new_data_dir)
@@ -555,20 +454,20 @@ def install_muos_update_archive(archive_path: Path, app_dir: Path) -> None:
         remove_tree_best_effort(temp_extract_dir)
         remove_tree_best_effort(backup_dir)
         remove_tree_best_effort(preserved_data_dir)
-        if archive_path.exists():
+        if delete_archive and archive_path.exists():
             archive_path.unlink()
 
     clear_stale_update_status(app_dir)
 
 
-def should_preserve_onion_data(current_version_name: str, extracted_app_dir: Path) -> bool:
+def should_preserve_data(current_version_name: str, extracted_app_dir: Path) -> bool:
     current_parsed = parse_version(current_version_name)
-    next_version = read_onion_app_version(extracted_app_dir)
+    next_version = read_app_version(extracted_app_dir)
     next_parsed = parse_version(next_version) if next_version is not None else None
 
     if current_parsed is None or next_parsed is None:
         LOGGER.info(
-            "Skipping Onion data preservation; unable to compare versions current=%s next=%s",
+            "Skipping data preservation; unable to compare versions current=%s next=%s",
             current_version_name,
             next_version,
         )
@@ -576,7 +475,7 @@ def should_preserve_onion_data(current_version_name: str, extracted_app_dir: Pat
 
     preserve = current_parsed.major == next_parsed.major
     LOGGER.info(
-        "Onion data preservation decision current=%s next=%s preserve=%s",
+        "Data preservation decision current=%s next=%s preserve=%s",
         current_version_name,
         next_version,
         preserve,
@@ -584,7 +483,7 @@ def should_preserve_onion_data(current_version_name: str, extracted_app_dir: Pat
     return preserve
 
 
-def read_onion_app_version(extracted_app_dir: Path) -> str | None:
+def read_app_version(extracted_app_dir: Path) -> str | None:
     common_sh = extracted_app_dir / "common.sh"
     if not common_sh.exists():
         return None

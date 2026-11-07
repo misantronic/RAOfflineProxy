@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 
 from .base import Platform, existing_dir, hardware_device_label, read_stripped
@@ -18,6 +19,8 @@ HISTORY_DIR = Path("/run/muos/storage/info/history")
 # script/var/func.sh GET_VAR "device" "board/name"). Its devicetree model property only holds
 # the bare SoC codename (e.g. "sun50iw9"), not a useful device label.
 BOARD_NAME_FILE = Path("/opt/muos/device/config/board/name")
+FRONTEND_SCRIPT = Path("/opt/muos/script/mux/frontend.sh")
+SDCARD_ROMS_ROOT = Path("/mnt/sdcard/ROMS")
 
 
 def history_paths() -> list[Path]:
@@ -79,6 +82,10 @@ class MuosPlatform(Platform):
     name = "muOS"
     support_label = "muOS"
     update_asset_suffix = ".muxapp"
+    update_install_kind = "archive"
+    preserve_app_data_on_update = True
+    delete_update_archive = True
+    menu_font = "system"
 
     def detect(self) -> bool:
         return MARKER_PATH.exists()
@@ -110,6 +117,27 @@ class MuosPlatform(Platform):
 
     def remove_boot_hook(self, startup_script: Path) -> None:
         startup_script.unlink()
+
+    def app_dir(self) -> Path | None:
+        return APP_DIR
+
+    def update_archive_path(self) -> Path | None:
+        # Outside app_dir, so the in-place swap never touches the archive.
+        return APP_DIR.parent / ".raofflineproxy-update.muxapp"
+
+    def uninstall_launcher(self, service_mode: bool) -> Path | None:
+        return APP_DIR / "uninstall.sh"
+
+    def restart_frontend(self) -> None:
+        subprocess.Popen(
+            ["setsid", "-f", str(FRONTEND_SCRIPT), "appmenu"],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+
+    def alternate_rom_root(self) -> Path | None:
+        return SDCARD_ROMS_ROOT
 
     def device_label(self) -> str:
         # e.g. "rg40xx-h" -> "RG40XX-H": muOS's own device/build-target slug, not a marketing

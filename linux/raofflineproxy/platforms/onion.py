@@ -40,6 +40,9 @@ class OnionPlatform(Platform):
     name = "OnionOS"
     support_label = "Onion"
     update_asset_suffix = ".zip"
+    update_install_kind = "archive"
+    update_archive_root = "App"
+    menu_font = "bundled"
 
     def detect(self) -> bool:
         # spruceOS reuses Onion's /mnt/SDCARD/App layout, so the app directory alone does not
@@ -70,6 +73,19 @@ class OnionPlatform(Platform):
             return f"MY{raw}"
         return raw or self.support_label
 
+    def unsupported_notice(self) -> tuple[str, str] | None:
+        if self.version_supported():
+            return None
+        detected = self.os_version() or "unknown"
+        return (
+            "Unsupported Onion version",
+            f"This OnionOS build ({detected}) is not supported.\n"
+            f"RAOfflineProxy requires Onion {SUPPORTED_VERSION_PREFIX} or newer \u2014 "
+            "older builds ship a RetroArch achievements client that is not reliably "
+            "compatible with a custom host.\n"
+            "All functionality is disabled until Onion is updated.",
+        )
+
     def version_supported(self) -> bool:
         version = self.os_version()
         return bool(version) and version.lower().startswith(SUPPORTED_VERSION_PREFIX)
@@ -82,6 +98,20 @@ class OnionPlatform(Platform):
             f"Unsupported OnionOS build ({detected}). RAOfflineProxy requires Onion "
             "v4.4.0-beta-20260120 or newer."
         )
+
+    def app_dir(self) -> Path | None:
+        return APP_DIR
+
+    def open_display(self, pygame, log):
+        # No fallback: the vendored SDL2 carries no driver but "Mini", which presents only
+        # through this renderer path. A plain surface would come back as a menu that runs but
+        # never draws, so failing and returning to the launcher is the better outcome.
+        if miyoo.running_on_mini_sdl_stack():
+            return miyoo.open_mini_display(pygame, log)
+        return None
+
+    def reads_input_directly(self) -> bool:
+        return miyoo.running_on_mini_sdl_stack()
 
     def default_rom_root(self) -> Path | None:
         return existing_dir(miyoo.ROMS_ROOT)

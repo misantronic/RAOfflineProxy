@@ -32,6 +32,9 @@ class AlliumPlatform(Platform):
     name = "Allium"
     support_label = "Allium"
     update_asset_suffix = ".zip"
+    update_install_kind = "archive"
+    update_archive_root = "Apps"
+    menu_font = "bundled"
 
     def detect(self) -> bool:
         return MARKER_DIR.is_dir()
@@ -46,8 +49,22 @@ class AlliumPlatform(Platform):
         return miyoo.RETROARCH_CFG_CANDIDATES
 
 
+    def app_dir(self) -> Path | None:
+        return APP_DIR
+
     def os_version(self) -> str | None:
         return read_stripped(VERSION_FILE)
+
+    def open_display(self, pygame, log):
+        # No fallback: the vendored SDL2 carries no driver but "Mini", which presents only
+        # through this renderer path. A plain surface would come back as a menu that runs but
+        # never draws, so failing and returning to the launcher is the better outcome.
+        if miyoo.running_on_mini_sdl_stack():
+            return miyoo.open_mini_display(pygame, log)
+        return None
+
+    def reads_input_directly(self) -> bool:
+        return miyoo.running_on_mini_sdl_stack()
 
     def default_rom_root(self) -> Path | None:
         return existing_dir(miyoo.ROMS_ROOT)

@@ -10,6 +10,19 @@ OS_RELEASE_PATH = Path("/etc/os-release")
 DEVICETREE_MODEL_FILE = Path("/sys/firmware/devicetree/base/model")
 DMI_SYS_VENDOR_FILE = Path("/sys/class/dmi/id/sys_vendor")
 DMI_PRODUCT_NAME_FILE = Path("/sys/class/dmi/id/product_name")
+# Font files loaded by explicit path (SDL_ttf reads them directly, so no fontconfig is needed:
+# ROCKNIX ships no fc-list, which makes pygame.font.match_font() return nothing). Each entry is
+# (regular, bold); when a face has no dedicated bold file, bold is synthesized via set_bold.
+SYSTEM_FONT_FILES = (
+    (
+        Path("/usr/share/fonts/liberation/LiberationMono-Regular.ttf"),
+        Path("/usr/share/fonts/liberation/LiberationMono-Bold.ttf"),
+    ),
+    (
+        Path("/usr/share/fonts/truetype/dejavu/DejaVuSansCondensed.ttf"),
+        Path("/usr/share/fonts/truetype/dejavu/DejaVuSansCondensed.ttf"),
+    ),
+)
 
 
 def existing_dir(path: Path) -> Path | None:
@@ -69,6 +82,18 @@ class Platform:
     # The suffix of this platform's release asset ("RAOfflineProxy-<id>-v1.2.3.zip"), or None
     # where updates are not shipped through the app.
     update_asset_suffix: str | None = None
+    # How an update is installed: "installer" runs the downloaded installer, "archive" swaps
+    # the app directory from a zip. update_archive_root is where the app directory sits inside
+    # the archive; an empty root means its top level.
+    update_install_kind: str = "installer"
+    update_archive_root: str = ""
+    # Keep the app's data/ across the swap: None only within the same major version.
+    preserve_app_data_on_update: bool | None = None
+    delete_update_archive: bool = False
+    # "bundled" ships the monospace font next to the menu, "system" looks for one on the device.
+    menu_font: str = "default"
+    # Whether the menu has to ask the user to map their confirm and cancel buttons.
+    needs_controller_calibration: bool = True
 
     def detect(self) -> bool:
         return False
@@ -160,6 +185,76 @@ class Platform:
         return None
 
     def service_status(self) -> dict | None:
+        return None
+
+    def app_dir(self) -> Path | None:
+        """Where the installed app lives, for platforms that update by swapping it."""
+        return None
+
+    def update_archive_path(self) -> Path | None:
+        """Where the downloaded archive is written, or None for the default location."""
+        return None
+
+    def install_update(self, asset_url: str, progress) -> list[str]:
+        """Downloads and installs a release asset, reporting each step through `progress`.
+        Returns the command that starts the updated app."""
+        from .. import update
+
+        progress("Downloading update...")
+        if self.update_install_kind != "archive":
+            installer = update.download_update_installer(asset_url)
+            progress("Installing update...")
+            return [str(installer)]
+
+        app_dir = self.app_dir()
+        archive = update.download_update_archive(asset_url, self.update_archive_path())
+        progress("Installing update...")
+        update.install_archive_update(
+            archive,
+            app_dir,
+            self.update_archive_root,
+            preserve_data=self.preserve_app_data_on_update,
+            delete_archive=self.delete_update_archive,
+        )
+        return ["/bin/sh", str(app_dir / "launch.sh"), "menu-sdl"]
+
+    def uninstall_launcher(self, service_mode: bool) -> Path | None:
+        """The script the menu's Uninstall entry runs, or None where it offers none."""
+        return None
+
+    def restart_frontend(self) -> None:
+        """Brings the firmware's own launcher back after the menu exits."""
+
+    def alternate_rom_root(self) -> Path | None:
+        """A second ROM location the file browser can switch to."""
+        return None
+
+    def open_display(self, pygame, log):
+        """The surface the menu draws on, for platforms whose display needs special setup.
+        None means pygame's regular fullscreen window."""
+        return None
+
+    def reads_input_directly(self) -> bool:
+        """Whether button presses come from /dev/input rather than pygame's key events."""
+        return False
+
+    def unsupported_notice(self) -> tuple[str, str] | None:
+        """(heading, explanation) the menu shows instead of its functions when the system
+        cannot be supported, or None."""
+        return None
+
+    def service_manager(self):
+        """The firmware's own service manager when it owns the proxy where installed
+        (status_label, active, start, stop, autostart_enabled, set_autostart), or None."""
+        return None
+
+    def menu_window_backend(self):
+        """Module opening the menu window and reading input where /dev/input and a fixed
+        framebuffer do not apply (Windows), or None."""
+        return None
+
+    def menu_session_class(self):
+        """A MenuSdlSession subclass for this platform, or None."""
         return None
 
     def on_proxy_started(self, config_data: dict) -> None:

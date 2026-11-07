@@ -235,43 +235,39 @@ class AlliumUpdateSafetyTests(unittest.TestCase):
             "https://example.test/onion.zip",
         )
 
-    def test_install_update_uses_the_pak_layout_not_the_onion_one(self) -> None:
-        session = self._session()
-        with ExitStack() as stack:
-            stack.enter_context(patch.object(menu_sdl, "running_on_muos", return_value=False))
-            stack.enter_context(patch.object(menu_sdl, "running_on_allium", return_value=True))
-            install = stack.enter_context(
-                patch.object(menu_sdl.MenuSdlSession, "install_update_archive")
-            )
-            session.install_update()
+    def _install_through(self, platform):
+        with patch.object(update, "download_update_archive", return_value=Path("/tmp/a.zip")), patch.object(
+            update, "install_archive_update"
+        ) as install:
+            command = platform.install_update("https://example.test/a.zip", lambda _m: None)
+        return command, install
 
-        install.assert_called_once_with(allium_platform.APP_DIR, "Apps")
+    def test_install_update_uses_the_pak_layout_not_the_onion_one(self) -> None:
+        command, install = self._install_through(allium_platform.PLATFORM)
+
+        install.assert_called_once_with(
+            Path("/tmp/a.zip"),
+            allium_platform.APP_DIR,
+            "Apps",
+            preserve_data=None,
+            delete_archive=False,
+        )
+        self.assertEqual(command, ["/bin/sh", str(allium_platform.APP_DIR / "launch.sh"), "menu-sdl"])
 
     def test_onion_and_spruce_still_get_the_app_layout(self) -> None:
         # The archive_root parameter was added for Allium; these two must keep the layout
         # they already ship, or the refactor silently breaks their updates instead.
-        for onion, spruce in ((True, False), (False, True)):
-            with self.subTest(onion=onion, spruce=spruce):
-                session = self._session()
-                with ExitStack() as stack:
-                    stack.enter_context(
-                        patch.object(menu_sdl, "running_on_muos", return_value=False)
-                    )
-                    stack.enter_context(
-                        patch.object(menu_sdl, "running_on_allium", return_value=False)
-                    )
-                    stack.enter_context(
-                        patch.object(menu_sdl, "running_on_onion", return_value=onion)
-                    )
-                    stack.enter_context(
-                        patch.object(menu_sdl, "running_on_spruce", return_value=spruce)
-                    )
-                    install = stack.enter_context(
-                        patch.object(menu_sdl.MenuSdlSession, "install_update_archive")
-                    )
-                    session.install_update()
+        for platform in (onion_platform.PLATFORM, spruce_platform.PLATFORM):
+            with self.subTest(platform=platform.id):
+                _command, install = self._install_through(platform)
 
-                install.assert_called_once_with(onion_platform.APP_DIR, "App")
+                install.assert_called_once_with(
+                    Path("/tmp/a.zip"),
+                    onion_platform.APP_DIR,
+                    "App",
+                    preserve_data=None,
+                    delete_archive=False,
+                )
 
     def test_no_update_channel_is_silent_not_a_logged_failure(self) -> None:
         # Signalling "no update channel" by returning a name validate_platform() rejects
@@ -288,7 +284,7 @@ class AlliumUpdateSafetyTests(unittest.TestCase):
             stack.enter_context(patch.object(menu_sdl, "log_menu_sdl", logged.append))
             stack.enter_context(patch.object(menu_sdl, "load_config", return_value={}))
             stack.enter_context(
-                patch.object(menu_sdl, "service_mode_active", return_value=False)
+                patch.object(allium_platform.PLATFORM, "service_manager", return_value=None)
             )
             stack.enter_context(
                 patch.object(menu_sdl, "online_check", return_value=False)
@@ -357,7 +353,7 @@ class AlliumUpdateInstallTests(unittest.TestCase):
 
     def _install(self, archive_path: Path, app_dir: Path, current: str) -> None:
         with patch.object(update, "current_version", lambda: current):
-            update.install_onion_update_archive(archive_path, app_dir, "Apps")
+            update.install_archive_update(archive_path, app_dir, "Apps")
 
     def test_replaces_the_pak_and_preserves_the_data_dir(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -382,7 +378,7 @@ class AlliumUpdateInstallTests(unittest.TestCase):
 
             with self.assertRaises(RuntimeError):
                 with patch.object(update, "current_version", lambda: "1.11.1-alpha1"):
-                    update.install_onion_update_archive(self._archive(root), app_dir, "App")
+                    update.install_archive_update(self._archive(root), app_dir, "App")
 
             self.assertEqual((app_dir / "old.txt").read_text(encoding="utf-8"), "old")
             self.assertEqual(

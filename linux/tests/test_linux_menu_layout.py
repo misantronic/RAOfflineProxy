@@ -318,7 +318,6 @@ class MenuLayoutTests(unittest.TestCase):
         original_current_labels = menu_sdl.MenuSdlSession.current_labels
         original_save_view_position = menu_sdl.MenuSdlSession.save_view_position
         original_reset_selection = menu_sdl.MenuSdlSession.reset_selection
-        original_is_knulli_platform = menu_sdl.MenuSdlSession.is_knulli_platform
         try:
             menu_sdl.MenuSdlSession.current_labels = lambda self: [
                 "Add ROMs",
@@ -329,7 +328,6 @@ class MenuLayoutTests(unittest.TestCase):
             ]
             menu_sdl.MenuSdlSession.save_view_position = lambda self, _view: None
             menu_sdl.MenuSdlSession.reset_selection = lambda self: setattr(self, "selected_index", 0)
-            menu_sdl.MenuSdlSession.is_knulli_platform = lambda self: True
 
             menu_sdl.MenuSdlSession.activate_cached_games_selected(session)
 
@@ -339,7 +337,6 @@ class MenuLayoutTests(unittest.TestCase):
             menu_sdl.MenuSdlSession.current_labels = original_current_labels
             menu_sdl.MenuSdlSession.save_view_position = original_save_view_position
             menu_sdl.MenuSdlSession.reset_selection = original_reset_selection
-            menu_sdl.MenuSdlSession.is_knulli_platform = original_is_knulli_platform
 
     def test_activate_clear_cache_confirm_yes_clears_cache(self) -> None:
         session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
@@ -1732,30 +1729,31 @@ class MenuLayoutTests(unittest.TestCase):
             },
         )()
 
-        original_download = menu_sdl.download_knulli_update_installer
         original_update_status = menu_sdl.update_status
         original_close_input_devices = menu_sdl.close_input_devices
         original_stop_proxy_inline = menu_sdl.stop_proxy_inline
         original_execv = menu_sdl.os.execv
         captured = {}
+        use_platform(self, knulli_platform.PLATFORM)
         try:
-            menu_sdl.download_knulli_update_installer = (
-                lambda url: captured.setdefault("url", url) or "/tmp/installer.sh"
-            )
             menu_sdl.update_status = lambda *args, **kwargs: (_ for _ in ()).throw(
                 AssertionError("should not refresh update status")
             )
             menu_sdl.close_input_devices = lambda _handles: None
             menu_sdl.stop_proxy_inline = lambda: None
-            menu_sdl.os.execv = lambda path, argv: captured.setdefault(
-                "exec", (path, argv)
-            )
+            menu_sdl.os.execv = lambda path, argv: captured.setdefault("exec", (path, argv))
+            session.show_update_progress = lambda _message: None
 
-            menu_sdl.MenuSdlSession.install_update(session)
+            def fake_install(url, progress):
+                captured["url"] = url
+                return ["/tmp/installer.sh"]
+
+            with patch.object(knulli_platform.PLATFORM, "install_update", fake_install):
+                menu_sdl.MenuSdlSession.install_update(session)
 
             self.assertEqual(captured["url"], "https://example.com/installer.sh")
+            self.assertEqual(captured["exec"], ("/tmp/installer.sh", ["/tmp/installer.sh"]))
         finally:
-            menu_sdl.download_knulli_update_installer = original_download
             menu_sdl.update_status = original_update_status
             menu_sdl.close_input_devices = original_close_input_devices
             menu_sdl.stop_proxy_inline = original_stop_proxy_inline

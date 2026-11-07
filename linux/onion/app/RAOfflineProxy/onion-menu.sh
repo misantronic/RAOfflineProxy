@@ -152,11 +152,11 @@ run_onion_update_install() {
 from pathlib import Path
 import sys
 
-from raofflineproxy.update import download_onion_update_archive, install_onion_update_archive
+from raofflineproxy.update import download_update_archive, install_archive_update
 
 asset_url = sys.argv[1]
-archive_path = download_onion_update_archive(asset_url)
-install_onion_update_archive(archive_path, Path('/mnt/SDCARD/App/RAOfflineProxy'))
+archive_path = download_update_archive(asset_url)
+install_archive_update(archive_path, Path('/mnt/SDCARD/App/RAOfflineProxy'), 'App')
 print('Update installed successfully')
 PY
 }
