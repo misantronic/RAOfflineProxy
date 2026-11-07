@@ -52,7 +52,7 @@
     <string name="home_emulators_label">Enabled Emulators</string>
     <string name="home_manual_setup_warning">With your Android version (%1$s), automatic emulator setup will most likely not work on this device. Please consider using Manual Emulator Setup instead. Android builds can differ, so you can still try Start proxy with automatic setup if you want.</string>
     <string name="home_shizuku_info">You are running the proxy through Shizuku.</string>
-    <string name="home_no_emulator_warning">No supported emulator was found. Install RetroArch, Dolphin, PPSSPP, ARMSX2, Flycast, WatermelonDS, Mupen64Plus, EmuCoreX, ARMSX1, NetherSX2, or SeedlessDS to use RAOfflineProxy.</string>
+    <string name="home_no_emulator_warning">No supported emulator was found. Install RetroArch, Dolphin, PPSSPP, DuckStation, ARMSX2, Flycast, WatermelonDS, Mupen64Plus, EmuCoreX, ARMSX1, NetherSX2, or SeedlessDS to use RAOfflineProxy.</string>
     <string name="home_go_to_cached_games">Cached Games</string>
     <string name="btn_support_development">💛 Support me</string>
     <string name="support_dialog_title">💛 Support RAOfflineProxy</string>
@@ -76,6 +76,7 @@
     <string name="emulator_retroarch">RetroArch</string>
     <string name="emulator_dolphin">Dolphin</string>
     <string name="emulator_ppsspp">PPSSPP</string>
+    <string name="emulator_duckstation">DuckStation</string>
     <string name="emulator_armsx2">ARMSX2</string>
     <string name="emulator_flycast">Flycast</string>
     <string name="emulator_watermelonds">WatermelonDS</string>
@@ -93,6 +94,7 @@
     <string name="proxy_start_aborted_retroarch_saf_rejected">Proxy not started because RetroArch folder access was rejected.</string>
     <string name="proxy_start_aborted_dolphin_saf_rejected">Proxy not started because Dolphin folder access was rejected.</string>
     <string name="proxy_start_aborted_ppsspp_saf_rejected">Proxy not started because PPSSPP root folder selection was canceled. PPSSPP was disabled.</string>
+    <string name="proxy_start_aborted_duckstation_saf_rejected">Proxy not started because DuckStation folder access was rejected.</string>
     <string name="proxy_start_aborted_all_emulators_rejected">All enabled emulators were rejected. Proxy not started.</string>
     <!-- SAF grant dialog -->
     <string name="saf_dialog_title">Folder Access Required</string>
@@ -100,6 +102,7 @@
     <string name="smart_cache_retroarch_access_message">Smart Cache needs access to RetroArch\'s shared RetroArch folder to read recent history. Grant access to /storage/emulated/0/RetroArch.</string>
     <string name="dolphin_saf_dialog_message">This app needs access to Dolphin\'s package folder so it can patch RetroAchievements.ini and read Dolphin cache/save data for Smart Cache. Grant access to Android/data/org.dolphinemu.dolphinemu.</string>
     <string name="ppsspp_saf_dialog_message">This app needs access to the PPSSPP root folder so it can patch SYSTEM/ppsspp.ini. Choose your PPSSPP PSP folder if you use a custom location.</string>
+    <string name="duckstation_saf_dialog_message">This app needs access to DuckStation\'s package folder so it can patch settings.ini. Choose Android/data/com.github.stenzek.duckstation.</string>
     <string name="ppsspp_invalid_root_message">That folder is not a valid PPSSPP root. Choose a folder that contains SYSTEM/ppsspp.ini, such as your PPSSPP PSP folder.</string>
     <string name="ppsspp_shizuku_root_mode_title">PPSSPP storage location</string>
     <string name="ppsspp_shizuku_root_mode_message">Did you move your PPSSPP PSP data folder to a custom location on this device?</string>
@@ -137,6 +140,11 @@
     <string name="ppsspp_patch_success">PPSSPP patched successfully.</string>
     <string name="ppsspp_patch_error_file">Error patching PPSSPP config %1$s: %2$s</string>
     <string name="ppsspp_patch_error_unavailable">Could not patch PPSSPP automatically. Grant the PPSSPP root folder and try again.</string>
+    <string name="duckstation_patch_already_configured">DuckStation already configured — no changes needed.</string>
+    <string name="duckstation_patch_success">DuckStation patched successfully.</string>
+    <string name="duckstation_patch_error_saf">Error patching DuckStation via folder access: %s</string>
+    <string name="duckstation_patch_cfg_not_in_folder">settings.ini was not found in the granted folder. Please grant access to DuckStation\'s Android/data/com.github.stenzek.duckstation folder.</string>
+    <string name="duckstation_patch_error_unavailable">Could not patch DuckStation automatically. Grant folder access if prompted and try again.</string>
     <string name="armsx2_patch_success">ARMSX2 patched successfully.</string>
     <string name="armsx2_patch_error_unavailable">Could not patch ARMSX2 automatically. Make sure a supported ARMSX2 build is installed and try again.</string>
     <string name="flycast_patch_success">Flycast patched successfully.</string>
@@ -172,6 +180,10 @@
     <string name="ppsspp_revert_success">PPSSPP reverted successfully.</string>
     <string name="ppsspp_revert_error_file">Error reverting PPSSPP config %1$s: %2$s</string>
     <string name="ppsspp_revert_error_unavailable">Could not revert PPSSPP automatically. Reopen the app, grant the PPSSPP root folder if prompted, and try again.</string>
+    <string name="duckstation_revert_already_reverted">DuckStation already reverted — no changes needed.</string>
+    <string name="duckstation_revert_success">DuckStation reverted successfully.</string>
+    <string name="duckstation_revert_error_saf">Error reverting DuckStation via folder access: %s</string>
+    <string name="duckstation_revert_error_unavailable">Could not revert DuckStation automatically. Reopen the app, grant folder access if prompted, and try again.</string>
     <string name="armsx2_revert_success">ARMSX2 reverted successfully.</string>
     <string name="armsx2_revert_error_unavailable">Could not revert ARMSX2 automatically. Reopen the app and try again.</string>
     <string name="flycast_revert_success">Flycast reverted successfully.</string>

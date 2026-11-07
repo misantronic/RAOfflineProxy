@@ -118,7 +118,7 @@ private const val QUEUE_BATCH_DUE_CHECK_MS = 30_000L
 
 enum class AuthState { Unknown, Valid, Invalid }
 
-enum class SafGrantTarget { RetroArch, SmartCacheRetroArch, Dolphin, Ppsspp, SmartCacheRom, AllFilesAccess }
+enum class SafGrantTarget { RetroArch, SmartCacheRetroArch, Dolphin, Ppsspp, DuckStation, SmartCacheRom, AllFilesAccess }
 
 sealed interface MainUiEvent {
     data object PromptSmartCacheAfterProxyStart : MainUiEvent
@@ -443,16 +443,19 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             val retroArchTreeUri = loadSafUri()
             val dolphinTreeUri = loadDolphinSafUri()
             val ppssppTreeUri = loadPpssppSafUri()
+            val duckStationTreeUri = loadDuckStationSafUri()
             val retroArchPatched = withContext(Dispatchers.IO) { checkRetroArchIsPatched(app, retroArchTreeUri) }
             val dolphinPatched = withContext(Dispatchers.IO) { checkIsDolphinPatched(app, dolphinTreeUri) }
             val ppssppPatched = withContext(Dispatchers.IO) { checkIsPpssppPatched(app, ppssppTreeUri) }
+            val duckStationPatched = withContext(Dispatchers.IO) { checkIsDuckStationPatched(app, duckStationTreeUri) }
             val anyBroadcastPatched = Emulator.BROADCAST_MANAGED.any { checkIsBroadcastPatched(app, it) }
-            val anyPatched = retroArchPatched || dolphinPatched || ppssppPatched || anyBroadcastPatched
+            val anyPatched = retroArchPatched || dolphinPatched || ppssppPatched || duckStationPatched || anyBroadcastPatched
             val proxyRunning = ProxyService.isRunning(app)
             val prefs = app.getSharedPreferences(PrefsConstants.PREFS_NAME, Context.MODE_PRIVATE)
             val retroArchPatchedThisRun = prefs.isPatchedThisRun(Emulator.RetroArch)
             val dolphinPatchedThisRun = prefs.isPatchedThisRun(Emulator.Dolphin)
             val ppssppPatchedThisRun = prefs.isPatchedThisRun(Emulator.Ppsspp)
+            val duckStationPatchedThisRun = prefs.isPatchedThisRun(Emulator.DuckStation)
 
             if (!proxyRunning && shouldKeepRunning) {
                 ProxyService.start(app)
@@ -466,7 +469,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 return@launch
             }
 
-            if ((!anyPatched && !retroArchPatchedThisRun && !dolphinPatchedThisRun && !ppssppPatchedThisRun) || proxyRunning) {
+            if ((!anyPatched && !retroArchPatchedThisRun && !dolphinPatchedThisRun && !ppssppPatchedThisRun && !duckStationPatchedThisRun) || proxyRunning) {
                 _state.value = _state.value.copy(
                     proxyRunning = proxyRunning,
                     cfgIsPatched = anyPatched
@@ -504,6 +507,16 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             }
             val ppssppRevertedTarget = ppssppResult.success && ppssppResult.copyBackPath == null
 
+            val duckStationResult = if (duckStationPatchedThisRun || duckStationPatched) {
+                val restoreDuckStationHardcore = prefs.hardcoreWasEnabled(Emulator.DuckStation)
+                withContext(Dispatchers.IO) {
+                    revertDuckStationCfg(app, duckStationTreeUri, restoreDuckStationHardcore)
+                }
+            } else {
+                ConfigPatchResult(success = true, message = "DuckStation not patched this run.", skippedNotInstalled = true)
+            }
+            val duckStationRevertedTarget = duckStationResult.success && duckStationResult.copyBackPath == null
+
             val broadcastResults = revertBroadcastEmulators(app, prefs)
             val failedBroadcastRevert = broadcastResults.values.firstOrNull { !it.success }
 
@@ -519,18 +532,24 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 prefs.clearPatchState(Emulator.Ppsspp)
             }
 
-            val needsSafGrant = retroArchResult.needsSafGrant || dolphinResult.needsSafGrant || ppssppResult.needsSafGrant
+            if (duckStationRevertedTarget) {
+                prefs.clearPatchState(Emulator.DuckStation)
+            }
+
+            val needsSafGrant = retroArchResult.needsSafGrant || dolphinResult.needsSafGrant || ppssppResult.needsSafGrant ||
+                duckStationResult.needsSafGrant
             val safGrantTarget = when {
                 retroArchResult.needsSafGrant -> SafGrantTarget.RetroArch
                 dolphinResult.needsSafGrant -> SafGrantTarget.Dolphin
                 ppssppResult.needsSafGrant -> SafGrantTarget.Ppsspp
+                duckStationResult.needsSafGrant -> SafGrantTarget.DuckStation
                 else -> null
             }
             val cfgCopyBackPath = retroArchResult.copyBackPath ?: dolphinResult.copyBackPath ?: ppssppResult.copyBackPath
 
             _state.value = _state.value.copy(
                 proxyRunning = false,
-                cfgIsPatched = !(retroArchRevertedTarget && dolphinRevertedTarget && ppssppRevertedTarget && failedBroadcastRevert == null),
+                cfgIsPatched = !(retroArchRevertedTarget && dolphinRevertedTarget && ppssppRevertedTarget && duckStationRevertedTarget && failedBroadcastRevert == null),
                 needsSafGrant = needsSafGrant,
                 safGrantTarget = safGrantTarget,
                 cfgCopyBackPath = cfgCopyBackPath
@@ -542,6 +561,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 SnackbarManager.showError(dolphinResult.message)
             } else if (!ppssppRevertedTarget && !ppssppResult.needsSafGrant) {
                 SnackbarManager.showError(ppssppResult.message)
+            } else if (!duckStationRevertedTarget && !duckStationResult.needsSafGrant) {
+                SnackbarManager.showError(duckStationResult.message)
             } else if (failedBroadcastRevert != null) {
                 SnackbarManager.showError(failedBroadcastRevert.message)
             }
@@ -777,6 +798,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         _state.value = _state.value.copy(ppssppShizukuRootModeUnknown = true)
                         SnackbarManager.showMessage(str(R.string.smart_cache_requires_ppsspp_access), SnackbarDuration.Indefinite)
                     }
+                    SafGrantTarget.DuckStation -> PrefsConstants.clearDuckStationSafUri(app)
                     SafGrantTarget.AllFilesAccess -> {
                         SnackbarManager.showMessage(str(R.string.smart_cache_requires_all_files_access), SnackbarDuration.Indefinite)
                     }
@@ -838,6 +860,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 _state.value = _state.value.copy(ppssppShizukuRootModeUnknown = true)
                 setEmulatorEnabledInternal(Emulator.Ppsspp, false)
                 SnackbarManager.showMessage(str(R.string.proxy_start_aborted_ppsspp_saf_rejected), SnackbarDuration.Indefinite)
+            }
+            SafGrantTarget.DuckStation -> {
+                PrefsConstants.clearDuckStationSafUri(app)
+                setEmulatorEnabledInternal(Emulator.DuckStation, false)
+                SnackbarManager.showMessage(str(R.string.proxy_start_aborted_duckstation_saf_rejected), SnackbarDuration.Indefinite)
             }
             SafGrantTarget.AllFilesAccess -> {
                 pendingSmartCacheGrantTargets = emptyList()
@@ -1113,6 +1140,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 val retroArchTreeUri = treeUri ?: loadSafUri()
                 val dolphinTreeUri = loadDolphinSafUri()
                 val ppssppTreeUri = loadPpssppSafUri()
+                val duckStationTreeUri = loadDuckStationSafUri()
 
                 val result = if (emulatorSupport.isEnabled(Emulator.RetroArch)) {
                     withContext(Dispatchers.IO) { patchRetroArchCfg(app, retroArchTreeUri) }
@@ -1218,6 +1246,38 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     prefs.edit { remove(Emulator.Ppsspp.patchedThisRunPrefsKey) }
                 }
 
+                val duckStationResult = if (emulatorSupport.isEnabled(Emulator.DuckStation)) {
+                    withContext(Dispatchers.IO) {
+                        patchDuckStationCfg(app, duckStationTreeUri)
+                    }
+                } else {
+                    ConfigPatchResult(success = true, message = "DuckStation disabled.", skippedNotInstalled = true)
+                }
+                if (emulatorSupport.isEnabled(Emulator.DuckStation)) {
+                    if (duckStationResult.needsSafGrant) {
+                        PrefsConstants.clearDuckStationSafUri(app)
+                        _state.value = _state.value.copy(
+                            needsSafGrant = true,
+                            safGrantTarget = SafGrantTarget.DuckStation,
+                            pendingSafGrantTargets = listOf(SafGrantTarget.DuckStation)
+                        )
+                        return@launch
+                    } else if (duckStationResult.invalidSafGrant) {
+                        PrefsConstants.clearDuckStationSafUri(app)
+                        SnackbarManager.showError(duckStationResult.message)
+                        pendingProxyStart = false
+                        return@launch
+                    } else if (!duckStationResult.success && !duckStationResult.skippedNotInstalled) {
+                        SnackbarManager.showError(duckStationResult.message)
+                        pendingProxyStart = false
+                        return@launch
+                    } else if (duckStationResult.success && !duckStationResult.skippedNotInstalled) {
+                        prefs.recordPatched(Emulator.DuckStation, duckStationResult.hardcoreWasEnabled)
+                    }
+                } else {
+                    prefs.edit { remove(Emulator.DuckStation.patchedThisRunPrefsKey) }
+                }
+
                 patchBroadcastEmulators(app, prefs, emulatorSupport)?.let { failure ->
                     SnackbarManager.showError(failure.message)
                     pendingProxyStart = false
@@ -1227,7 +1287,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 val credentialsToCache = selectImportedCredentials(
                     retroArch = result.credentials,
                     dolphin = dolphinResult.credentials,
-                    ppsspp = ppssppResult.credentials
+                    ppsspp = ppssppResult.credentials,
+                    duckStation = duckStationResult.credentials
                 )
                 credentialsToCache?.let { credentials ->
                     withContext(Dispatchers.IO) { cacheImportedCredentials(credentials) }
@@ -1319,6 +1380,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 val retroArchTreeUri = treeUri ?: loadSafUri()
                 val dolphinTreeUri = loadDolphinSafUri()
                 val ppssppTreeUri = loadPpssppSafUri()
+                val duckStationTreeUri = loadDuckStationSafUri()
                 val retroArchPatchedThisRun = prefs.isPatchedThisRun(Emulator.RetroArch)
                 val result = if (retroArchPatchedThisRun) {
                     val restoreHardcore = prefs.hardcoreWasEnabled(Emulator.RetroArch)
@@ -1348,6 +1410,16 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     ConfigPatchResult(success = true, message = "PPSSPP not patched this run.", skippedNotInstalled = true)
                 }
 
+                val duckStationPatchedThisRun = prefs.isPatchedThisRun(Emulator.DuckStation)
+                val duckStationResult = if (duckStationPatchedThisRun) {
+                    val restoreDuckStationHardcore = prefs.hardcoreWasEnabled(Emulator.DuckStation)
+                    withContext(Dispatchers.IO) {
+                        revertDuckStationCfg(app, duckStationTreeUri, restoreDuckStationHardcore)
+                    }
+                } else {
+                    ConfigPatchResult(success = true, message = "DuckStation not patched this run.", skippedNotInstalled = true)
+                }
+
                 val broadcastResults = revertBroadcastEmulators(app, prefs)
                 val failedBroadcastRevert = broadcastResults.values.firstOrNull { !it.success }
 
@@ -1363,6 +1435,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 }
                 if (ppssppResult.success && ppssppResult.copyBackPath == null) {
                     prefs.clearPatchState(Emulator.Ppsspp)
+                }
+                if (duckStationResult.success && duckStationResult.copyBackPath == null) {
+                    prefs.clearPatchState(Emulator.DuckStation)
                 }
                 ProxyService.stop(app)
 
@@ -1410,6 +1485,17 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     SnackbarManager.showError(ppssppResult.message)
                 } else if (!ppssppResult.success && !ppssppResult.skippedNotInstalled) {
                     SnackbarManager.showError(ppssppResult.message)
+                } else if (duckStationResult.needsSafGrant) {
+                    PrefsConstants.clearDuckStationSafUri(app)
+                    _state.value = _state.value.copy(
+                        needsSafGrant = true,
+                        safGrantTarget = SafGrantTarget.DuckStation
+                    )
+                } else if (duckStationResult.invalidSafGrant) {
+                    PrefsConstants.clearDuckStationSafUri(app)
+                    SnackbarManager.showError(duckStationResult.message)
+                } else if (!duckStationResult.success && !duckStationResult.skippedNotInstalled) {
+                    SnackbarManager.showError(duckStationResult.message)
                 } else if (failedBroadcastRevert != null && !failedBroadcastRevert.skippedNotInstalled) {
                     SnackbarManager.showError(failedBroadcastRevert.message)
                 }
@@ -1437,6 +1523,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 checkRetroArchIsPatched(app, treeUri) ||
                     checkIsDolphinPatched(app, loadDolphinSafUri()) ||
                     checkIsPpssppPatched(app, loadPpssppSafUri()) ||
+                    checkIsDuckStationPatched(app, loadDuckStationSafUri()) ||
                     Emulator.BROADCAST_MANAGED.any { checkIsBroadcastPatched(app, it) }
             }
             _state.value = _state.value.copy(cfgIsPatched = patched)
@@ -2440,6 +2527,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private fun loadSafUri(): Uri? =
         PrefsConstants.loadSafUri(getApplication())
 
+    private fun loadDuckStationSafUri(): Uri? =
+        PrefsConstants.loadDuckStationSafUri(getApplication())
+
     private fun loadDolphinSafUri(): Uri? =
         PrefsConstants.loadDolphinSafUri(getApplication())
 
@@ -2576,11 +2666,13 @@ private fun lowercasedUserKey(key: String, prefix: String): String? {
 internal fun selectImportedCredentials(
     retroArch: ImportedCredentials?,
     dolphin: ImportedCredentials?,
-    ppsspp: ImportedCredentials?
+    ppsspp: ImportedCredentials?,
+    duckStation: ImportedCredentials? = null
 ): ImportedCredentials? = when {
     retroArch is ImportedCredentials.Token -> retroArch
     dolphin is ImportedCredentials.Token -> dolphin
     ppsspp is ImportedCredentials.Token -> ppsspp
+    duckStation is ImportedCredentials.Token -> duckStation
     retroArch is ImportedCredentials.Password -> retroArch
     else -> null
 }

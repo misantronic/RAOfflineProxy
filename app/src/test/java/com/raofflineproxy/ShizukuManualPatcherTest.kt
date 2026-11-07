@@ -93,7 +93,7 @@ class ShizukuManualPatcherTest {
     fun shizukuManagedEmulatorsHaveDistinctWireKeys() {
         val keys = Emulator.SHIZUKU_MANAGED.map { requireConfigOverride(it).shizukuKey }
 
-        assertEquals(listOf("retroarch", "dolphin", "ppsspp"), keys)
+        assertEquals(listOf("retroarch", "dolphin", "ppsspp", "duckstation"), keys)
         assertEquals(keys.size, keys.toSet().size)
     }
 

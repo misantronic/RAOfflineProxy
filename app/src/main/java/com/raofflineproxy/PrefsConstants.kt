@@ -20,6 +20,7 @@ object PrefsConstants {
     const val KEY_RETROARCH_SAF_TREE_URI = "retroarch_saf_tree_uri"
     const val KEY_RETROARCH_SMART_CACHE_SAF_TREE_URI = "retroarch_smart_cache_saf_tree_uri"
     const val KEY_DOLPHIN_SAF_TREE_URI = "dolphin_saf_tree_uri"
+    const val KEY_DUCKSTATION_SAF_TREE_URI = "duckstation_saf_tree_uri"
     const val KEY_PPSSPP_SAF_TREE_URI = "ppsspp_saf_tree_uri"
     const val KEY_PPSSPP_ROOT_MODE = "ppsspp_root_mode"
     const val KEY_SMART_CACHE_ROM_SAF_TREE_URI = "smart_cache_rom_saf_tree_uri"
@@ -101,6 +102,21 @@ object PrefsConstants {
     fun clearDolphinSafUri(context: Context) {
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .edit { remove(KEY_DOLPHIN_SAF_TREE_URI) }
+    }
+
+    fun loadDuckStationSafUri(context: Context): Uri? =
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getString(KEY_DUCKSTATION_SAF_TREE_URI, null)
+            ?.toUri()
+
+    fun saveDuckStationSafUri(context: Context, uri: Uri) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit { putString(KEY_DUCKSTATION_SAF_TREE_URI, uri.toString()) }
+    }
+
+    fun clearDuckStationSafUri(context: Context) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit { remove(KEY_DUCKSTATION_SAF_TREE_URI) }
     }
 
     fun loadPpssppSafUri(context: Context): Uri? =
@@ -241,6 +257,7 @@ object PrefsConstants {
                 remove(KEY_RETROARCH_SAF_TREE_URI)
                 remove(KEY_RETROARCH_SMART_CACHE_SAF_TREE_URI)
                 remove(KEY_DOLPHIN_SAF_TREE_URI)
+                remove(KEY_DUCKSTATION_SAF_TREE_URI)
                 remove(KEY_PPSSPP_SAF_TREE_URI)
                 remove(KEY_PPSSPP_ROOT_MODE)
                 remove(KEY_SMART_CACHE_ROM_SAF_TREE_URI)
