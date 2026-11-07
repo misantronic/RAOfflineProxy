@@ -10,8 +10,10 @@ import com.raofflineproxy.ui.detectDolphinHardcoreEnabled
 import com.raofflineproxy.ui.dolphinBackupFileFor
 import com.raofflineproxy.ui.ensureDolphinBackupFileExists
 import com.raofflineproxy.ui.extractDolphinCredentials
+import com.raofflineproxy.ui.DolphinProviderStatus
 import com.raofflineproxy.ui.ImportedCredentials
 import com.raofflineproxy.ui.isDolphinPatchedContent
+import com.raofflineproxy.ui.parseDolphinProviderStatus
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -403,5 +405,18 @@ class DolphinCfgPatcherTest {
         ensureDolphinBackupFileExists(target, "new content")
 
         assertEquals("existing backup", backup.readText())
+    }
+
+    @Test
+    fun parseDolphinProviderStatus_mapsKnownStatuses() {
+        assertEquals(DolphinProviderStatus.Ok, parseDolphinProviderStatus("ok"))
+        assertEquals(DolphinProviderStatus.Denied, parseDolphinProviderStatus("denied"))
+    }
+
+    @Test
+    fun parseDolphinProviderStatus_treatsAnythingElseAsFailed() {
+        assertEquals(DolphinProviderStatus.Failed, parseDolphinProviderStatus(null))
+        assertEquals(DolphinProviderStatus.Failed, parseDolphinProviderStatus("unavailable"))
+        assertEquals(DolphinProviderStatus.Failed, parseDolphinProviderStatus("invalid_host"))
     }
 }
