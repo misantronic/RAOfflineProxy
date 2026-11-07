@@ -65,7 +65,6 @@ from .rom_browser import (
     cached_unlock_count,
     cached_unlock_titles,
     clear_cached_games,
-    directory_has_supported_roms,
     ensure_game_preview,
     list_scannable_files_recursive,
     list_browser_entries,
@@ -457,6 +456,7 @@ class MenuSdlSession:
         self.browser_mode = BROWSER_MODE_ADD
         self.browser_watched: set[str] = set()
         self.browser_entries: list[Path] = []
+        self.browser_dir_has_roms = False
         self.view_positions: dict[str, tuple[int, int]] = {}
         self.browser_positions: dict[str, tuple[int, int]] = {}
         self.smart_cache_prompt_available = False
@@ -1727,6 +1727,7 @@ class MenuSdlSession:
     def set_browser_dir(self, path: Path, restore: bool = False) -> None:
         self.browser_dir = path
         entries = list_browser_entries(path)
+        self.browser_dir_has_roms = bool(entries)
         if self.browser_watch_mode():
             self.refresh_browser_watched()
             entries = [entry for entry in entries if entry.is_dir()]
@@ -1782,9 +1783,7 @@ class MenuSdlSession:
         self.pending_awards = list_pending_awards(self.storage)
 
     def browser_has_cacheable_files(self) -> bool:
-        if self.browser_dir is None:
-            return False
-        return directory_has_supported_roms(self.browser_dir)
+        return self.browser_dir is not None and self.browser_dir_has_roms
 
     def start_single_rom_cache(self, path: Path) -> None:
         self.save_browser_position()

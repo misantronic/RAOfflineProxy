@@ -2177,6 +2177,43 @@ class WatchBrowserTests(unittest.TestCase):
 
         self.assertEqual(session.browser_entries, [Path("/roms/gba")])
 
+    def test_browser_labels_do_not_walk_the_directory(self) -> None:
+        session = self.make_session(Path("/roms"), menu_sdl.BROWSER_MODE_ADD)
+        del session.browser_has_cacheable_files
+        session.restore_browser_position = lambda _path: None
+        session.reset_selection = lambda: None
+        entries = [Path("/roms/gba")]
+
+        with patch.object(menu_sdl, "list_browser_entries", lambda _path: entries), patch.object(
+            menu_sdl, "load_config", lambda: {}
+        ):
+            menu_sdl.MenuSdlSession.set_browser_dir(session, Path("/roms"))
+
+        def fail(*_args, **_kwargs):
+            raise AssertionError("labels walked the file system")
+
+        with patch.object(Path, "iterdir", fail), patch.object(Path, "is_dir", fail), patch.object(
+            Path, "is_file", fail
+        ), patch.object(menu_sdl, "load_config", fail):
+            labels = menu_sdl.MenuSdlSession.labels(session, running=False)
+
+        self.assertEqual(labels[0], session.browser_action_label())
+        self.assertIn("Cancel", labels)
+
+    def test_browser_without_roms_has_no_add_folder_row(self) -> None:
+        session = self.make_session(Path("/roms"), menu_sdl.BROWSER_MODE_ADD)
+        del session.browser_has_cacheable_files
+        session.restore_browser_position = lambda _path: None
+        session.reset_selection = lambda: None
+
+        with patch.object(menu_sdl, "list_browser_entries", lambda _path: []), patch.object(
+            menu_sdl, "load_config", lambda: {}
+        ):
+            menu_sdl.MenuSdlSession.set_browser_dir(session, Path("/roms"))
+            labels = menu_sdl.MenuSdlSession.labels(session, running=False)
+
+        self.assertEqual(labels, ["Cancel"])
+
 
 if __name__ == "__main__":
     unittest.main()
