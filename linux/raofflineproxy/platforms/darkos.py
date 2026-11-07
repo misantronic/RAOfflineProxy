@@ -17,6 +17,9 @@ SERVICE_UNIT = Path("/etc/systemd/system/raofflineproxy.service")
 # <emulator name="retroarch"> and <emulator name="retroarch32"> entries), so it holds
 # its own achievements credentials and needs its own proxy patch.
 RETROARCH32_CFG = HOME / ".config" / "retroarch32" / "retroarch.cfg"
+ROMS_ROOT = Path("/roms")
+SD2_ROMS_ROOT = Path("/roms2")
+TOOLS_MOUNT = Path("/opt/system/Tools")
 
 DARKOS_SERVICE_NAME = "raofflineproxy.service"
 # The launcher already exports HOME, XDG_CONFIG_HOME, PYTHONPATH and
@@ -46,6 +49,23 @@ class DarkosPlatform(Platform):
     def retroarch_cfg_candidates(self, config_dir: Path) -> tuple[Path, ...]:
         return (HOME / ".config" / "retroarch" / "retroarch.cfg",)
 
+    def default_rom_root(self) -> Path | None:
+        return roms_root()
+
+    def autostart_enabled(self, config_data: dict) -> bool | None:
+        # systemd owns this: the unit's enabled state is the truth, not the config flag, so
+        # that toggling it outside the app is still reflected here.
+        return systemd_service_enabled()
+
+    def install_boot_hook(self, startup_script: Path, config_data: dict) -> None:
+        systemd_enable_service()
+
+    def remove_boot_hook(self, startup_script: Path) -> None:
+        systemd_remove_service()
+
+    def on_autostart_disabled(self) -> None:
+        systemd_disable_service()
+
     def secondary_retroarch_cfg(self, config_data: dict | None = None) -> str | None:
         configured = (config_data or {}).get("darkos_retroarch32_cfg")
         if configured:
@@ -60,6 +80,26 @@ class DarkosPlatform(Platform):
 
         return None
 
+
+
+def _same_directory(left: Path, right: Path) -> bool:
+    try:
+        return left.samefile(right)
+    except OSError:
+        return False
+
+
+def roms_root() -> Path | None:
+    # ArkOS's "Switch to SD2 for Roms" rebinds /opt/system/Tools from the second
+    # card and rewrites every path to /roms2, but leaves /roms mounted, so its
+    # existence alone does not identify the library EmulationStation is showing.
+    # The Tools bind source does, and it is the same inode as the roms root it
+    # came from.
+    if _same_directory(TOOLS_MOUNT, SD2_ROMS_ROOT / "tools"):
+        return SD2_ROMS_ROOT
+    if ROMS_ROOT.is_dir():
+        return ROMS_ROOT
+    return None
 
 
 def _run_privileged(args: list[str]) -> tuple[bool, str]:

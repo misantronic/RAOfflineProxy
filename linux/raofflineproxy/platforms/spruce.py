@@ -4,8 +4,8 @@ import json
 import os
 from pathlib import Path
 
-from . import onion
-from .base import Platform, read_os_release
+from . import boot_hooks, miyoo, onion
+from .base import Platform, existing_dir, read_os_release
 
 # spruceOS keeps its bare version string ("4.3.3") in this file, the same one its own
 # updater and spruceRestore upgrade scripts read.
@@ -36,7 +36,7 @@ LOONG_DAEMON = Path("/loong/loong_daemon")
 # comes up under MossySpruce via .tmp_update/rgb30.sh. Neither of those ever reads
 # "updater", so a hook placed there is installed, reported as enabled, and never runs.
 # One spruce card also boots all of these devices, so the hook goes into every entry point
-# present rather than only the current device's (see platform.install_spruce_boot_hook).
+# present rather than only the current device's (see SprucePlatform.install_boot_hook).
 STARTUP_SCRIPT = Path("/mnt/SDCARD/.tmp_update/updater")
 H700_STARTUP_SCRIPT = Path("/mnt/SDCARD/.tmp_update/anbernic.sh")
 RGB30_STARTUP_SCRIPT = Path("/mnt/SDCARD/.tmp_update/rgb30.sh")
@@ -45,6 +45,7 @@ STARTUP_SCRIPTS = (
     H700_STARTUP_SCRIPT,
     RGB30_STARTUP_SCRIPT,
 )
+AUTOSTART_LAUNCHER = Path("/mnt/SDCARD/App/RAOfflineProxy/autostart-launch.sh")
 
 # Mirrors spruce's own device detection (spruce/scripts/helperFunctions.sh). The name has
 # to match exactly: it selects Saves/ra-configs/retroarch-<name>.cfg, and spruce ships
@@ -198,6 +199,51 @@ class SprucePlatform(Platform):
 
     def default_proxy_port(self) -> int | None:
         return DEFAULT_PROXY_PORT
+
+    def default_rom_root(self) -> Path | None:
+        return existing_dir(miyoo.ROMS_ROOT)
+
+    def autostart_launcher(self, config_data: dict) -> str:
+        return str(AUTOSTART_LAUNCHER)
+
+    def install_boot_hook(self, startup_script: Path, config_data: dict) -> None:
+        """Prepends the hook to spruce's boot entry points, straight after the shebang.
+
+        It cannot be appended: each file ends by dispatching into a per-device startup script
+        that never returns. Prepending also keeps this independent of what that dispatch looks
+        like, since the hook only backgrounds our launcher and needs nothing spruce sets up first.
+
+        The device's own entry point is required. Every other spruce entry point present on
+        the card gets the hook too, because one spruce card boots many devices: a card moved
+        from a Miyoo Mini to an RG40XX boots through anbernic.sh instead of updater, and a hook
+        in only one of them leaves autostart dead on the other. Each file only ever runs on its
+        own device family, and the block is guarded and backgrounded, so the copies a device
+        never executes are inert.
+        """
+        block = boot_hooks.background_block(AUTOSTART_LAUNCHER)
+        boot_hooks.prepend_block(startup_script, block, "spruce")
+
+        for sibling in STARTUP_SCRIPTS:
+            if sibling == startup_script or not sibling.exists():
+                continue
+
+            try:
+                boot_hooks.prepend_block(sibling, block, "spruce")
+            except (OSError, ValueError):
+                continue
+
+    def remove_boot_hook(self, startup_script: Path) -> None:
+        for script in dict.fromkeys((startup_script, *STARTUP_SCRIPTS)):
+            if not script.exists():
+                continue
+
+            try:
+                existing = script.read_text(encoding="utf-8", errors="replace")
+                cleaned = boot_hooks.strip_block(existing)
+                if cleaned != existing:
+                    script.write_text(cleaned.replace("\n\n\n", "\n\n"), encoding="utf-8")
+            except OSError:
+                continue
 
 
 PLATFORM = SprucePlatform()

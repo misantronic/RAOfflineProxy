@@ -4,13 +4,15 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from .base import Platform
+from .base import Platform, existing_dir
 
 USERDATA_SYSTEM = Path("/userdata/system")
 STARTUP_SCRIPT = Path("/userdata/system/custom.sh")
 CONFIG_DIR = Path("/userdata/system/.config/raofflineproxy")
 BATOCERA_CONF = Path("/userdata/system/batocera.conf")
 KNULLI_CONF = Path("/userdata/system/knulli.conf")
+ROMS_ROOT = Path("/userdata/roms")
+LAUNCHER = Path("/userdata/system/raofflineproxy/bin/raofflineproxy")
 # Knulli/Batocera generate retroarchcustom.cfg at the first libretro launch, so a
 # freshly flashed device has none of these yet. Keep the canonical path as the
 # fallback: /userdata already established the platform, and falling
@@ -55,6 +57,11 @@ class KnulliPlatform(Platform):
 
         return None
 
+    def default_rom_root(self) -> Path | None:
+        return existing_dir(ROMS_ROOT)
+
+    def autostart_launcher(self, config_data: dict) -> str:
+        return str(config_data.get("autostart_launcher") or LAUNCHER)
 
 
 def services_binary() -> str | None:

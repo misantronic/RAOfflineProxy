@@ -125,15 +125,11 @@ class RocknixRomRootTests(unittest.TestCase):
             rocknix_roms = root / "roms"
             cfg_path.write_text("# cfg\n", encoding="utf-8")
             rocknix_roms.mkdir()
-            original_rocknix_root = platform.DEFAULT_ROCKNIX_ROMS_ROOT
-            try:
-                platform.DEFAULT_ROCKNIX_ROMS_ROOT = rocknix_roms
-
+            use_platform(self, rocknix_platform.PLATFORM)
+            with patch.object(rocknix_platform, "ROMS_ROOT", rocknix_roms):
                 resolved = platform.resolve_rom_root({"retroarch_cfg": str(cfg_path)})
 
-                self.assertEqual(resolved, rocknix_roms)
-            finally:
-                platform.DEFAULT_ROCKNIX_ROMS_ROOT = original_rocknix_root
+            self.assertEqual(resolved, rocknix_roms)
 
 
 class RocknixAutostartTests(unittest.TestCase):
@@ -141,77 +137,54 @@ class RocknixAutostartTests(unittest.TestCase):
         patcher = patch.object(platform, "save_config", lambda *_a, **_k: None)
         patcher.start()
         self.addCleanup(patcher.stop)
+        use_platform(self, rocknix_platform.PLATFORM)
 
     def test_autostart_command_uses_rocknix_launcher(self) -> None:
-        with tempfile.TemporaryDirectory() as temp_dir:
-            startup_script = Path(temp_dir) / "raofflineproxy.sh"
-            config_data = {"startup_script": str(startup_script)}
-
-            original_rocknix_startup = rocknix_platform.STARTUP_SCRIPT
-            try:
-                rocknix_platform.STARTUP_SCRIPT = startup_script
-                self.assertEqual(
-                    platform.autostart_command(config_data),
-                    ("/storage/.local/share/raofflineproxy/bin/raofflineproxy",),
-                )
-            finally:
-                rocknix_platform.STARTUP_SCRIPT = original_rocknix_startup
+        self.assertEqual(
+            rocknix_platform.PLATFORM.autostart_launcher({}),
+            "/storage/.local/share/raofflineproxy/bin/raofflineproxy",
+        )
 
     def test_rocknix_ensure_boot_hook_writes_executable_script(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             startup_script = Path(temp_dir) / "autostart" / "raofflineproxy.sh"
             config_data = {"startup_script": str(startup_script)}
 
-            original_rocknix_startup = rocknix_platform.STARTUP_SCRIPT
-            try:
-                rocknix_platform.STARTUP_SCRIPT = startup_script
-                platform.enable_autostart(config_data)
+            platform.enable_autostart(config_data)
 
-                content = startup_script.read_text(encoding="utf-8")
-                self.assertIn("/storage/.local/share/raofflineproxy/bin/raofflineproxy", content)
-                self.assertIn("boot-reconcile", content)
-                self.assertTrue(platform.is_autostart_enabled(config_data))
-                self.assertTrue(
-                    startup_script.stat().st_mode & stat.S_IXUSR,
-                    "autostart script must be user-executable",
-                )
-            finally:
-                rocknix_platform.STARTUP_SCRIPT = original_rocknix_startup
+            content = startup_script.read_text(encoding="utf-8")
+            self.assertIn("/storage/.local/share/raofflineproxy/bin/raofflineproxy", content)
+            self.assertIn("boot-reconcile", content)
+            self.assertTrue(platform.is_autostart_enabled(config_data))
+            self.assertTrue(
+                startup_script.stat().st_mode & stat.S_IXUSR,
+                "autostart script must be user-executable",
+            )
 
     def test_rocknix_boot_hook_reinjects_tools_launcher(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             startup_script = Path(temp_dir) / "autostart" / "raofflineproxy.sh"
             config_data = {"startup_script": str(startup_script)}
 
-            original_rocknix_startup = rocknix_platform.STARTUP_SCRIPT
-            try:
-                rocknix_platform.STARTUP_SCRIPT = startup_script
-                platform.ensure_boot_hook(config_data)
+            platform.ensure_boot_hook(config_data)
 
-                content = startup_script.read_text(encoding="utf-8")
-                self.assertIn(str(platform.ROCKNIX_TOOL_SOURCE), content)
-                self.assertIn(str(platform.ROCKNIX_MODULES_LAUNCHER), content)
-                self.assertIn("cp ", content)
-                self.assertIn("boot-reconcile", content)
-            finally:
-                rocknix_platform.STARTUP_SCRIPT = original_rocknix_startup
+            content = startup_script.read_text(encoding="utf-8")
+            self.assertIn(str(rocknix_platform.TOOL_SOURCE), content)
+            self.assertIn(str(rocknix_platform.MODULES_LAUNCHER), content)
+            self.assertIn("cp ", content)
+            self.assertIn("boot-reconcile", content)
 
     def test_rocknix_remove_boot_hook_deletes_script(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             startup_script = Path(temp_dir) / "autostart" / "raofflineproxy.sh"
             config_data = {"startup_script": str(startup_script)}
 
-            original_rocknix_startup = rocknix_platform.STARTUP_SCRIPT
-            try:
-                rocknix_platform.STARTUP_SCRIPT = startup_script
-                platform.ensure_boot_hook(config_data)
-                self.assertTrue(startup_script.exists())
+            platform.ensure_boot_hook(config_data)
+            self.assertTrue(startup_script.exists())
 
-                platform.remove_boot_hook(config_data)
+            platform.remove_boot_hook(config_data)
 
-                self.assertFalse(startup_script.exists())
-            finally:
-                rocknix_platform.STARTUP_SCRIPT = original_rocknix_startup
+            self.assertFalse(startup_script.exists())
 
     def test_resolve_startup_script_path_uses_rocknix_when_detected(self) -> None:
         with patch.object(rocknix_platform.PLATFORM, "detect", return_value=True):

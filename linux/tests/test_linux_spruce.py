@@ -11,6 +11,7 @@ from linux.raofflineproxy.emulators import retroarch_cfg
 from linux.raofflineproxy.platforms import darkos as darkos_platform
 from linux.raofflineproxy.platforms import onion as onion_platform
 from linux.raofflineproxy.platforms import base as platform_base
+from linux.raofflineproxy.platforms import boot_hooks
 from linux.raofflineproxy.platforms import spruce as spruce_platform
 from platform_helpers import use_platform
 
@@ -394,20 +395,20 @@ class SpruceBootHookTests(unittest.TestCase):
 
     def test_hook_is_inserted_above_the_dispatch_not_appended(self) -> None:
         path = self._updater()
-        platform.install_spruce_boot_hook(path)
+        spruce_platform.PLATFORM.install_boot_hook(path, {})
         content = path.read_text(encoding="utf-8")
 
-        hook_at = content.index(platform.AUTOSTART_SENTINEL_START)
+        hook_at = content.index(boot_hooks.AUTOSTART_SENTINEL_START)
         # Appending would put it after a dispatch that never returns, so it would never
         # run. Anchored on the shebang rather than any device-specific line.
         self.assertTrue(content.startswith("#!"))
         self.assertLess(hook_at, content.index("./runtime.sh"))
-        self.assertIn(str(platform.SPRUCE_AUTOSTART_LAUNCHER), content)
+        self.assertIn(str(spruce_platform.AUTOSTART_LAUNCHER), content)
         self.assertIn("&", content[hook_at : content.index("./runtime.sh")])
 
     def test_original_boot_logic_is_preserved(self) -> None:
         path = self._updater()
-        platform.install_spruce_boot_hook(path)
+        spruce_platform.PLATFORM.install_boot_hook(path, {})
         content = path.read_text(encoding="utf-8")
 
         for line in SPRUCE_UPDATER.splitlines():
@@ -416,25 +417,22 @@ class SpruceBootHookTests(unittest.TestCase):
 
     def test_install_is_idempotent(self) -> None:
         path = self._updater()
-        platform.install_spruce_boot_hook(path)
+        spruce_platform.PLATFORM.install_boot_hook(path, {})
         once = path.read_text(encoding="utf-8")
-        platform.install_spruce_boot_hook(path)
-        platform.install_spruce_boot_hook(path)
+        spruce_platform.PLATFORM.install_boot_hook(path, {})
+        spruce_platform.PLATFORM.install_boot_hook(path, {})
         self.assertEqual(path.read_text(encoding="utf-8"), once)
-        self.assertEqual(once.count(platform.AUTOSTART_SENTINEL_START), 1)
+        self.assertEqual(once.count(boot_hooks.AUTOSTART_SENTINEL_START), 1)
 
     def test_remove_strips_the_block_without_deleting_spruce_boot_file(self) -> None:
         path = self._updater()
-        platform.install_spruce_boot_hook(path)
-        with patch.object(platform, "running_on_spruce", return_value=True):
-            with patch.object(
-                spruce_platform, "STARTUP_SCRIPT", path
-            ):
-                platform.remove_boot_hook({"startup_script": str(path)})
+        spruce_platform.PLATFORM.install_boot_hook(path, {})
+        use_platform(self, spruce_platform.PLATFORM)
+        platform.remove_boot_hook({"startup_script": str(path)})
 
         content = path.read_text(encoding="utf-8")
         self.assertTrue(path.exists())
-        self.assertNotIn(platform.AUTOSTART_SENTINEL_START, content)
+        self.assertNotIn(boot_hooks.AUTOSTART_SENTINEL_START, content)
         self.assertIn("./runtime.sh", content)
 
     def _entry_points(self, *names: str) -> dict[str, Path]:
@@ -453,24 +451,24 @@ class SpruceBootHookTests(unittest.TestCase):
         # and opening the app there moved the hook and broke the Mini instead.
         paths = self._entry_points("updater", "anbernic.sh", "rgb30.sh")
         with patch.object(spruce_platform, "STARTUP_SCRIPTS", tuple(paths.values())):
-            platform.install_spruce_boot_hook(paths["updater"])
+            spruce_platform.PLATFORM.install_boot_hook(paths["updater"], {})
 
         for path in paths.values():
             content = path.read_text(encoding="utf-8")
-            self.assertEqual(content.count(platform.AUTOSTART_SENTINEL_START), 1, path.name)
+            self.assertEqual(content.count(boot_hooks.AUTOSTART_SENTINEL_START), 1, path.name)
             self.assertLess(
-                content.index(platform.AUTOSTART_SENTINEL_START),
+                content.index(boot_hooks.AUTOSTART_SENTINEL_START),
                 content.index("./runtime.sh"),
             )
 
     def test_opening_the_app_on_another_device_keeps_the_first_devices_hook(self) -> None:
         paths = self._entry_points("updater", "anbernic.sh")
         with patch.object(spruce_platform, "STARTUP_SCRIPTS", tuple(paths.values())):
-            platform.install_spruce_boot_hook(paths["anbernic.sh"])
-            platform.install_spruce_boot_hook(paths["updater"])
+            spruce_platform.PLATFORM.install_boot_hook(paths["anbernic.sh"], {})
+            spruce_platform.PLATFORM.install_boot_hook(paths["updater"], {})
 
         for path in paths.values():
-            self.assertIn(platform.AUTOSTART_SENTINEL_START, path.read_text(encoding="utf-8"))
+            self.assertIn(boot_hooks.AUTOSTART_SENTINEL_START, path.read_text(encoding="utf-8"))
 
     def test_entry_points_missing_from_the_card_are_skipped(self) -> None:
         paths = self._entry_points("updater")
@@ -478,7 +476,7 @@ class SpruceBootHookTests(unittest.TestCase):
         with patch.object(
             spruce_platform, "STARTUP_SCRIPTS", (paths["updater"], absent)
         ):
-            platform.install_spruce_boot_hook(paths["updater"])
+            spruce_platform.PLATFORM.install_boot_hook(paths["updater"], {})
 
         self.assertFalse(absent.exists())
 
@@ -486,14 +484,13 @@ class SpruceBootHookTests(unittest.TestCase):
         paths = self._entry_points("updater", "anbernic.sh", "rgb30.sh")
         entry_points = tuple(paths.values())
         with patch.object(spruce_platform, "STARTUP_SCRIPTS", entry_points):
-            platform.install_spruce_boot_hook(paths["updater"])
-            with patch.object(platform, "running_on_spruce", return_value=True):
-                with patch.object(platform, "running_on_allium", return_value=False):
-                    platform.remove_boot_hook({"startup_script": str(paths["updater"])})
+            spruce_platform.PLATFORM.install_boot_hook(paths["updater"], {})
+            use_platform(self, spruce_platform.PLATFORM)
+            platform.remove_boot_hook({"startup_script": str(paths["updater"])})
 
         for path in entry_points:
             content = path.read_text(encoding="utf-8")
-            self.assertNotIn(platform.AUTOSTART_SENTINEL_START, content, path.name)
+            self.assertNotIn(boot_hooks.AUTOSTART_SENTINEL_START, content, path.name)
             self.assertIn("./runtime.sh", content)
 
     def test_unrecognised_boot_file_is_refused(self) -> None:
@@ -503,33 +500,32 @@ class SpruceBootHookTests(unittest.TestCase):
         path.write_text("not a shell script at all\n", encoding="utf-8")
 
         with self.assertRaises(ValueError):
-            platform.install_spruce_boot_hook(path)
+            spruce_platform.PLATFORM.install_boot_hook(path, {})
         # Left untouched rather than guessed at.
-        self.assertNotIn(platform.AUTOSTART_SENTINEL_START, path.read_text(encoding="utf-8"))
+        self.assertNotIn(boot_hooks.AUTOSTART_SENTINEL_START, path.read_text(encoding="utf-8"))
 
     def test_hook_does_not_depend_on_the_device_name(self) -> None:
         # The insertion point must not be anchored on a per-device line such as spruce's
         # "$PLATFORM" = "MiyooMini" dispatch; the hook is device-independent.
         path = self._updater()
-        platform.install_spruce_boot_hook(path)
-        block_start = path.read_text(encoding="utf-8").index(platform.AUTOSTART_SENTINEL_START)
-        block_end = path.read_text(encoding="utf-8").index(platform.AUTOSTART_SENTINEL_END)
+        spruce_platform.PLATFORM.install_boot_hook(path, {})
+        block_start = path.read_text(encoding="utf-8").index(boot_hooks.AUTOSTART_SENTINEL_START)
+        block_end = path.read_text(encoding="utf-8").index(boot_hooks.AUTOSTART_SENTINEL_END)
         block = path.read_text(encoding="utf-8")[block_start:block_end]
         for device in ("MiyooMini", "A30", "Brick", "Flip", "PLATFORM"):
             self.assertNotIn(device, block)
 
     def test_autostart_is_now_supported_on_spruce(self) -> None:
-        with patch.object(spruce_platform.PLATFORM, "detect", return_value=True):
-          with patch.object(platform, "running_on_spruce", return_value=True):
-            self.assertEqual(
-                platform.resolve_startup_script_path({}),
-                spruce_platform.STARTUP_SCRIPT,
-            )
-            self.assertTrue(platform.autostart_supported({}))
-            self.assertEqual(
-                platform.autostart_command({}),
-                (str(platform.SPRUCE_AUTOSTART_LAUNCHER),),
-            )
+        use_platform(self, spruce_platform.PLATFORM)
+        self.assertEqual(
+            platform.resolve_startup_script_path({}),
+            spruce_platform.STARTUP_SCRIPT,
+        )
+        self.assertTrue(platform.autostart_supported({}))
+        self.assertEqual(
+            spruce_platform.PLATFORM.autostart_launcher({}),
+            str(spruce_platform.AUTOSTART_LAUNCHER),
+        )
 
 
 class SpruceUpdateTests(unittest.TestCase):

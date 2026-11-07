@@ -5,7 +5,7 @@ import os
 import subprocess
 from pathlib import Path
 
-from .base import Platform, read_os_release
+from .base import Platform, existing_dir, read_os_release
 
 LOGGER = logging.getLogger("raofflineproxy")
 
@@ -18,6 +18,11 @@ DOLPHIN_CONFIG_DIR = Path("/storage/.config/dolphin-emu")
 # on every game launch, so this is where the credentials the user entered actually live,
 # in Batocera's key format (global.retroachievements.username/password/token).
 SYSTEM_CFG = Path("/storage/.config/system/configs/system.cfg")
+ROMS_ROOT = Path("/storage/roms")
+LAUNCHER = Path("/storage/.local/share/raofflineproxy/bin/raofflineproxy")
+MODULES_DIR = Path("/storage/.config/modules")
+MODULES_LAUNCHER = MODULES_DIR / "RAOfflineProxy.sh"
+TOOL_SOURCE = Path("/storage/.local/share/raofflineproxy/RAOfflineProxy.sh")
 
 # Chains ROCKNIX's bottom-screen RetroAchievements proxy through ours.
 #
@@ -162,6 +167,29 @@ def stop_ra_proxy_chain() -> bool:
     return True
 
 
+def boot_hook_script(launcher: str) -> str:
+    return "\n".join(
+        [
+            "#!/bin/sh",
+            "set -u",
+            "",
+            "# ROCKNIX re-syncs /storage/.config/modules from a read-only source on",
+            "# every boot (rsync --delete), wiping third-party Tools entries. Re-add",
+            "# ours so the RAOfflineProxy Tools entry survives reboots.",
+            f'if [ -f "{TOOL_SOURCE}" ]; then',
+            f'  mkdir -p "{MODULES_DIR}"',
+            f'  cp "{TOOL_SOURCE}" "{MODULES_LAUNCHER}" || true',
+            f'  chmod +x "{MODULES_LAUNCHER}" || true',
+            "fi",
+            "",
+            f'if [ -x "{launcher}" ]; then',
+            f'  "{launcher}" boot-reconcile >/dev/null 2>&1 || true',
+            "fi",
+            "",
+        ]
+    )
+
+
 class RocknixPlatform(Platform):
     id = "rocknix"
     name = "ROCKNIX"
@@ -197,6 +225,23 @@ class RocknixPlatform(Platform):
 
     def on_proxy_stopped(self) -> None:
         stop_ra_proxy_chain()
+
+
+    def default_rom_root(self) -> Path | None:
+        return existing_dir(ROMS_ROOT)
+
+    def autostart_launcher(self, config_data: dict) -> str:
+        return str(config_data.get("autostart_launcher") or LAUNCHER)
+
+    def install_boot_hook(self, startup_script: Path, config_data: dict) -> None:
+        startup_script.parent.mkdir(parents=True, exist_ok=True)
+        startup_script.write_text(
+            boot_hook_script(self.autostart_launcher(config_data)), encoding="utf-8"
+        )
+        startup_script.chmod(0o755)
+
+    def remove_boot_hook(self, startup_script: Path) -> None:
+        startup_script.unlink()
 
 
 PLATFORM = RocknixPlatform()

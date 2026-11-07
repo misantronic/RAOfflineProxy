@@ -6,7 +6,8 @@ from contextlib import ExitStack
 from pathlib import Path
 from unittest.mock import patch
 
-from linux.raofflineproxy import config, log_uploader, menu_sdl, platform, update
+from linux.raofflineproxy import config, log_uploader, menu_sdl, platform, platforms, update
+from linux.raofflineproxy.platforms import boot_hooks
 from linux.raofflineproxy.platforms import allium as allium_platform
 from linux.raofflineproxy.platforms import onion as onion_platform
 from linux.raofflineproxy.platforms import spruce as spruce_platform
@@ -102,18 +103,18 @@ class AlliumBootHookTests(unittest.TestCase):
 
     def test_hook_is_inserted_above_the_dispatch_not_appended(self) -> None:
         path = self._updater()
-        platform.install_allium_boot_hook(path)
+        allium_platform.PLATFORM.install_boot_hook(path, {})
         content = path.read_text(encoding="utf-8")
 
-        hook_at = content.index(platform.AUTOSTART_SENTINEL_START)
+        hook_at = content.index(boot_hooks.AUTOSTART_SENTINEL_START)
         self.assertTrue(content.startswith("#!"))
         self.assertLess(hook_at, content.index("alliumd"))
-        self.assertIn(str(platform.ALLIUM_AUTOSTART_LAUNCHER), content)
+        self.assertIn(str(allium_platform.AUTOSTART_LAUNCHER), content)
         self.assertIn("&", content[hook_at : content.index("alliumd")])
 
     def test_original_boot_logic_is_preserved(self) -> None:
         path = self._updater()
-        platform.install_allium_boot_hook(path)
+        allium_platform.PLATFORM.install_boot_hook(path, {})
         content = path.read_text(encoding="utf-8")
 
         for line in ALLIUM_UPDATER.splitlines():
@@ -125,46 +126,45 @@ class AlliumBootHookTests(unittest.TestCase):
         # extracts the release over the whole card and then reboots. Starting the service
         # into that would open its SQLite database mid-extract, seconds before the reboot.
         path = self._updater()
-        platform.install_allium_boot_hook(path)
+        allium_platform.PLATFORM.install_boot_hook(path, {})
         content = path.read_text(encoding="utf-8")
 
         block = content[
-            content.index(platform.AUTOSTART_SENTINEL_START) : content.index(
-                platform.AUTOSTART_SENTINEL_END
+            content.index(boot_hooks.AUTOSTART_SENTINEL_START) : content.index(
+                boot_hooks.AUTOSTART_SENTINEL_END
             )
         ]
-        self.assertIn(f'[ ! -f "{platform.ALLIUM_OTA_ARCHIVE}" ]', block)
+        self.assertIn(f'[ ! -f "{allium_platform.OTA_ARCHIVE}" ]', block)
         # Guard must sit above the updater's own check, or it would never be reached.
         self.assertLess(
-            content.index(platform.AUTOSTART_SENTINEL_END), content.index("ota-update.sh")
+            content.index(boot_hooks.AUTOSTART_SENTINEL_END), content.index("ota-update.sh")
         )
 
     def test_ota_guard_matches_the_path_allium_itself_checks(self) -> None:
         # Verbatim from the real updater: a drifted path would silently disable the guard.
         self.assertIn('if [ -f "$ROOT/allium-ota.zip" ]', ALLIUM_UPDATER)
         self.assertEqual(
-            str(platform.ALLIUM_OTA_ARCHIVE), "/mnt/SDCARD/allium-ota.zip"
+            str(allium_platform.OTA_ARCHIVE), "/mnt/SDCARD/allium-ota.zip"
         )
 
     def test_install_is_idempotent(self) -> None:
         path = self._updater()
-        platform.install_allium_boot_hook(path)
+        allium_platform.PLATFORM.install_boot_hook(path, {})
         once = path.read_text(encoding="utf-8")
-        platform.install_allium_boot_hook(path)
-        platform.install_allium_boot_hook(path)
+        allium_platform.PLATFORM.install_boot_hook(path, {})
+        allium_platform.PLATFORM.install_boot_hook(path, {})
         self.assertEqual(path.read_text(encoding="utf-8"), once)
-        self.assertEqual(once.count(platform.AUTOSTART_SENTINEL_START), 1)
+        self.assertEqual(once.count(boot_hooks.AUTOSTART_SENTINEL_START), 1)
 
     def test_remove_strips_the_block_without_deleting_the_updater(self) -> None:
         path = self._updater()
-        platform.install_allium_boot_hook(path)
-        with patch.object(platform, "running_on_allium", return_value=True):
-            with patch.object(allium_platform, "STARTUP_SCRIPT", path):
-                platform.remove_boot_hook({"startup_script": str(path)})
+        allium_platform.PLATFORM.install_boot_hook(path, {})
+        use_platform(self, allium_platform.PLATFORM)
+        platform.remove_boot_hook({"startup_script": str(path)})
 
         content = path.read_text(encoding="utf-8")
         self.assertTrue(path.exists())
-        self.assertNotIn(platform.AUTOSTART_SENTINEL_START, content)
+        self.assertNotIn(boot_hooks.AUTOSTART_SENTINEL_START, content)
         self.assertIn("alliumd", content)
 
     def test_unrecognised_boot_file_is_refused(self) -> None:
@@ -174,35 +174,30 @@ class AlliumBootHookTests(unittest.TestCase):
         path.write_text("not a shell script at all\n", encoding="utf-8")
 
         with self.assertRaises(ValueError):
-            platform.install_allium_boot_hook(path)
-        self.assertNotIn(platform.AUTOSTART_SENTINEL_START, path.read_text(encoding="utf-8"))
+            allium_platform.PLATFORM.install_boot_hook(path, {})
+        self.assertNotIn(boot_hooks.AUTOSTART_SENTINEL_START, path.read_text(encoding="utf-8"))
 
     def test_autostart_is_supported_on_allium(self) -> None:
-        with patch.object(allium_platform.PLATFORM, "detect", return_value=True):
-          with patch.object(platform, "running_on_allium", return_value=True):
-            with patch.object(platform, "running_on_spruce", return_value=False):
-                self.assertEqual(
-                    platform.resolve_startup_script_path({}),
-                    allium_platform.STARTUP_SCRIPT,
-                )
-                self.assertTrue(platform.autostart_supported({}))
-                self.assertEqual(
-                    platform.autostart_command({}),
-                    (str(platform.ALLIUM_AUTOSTART_LAUNCHER),),
-                )
+        use_platform(self, allium_platform.PLATFORM)
+        self.assertEqual(
+            platform.resolve_startup_script_path({}),
+            allium_platform.STARTUP_SCRIPT,
+        )
+        self.assertTrue(platform.autostart_supported({}))
+        self.assertEqual(
+            allium_platform.PLATFORM.autostart_launcher({}),
+            str(allium_platform.AUTOSTART_LAUNCHER),
+        )
 
     def test_allium_branch_does_not_fire_on_spruce(self) -> None:
-        # DEFAULT_ALLIUM_STARTUP_SCRIPT and DEFAULT_SPRUCE_STARTUP_SCRIPT are literally the
-        # same path on real hardware (.tmp_update/updater), so the dispatch must key off
-        # running_on_allium() rather than path equality alone.
-        with patch.object(allium_platform.PLATFORM, "detect", return_value=False):
-          with patch.object(spruce_platform.PLATFORM, "detect", return_value=True):
-           with patch.object(platform, "running_on_allium", return_value=False):
-            with patch.object(platform, "running_on_spruce", return_value=True):
-                self.assertEqual(
-                    platform.autostart_command({}),
-                    (str(platform.SPRUCE_AUTOSTART_LAUNCHER),),
-                )
+        # Allium's and spruce's startup scripts are literally the same path on real hardware
+        # (.tmp_update/updater), so the launcher must come from the detected platform rather
+        # than from path equality.
+        use_platform(self, spruce_platform.PLATFORM)
+        self.assertEqual(
+            platforms.current().autostart_launcher({}),
+            str(spruce_platform.AUTOSTART_LAUNCHER),
+        )
 
 
 class AlliumUpdateSafetyTests(unittest.TestCase):

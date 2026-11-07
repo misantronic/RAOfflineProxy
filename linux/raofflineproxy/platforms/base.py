@@ -2,7 +2,13 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from . import boot_hooks
+
 OS_RELEASE_PATH = Path("/etc/os-release")
+
+
+def existing_dir(path: Path) -> Path | None:
+    return path if path.is_dir() else None
 
 
 def read_os_release() -> str:
@@ -66,3 +72,45 @@ class Platform:
 
     def on_proxy_stopped(self) -> None:
         """Called while the proxy shuts down, to undo what on_proxy_started did."""
+
+    def preferred_rom_root(self, config_data: dict) -> Path | None:
+        """A ROM library the platform knows for sure, used before consulting RetroArch's cfg."""
+        return None
+
+    def default_rom_root(self) -> Path | None:
+        """Where ROMs live on this platform when neither the above nor the cfg say."""
+        return None
+
+    def autostart_supported(self, startup_script: Path | None) -> bool:
+        return startup_script is not None
+
+    def autostart_enabled(self, config_data: dict) -> bool | None:
+        """The platform's own answer when something other than the config flag owns the state
+        (a systemd unit, the registry), or None to use the flag."""
+        return None
+
+    def enable_autostart(self, config_data: dict) -> bool:
+        """Returns True when the platform enabled autostart itself, with no boot hook file."""
+        return False
+
+    def disable_autostart(self, config_data: dict) -> bool:
+        """Returns True when the platform disabled autostart itself."""
+        return False
+
+    def on_autostart_disabled(self) -> None:
+        """Called after the config flag is cleared, for platforms with something to switch off."""
+
+    def autostart_launcher(self, config_data: dict) -> str:
+        configured = config_data.get("autostart_launcher")
+        if configured:
+            return str(configured)
+        raise ValueError("autostart_launcher is not set and this platform has no default")
+
+    def install_boot_hook(self, startup_script: Path, config_data: dict) -> None:
+        boot_hooks.append_block(startup_script, boot_hooks.autostart_block(self.autostart_launcher(config_data)))
+
+    def remove_boot_hook(self, startup_script: Path) -> None:
+        boot_hooks.remove_block(startup_script)
+
+    def boot_hook_installed(self, startup_script: Path) -> bool:
+        return boot_hooks.has_block(boot_hooks.read_script(startup_script))
