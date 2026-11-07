@@ -28,7 +28,9 @@ def detect_retroarch_cfg() -> str:
     if env_override:
         return env_override
 
-    candidates = platforms.current().retroarch_cfg_candidates(config.CONFIG_DIR)
+    candidates = platforms.current().retroarch_cfg_candidates(
+        config.CONFIG_DIR
+    ) or platforms.generic.PLATFORM.retroarch_cfg_candidates(config.CONFIG_DIR)
     # Candidates are scoped to the detected platform on purpose: several firmwares share a
     # card and leave stale folders behind, so a flat "first path that exists wins" list would
     # hand back another firmware's config. The first candidate doubles as the fallback, which

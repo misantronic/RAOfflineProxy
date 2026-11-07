@@ -43,6 +43,9 @@ class DarkosPlatform(Platform):
     def config_dir(self) -> Path | None:
         return HOME / ".config" / "raofflineproxy"
 
+    def retroarch_cfg_candidates(self, config_dir: Path) -> tuple[Path, ...]:
+        return (HOME / ".config" / "retroarch" / "retroarch.cfg",)
+
     def secondary_retroarch_cfg(self, config_data: dict | None = None) -> str | None:
         configured = (config_data or {}).get("darkos_retroarch32_cfg")
         if configured:
