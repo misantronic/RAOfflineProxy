@@ -266,21 +266,82 @@ class MenuHookTests(unittest.TestCase):
 
 
 class DisplayHookTests(unittest.TestCase):
-    def test_miyoo_panel_size_reads_the_probe_result(self) -> None:
+    def test_miyoo_detect_panel_size_reads_the_probe_result(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             probe = Path(temp_dir) / "screen_resolution"
             probe.write_text("750x560\n", encoding="utf-8")
             with patch.object(miyoo, "SCREEN_RESOLUTION_FILE", probe):
-                self.assertEqual(miyoo.panel_size(), (750, 560))
+                self.assertEqual(miyoo.detect_panel_size(), (750, 560))
 
-    def test_miyoo_panel_size_falls_back_to_the_default(self) -> None:
+    def test_miyoo_detect_panel_size_falls_back_to_the_default(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             probe = Path(temp_dir) / "screen_resolution"
             for content in (None, "garbage", "0x480"):
                 if content is not None:
                     probe.write_text(content, encoding="utf-8")
                 with patch.object(miyoo, "SCREEN_RESOLUTION_FILE", probe):
-                    self.assertEqual(miyoo.panel_size(), miyoo.DEFAULT_PANEL_SIZE)
+                    self.assertEqual(miyoo.detect_panel_size(), miyoo.DEFAULT_PANEL_SIZE)
+
+    def test_open_mini_display_draws_through_a_renderer_texture(self) -> None:
+        # The display code only runs on the device, so a name clash inside it once went
+        # unnoticed until a real Onion menu failed to open. Run it against fakes.
+        import sys
+        import types
+
+        class Surface:
+            def __init__(self, size, depth=0):
+                self.size = size
+
+            def get_size(self):
+                return self.size
+
+        class Texture:
+            def __init__(self, renderer, size, streaming=False):
+                if size[0] > 640:
+                    raise RuntimeError("texture too large")
+                self.size = size
+                self.updated = []
+
+            def update(self, surface):
+                self.updated.append(surface)
+
+            def draw(self, dstrect):
+                self.dstrect = dstrect
+
+        class Renderer:
+            def __init__(self, window, accelerated=-1, vsync=False):
+                self.presented = 0
+
+            def clear(self):
+                pass
+
+            def present(self):
+                self.presented += 1
+
+        video = types.ModuleType("pygame._sdl2.video")
+        video.Renderer = Renderer
+        video.Texture = Texture
+        video.Window = types.SimpleNamespace(from_display_module=lambda: object())
+        sdl2 = types.ModuleType("pygame._sdl2")
+        sdl2.video = video
+        pygame_module = types.ModuleType("pygame")
+        pygame_module._sdl2 = sdl2
+        pygame_module.Surface = Surface
+        pygame_module.display = types.SimpleNamespace(set_mode=lambda size, flags: None, flip=None)
+        pygame_module.transform = types.SimpleNamespace(
+            scale=lambda source, size, target: None
+        )
+
+        for panel_size, expected_texture in (((640, 480), (640, 480)), ((750, 560), (640, 480))):
+            logs = []
+            with patch.dict(
+                sys.modules,
+                {"pygame": pygame_module, "pygame._sdl2": sdl2, "pygame._sdl2.video": video},
+            ), patch.object(miyoo, "detect_panel_size", return_value=panel_size):
+                surface = miyoo.open_mini_display(pygame_module, logs.append)
+                self.assertEqual(surface.get_size(), panel_size)
+                pygame_module.display.flip()
+            self.assertTrue(logs)
 
     def test_only_the_mini_sdl_driver_takes_the_renderer_path(self) -> None:
         for module in (onion, spruce, allium):

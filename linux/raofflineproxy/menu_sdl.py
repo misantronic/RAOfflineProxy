@@ -10,6 +10,7 @@ from collections import OrderedDict
 from pathlib import Path
 
 from . import platforms
+from .platforms.base import SYSTEM_FONT_FILES
 from .batocera_conf import (
     patch_batocera_conf,
     revert_batocera_conf,

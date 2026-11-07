@@ -22,7 +22,7 @@ DEFAULT_PANEL_SIZE = (640, 480)
 SCREEN_RESOLUTION_FILE = Path("/tmp/screen_resolution")
 
 
-def panel_size() -> tuple[int, int]:
+def detect_panel_size() -> tuple[int, int]:
     """The vendored "Mini" SDL2 driver ignores whatever size is passed to
     SDL_SetDisplayMode/pygame.display.set_mode: it self-detects the real
     framebuffer via its own `fbset` probe at init (640x480, or 750x560 on
@@ -55,7 +55,7 @@ def open_mini_display(pygame, log):
     """
     from pygame._sdl2.video import Renderer, Texture, Window
 
-    panel_size = panel_size()
+    panel_size = detect_panel_size()
     pygame.display.set_mode(panel_size, 0)
     window = Window.from_display_module()
     renderer = Renderer(window, accelerated=-1, vsync=False)
