@@ -2,32 +2,38 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from linux.raofflineproxy import config, dolphin_cfg
+from linux.raofflineproxy import config
+from linux.raofflineproxy.emulators import dolphin_cfg
+from linux.raofflineproxy.platforms import rocknix as rocknix_platform
+from platform_helpers import use_platform
 
 
 class LinuxDolphinCfgTests(unittest.TestCase):
+    def setUp(self) -> None:
+        use_platform(self, rocknix_platform.PLATFORM)
+
     def test_detect_dolphin_ini_uses_rocknix_default_config_dir(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
-            original_default = config.DEFAULT_ROCKNIX_DOLPHIN_CONFIG_DIR
+            original_default = rocknix_platform.DOLPHIN_CONFIG_DIR
             try:
                 config_dir = Path(temp_dir) / "dolphin-emu"
                 config_dir.mkdir()
-                config.DEFAULT_ROCKNIX_DOLPHIN_CONFIG_DIR = config_dir
+                rocknix_platform.DOLPHIN_CONFIG_DIR = config_dir
 
                 self.assertEqual(
-                    config.detect_dolphin_ini({}),
+                    dolphin_cfg.detect_dolphin_ini({}),
                     str(config_dir / "RetroAchievements.ini"),
                 )
             finally:
-                config.DEFAULT_ROCKNIX_DOLPHIN_CONFIG_DIR = original_default
+                rocknix_platform.DOLPHIN_CONFIG_DIR = original_default
 
     def test_detect_dolphin_ini_returns_none_when_not_found(self) -> None:
-        original_default = config.DEFAULT_ROCKNIX_DOLPHIN_CONFIG_DIR
+        original_default = rocknix_platform.DOLPHIN_CONFIG_DIR
         try:
-            config.DEFAULT_ROCKNIX_DOLPHIN_CONFIG_DIR = Path("/nonexistent/dolphin-emu")
-            self.assertIsNone(config.detect_dolphin_ini({}))
+            rocknix_platform.DOLPHIN_CONFIG_DIR = Path("/nonexistent/dolphin-emu")
+            self.assertIsNone(dolphin_cfg.detect_dolphin_ini({}))
         finally:
-            config.DEFAULT_ROCKNIX_DOLPHIN_CONFIG_DIR = original_default
+            rocknix_platform.DOLPHIN_CONFIG_DIR = original_default
 
     def test_build_patched_dolphin_ini_sets_host_and_disables_hardcore(self) -> None:
         content = (
@@ -89,7 +95,7 @@ class LinuxDolphinCfgTests(unittest.TestCase):
 
     def test_revert_removes_host_key_when_it_never_existed_before(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
-            original_default = config.DEFAULT_ROCKNIX_DOLPHIN_CONFIG_DIR
+            original_default = rocknix_platform.DOLPHIN_CONFIG_DIR
             try:
                 config_dir = Path(temp_dir) / "dolphin-emu"
                 config_dir.mkdir()
@@ -99,7 +105,7 @@ class LinuxDolphinCfgTests(unittest.TestCase):
                     "[Achievements]\nUsername = misantronic\nHostUrl = 127.0.0.1:8080\n",
                     encoding="utf-8",
                 )
-                config.DEFAULT_ROCKNIX_DOLPHIN_CONFIG_DIR = config_dir
+                rocknix_platform.DOLPHIN_CONFIG_DIR = config_dir
 
                 dolphin_cfg.revert_dolphin_ini({}, {dolphin_cfg.HOST_KEY: None})
 
@@ -107,11 +113,11 @@ class LinuxDolphinCfgTests(unittest.TestCase):
                 self.assertNotIn("HostUrl", content)
                 self.assertIn("Username = misantronic", content)
             finally:
-                config.DEFAULT_ROCKNIX_DOLPHIN_CONFIG_DIR = original_default
+                rocknix_platform.DOLPHIN_CONFIG_DIR = original_default
 
     def test_revert_strips_host_when_previous_clobbered_with_proxy(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
-            original_default = config.DEFAULT_ROCKNIX_DOLPHIN_CONFIG_DIR
+            original_default = rocknix_platform.DOLPHIN_CONFIG_DIR
             try:
                 config_dir = Path(temp_dir) / "dolphin-emu"
                 config_dir.mkdir()
@@ -119,7 +125,7 @@ class LinuxDolphinCfgTests(unittest.TestCase):
                 ini_path.write_text(
                     "[Achievements]\nHostUrl = 127.0.0.1:8080\n", encoding="utf-8"
                 )
-                config.DEFAULT_ROCKNIX_DOLPHIN_CONFIG_DIR = config_dir
+                rocknix_platform.DOLPHIN_CONFIG_DIR = config_dir
 
                 clobbered_previous = {dolphin_cfg.HOST_KEY: "127.0.0.1:8080"}
 
@@ -129,7 +135,7 @@ class LinuxDolphinCfgTests(unittest.TestCase):
                 self.assertNotIn("HostUrl", content)
                 self.assertNotIn("127.0.0.1:8080", content)
             finally:
-                config.DEFAULT_ROCKNIX_DOLPHIN_CONFIG_DIR = original_default
+                rocknix_platform.DOLPHIN_CONFIG_DIR = original_default
 
     def test_store_dolphin_previous_preserves_original_on_repatch(self) -> None:
         patch_state: dict = {}
@@ -152,7 +158,7 @@ class LinuxDolphinCfgTests(unittest.TestCase):
 
     def test_patch_dolphin_ini_end_to_end_on_disk(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
-            original_default = config.DEFAULT_ROCKNIX_DOLPHIN_CONFIG_DIR
+            original_default = rocknix_platform.DOLPHIN_CONFIG_DIR
             try:
                 config_dir = Path(temp_dir) / "dolphin-emu"
                 config_dir.mkdir()
@@ -161,7 +167,7 @@ class LinuxDolphinCfgTests(unittest.TestCase):
                     "[Achievements]\nUsername = misantronic\nHostUrl = \n",
                     encoding="utf-8",
                 )
-                config.DEFAULT_ROCKNIX_DOLPHIN_CONFIG_DIR = config_dir
+                rocknix_platform.DOLPHIN_CONFIG_DIR = config_dir
 
                 result = dolphin_cfg.patch_dolphin_ini({})
 
@@ -171,7 +177,7 @@ class LinuxDolphinCfgTests(unittest.TestCase):
                 self.assertIn("HostUrl = 127.0.0.1:8080", content)
                 self.assertIn("Username = misantronic", content)
             finally:
-                config.DEFAULT_ROCKNIX_DOLPHIN_CONFIG_DIR = original_default
+                rocknix_platform.DOLPHIN_CONFIG_DIR = original_default
 
 
 if __name__ == "__main__":

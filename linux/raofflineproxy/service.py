@@ -8,6 +8,7 @@ import subprocess
 import sys
 import time
 
+from . import platforms
 from .boot import LISTEN_FD_ENV
 from .config import (
     CONFIG_DIR,
@@ -17,14 +18,7 @@ from .config import (
     configure_logging,
     proxy_host,
     proxy_port,
-    running_on_darkos,
     save_config,
-    running_on_windows,
-)
-from .darkos_service import (
-    darkos_service_start,
-    darkos_service_status,
-    darkos_service_stop,
 )
 from .proxy_service import run_proxy_service
 from .state import (
@@ -46,11 +40,14 @@ SERVICE_COMMAND_MARKERS = [
 ]
 
 
-def process_is_running(pid: int) -> bool:
-    if running_on_windows():
-        from .windows import process as windows_process
+def _process_backend():
+    return platforms.current().process_backend()
 
-        return windows_process.process_is_running(pid)
+
+def process_is_running(pid: int) -> bool:
+    backend = _process_backend()
+    if backend is not None:
+        return backend.process_is_running(pid)
     try:
         os.kill(pid, 0)
         return True
@@ -66,10 +63,9 @@ def process_has_exited(pid: int) -> bool:
 
 
 def process_matches_service(pid: int) -> bool:
-    if running_on_windows():
-        from .windows import process as windows_process
-
-        return windows_process.process_matches_service(pid)
+    backend = _process_backend()
+    if backend is not None:
+        return backend.process_matches_service(pid)
     command = _proc_command_line(pid)
     if command:
         return any(marker in command for marker in SERVICE_COMMAND_MARKERS)
@@ -98,10 +94,9 @@ def process_is_orphaned(pid: int) -> bool:
 
 
 def discover_service_pids() -> list[int]:
-    if running_on_windows():
-        from .windows import process as windows_process
-
-        return windows_process.discover_service_pids(load_pid())
+    backend = _process_backend()
+    if backend is not None:
+        return backend.discover_service_pids(load_pid())
     pids: set[int] = set()
 
     proc_pid = _discover_service_pid_from_proc()
@@ -217,10 +212,9 @@ def save_running_service_state(
 
 
 def _kill_orphaned_pid(pid: int, timeout_seconds: int = 5) -> None:
-    if running_on_windows():
-        from .windows import process as windows_process
-
-        windows_process.terminate_process(pid)
+    backend = _process_backend()
+    if backend is not None:
+        backend.terminate_process(pid)
         return
     try:
         os.kill(pid, signal.SIGTERM)
@@ -246,10 +240,9 @@ def port_is_available(config_data: dict) -> bool:
         # Same option the real server binds with (ThreadingTCPServer.allow_reuse_address),
         # so a port left in TIME_WAIT by our own previous run is not reported as taken.
         # It still fails against a live listener, which is the case worth catching.
-        if running_on_windows():
-            from .windows import process as windows_process
-
-            windows_process.make_probe_exclusive(probe)
+        backend = _process_backend()
+        if backend is not None:
+            backend.make_probe_exclusive(probe)
         else:
             probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         probe.bind((proxy_host(config_data), proxy_port(config_data)))
@@ -277,8 +270,9 @@ def relocate_proxy_port(config_data: dict) -> int:
 
 
 def start_service_process(config_data: dict) -> dict:
-    if running_on_darkos():
-        return darkos_service_start()
+    owned = platforms.current().service_start(config_data)
+    if owned is not None:
+        return owned
 
     discovered_pids = discover_service_pids()
     healthy_pids = [pid for pid in discovered_pids if not process_is_orphaned(pid)]
@@ -308,15 +302,14 @@ def start_service_process(config_data: dict) -> dict:
         pass_fds = (int(listen_fd),)
         env = {**os.environ, LISTEN_FD_ENV: listen_fd}
 
-    if running_on_windows():
-        from .windows import process as windows_process
-
+    backend = _process_backend()
+    if backend is not None:
         # Cleared here rather than by the service on startup, so a stop that
         # arrives while the service is still starting isn't wiped unread.
-        windows_process.clear_stop_request(STOP_REQUEST_FILE)
-        detach = windows_process.detached_popen_kwargs()
+        backend.clear_stop_request(STOP_REQUEST_FILE)
+        detach = backend.detached_popen_kwargs()
         # The service holds this for its whole life: it must not block the log's rollover.
-        log_handle = windows_process.open_log_for_append(str(LOG_FILE), "utf-8", None)
+        log_handle = backend.open_log_for_append(str(LOG_FILE), "utf-8", None)
     else:
         detach = {"start_new_session": True, "pass_fds": pass_fds}
         log_handle = LOG_FILE.open("a", encoding="utf-8")
@@ -332,17 +325,18 @@ def start_service_process(config_data: dict) -> dict:
             **detach,
         )
 
-    if running_on_windows():
-        from .windows import process as windows_process
-
-        windows_process.remember_service(process.pid)
+    if backend is not None:
+        backend.remember_service(process.pid)
     save_running_service_state(process.pid, config_data)
     return {"started": True, "already_running": False, "pid": process.pid}
 
 
 def stop_service_process(timeout_seconds: int = 10) -> dict:
-    if running_on_darkos():
-        return darkos_service_stop()
+    owned = platforms.current().service_stop()
+    if owned is not None:
+        return owned
+
+    backend = _process_backend()
 
     pids = discover_service_pids()
     tracked_pid = load_pid()
@@ -356,18 +350,14 @@ def stop_service_process(timeout_seconds: int = 10) -> dict:
     ]
 
     if not pids:
-        if running_on_windows():
-            from .windows import process as windows_process
-
-            windows_process.forget_wanted()
+        if backend is not None:
+            backend.forget_wanted()
         clear_pid()
         clear_service_status()
         return {"stopped": False, "already_stopped": True}
 
-    if running_on_windows():
-        from .windows import process as windows_process
-
-        windows_process.request_stop(STOP_REQUEST_FILE)
+    if backend is not None:
+        backend.request_stop(STOP_REQUEST_FILE)
     else:
         for pid in pids:
             try:
@@ -386,19 +376,15 @@ def stop_service_process(timeout_seconds: int = 10) -> dict:
 
     remaining = [pid for pid in pids if not process_has_exited(pid)]
     for pid in remaining:
-        if running_on_windows():
-            from .windows import process as windows_process
-
-            windows_process.terminate_process(pid)
+        if backend is not None:
+            backend.terminate_process(pid)
             continue
         try:
             os.kill(pid, signal.SIGKILL)
         except OSError:
             pass
-    if running_on_windows():
-        from .windows import process as windows_process
-
-        windows_process.clear_stop_request(STOP_REQUEST_FILE)
+    if backend is not None:
+        backend.clear_stop_request(STOP_REQUEST_FILE)
 
     clear_pid()
     clear_service_status()
@@ -412,8 +398,9 @@ def stop_service_process(timeout_seconds: int = 10) -> dict:
 
 
 def service_status() -> dict:
-    if running_on_darkos():
-        return darkos_service_status()
+    owned = platforms.current().service_status()
+    if owned is not None:
+        return owned
 
     pid = tracked_or_discovered_service_pid()
     status = load_service_status() or {}
@@ -458,13 +445,11 @@ def run_service_foreground(config_data: dict) -> None:
     stop_event = __import__("threading").Event()
 
     def watch_stop() -> None:
+        backend = _process_backend()
         while not stop_requested:
-            if running_on_windows():
-                from .windows import process as windows_process
-
-                if windows_process.stop_requested(STOP_REQUEST_FILE):
-                    windows_process.clear_stop_request(STOP_REQUEST_FILE)
-                    break
+            if backend is not None and backend.stop_requested(STOP_REQUEST_FILE):
+                backend.clear_stop_request(STOP_REQUEST_FILE)
+                break
             time.sleep(0.2)
         stop_event.set()
 

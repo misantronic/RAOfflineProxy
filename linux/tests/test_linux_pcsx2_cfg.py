@@ -1,10 +1,11 @@
 import tempfile
 import unittest
 from pathlib import Path
-from unittest import mock
 
-from linux.raofflineproxy import config, pcsx2_cfg
-from linux.raofflineproxy.dolphin_cfg import extract_achievements_value
+from linux.raofflineproxy import config
+from linux.raofflineproxy.emulators import pcsx2_cfg
+from platform_helpers import use_platform
+from linux.raofflineproxy.emulators.dolphin_cfg import extract_achievements_value
 
 # The [Achievements] section as PCSX2 writes it: no Host until one is set.
 PCSX2_INI = """[UI]
@@ -80,9 +81,9 @@ class Pcsx2CfgTests(unittest.TestCase):
     def test_no_pcsx2_means_nothing_happens(self) -> None:
         # Off Windows, as on the handhelds: on a Windows test machine this would
         # otherwise find (and patch) that machine's own PCSX2.ini.
-        with mock.patch.object(config, "running_on_windows", return_value=False):
-            self.assertIsNone(config.detect_pcsx2_ini({}))
-            self.assertFalse(pcsx2_cfg.patch_pcsx2_ini({})["exists"])
+        use_platform(self)
+        self.assertIsNone(pcsx2_cfg.detect_pcsx2_ini({}))
+        self.assertFalse(pcsx2_cfg.patch_pcsx2_ini({})["exists"])
         missing = {"pcsx2_ini": str(self.folder / "nowhere" / "PCSX2.ini")}
         self.assertFalse(pcsx2_cfg.patch_pcsx2_ini(missing)["exists"])
         self.assertFalse(pcsx2_cfg.revert_pcsx2_ini(missing)["exists"])

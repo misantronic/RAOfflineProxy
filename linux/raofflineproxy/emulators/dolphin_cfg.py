@@ -1,13 +1,40 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
-from .config import detect_dolphin_ini, proxy_value
-from .utils import write_emulator_config
+from .. import platforms
+from ..config import proxy_value
+from ..utils import detect_emulator_path, write_emulator_config
 
 ACHIEVEMENTS_SECTION = "[Achievements]"
 HOST_KEY = "HostUrl"
 HARDCORE_KEY = "HardcoreEnabled"
+
+
+def detect_dolphin_config_dir(config_data: dict) -> str | None:
+    return detect_emulator_path(
+        config_data,
+        "dolphin_config_dir",
+        "RAOFFLINEPROXY_DOLPHIN_CONFIG_DIR",
+        platforms.current().dolphin_config_dir,
+    )
+
+
+def detect_dolphin_ini(config_data: dict) -> str | None:
+    configured = config_data.get("dolphin_ini")
+    if configured:
+        return str(configured)
+
+    env_override = os.environ.get("RAOFFLINEPROXY_DOLPHIN_INI")
+    if env_override:
+        return env_override
+
+    config_dir = detect_dolphin_config_dir(config_data)
+    if config_dir is None:
+        return None
+
+    return str(Path(config_dir) / "RetroAchievements.ini")
 
 
 def patch_dolphin_ini(config_data: dict) -> dict:

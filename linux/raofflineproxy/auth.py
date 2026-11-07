@@ -3,21 +3,20 @@ from __future__ import annotations
 import json
 import logging
 
-from . import cache_keys
+from . import cache_keys, platforms
 from .config import (
     FALLBACK_USER_AGENT,
-    detect_batocera_conf,
-    detect_retroarch_cfg,
     upstream_host,
 )
 from .network import build_api_url, http_get
-from .retroarch_cfg import (
+from .batocera_conf import detect_batocera_conf
+from .emulators.retroarch_cfg import (
+    detect_retroarch_cfg,
     cheevos_append_cfg_path,
     load_retroarch_password_credentials,
     load_retroarch_token_credentials,
     load_system_conf_password_credentials,
     load_system_conf_token_credentials,
-    load_spruce_credentials,
 )
 from .storage import Storage
 from .utils import proxy_user_agent
@@ -51,14 +50,13 @@ def resolve_credentials(
     if cached is not None and not storage.is_token_invalid(cached["token"]):
         return cached
 
-    # spruce keeps its credentials in its own settings file and only copies them into
-    # the RetroArch config when a game launches, so before the first launch that file is
-    # the only source.
+    # Some platforms (spruce) keep credentials in their own settings and only copy them into
+    # the RetroArch config when a game launches, so before the first launch that is the only source.
     password_credentials = (
         load_retroarch_password_credentials(cfg_path)
         or load_retroarch_password_credentials(cheevos_cfg)
         or load_system_conf_password_credentials(system_conf)
-        or load_spruce_credentials()
+        or platforms.current().own_credentials()
     )
     if password_credentials is not None:
         refreshed = login_and_cache_token(

@@ -19,14 +19,12 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 OFF_WINDOWS_PROBE = """
 import json, sys
 sys.platform = "linux"
-from linux.raofflineproxy import (
-    cache_queue, config, dolphin_cfg, flusher, log_uploader, ppsspp_cfg, proxy_service,
-    retroarch_cfg, service, usage_report, utils, watch_folders,
-)
+from linux.raofflineproxy import cache_queue, config, flusher, log_uploader, proxy_service, service, usage_report, utils, watch_folders
+from linux.raofflineproxy.emulators import dolphin_cfg, ppsspp_cfg, retroarch_cfg
 from linux.raofflineproxy import platform as rap_platform
 config.resolve_config_dir()
-config.detect_ppsspp_ini({})
-config.detect_dolphin_config_dir({})
+ppsspp_cfg.detect_ppsspp_ini({})
+dolphin_cfg.detect_dolphin_config_dir({})
 log_uploader._log_file_paths()
 print(json.dumps({
     "ua": config.PROXY_UA_TAG,
@@ -67,13 +65,14 @@ class OffWindowsTests(unittest.TestCase):
 class EmulatorConfigWriteTests(unittest.TestCase):
     def test_off_windows_writes_exactly_as_write_text_did(self) -> None:
         from linux.raofflineproxy import utils
+        from linux.raofflineproxy.platforms import windows as windows_platform
 
         content = 'cheevos_enable = "true"\nmenu_driver = "ozone"\n'
         with tempfile.TemporaryDirectory() as folder:
             target = Path(folder) / "retroarch.cfg"
             expected = Path(folder) / "expected.cfg"
             expected.write_text(content, encoding="utf-8")
-            with mock.patch.object(utils, "running_on_windows", return_value=False):
+            with mock.patch.object(windows_platform.PLATFORM, "detect", return_value=False):
                 utils.write_emulator_config(target, content)
             self.assertEqual(target.read_bytes(), expected.read_bytes())
 

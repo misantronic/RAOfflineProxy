@@ -2,29 +2,35 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from linux.raofflineproxy import config, ppsspp_cfg
+from linux.raofflineproxy import config
+from linux.raofflineproxy.emulators import ppsspp_cfg
+from linux.raofflineproxy.platforms import rocknix as rocknix_platform
+from platform_helpers import use_platform
 
 
 class LinuxPpssppCfgTests(unittest.TestCase):
+    def setUp(self) -> None:
+        use_platform(self, rocknix_platform.PLATFORM)
+
     def test_detect_ppsspp_ini_uses_rocknix_default_when_present(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
-            original_default = config.DEFAULT_ROCKNIX_PPSSPP_INI
+            original_default = rocknix_platform.PPSSPP_INI
             try:
                 ini_path = Path(temp_dir) / "ppsspp.ini"
                 ini_path.write_text("", encoding="utf-8")
-                config.DEFAULT_ROCKNIX_PPSSPP_INI = ini_path
+                rocknix_platform.PPSSPP_INI = ini_path
 
-                self.assertEqual(config.detect_ppsspp_ini({}), str(ini_path))
+                self.assertEqual(ppsspp_cfg.detect_ppsspp_ini({}), str(ini_path))
             finally:
-                config.DEFAULT_ROCKNIX_PPSSPP_INI = original_default
+                rocknix_platform.PPSSPP_INI = original_default
 
     def test_detect_ppsspp_ini_returns_none_when_not_found(self) -> None:
-        original_default = config.DEFAULT_ROCKNIX_PPSSPP_INI
+        original_default = rocknix_platform.PPSSPP_INI
         try:
-            config.DEFAULT_ROCKNIX_PPSSPP_INI = Path("/nonexistent/ppsspp.ini")
-            self.assertIsNone(config.detect_ppsspp_ini({}))
+            rocknix_platform.PPSSPP_INI = Path("/nonexistent/ppsspp.ini")
+            self.assertIsNone(ppsspp_cfg.detect_ppsspp_ini({}))
         finally:
-            config.DEFAULT_ROCKNIX_PPSSPP_INI = original_default
+            rocknix_platform.PPSSPP_INI = original_default
 
     def test_build_patched_ppsspp_ini_sets_host_and_disables_challenge_mode(self) -> None:
         content = (
@@ -76,14 +82,14 @@ class LinuxPpssppCfgTests(unittest.TestCase):
 
     def test_revert_strips_host_when_previous_clobbered_with_proxy(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
-            original_default = config.DEFAULT_ROCKNIX_PPSSPP_INI
+            original_default = rocknix_platform.PPSSPP_INI
             try:
                 ini_path = Path(temp_dir) / "ppsspp.ini"
                 ini_path.write_text(
                     "[Achievements]\nAchievementsHost = 127.0.0.1:8080\n",
                     encoding="utf-8",
                 )
-                config.DEFAULT_ROCKNIX_PPSSPP_INI = ini_path
+                rocknix_platform.PPSSPP_INI = ini_path
 
                 # A re-patch captured the proxy host itself as the "previous" value.
                 clobbered_previous = {ppsspp_cfg.HOST_KEY: "127.0.0.1:8080"}
@@ -94,7 +100,7 @@ class LinuxPpssppCfgTests(unittest.TestCase):
                 self.assertIn("AchievementsHost = \n", content)
                 self.assertNotIn("127.0.0.1:8080", content)
             finally:
-                config.DEFAULT_ROCKNIX_PPSSPP_INI = original_default
+                rocknix_platform.PPSSPP_INI = original_default
 
     def test_store_ppsspp_previous_preserves_original_on_repatch(self) -> None:
         patch_state: dict = {}
@@ -117,7 +123,7 @@ class LinuxPpssppCfgTests(unittest.TestCase):
 
     def test_patch_ppsspp_ini_end_to_end_on_disk(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
-            original_default = config.DEFAULT_ROCKNIX_PPSSPP_INI
+            original_default = rocknix_platform.PPSSPP_INI
             try:
                 ini_path = Path(temp_dir) / "ppsspp.ini"
                 ini_path.write_text(
@@ -126,7 +132,7 @@ class LinuxPpssppCfgTests(unittest.TestCase):
                     "AchievementsHost = \n",
                     encoding="utf-8",
                 )
-                config.DEFAULT_ROCKNIX_PPSSPP_INI = ini_path
+                rocknix_platform.PPSSPP_INI = ini_path
 
                 result = ppsspp_cfg.patch_ppsspp_ini({})
 
@@ -136,7 +142,7 @@ class LinuxPpssppCfgTests(unittest.TestCase):
                 self.assertIn("AchievementsHost = 127.0.0.1:8080", content)
                 self.assertIn("AchievementsUserName = misantronic", content)
             finally:
-                config.DEFAULT_ROCKNIX_PPSSPP_INI = original_default
+                rocknix_platform.PPSSPP_INI = original_default
 
 
 if __name__ == "__main__":

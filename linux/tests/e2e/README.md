@@ -174,14 +174,14 @@ uninstaller, so removal is manual and the test asserts the card is left clean.
 
 **spruce** — the proxy moving to port 8099 because spruce ships SFTPGo on 8080;
 patching the per-platform `retroarch-MiyooMini.cfg` and *not* the legacy
-`.retroarch/retroarch.cfg` that spruce never reads; `spruce_platform()`
+`.retroarch/retroarch.cfg` that spruce never reads; `spruce.device_name()`
 resolution; the boot hook inserted into `.tmp_update/updater`; and the
 Onion-over-spruce tie-break, where both markers are present and
 `onionVersion/version.txt` decides.
 
 **Allium** — the `.pak` layout rather than the shared `App/` tree; detection from
-`.allium/`; the boot hook sharing spruce's `updater` path while dispatching on
-`running_on_allium()`; and the hook skipping autostart while `allium-ota.zip` is
+`.allium/`; the boot hook sharing spruce's `updater` path while the hook comes from
+the detected platform; and the hook skipping autostart while `allium-ota.zip` is
 staged.
 
 ## Regression: BusyBox `find` has no `-delete`

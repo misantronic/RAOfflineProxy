@@ -3,9 +3,11 @@ import unittest
 from pathlib import Path
 
 from linux.raofflineproxy import auth
+from linux.raofflineproxy.platforms import rocknix as rocknix_platform
 from linux.raofflineproxy import cache_keys
-from linux.raofflineproxy import retroarch_cfg
+from linux.raofflineproxy.emulators import retroarch_cfg
 from linux.raofflineproxy import storage
+from platform_helpers import use_platform
 
 
 class LinuxAuthTests(unittest.TestCase):
@@ -244,6 +246,9 @@ class LinuxAuthTests(unittest.TestCase):
 
 
 class LinuxRocknixSystemConfigCredentialTests(unittest.TestCase):
+    def setUp(self) -> None:
+        use_platform(self, rocknix_platform.PLATFORM)
+
     """EmulationStation's own settings, the only source before a game has launched."""
 
     def _write_system_cfg(self, path: Path, **values: str) -> None:

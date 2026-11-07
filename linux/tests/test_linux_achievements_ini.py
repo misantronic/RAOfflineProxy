@@ -2,7 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from linux.raofflineproxy import achievements_ini, duckstation_cfg, flycast_cfg, pcsx2_cfg
+from linux.raofflineproxy.emulators import achievements_ini, duckstation_cfg, flycast_cfg, pcsx2_cfg
 
 
 class RepatchTests(unittest.TestCase):

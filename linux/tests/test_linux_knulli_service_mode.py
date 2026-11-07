@@ -3,7 +3,10 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from linux.raofflineproxy import knulli_service, menu_sdl
+from platform_helpers import use_platform
+
+from linux.raofflineproxy import menu_sdl
+from linux.raofflineproxy.platforms import knulli as knulli_service
 
 
 class KnulliServiceModeDetectionTests(unittest.TestCase):
@@ -56,11 +59,8 @@ class KnulliServiceModeMenuTests(unittest.TestCase):
             mock.patch.object(
                 menu_sdl.MenuSdlSession, "refresh_main_menu_state", lambda self, force=False: None
             ),
-            mock.patch.object(
-                menu_sdl.MenuSdlSession, "is_knulli_platform", lambda self: True
-            ),
-            mock.patch.object(menu_sdl, "running_on_muos", lambda: False),
         ):
+            use_platform(self, knulli_service.PLATFORM)
             return menu_sdl.MenuSdlSession.labels(session, False)
 
     def test_legacy_mode_keeps_start_autostart_and_uninstall(self) -> None:
@@ -90,6 +90,7 @@ class KnulliServiceModeMenuTests(unittest.TestCase):
         self.assertEqual(status, "PROXY: RUNNING ONLINE")
 
     def test_service_status_text_mentions_service(self) -> None:
+        use_platform(self, knulli_service.PLATFORM)
         session = self._make_main_session(service_mode=True)
         with mock.patch.object(
             menu_sdl.MenuSdlSession, "refresh_main_menu_state", lambda self, force=False: None
@@ -98,16 +99,17 @@ class KnulliServiceModeMenuTests(unittest.TestCase):
         self.assertEqual(status, "KNULLI SERVICE: RUNNING ONLINE")
 
     def test_legacy_start_proxy_uses_inline_path(self) -> None:
+        use_platform(self, knulli_service.PLATFORM)
         session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
         session.view = "main"
         calls = []
         with (
-            mock.patch.object(menu_sdl, "service_mode_active", return_value=False),
+            mock.patch.object(knulli_service, "service_mode_active", return_value=False),
             mock.patch.object(
                 menu_sdl, "start_proxy_inline", lambda: calls.append("inline")
             ),
             mock.patch.object(
-                menu_sdl, "start_service", lambda: calls.append("service")
+                knulli_service, "start_service", lambda: calls.append("service")
             ),
             mock.patch.object(
                 menu_sdl.MenuSdlSession,
@@ -124,16 +126,17 @@ class KnulliServiceModeMenuTests(unittest.TestCase):
         self.assertEqual(calls, ["inline"])
 
     def test_service_start_proxy_uses_service(self) -> None:
+        use_platform(self, knulli_service.PLATFORM)
         session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
         session.view = "main"
         calls = []
         with (
-            mock.patch.object(menu_sdl, "service_mode_active", return_value=True),
+            mock.patch.object(knulli_service, "service_mode_active", return_value=True),
             mock.patch.object(
                 menu_sdl, "start_proxy_inline", lambda: calls.append("inline")
             ),
             mock.patch.object(
-                menu_sdl, "start_service", lambda: calls.append("service")
+                knulli_service, "start_service", lambda: calls.append("service")
             ),
             mock.patch.object(
                 menu_sdl.MenuSdlSession,

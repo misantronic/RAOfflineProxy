@@ -13,7 +13,7 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler
 from urllib.parse import urlsplit
 
-from . import cache_budget, cache_keys, cache_queue, log_uploader, rate_limit, storage_corruption, usage_report, usage_stats, watch_folders
+from . import cache_budget, cache_keys, cache_queue, log_uploader, platforms, rate_limit, storage_corruption, usage_report, usage_stats, watch_folders
 from .auth import resolve_credentials
 from .boot import adopt_listen_socket
 from .award_signing import sign_award
@@ -24,11 +24,9 @@ from .config import (
     image_caching_enabled,
     proxy_host,
     proxy_port,
-    running_on_windows,
     upstream_host,
 )
 from .flusher import flush_pending_awards
-from .lowerdeck import ensure_ra_proxy_chained, stop_ra_proxy_chain
 from .image_cache import (
     IMAGE_PATH_PREFIXES,
     resolve_cached_static_asset,
@@ -212,7 +210,7 @@ def _start_image_downloads(
 class ThreadingTCPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
     # Windows SO_REUSEADDR lets a second server bind over a live one, so it is
     # POSIX-only (see windows/process.py, make_probe_exclusive).
-    allow_reuse_address = not running_on_windows()
+    allow_reuse_address = platforms.current().reuse_listen_address
     daemon_threads = True
 
 
@@ -1330,7 +1328,7 @@ def run_proxy_service(
         proxy_port(config_data),
     )
     LOGGER.info("Storage backend: %s", storage.backend)
-    ensure_ra_proxy_chained(config_data)
+    platforms.current().on_proxy_started(config_data)
     connectivity_monitor = ConnectivityMonitor(server)
     periodic_refresh = PeriodicRefresh(server)
     cache_queue_worker = CacheQueueWorker(server)
@@ -1376,6 +1374,6 @@ def run_proxy_service(
             ]
         )
         usage_stats.flush()
-        stop_ra_proxy_chain()
+        platforms.current().on_proxy_stopped()
         server.server_close()
         storage.close()

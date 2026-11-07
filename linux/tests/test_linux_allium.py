@@ -6,25 +6,32 @@ from contextlib import ExitStack
 from pathlib import Path
 from unittest.mock import patch
 
-from linux.raofflineproxy import config, log_uploader, menu_sdl, platform, update
+from linux.raofflineproxy import config, log_uploader, menu_sdl, platform, platforms, update
+from linux.raofflineproxy.platforms import boot_hooks
+from linux.raofflineproxy.platforms import allium as allium_platform
+from linux.raofflineproxy.platforms import base as platform_base
+from linux.raofflineproxy.platforms import onion as onion_platform
+from linux.raofflineproxy.platforms import spruce as spruce_platform
+from platform_helpers import use_platform
 
 
 class AlliumDetectionTests(unittest.TestCase):
     def test_running_on_allium_requires_the_marker_dir(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             marker = Path(temp_dir) / ".allium"
-            with patch.object(config, "ALLIUM_MARKER_DIR", marker):
-                self.assertFalse(config.running_on_allium())
+            with patch.object(allium_platform, "MARKER_DIR", marker):
+                self.assertFalse(allium_platform.PLATFORM.detect())
                 marker.mkdir()
-                self.assertTrue(config.running_on_allium())
+                self.assertTrue(allium_platform.PLATFORM.detect())
 
     def test_running_on_shared_miyoo_stack_includes_allium(self) -> None:
-        with patch.object(config, "running_on_allium", return_value=True):
-            with patch.object(config, "running_on_onion", return_value=False):
-                with patch.object(config, "running_on_spruce", return_value=False):
-                    self.assertTrue(config.running_on_shared_miyoo_stack())
+        with patch.object(allium_platform.PLATFORM, "detect", return_value=True):
+            with patch.object(onion_platform.PLATFORM, "detect", return_value=False):
+                with patch.object(spruce_platform.PLATFORM, "detect", return_value=False):
+                    self.assertTrue(platforms.running_on_shared_miyoo_stack())
 
     def test_resolve_config_dir_uses_allium_pak_data_dir(self) -> None:
+        use_platform(self, allium_platform.PLATFORM)
         with tempfile.TemporaryDirectory() as temp_dir:
             app_dir = Path(temp_dir) / "RAOfflineProxy.pak"
             app_dir.mkdir()
@@ -34,8 +41,8 @@ class AlliumDetectionTests(unittest.TestCase):
             with patch.dict(os.environ):
                 os.environ.pop("RAOFFLINEPROXY_CONFIG_DIR", None)
                 os.environ.pop("XDG_CONFIG_HOME", None)
-                with patch.object(config, "DEFAULT_ONION_APP_DIR", Path(temp_dir) / "absent"):
-                    with patch.object(config, "DEFAULT_ALLIUM_APP_DIR", app_dir):
+                with patch.object(onion_platform, "APP_DIR", Path(temp_dir) / "absent"):
+                    with patch.object(allium_platform, "APP_DIR", app_dir):
                         self.assertEqual(config.resolve_config_dir(), app_dir / "data")
 
 
@@ -97,18 +104,18 @@ class AlliumBootHookTests(unittest.TestCase):
 
     def test_hook_is_inserted_above_the_dispatch_not_appended(self) -> None:
         path = self._updater()
-        platform.install_allium_boot_hook(path)
+        allium_platform.PLATFORM.install_boot_hook(path, {})
         content = path.read_text(encoding="utf-8")
 
-        hook_at = content.index(platform.AUTOSTART_SENTINEL_START)
+        hook_at = content.index(boot_hooks.AUTOSTART_SENTINEL_START)
         self.assertTrue(content.startswith("#!"))
         self.assertLess(hook_at, content.index("alliumd"))
-        self.assertIn(str(platform.ALLIUM_AUTOSTART_LAUNCHER), content)
+        self.assertIn(str(allium_platform.AUTOSTART_LAUNCHER), content)
         self.assertIn("&", content[hook_at : content.index("alliumd")])
 
     def test_original_boot_logic_is_preserved(self) -> None:
         path = self._updater()
-        platform.install_allium_boot_hook(path)
+        allium_platform.PLATFORM.install_boot_hook(path, {})
         content = path.read_text(encoding="utf-8")
 
         for line in ALLIUM_UPDATER.splitlines():
@@ -120,46 +127,45 @@ class AlliumBootHookTests(unittest.TestCase):
         # extracts the release over the whole card and then reboots. Starting the service
         # into that would open its SQLite database mid-extract, seconds before the reboot.
         path = self._updater()
-        platform.install_allium_boot_hook(path)
+        allium_platform.PLATFORM.install_boot_hook(path, {})
         content = path.read_text(encoding="utf-8")
 
         block = content[
-            content.index(platform.AUTOSTART_SENTINEL_START) : content.index(
-                platform.AUTOSTART_SENTINEL_END
+            content.index(boot_hooks.AUTOSTART_SENTINEL_START) : content.index(
+                boot_hooks.AUTOSTART_SENTINEL_END
             )
         ]
-        self.assertIn(f'[ ! -f "{platform.ALLIUM_OTA_ARCHIVE}" ]', block)
+        self.assertIn(f'[ ! -f "{allium_platform.OTA_ARCHIVE}" ]', block)
         # Guard must sit above the updater's own check, or it would never be reached.
         self.assertLess(
-            content.index(platform.AUTOSTART_SENTINEL_END), content.index("ota-update.sh")
+            content.index(boot_hooks.AUTOSTART_SENTINEL_END), content.index("ota-update.sh")
         )
 
     def test_ota_guard_matches_the_path_allium_itself_checks(self) -> None:
         # Verbatim from the real updater: a drifted path would silently disable the guard.
         self.assertIn('if [ -f "$ROOT/allium-ota.zip" ]', ALLIUM_UPDATER)
         self.assertEqual(
-            str(platform.ALLIUM_OTA_ARCHIVE), "/mnt/SDCARD/allium-ota.zip"
+            str(allium_platform.OTA_ARCHIVE), "/mnt/SDCARD/allium-ota.zip"
         )
 
     def test_install_is_idempotent(self) -> None:
         path = self._updater()
-        platform.install_allium_boot_hook(path)
+        allium_platform.PLATFORM.install_boot_hook(path, {})
         once = path.read_text(encoding="utf-8")
-        platform.install_allium_boot_hook(path)
-        platform.install_allium_boot_hook(path)
+        allium_platform.PLATFORM.install_boot_hook(path, {})
+        allium_platform.PLATFORM.install_boot_hook(path, {})
         self.assertEqual(path.read_text(encoding="utf-8"), once)
-        self.assertEqual(once.count(platform.AUTOSTART_SENTINEL_START), 1)
+        self.assertEqual(once.count(boot_hooks.AUTOSTART_SENTINEL_START), 1)
 
     def test_remove_strips_the_block_without_deleting_the_updater(self) -> None:
         path = self._updater()
-        platform.install_allium_boot_hook(path)
-        with patch.object(platform, "running_on_allium", return_value=True):
-            with patch.object(platform, "DEFAULT_ALLIUM_STARTUP_SCRIPT", path):
-                platform.remove_boot_hook({"startup_script": str(path)})
+        allium_platform.PLATFORM.install_boot_hook(path, {})
+        use_platform(self, allium_platform.PLATFORM)
+        platform.remove_boot_hook({"startup_script": str(path)})
 
         content = path.read_text(encoding="utf-8")
         self.assertTrue(path.exists())
-        self.assertNotIn(platform.AUTOSTART_SENTINEL_START, content)
+        self.assertNotIn(boot_hooks.AUTOSTART_SENTINEL_START, content)
         self.assertIn("alliumd", content)
 
     def test_unrecognised_boot_file_is_refused(self) -> None:
@@ -169,32 +175,30 @@ class AlliumBootHookTests(unittest.TestCase):
         path.write_text("not a shell script at all\n", encoding="utf-8")
 
         with self.assertRaises(ValueError):
-            platform.install_allium_boot_hook(path)
-        self.assertNotIn(platform.AUTOSTART_SENTINEL_START, path.read_text(encoding="utf-8"))
+            allium_platform.PLATFORM.install_boot_hook(path, {})
+        self.assertNotIn(boot_hooks.AUTOSTART_SENTINEL_START, path.read_text(encoding="utf-8"))
 
     def test_autostart_is_supported_on_allium(self) -> None:
-        with patch.object(platform, "running_on_allium", return_value=True):
-            with patch.object(platform, "running_on_spruce", return_value=False):
-                self.assertEqual(
-                    platform.resolve_startup_script_path({}),
-                    platform.DEFAULT_ALLIUM_STARTUP_SCRIPT,
-                )
-                self.assertTrue(platform.autostart_supported({}))
-                self.assertEqual(
-                    platform.autostart_command({}),
-                    (str(platform.ALLIUM_AUTOSTART_LAUNCHER),),
-                )
+        use_platform(self, allium_platform.PLATFORM)
+        self.assertEqual(
+            platform.resolve_startup_script_path({}),
+            allium_platform.STARTUP_SCRIPT,
+        )
+        self.assertTrue(platform.autostart_supported({}))
+        self.assertEqual(
+            allium_platform.PLATFORM.autostart_launcher({}),
+            str(allium_platform.AUTOSTART_LAUNCHER),
+        )
 
     def test_allium_branch_does_not_fire_on_spruce(self) -> None:
-        # DEFAULT_ALLIUM_STARTUP_SCRIPT and DEFAULT_SPRUCE_STARTUP_SCRIPT are literally the
-        # same path on real hardware (.tmp_update/updater), so the dispatch must key off
-        # running_on_allium() rather than path equality alone.
-        with patch.object(platform, "running_on_allium", return_value=False):
-            with patch.object(platform, "running_on_spruce", return_value=True):
-                self.assertEqual(
-                    platform.autostart_command({}),
-                    (str(platform.SPRUCE_AUTOSTART_LAUNCHER),),
-                )
+        # Allium's and spruce's startup scripts are literally the same path on real hardware
+        # (.tmp_update/updater), so the launcher must come from the detected platform rather
+        # than from path equality.
+        use_platform(self, spruce_platform.PLATFORM)
+        self.assertEqual(
+            platforms.current().autostart_launcher({}),
+            str(spruce_platform.AUTOSTART_LAUNCHER),
+        )
 
 
 class AlliumUpdateSafetyTests(unittest.TestCase):
@@ -205,14 +209,11 @@ class AlliumUpdateSafetyTests(unittest.TestCase):
         # A "knulli" fallback here would make install_update()'s generic branch download
         # and exec a Knulli installer binary on Miyoo Mini hardware.
         session = self._session()
-        with patch.object(menu_sdl, "running_on_muos", return_value=False):
-            with patch.object(menu_sdl, "running_on_spruce", return_value=False):
-                with patch.object(menu_sdl, "running_on_onion", return_value=False):
-                    with patch.object(menu_sdl, "running_on_allium", return_value=True):
-                        self.assertEqual(session.update_platform(), "allium")
+        use_platform(self, allium_platform.PLATFORM)
+        self.assertEqual(session.update_platform(), "allium")
 
     def test_allium_is_an_installable_update_platform(self) -> None:
-        self.assertEqual(update.validate_platform("Allium"), update.PLATFORM_ALLIUM)
+        self.assertEqual(update.validate_platform("Allium"), "allium")
 
     def test_asset_lookup_does_not_cross_match_allium_and_onion(self) -> None:
         assets = [
@@ -226,51 +227,47 @@ class AlliumUpdateSafetyTests(unittest.TestCase):
             },
         ]
         self.assertEqual(
-            update.find_platform_asset_url(update.PLATFORM_ALLIUM, assets),
+            update.find_platform_asset_url("allium", assets),
             "https://example.test/allium.zip",
         )
         self.assertEqual(
-            update.find_platform_asset_url(update.PLATFORM_ONION, assets),
+            update.find_platform_asset_url("onion", assets),
             "https://example.test/onion.zip",
         )
 
-    def test_install_update_uses_the_pak_layout_not_the_onion_one(self) -> None:
-        session = self._session()
-        with ExitStack() as stack:
-            stack.enter_context(patch.object(menu_sdl, "running_on_muos", return_value=False))
-            stack.enter_context(patch.object(menu_sdl, "running_on_allium", return_value=True))
-            install = stack.enter_context(
-                patch.object(menu_sdl.MenuSdlSession, "install_update_archive")
-            )
-            session.install_update()
+    def _install_through(self, platform):
+        with patch.object(update, "download_update_archive", return_value=Path("/tmp/a.zip")), patch.object(
+            update, "install_archive_update"
+        ) as install:
+            command = platform.install_update("https://example.test/a.zip", lambda _m: None)
+        return command, install
 
-        install.assert_called_once_with(config.DEFAULT_ALLIUM_APP_DIR, "Apps")
+    def test_install_update_uses_the_pak_layout_not_the_onion_one(self) -> None:
+        command, install = self._install_through(allium_platform.PLATFORM)
+
+        install.assert_called_once_with(
+            Path("/tmp/a.zip"),
+            allium_platform.APP_DIR,
+            "Apps",
+            preserve_data=None,
+            delete_archive=False,
+        )
+        self.assertEqual(command, ["/bin/sh", str(allium_platform.APP_DIR / "launch.sh"), "menu-sdl"])
 
     def test_onion_and_spruce_still_get_the_app_layout(self) -> None:
         # The archive_root parameter was added for Allium; these two must keep the layout
         # they already ship, or the refactor silently breaks their updates instead.
-        for onion, spruce in ((True, False), (False, True)):
-            with self.subTest(onion=onion, spruce=spruce):
-                session = self._session()
-                with ExitStack() as stack:
-                    stack.enter_context(
-                        patch.object(menu_sdl, "running_on_muos", return_value=False)
-                    )
-                    stack.enter_context(
-                        patch.object(menu_sdl, "running_on_allium", return_value=False)
-                    )
-                    stack.enter_context(
-                        patch.object(menu_sdl, "running_on_onion", return_value=onion)
-                    )
-                    stack.enter_context(
-                        patch.object(menu_sdl, "running_on_spruce", return_value=spruce)
-                    )
-                    install = stack.enter_context(
-                        patch.object(menu_sdl.MenuSdlSession, "install_update_archive")
-                    )
-                    session.install_update()
+        for platform in (onion_platform.PLATFORM, spruce_platform.PLATFORM):
+            with self.subTest(platform=platform.id):
+                _command, install = self._install_through(platform)
 
-                install.assert_called_once_with(config.DEFAULT_ONION_APP_DIR, "App")
+                install.assert_called_once_with(
+                    Path("/tmp/a.zip"),
+                    onion_platform.APP_DIR,
+                    "App",
+                    preserve_data=None,
+                    delete_archive=False,
+                )
 
     def test_no_update_channel_is_silent_not_a_logged_failure(self) -> None:
         # Signalling "no update channel" by returning a name validate_platform() rejects
@@ -287,7 +284,7 @@ class AlliumUpdateSafetyTests(unittest.TestCase):
             stack.enter_context(patch.object(menu_sdl, "log_menu_sdl", logged.append))
             stack.enter_context(patch.object(menu_sdl, "load_config", return_value={}))
             stack.enter_context(
-                patch.object(menu_sdl, "service_mode_active", return_value=False)
+                patch.object(allium_platform.PLATFORM, "service_manager", return_value=None)
             )
             stack.enter_context(
                 patch.object(menu_sdl, "online_check", return_value=False)
@@ -356,7 +353,7 @@ class AlliumUpdateInstallTests(unittest.TestCase):
 
     def _install(self, archive_path: Path, app_dir: Path, current: str) -> None:
         with patch.object(update, "current_version", lambda: current):
-            update.install_onion_update_archive(archive_path, app_dir, "Apps")
+            update.install_archive_update(archive_path, app_dir, "Apps")
 
     def test_replaces_the_pak_and_preserves_the_data_dir(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -381,7 +378,7 @@ class AlliumUpdateInstallTests(unittest.TestCase):
 
             with self.assertRaises(RuntimeError):
                 with patch.object(update, "current_version", lambda: "1.11.1-alpha1"):
-                    update.install_onion_update_archive(self._archive(root), app_dir, "App")
+                    update.install_archive_update(self._archive(root), app_dir, "App")
 
             self.assertEqual((app_dir / "old.txt").read_text(encoding="utf-8"), "old")
             self.assertEqual(
@@ -397,7 +394,7 @@ class AlliumUpdateInstallTests(unittest.TestCase):
         self.assertIn('APP_DIR="${BUILD_DIR}/Apps/RAOfflineProxy.pak"', build_bundle)
         self.assertIn("RAOfflineProxy-Allium-v${APP_VERSION}.zip", build_bundle)
         self.assertEqual(
-            str(config.DEFAULT_ALLIUM_APP_DIR), "/mnt/SDCARD/Apps/RAOfflineProxy.pak"
+            str(allium_platform.APP_DIR), "/mnt/SDCARD/Apps/RAOfflineProxy.pak"
         )
 
 
@@ -452,29 +449,24 @@ class AlliumLogMetadataTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             version_file = Path(temp_dir) / "version.txt"
             version_file.write_text("v1.0.1\n", encoding="utf-8")
-            with patch.object(log_uploader, "ALLIUM_VERSION_FILE", version_file):
-                with patch.object(config, "running_on_spruce", return_value=False):
-                    with patch.object(config, "running_on_onion", return_value=False):
-                        with patch.object(config, "running_on_allium", return_value=True):
-                            self.assertEqual(log_uploader._platform_label(), "Allium")
-                            self.assertEqual(
-                                log_uploader._os_version_value("Allium"), "v1.0.1"
-                            )
+            with patch.object(allium_platform, "VERSION_FILE", version_file):
+                self.assertEqual(allium_platform.PLATFORM.support_label, "Allium")
+                self.assertEqual(allium_platform.PLATFORM.os_version(), "v1.0.1")
 
     def test_device_label_does_not_fall_back_to_the_string_onion(self) -> None:
         # /tmp/deviceModel is written by Onion's own runtime and does not exist on Allium
-        # (verified on a Miyoo Mini Plus), so routing Allium through _onion_device_label()
-        # would label every Allium device "Onion" in support logs.
+        # (verified on a Miyoo Mini Plus), so reading it for Allium would label every Allium
+        # device "Onion" in support logs.
         with tempfile.TemporaryDirectory() as temp_dir:
             missing = Path(temp_dir) / "deviceModel"
             model_file = Path(temp_dir) / "model"
             model_file.write_text("INFINITY2M SSC011A-S01A-S\0", encoding="utf-8")
-            with patch.object(log_uploader, "ONION_DEVICE_MODEL_FILE", missing):
-                with patch.object(log_uploader, "DEVICETREE_MODEL_FILE", model_file):
+            with patch.object(onion_platform, "DEVICE_MODEL_FILE", missing):
+                with patch.object(platform_base, "DEVICETREE_MODEL_FILE", model_file):
                     self.assertEqual(
-                        log_uploader._device_label("Allium"), "INFINITY2M SSC011A-S01A-S"
+                        allium_platform.PLATFORM.device_label(), "INFINITY2M SSC011A-S01A-S"
                     )
-                    self.assertEqual(log_uploader._device_label("Onion"), "Onion")
+                    self.assertEqual(onion_platform.PLATFORM.device_label(), "Onion")
 
 
 if __name__ == "__main__":

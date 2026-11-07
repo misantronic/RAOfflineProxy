@@ -3,7 +3,10 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+from platform_helpers import use_platform
+
 from linux.raofflineproxy import menu_sdl
+from linux.raofflineproxy.platforms import knulli as knulli_platform
 from linux.raofflineproxy.storage import Storage
 
 
@@ -315,7 +318,6 @@ class MenuLayoutTests(unittest.TestCase):
         original_current_labels = menu_sdl.MenuSdlSession.current_labels
         original_save_view_position = menu_sdl.MenuSdlSession.save_view_position
         original_reset_selection = menu_sdl.MenuSdlSession.reset_selection
-        original_is_knulli_platform = menu_sdl.MenuSdlSession.is_knulli_platform
         try:
             menu_sdl.MenuSdlSession.current_labels = lambda self: [
                 "Add ROMs",
@@ -326,7 +328,6 @@ class MenuLayoutTests(unittest.TestCase):
             ]
             menu_sdl.MenuSdlSession.save_view_position = lambda self, _view: None
             menu_sdl.MenuSdlSession.reset_selection = lambda self: setattr(self, "selected_index", 0)
-            menu_sdl.MenuSdlSession.is_knulli_platform = lambda self: True
 
             menu_sdl.MenuSdlSession.activate_cached_games_selected(session)
 
@@ -336,7 +337,6 @@ class MenuLayoutTests(unittest.TestCase):
             menu_sdl.MenuSdlSession.current_labels = original_current_labels
             menu_sdl.MenuSdlSession.save_view_position = original_save_view_position
             menu_sdl.MenuSdlSession.reset_selection = original_reset_selection
-            menu_sdl.MenuSdlSession.is_knulli_platform = original_is_knulli_platform
 
     def test_activate_clear_cache_confirm_yes_clears_cache(self) -> None:
         session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
@@ -567,6 +567,7 @@ class MenuLayoutTests(unittest.TestCase):
         self.assertEqual(session.calibration_step, "done")
 
     def test_refresh_main_menu_state_checks_update_only_on_force(self) -> None:
+        use_platform(self, knulli_platform.PLATFORM)
         session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
         session.view = "main"
         session.usage_consent_seen = True
@@ -615,6 +616,7 @@ class MenuLayoutTests(unittest.TestCase):
         self.assertEqual(update_calls, ["knulli"])
 
     def test_refresh_main_menu_state_rechecks_update_when_forced_again(self) -> None:
+        use_platform(self, knulli_platform.PLATFORM)
         session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
         session.view = "main"
         session.usage_consent_seen = True
@@ -1727,30 +1729,31 @@ class MenuLayoutTests(unittest.TestCase):
             },
         )()
 
-        original_download = menu_sdl.download_knulli_update_installer
         original_update_status = menu_sdl.update_status
         original_close_input_devices = menu_sdl.close_input_devices
         original_stop_proxy_inline = menu_sdl.stop_proxy_inline
         original_execv = menu_sdl.os.execv
         captured = {}
+        use_platform(self, knulli_platform.PLATFORM)
         try:
-            menu_sdl.download_knulli_update_installer = (
-                lambda url: captured.setdefault("url", url) or "/tmp/installer.sh"
-            )
             menu_sdl.update_status = lambda *args, **kwargs: (_ for _ in ()).throw(
                 AssertionError("should not refresh update status")
             )
             menu_sdl.close_input_devices = lambda _handles: None
             menu_sdl.stop_proxy_inline = lambda: None
-            menu_sdl.os.execv = lambda path, argv: captured.setdefault(
-                "exec", (path, argv)
-            )
+            menu_sdl.os.execv = lambda path, argv: captured.setdefault("exec", (path, argv))
+            session.show_update_progress = lambda _message: None
 
-            menu_sdl.MenuSdlSession.install_update(session)
+            def fake_install(url, progress):
+                captured["url"] = url
+                return ["/tmp/installer.sh"]
+
+            with patch.object(knulli_platform.PLATFORM, "install_update", fake_install):
+                menu_sdl.MenuSdlSession.install_update(session)
 
             self.assertEqual(captured["url"], "https://example.com/installer.sh")
+            self.assertEqual(captured["exec"], ("/tmp/installer.sh", ["/tmp/installer.sh"]))
         finally:
-            menu_sdl.download_knulli_update_installer = original_download
             menu_sdl.update_status = original_update_status
             menu_sdl.close_input_devices = original_close_input_devices
             menu_sdl.stop_proxy_inline = original_stop_proxy_inline
@@ -2173,6 +2176,43 @@ class WatchBrowserTests(unittest.TestCase):
             menu_sdl.MenuSdlSession.set_browser_dir(session, Path("/roms"))
 
         self.assertEqual(session.browser_entries, [Path("/roms/gba")])
+
+    def test_browser_labels_do_not_walk_the_directory(self) -> None:
+        session = self.make_session(Path("/roms"), menu_sdl.BROWSER_MODE_ADD)
+        del session.browser_has_cacheable_files
+        session.restore_browser_position = lambda _path: None
+        session.reset_selection = lambda: None
+        entries = [Path("/roms/gba")]
+
+        with patch.object(menu_sdl, "list_browser_entries", lambda _path: entries), patch.object(
+            menu_sdl, "load_config", lambda: {}
+        ):
+            menu_sdl.MenuSdlSession.set_browser_dir(session, Path("/roms"))
+
+        def fail(*_args, **_kwargs):
+            raise AssertionError("labels walked the file system")
+
+        with patch.object(Path, "iterdir", fail), patch.object(Path, "is_dir", fail), patch.object(
+            Path, "is_file", fail
+        ), patch.object(menu_sdl, "load_config", fail):
+            labels = menu_sdl.MenuSdlSession.labels(session, running=False)
+
+        self.assertEqual(labels[0], session.browser_action_label())
+        self.assertIn("Cancel", labels)
+
+    def test_browser_without_roms_has_no_add_folder_row(self) -> None:
+        session = self.make_session(Path("/roms"), menu_sdl.BROWSER_MODE_ADD)
+        del session.browser_has_cacheable_files
+        session.restore_browser_position = lambda _path: None
+        session.reset_selection = lambda: None
+
+        with patch.object(menu_sdl, "list_browser_entries", lambda _path: []), patch.object(
+            menu_sdl, "load_config", lambda: {}
+        ):
+            menu_sdl.MenuSdlSession.set_browser_dir(session, Path("/roms"))
+            labels = menu_sdl.MenuSdlSession.labels(session, running=False)
+
+        self.assertEqual(labels, ["Cancel"])
 
 
 if __name__ == "__main__":

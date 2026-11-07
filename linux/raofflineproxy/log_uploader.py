@@ -9,7 +9,9 @@ import urllib.request
 import zipfile
 from pathlib import Path
 
-from . import config, ppsspp_cfg, retroarch_cfg
+from . import config
+from .emulators import ppsspp_cfg, retroarch_cfg
+from . import platforms
 from .network import configured_ssl_context
 from .utils import redact_query_tokens
 
@@ -17,31 +19,6 @@ LOGGER = logging.getLogger(__name__)
 
 REQUEST_UPLOAD_URL = "https://ud63psmdb5.execute-api.eu-central-1.amazonaws.com/logs/request-upload"
 REQUEST_TIMEOUT_SECONDS = 15
-# Not config.running_on_muos() (doesn't exist) or menu_sdl.running_on_muos() (would create a
-# circular import, since menu_sdl imports upload_logs from this module) — duplicated here.
-MUOS_MARKER_PATH = Path("/opt/muos/script/archive")
-# Both confirmed from OnionUI/Onion's own diagnostics script
-# (static/build/.tmp_update/script/diagnostics/util_snapshot.sh), which reads the exact same
-# two files for its "System log snapshot" support tool.
-ONION_VERSION_FILE = config.ONION_VERSION_FILE
-ONION_DEVICE_MODEL_FILE = Path("/tmp/deviceModel")
-# Allium's own version marker, the same file its updater migrations check against.
-ALLIUM_VERSION_FILE = Path("/mnt/SDCARD/.allium/version.txt")
-# /etc/os-release's OS_VERSION is deliberately truncated to just the leading number by Knulli's
-# own build script (board/scripts/post-build-script.sh in knulli-cfw/knulli-linux); this
-# untruncated file (version + build date + time) is what Knulli's own knulli-report-stats tool
-# reads instead.
-KNULLI_VERSION_FILE = Path("/usr/share/knulli/knulli.version")
-# muOS's own board/name config value (confirmed on real hardware — see MustardOS/internal's
-# script/var/func.sh GET_VAR "device" "board/name"). Its devicetree model property only holds
-# the bare SoC codename (e.g. "sun50iw9"), not a useful device label.
-MUOS_BOARD_NAME_FILE = Path("/opt/muos/device/config/board/name")
-# The standard Linux hardware-identity files (ARM devicetree, x86 DMI) — the same pair
-# ROCKNIX's own rocknix-info script uses to label the device, not Onion-specific.
-DEVICETREE_MODEL_FILE = Path("/sys/firmware/devicetree/base/model")
-DMI_SYS_VENDOR_FILE = Path("/sys/class/dmi/id/sys_vendor")
-DMI_PRODUCT_NAME_FILE = Path("/sys/class/dmi/id/product_name")
-
 QUARANTINED_STORAGE_GLOB = "*.json.corrupt-*"
 # Matches a pending_awards/api_cache JSON object whose cacheKey identifies it as
 # holding RA credentials (login2:: responses carry a session Token; the
@@ -77,10 +54,7 @@ def _log_file_paths() -> list[Path]:
         menu_stdout_log,
         config.UPDATE_STATUS_FILE,
         config.STATUS_FILE,
-    ] + (
-        # The Windows in-place updater's transcript.
-        [config.CONFIG_DIR / "update.log"] if config.running_on_windows() else []
-    )
+    ] + platforms.current().extra_log_files()
 
 
 def _redact_storage_json(text: str) -> str:
@@ -159,163 +133,18 @@ def _request_upload_target() -> tuple[str, str]:
     return upload_id, upload_url
 
 
-def _platform_label() -> str:
-    if config.running_on_spruce():
-        return "spruce"
-    if config.running_on_onion():
-        return "Onion"
-    if config.running_on_allium():
-        return "Allium"
-    if MUOS_MARKER_PATH.exists():
-        return "muOS"
-    if config.running_on_rocknix():
-        return "ROCKNIX"
-    if config.running_on_darkos():
-        return "dArkOS"
-    return "Knulli"
-
-
-def _os_release_field(*keys: str) -> str | None:
-    try:
-        content = config.OS_RELEASE_PATH.read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        return None
-
-    values: dict[str, str] = {}
-    for line in content.splitlines():
-        if "=" not in line:
-            continue
-        key, _, value = line.partition("=")
-        values[key.strip()] = value.strip().strip('"')
-
-    for key in keys:
-        if values.get(key):
-            return values[key]
-    return None
-
-
-def _read_stripped(path: Path) -> str | None:
-    try:
-        # Devicetree properties (e.g. DEVICETREE_MODEL_FILE) are null-terminated C strings,
-        # hence the explicit strip("\0") — plain .strip() only trims whitespace.
-        text = path.read_text(encoding="utf-8", errors="replace").strip().strip("\0")
-    except OSError:
-        return None
-    return text or None
-
-
-def _onion_device_label() -> str:
-    # /tmp/deviceModel holds just the raw numeric chip/model code Onion itself uses (283 =
-    # Miyoo Mini, 354 = Miyoo Mini Plus/Flip — see OnionUI/Onion's device_model.h). Onion's own
-    # System Settings -> About Device screen prefixes it with "MY" for display; match that.
-    raw = _read_stripped(ONION_DEVICE_MODEL_FILE)
-    if raw and raw.isdigit():
-        return f"MY{raw}"
-    return raw or "Onion"
-
-
-def _onion_os_version() -> str | None:
-    return _read_stripped(ONION_VERSION_FILE)
-
-
-def _spruce_os_version() -> str | None:
-    return _read_stripped(config.SPRUCE_VERSION_FILE)
-
-
-def spruce_os_version() -> str | None:
-    return _spruce_os_version()
-
-
-def _allium_os_version() -> str | None:
-    return _read_stripped(ALLIUM_VERSION_FILE)
-
-
-# OnionOS v4.3.1-1 ships a bundled RetroArch build whose achievements client is not
-# reliably compatible with a custom host, so we only support the build after it.
-SUPPORTED_ONION_VERSION_PREFIX = "v4.4.0"
-
-
-def onion_os_version() -> str | None:
-    return _onion_os_version()
-
-
-def onion_version_supported() -> bool:
-    version = _onion_os_version()
-    if not version:
-        return False
-    return version.lower().startswith(SUPPORTED_ONION_VERSION_PREFIX)
-
-
-def _knulli_os_version() -> str | None:
-    return _read_stripped(KNULLI_VERSION_FILE)
-
-
-def _muos_device_label() -> str | None:
-    # e.g. "rg40xx-h" -> "RG40XX-H" — muOS's own device/build-target slug, not a marketing name,
-    # but the closest thing available and far more useful than the bare SoC codename.
-    raw = _read_stripped(MUOS_BOARD_NAME_FILE)
-    return raw.upper() if raw else None
-
-
-def _hardware_device_label(fallback: str) -> str:
-    # Same pair ROCKNIX's own rocknix-info script uses to label the device: devicetree model
-    # on ARM boards, DMI vendor+product on x86. Both are the OS's own self-reported hardware
-    # identity, not an inferred/indirect signal.
-    model = _read_stripped(DEVICETREE_MODEL_FILE)
-    if model:
-        return model
-    vendor = _read_stripped(DMI_SYS_VENDOR_FILE)
-    product = _read_stripped(DMI_PRODUCT_NAME_FILE)
-    combined = " ".join(part for part in (vendor, product) if part)
-    return combined or fallback
-
-
-def _device_label(platform: str) -> str:
-    if platform == "spruce":
-        return config.spruce_platform()
-    if platform == "Onion":
-        return _onion_device_label()
-    if platform == "Allium":
-        # Deliberately NOT _onion_device_label(): /tmp/deviceModel is written by Onion's own
-        # runtime and does not exist on Allium (verified on a Miyoo Mini Plus), so that
-        # helper's fallback would label every Allium device the literal string "Onion".
-        return _hardware_device_label(platform)
-    if platform == "muOS":
-        return _muos_device_label() or _hardware_device_label(platform)
-    return _hardware_device_label(platform)
-
-
-def _os_version_value(platform: str) -> str | None:
-    if platform == "spruce":
-        # spruce has no /etc/os-release either; this is the file its own updater reads.
-        return _spruce_os_version()
-    if platform == "Onion":
-        # Onion has no /etc/os-release; its own diagnostics tool reads this file instead.
-        return _onion_os_version()
-    if platform == "Allium":
-        return _allium_os_version()
-    if platform == "Knulli":
-        # The dedicated file has the full version + build date/time; os-release's OS_VERSION
-        # is a truncated copy of just the leading number.
-        return _knulli_os_version() or _os_release_field("OS_VERSION", "VERSION", "PRETTY_NAME", "VERSION_ID")
-    # ROCKNIX writes a real firmware version into a custom OS_VERSION key (not the standard
-    # os-release VERSION/VERSION_ID/PRETTY_NAME keys), so it has to be checked first. muOS does
-    # use the standard keys.
-    return _os_release_field("OS_VERSION", "VERSION", "PRETTY_NAME", "VERSION_ID")
-
-
 def device_metadata() -> dict[str, str | list[str]]:
     # Submitted alongside the log so the support form can skip asking for this again once the
     # user provides a Log ID. Best-effort: precise emulator/core isn't reliably detectable
     # across these distros, so that field is coarser than the Android equivalent (only whether
     # RetroArch was patched, not which core).
-    platform = _platform_label()
-    version_value = _os_version_value(platform)
+    platform = platforms.current()
+    version_value = platform.os_version()
 
     metadata: dict[str, str | list[str]] = {
         "system": "Linux",
-        "os": platform,
-        "device": _device_label(platform),
+        "os": platform.support_label,
+        "device": platform.device_label(),
         "app_version": config.APP_VERSION,
     }
     if version_value:
@@ -323,17 +152,14 @@ def device_metadata() -> dict[str, str | list[str]]:
 
     config_data = config.load_config()
     emulators: list[str] = []
-    if retroarch_cfg.is_retroarch_patched(config.detect_retroarch_cfg(), config_data):
+    if retroarch_cfg.is_retroarch_patched(retroarch_cfg.detect_retroarch_cfg(), config_data):
         emulators.append("RetroArch")
     if ppsspp_cfg.is_ppsspp_patched(config_data):
         emulators.append("PPSSPP")
     if emulators:
         metadata["emulator"] = emulators
 
-    if config.running_on_windows():
-        from .windows.account import metadata_overrides
-
-        metadata.update(metadata_overrides(config_data))
+    metadata.update(platform.metadata_overrides(config_data))
 
     return metadata
 

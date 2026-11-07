@@ -50,13 +50,24 @@ class TestInstall:
         assert container.exists(device.base_dir + "/app/raofflineproxy/main.py")
         assert container.exists(device.tools_entry)
 
+    def test_reinstalling_drops_files_a_release_no_longer_ships(self, installed):
+        container, device = installed.container, installed.device
+        stale = device.base_dir + "/app/raofflineproxy/removed_in_a_later_release.py"
+        container.write_file(stale, "# left behind by an earlier release\n")
+
+        installed.reinstall()
+
+        assert not container.exists(stale)
+        assert container.exists(device.base_dir + "/app/raofflineproxy/main.py")
+        installed.cli.run("status", check=True)
+
     def test_install_registers_the_systemd_unit(self, installed):
         assert installed.container.exists(installed.device.boot_hook)
         assert systemctl(installed, "cat").ok
 
     def test_resolves_the_darkos_retroarch_config(self, installed):
         result = installed.app_python(
-            "from raofflineproxy import config; print(config.detect_retroarch_cfg())"
+            "from raofflineproxy.emulators import retroarch_cfg; print(retroarch_cfg.detect_retroarch_cfg())"
         )
         assert installed.device.retroarch_cfg in result.stdout
 

@@ -3,7 +3,8 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from linux.raofflineproxy import retroarch_cfg
+from linux.raofflineproxy.emulators import retroarch_cfg
+from platform_helpers import use_platform
 
 PROXY = {"proxy_host": "127.0.0.1", "proxy_port": 8080}
 
@@ -93,10 +94,8 @@ class DarkosSecondaryCfgTests(unittest.TestCase):
             self.assertEqual(self._revert(missing, [])["reverted"], [])
 
     def test_no_secondary_configs_off_darkos(self) -> None:
-        with mock.patch.object(
-            retroarch_cfg, "detect_darkos_retroarch32_cfg", return_value=None
-        ):
-            self.assertEqual(retroarch_cfg.secondary_retroarch_cfgs(PROXY), [])
+        use_platform(self, None)
+        self.assertEqual(retroarch_cfg.secondary_retroarch_cfgs(PROXY), [])
 
 
 if __name__ == "__main__":

@@ -1,0 +1,164 @@
+from __future__ import annotations
+
+import subprocess
+from pathlib import Path
+
+from .base import Platform, existing_dir, hardware_device_label, read_stripped
+
+MARKER_PATH = Path("/opt/muos/script/archive")
+
+INIT_DIR = Path("/run/muos/storage/init")
+APP_DIR = Path("/run/muos/storage/application/RAOfflineProxy")
+RETROARCH_CFG = Path("/opt/muos/share/info/config/retroarch.cfg")
+USER_INIT_CONFIG = Path("/opt/muos/config/settings/advanced/user_init")
+STARTUP_SCRIPT = INIT_DIR / "raofflineproxy.sh"
+ROMS_ROOT = Path("/mnt/mmc/ROMS")
+LAUNCHER = APP_DIR / "launch.sh"
+HISTORY_DIR = Path("/run/muos/storage/info/history")
+# muOS's own board/name config value (confirmed on real hardware, see MustardOS/internal's
+# script/var/func.sh GET_VAR "device" "board/name"). Its devicetree model property only holds
+# the bare SoC codename (e.g. "sun50iw9"), not a useful device label.
+BOARD_NAME_FILE = Path("/opt/muos/device/config/board/name")
+FRONTEND_SCRIPT = Path("/opt/muos/script/mux/frontend.sh")
+SDCARD_ROMS_ROOT = Path("/mnt/sdcard/ROMS")
+
+
+def history_paths() -> list[Path]:
+    """Read ROM paths from muOS per-game history cfg files in HISTORY_DIR.
+
+    Each .cfg file has three lines:
+        line 1: absolute path to the ROM file
+        line 2: platform/system name (e.g. "gba")
+        line 3: display name (no trailing newline)
+    """
+    unique_paths: list[Path] = []
+    seen: set[str] = set()
+    try:
+        entries = sorted(HISTORY_DIR.iterdir())
+    except OSError:
+        return []
+    for cfg_file in entries:
+        if not cfg_file.name.endswith(".cfg"):
+            continue
+        try:
+            lines = cfg_file.read_text(encoding="utf-8", errors="replace").splitlines()
+        except OSError:
+            continue
+        if not lines:
+            continue
+        path = Path(lines[0].strip())
+        normalized = str(path)
+        if normalized in seen or not path.exists() or not path.is_file():
+            continue
+        seen.add(normalized)
+        unique_paths.append(path)
+    return unique_paths
+
+
+def boot_hook_script(launcher: str) -> str:
+    data_dir = Path(launcher).parent / "data"
+    boot_log = data_dir / "boot.log"
+    return "\n".join(
+        [
+            "#!/bin/sh",
+            "set -eu",
+            "",
+            f'mkdir -p "{data_dir}"',
+            'stamp() { date "+%Y-%m-%d %H:%M:%S"; }',
+            f'if [ ! -x "{launcher}" ]; then',
+            f'  echo "$(stamp) launcher missing or not executable: {launcher}" >>"{boot_log}"',
+            "  exit 0",
+            "fi",
+            f'echo "$(stamp) boot hook start, uptime $(cut -d" " -f1 /proc/uptime)s" >>"{boot_log}"',
+            f'"{launcher}" boot-reconcile >>"{boot_log}" 2>&1 || echo "$(stamp) boot-reconcile failed ($?)" >>"{boot_log}"',
+            f'echo "$(stamp) boot hook done" >>"{boot_log}"',
+            "",
+        ]
+    )
+
+
+class MuosPlatform(Platform):
+    id = "muos"
+    name = "muOS"
+    support_label = "muOS"
+    update_asset_suffix = ".muxapp"
+    update_install_kind = "archive"
+    preserve_app_data_on_update = True
+    delete_update_archive = True
+    menu_font = "system"
+
+    def detect(self) -> bool:
+        return MARKER_PATH.exists()
+
+    def startup_script(self) -> Path | None:
+        return STARTUP_SCRIPT
+
+    def config_dir(self) -> Path | None:
+        return APP_DIR / "data"
+
+    def retroarch_cfg_candidates(self, config_dir: Path) -> tuple[Path, ...]:
+        return (RETROARCH_CFG,)
+
+
+    def preferred_rom_root(self, config_data: dict) -> Path | None:
+        return existing_dir(ROMS_ROOT)
+
+    def autostart_launcher(self, config_data: dict) -> str:
+        return str(config_data.get("autostart_launcher") or LAUNCHER)
+
+    def install_boot_hook(self, startup_script: Path, config_data: dict) -> None:
+        startup_script.parent.mkdir(parents=True, exist_ok=True)
+        startup_script.write_text(
+            boot_hook_script(self.autostart_launcher(config_data)), encoding="utf-8"
+        )
+        startup_script.chmod(0o755)
+        if USER_INIT_CONFIG.parent.exists():
+            USER_INIT_CONFIG.write_text("1\n", encoding="utf-8")
+
+    def remove_boot_hook(self, startup_script: Path) -> None:
+        startup_script.unlink()
+
+    def app_dir(self) -> Path | None:
+        return APP_DIR
+
+    def update_archive_path(self) -> Path | None:
+        # Outside app_dir, so the in-place swap never touches the archive.
+        return APP_DIR.parent / ".raofflineproxy-update.muxapp"
+
+    def uninstall_launcher(self, service_mode: bool) -> Path | None:
+        return APP_DIR / "uninstall.sh"
+
+    def restart_frontend(self) -> None:
+        subprocess.Popen(
+            ["setsid", "-f", str(FRONTEND_SCRIPT), "appmenu"],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+
+    def alternate_rom_root(self) -> Path | None:
+        return SDCARD_ROMS_ROOT
+
+    def device_label(self) -> str:
+        # e.g. "rg40xx-h" -> "RG40XX-H": muOS's own device/build-target slug, not a marketing
+        # name, but the closest thing available and far more useful than the bare SoC codename.
+        raw = read_stripped(BOARD_NAME_FILE)
+        return raw.upper() if raw else hardware_device_label(self.support_label)
+
+    def history_source(self) -> Path | None:
+        return HISTORY_DIR if HISTORY_DIR.exists() else None
+
+    def recent_rom_paths(self) -> list[Path] | None:
+        return history_paths() if HISTORY_DIR.exists() else None
+
+    def boot_hook_installed(self, startup_script: Path) -> bool:
+        if USER_INIT_CONFIG.exists():
+            try:
+                if USER_INIT_CONFIG.read_text(encoding="utf-8").strip() != "1":
+                    return False
+            except OSError:
+                pass
+        return True
+
+
+PLATFORM = MuosPlatform()

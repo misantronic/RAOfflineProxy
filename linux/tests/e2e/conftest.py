@@ -67,12 +67,23 @@ def pytest_collection_modifyitems(config, items) -> None:
 
 
 class DeviceSession:
-    def __init__(self, container, device, control, emulator) -> None:
+    def __init__(self, container, device, control, emulator, installer=None) -> None:
         self.container = container
         self.device = device
         self.ra = control
         self.emulator = emulator
+        self.installer = installer
         self.cli = None
+
+    def reinstall(self):
+        """Runs the installer again; it removes itself, so it is copied in once more."""
+        self.container.put(self.installer, "/tmp/RAOfflineProxy-Install.sh")
+        self.container.exec("chmod +x /tmp/RAOfflineProxy-Install.sh", check=True)
+        if self.device.run_as:
+            self.container.exec(
+                "chown %s /tmp/RAOfflineProxy-Install.sh" % self.device.run_as, check=True
+            )
+        return self.install()
 
     def install(self):
         if self.device.install_mode == "sdcard-zip":
@@ -311,7 +322,7 @@ def _session_fixture(device_name: str, image_fixture: str, installer_fixture: st
                     "chown %s /tmp/RAOfflineProxy-Install.sh" % device.run_as,
                     check=True,
                 )
-            yield DeviceSession(container, device, control, emulator)
+            yield DeviceSession(container, device, control, emulator, installer)
         finally:
             container.stop()
 
