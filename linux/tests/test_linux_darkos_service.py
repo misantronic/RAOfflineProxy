@@ -1,7 +1,8 @@
 import unittest
 from unittest.mock import patch
 
-from linux.raofflineproxy import darkos_service
+from linux.raofflineproxy import config
+from linux.raofflineproxy.platforms import darkos as darkos_service
 
 
 class DarkosSystemdUnitTests(unittest.TestCase):
@@ -116,7 +117,7 @@ class DarkosServiceControlTests(unittest.TestCase):
         ), patch.object(
             darkos_service, "systemd_service_start_time", lambda: 0
         ), patch.object(
-            darkos_service, "load_config", lambda: {"proxy_port": 9999}
+            config, "load_config", lambda: {"proxy_port": 9999}
         ):
             status = darkos_service.darkos_service_status()
 

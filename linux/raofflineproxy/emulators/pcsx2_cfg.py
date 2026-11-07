@@ -3,8 +3,9 @@ section. ChallengeMode is its hardcore setting."""
 
 from __future__ import annotations
 
+from .. import platforms
 from . import achievements_ini
-from .config import detect_pcsx2_ini
+from ..utils import detect_emulator_path
 
 PCSX2 = achievements_ini.HostSetting(
     section="[Achievements]",
@@ -14,6 +15,12 @@ PCSX2 = achievements_ini.HostSetting(
     previous_state_key="pcsx2_previous",
     path_state_key="pcsx2_ini_path",
 )
+
+
+def detect_pcsx2_ini(config_data: dict) -> str | None:
+    return detect_emulator_path(
+        config_data, "pcsx2_ini", "RAOFFLINEPROXY_PCSX2_INI", platforms.current().pcsx2_ini
+    )
 
 
 def patch_pcsx2_ini(config_data: dict) -> dict:

@@ -6,9 +6,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from .config import proxy_value
+from ..config import proxy_value
 from .dolphin_cfg import extract_achievements_value, update_achievements_section
-from .utils import write_emulator_config
+from ..utils import write_emulator_config
 
 
 @dataclass(frozen=True)

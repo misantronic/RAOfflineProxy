@@ -2,9 +2,10 @@ import struct
 import tempfile
 import unittest
 from pathlib import Path
-from unittest import mock
 
-from linux.raofflineproxy import config, duckstation_cfg, smart_cache
+from linux.raofflineproxy import config, smart_cache
+from linux.raofflineproxy.emulators import duckstation_cfg
+from platform_helpers import use_platform
 
 SETTINGS_INI = """[Main]
 SettingsVersion = 3
@@ -68,9 +69,9 @@ class DuckStationCfgTests(unittest.TestCase):
         self.assertEqual(self.ini.read_text(encoding="utf-8"), SETTINGS_INI)
 
     def test_no_duckstation_means_nothing_happens(self) -> None:
-        with mock.patch.object(config, "running_on_windows", return_value=False):
-            self.assertIsNone(config.detect_duckstation_ini({}))
-            self.assertFalse(duckstation_cfg.patch_duckstation_ini({})["exists"])
+        use_platform(self)
+        self.assertIsNone(duckstation_cfg.detect_duckstation_ini({}))
+        self.assertFalse(duckstation_cfg.patch_duckstation_ini({})["exists"])
 
 
 class DuckStationRecentGamesTests(unittest.TestCase):

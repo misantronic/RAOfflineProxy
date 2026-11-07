@@ -3,26 +3,32 @@ import unittest
 from pathlib import Path
 
 from linux.raofflineproxy import batocera_conf, config
+from linux.raofflineproxy.platforms import rocknix as rocknix_platform
+from linux.raofflineproxy.platforms import knulli as knulli_platform
+from platform_helpers import use_platform
 
 
 class LinuxBatoceraConfTests(unittest.TestCase):
+    def setUp(self) -> None:
+        use_platform(self, knulli_platform.PLATFORM)
+
     def test_detect_batocera_conf_prefers_knulli_conf(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
-            original_knulli = config.DEFAULT_KNULLI_CONF
-            original_batocera = config.DEFAULT_BATOCERA_CONF
+            original_knulli = knulli_platform.KNULLI_CONF
+            original_batocera = knulli_platform.BATOCERA_CONF
             try:
                 knulli_conf = Path(temp_dir) / "knulli.conf"
                 batocera_conf_path = Path(temp_dir) / "batocera.conf"
                 knulli_conf.write_text("", encoding="utf-8")
                 batocera_conf_path.write_text("", encoding="utf-8")
 
-                config.DEFAULT_KNULLI_CONF = knulli_conf
-                config.DEFAULT_BATOCERA_CONF = batocera_conf_path
+                knulli_platform.KNULLI_CONF = knulli_conf
+                knulli_platform.BATOCERA_CONF = batocera_conf_path
 
-                self.assertEqual(config.detect_batocera_conf({}), str(knulli_conf))
+                self.assertEqual(batocera_conf.detect_batocera_conf({}), str(knulli_conf))
             finally:
-                config.DEFAULT_KNULLI_CONF = original_knulli
-                config.DEFAULT_BATOCERA_CONF = original_batocera
+                knulli_platform.KNULLI_CONF = original_knulli
+                knulli_platform.BATOCERA_CONF = original_batocera
 
     def test_build_patched_batocera_conf_enables_cheevos_keys(
         self,
@@ -61,7 +67,7 @@ class LinuxBatoceraConfTests(unittest.TestCase):
 
     def test_revert_strips_custom_host_when_previous_clobbered_with_proxy(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
-            original_knulli = config.DEFAULT_KNULLI_CONF
+            original_knulli = knulli_platform.KNULLI_CONF
             try:
                 knulli_conf = Path(temp_dir) / "knulli.conf"
                 knulli_conf.write_text(
@@ -69,7 +75,7 @@ class LinuxBatoceraConfTests(unittest.TestCase):
                     'global.retroarch.cheevos_custom_host="127.0.0.1:8080"\n',
                     encoding="utf-8",
                 )
-                config.DEFAULT_KNULLI_CONF = knulli_conf
+                knulli_platform.KNULLI_CONF = knulli_conf
 
                 # A re-patch captured the proxy host itself as the "previous" value.
                 clobbered_previous = {
@@ -83,7 +89,7 @@ class LinuxBatoceraConfTests(unittest.TestCase):
                     knulli_conf.read_text(encoding="utf-8"),
                 )
             finally:
-                config.DEFAULT_KNULLI_CONF = original_knulli
+                knulli_platform.KNULLI_CONF = original_knulli
 
     def test_store_batocera_previous_preserves_original_on_repatch(self) -> None:
         patch_state: dict = {}
@@ -134,6 +140,9 @@ class RevertNeverDisablesRetroachievementsTests(unittest.TestCase):
 
 
 class LinuxRocknixSystemConfAsBatoceraConfTests(unittest.TestCase):
+    def setUp(self) -> None:
+        use_platform(self, rocknix_platform.PLATFORM)
+
     """ROCKNIX has no batocera.conf/knulli.conf, but its system.cfg carries the same
     global.retroachievements keys. Without routing it through this module hardcore
     stays on and RetroArch rejects every unlock with hardcore_not_supported."""
@@ -147,7 +156,7 @@ class LinuxRocknixSystemConfAsBatoceraConfTests(unittest.TestCase):
             )
 
             self.assertEqual(
-                config.detect_batocera_conf({"rocknix_system_cfg": str(system_cfg)}),
+                batocera_conf.detect_batocera_conf({"rocknix_system_cfg": str(system_cfg)}),
                 str(system_cfg),
             )
 

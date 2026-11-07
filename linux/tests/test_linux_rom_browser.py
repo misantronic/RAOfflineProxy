@@ -7,6 +7,8 @@ from pathlib import Path
 from unittest import mock
 
 from linux.raofflineproxy import platform
+from linux.raofflineproxy.platforms import miyoo, onion
+from platform_helpers import use_platform
 from linux.raofflineproxy import image_cache
 from linux.raofflineproxy import main
 from linux.raofflineproxy import proxy_service
@@ -255,15 +257,11 @@ class LinuxRomBrowserTests(unittest.TestCase):
             onion_roms = root / "Roms"
             cfg_path.write_text("# cfg\n", encoding="utf-8")
             onion_roms.mkdir()
-            original_onion_root = platform.DEFAULT_ONION_ROMS_ROOT
-            try:
-                platform.DEFAULT_ONION_ROMS_ROOT = onion_roms
-
+            use_platform(self, onion.PLATFORM)
+            with mock.patch.object(miyoo, "ROMS_ROOT", onion_roms):
                 resolved = platform.resolve_rom_root({"retroarch_cfg": str(cfg_path)})
 
-                self.assertEqual(resolved, onion_roms)
-            finally:
-                platform.DEFAULT_ONION_ROMS_ROOT = original_onion_root
+            self.assertEqual(resolved, onion_roms)
 
     def test_resolve_rom_root_ignores_stale_rgui_browser_directory(self) -> None:
         # RetroArch persists rgui_browser_directory as wherever its own file

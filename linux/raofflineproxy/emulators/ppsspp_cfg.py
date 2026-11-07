@@ -2,12 +2,19 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from .config import detect_ppsspp_ini, proxy_value
-from .utils import write_emulator_config
+from .. import platforms
+from ..config import proxy_value
+from ..utils import detect_emulator_path, write_emulator_config
 
 ACHIEVEMENTS_SECTION = "[Achievements]"
 HOST_KEY = "AchievementsHost"
 CHALLENGE_MODE_KEY = "AchievementsChallengeMode"
+
+
+def detect_ppsspp_ini(config_data: dict) -> str | None:
+    return detect_emulator_path(
+        config_data, "ppsspp_ini", "RAOFFLINEPROXY_PPSSPP_INI", platforms.current().ppsspp_ini
+    )
 
 
 def is_ppsspp_patched(config_data: dict) -> bool:

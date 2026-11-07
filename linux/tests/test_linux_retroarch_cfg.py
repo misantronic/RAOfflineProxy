@@ -4,8 +4,10 @@ from contextlib import ExitStack
 from unittest import mock
 from pathlib import Path
 
-from linux.raofflineproxy import retroarch_cfg
+from linux.raofflineproxy.emulators import retroarch_cfg
+from linux.raofflineproxy.platforms import darkos as darkos_platform
 from linux.raofflineproxy import state
+from platform_helpers import use_platform
 
 
 class LinuxRetroarchMissingCfgTests(unittest.TestCase):
@@ -393,12 +395,12 @@ class LinuxDarkosRetroarch32CredentialTests(unittest.TestCase):
     EmulationStation runs part of the library under it. A user who set
     achievements up there has credentials in that file only."""
 
+    def setUp(self) -> None:
+        use_platform(self, darkos_platform.PLATFORM)
+
     def _stub_other_sources(self, stack: ExitStack) -> None:
         stack.enter_context(
             mock.patch.object(retroarch_cfg, "detect_batocera_conf", return_value=None)
-        )
-        stack.enter_context(
-            mock.patch.object(retroarch_cfg, "load_spruce_credentials", return_value=None)
         )
 
     def test_reads_a_token_from_the_32_bit_config(self) -> None:
@@ -413,7 +415,7 @@ class LinuxDarkosRetroarch32CredentialTests(unittest.TestCase):
             self._stub_other_sources(stack)
             stack.enter_context(
                 mock.patch.object(
-                    retroarch_cfg, "detect_darkos_retroarch32_cfg", return_value=str(cfg32)
+                    darkos_platform.PLATFORM, "secondary_retroarch_cfg", return_value=str(cfg32)
                 )
             )
 
@@ -435,7 +437,7 @@ class LinuxDarkosRetroarch32CredentialTests(unittest.TestCase):
             self._stub_other_sources(stack)
             stack.enter_context(
                 mock.patch.object(
-                    retroarch_cfg, "detect_darkos_retroarch32_cfg", return_value=str(cfg32)
+                    darkos_platform.PLATFORM, "secondary_retroarch_cfg", return_value=str(cfg32)
                 )
             )
 
@@ -461,7 +463,7 @@ class LinuxDarkosRetroarch32CredentialTests(unittest.TestCase):
             self._stub_other_sources(stack)
             stack.enter_context(
                 mock.patch.object(
-                    retroarch_cfg, "detect_darkos_retroarch32_cfg", return_value=str(cfg32)
+                    darkos_platform.PLATFORM, "secondary_retroarch_cfg", return_value=str(cfg32)
                 )
             )
 
@@ -476,7 +478,7 @@ class LinuxDarkosRetroarch32CredentialTests(unittest.TestCase):
             self._stub_other_sources(stack)
             stack.enter_context(
                 mock.patch.object(
-                    retroarch_cfg, "detect_darkos_retroarch32_cfg", return_value=None
+                    darkos_platform.PLATFORM, "secondary_retroarch_cfg", return_value=None
                 )
             )
 

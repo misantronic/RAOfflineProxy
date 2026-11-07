@@ -2,6 +2,7 @@ import unittest
 from unittest import mock
 
 from linux.raofflineproxy import main
+from linux.raofflineproxy.platforms import onion as onion_platform
 
 
 class ApplyProxyTests(unittest.TestCase):
@@ -35,9 +36,10 @@ class ApplyProxyTests(unittest.TestCase):
 
     def test_apply_proxy_rejects_unsupported_onion_build(self) -> None:
         with (
-            mock.patch.object(main, "running_on_onion", return_value=True),
-            mock.patch.object(main, "onion_version_supported", return_value=False),
-            mock.patch.object(main, "onion_os_version", return_value="v4.3.1-1"),
+            mock.patch.object(
+                onion_platform.PLATFORM, "unsupported_reason", return_value="Unsupported OnionOS build"
+            ),
+            mock.patch.object(onion_platform.PLATFORM, "detect", return_value=True),
             mock.patch.object(main, "start_service_process") as start_service,
         ):
             with self.assertRaises(RuntimeError):

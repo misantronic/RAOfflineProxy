@@ -7,16 +7,117 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-from .config import DEFAULT_DARKOS_HOME, load_config, proxy_host, proxy_port
+from . import spruce
+from .base import Platform
 
-DEFAULT_DARKOS_SERVICE_UNIT = Path("/etc/systemd/system/raofflineproxy.service")
+HOME = Path("/home/ark")
+SERVICE_UNIT = Path("/etc/systemd/system/raofflineproxy.service")
+# ArkOS-family images ship a second, 32-bit RetroArch build with its own config tree.
+# EmulationStation dispatches part of the library to it (es_systems.cfg carries both
+# <emulator name="retroarch"> and <emulator name="retroarch32"> entries), so it holds
+# its own achievements credentials and needs its own proxy patch.
+RETROARCH32_CFG = HOME / ".config" / "retroarch32" / "retroarch.cfg"
+ROMS_ROOT = Path("/roms")
+SD2_ROMS_ROOT = Path("/roms2")
+TOOLS_MOUNT = Path("/opt/system/Tools")
+
 DARKOS_SERVICE_NAME = "raofflineproxy.service"
 # The launcher already exports HOME, XDG_CONFIG_HOME, PYTHONPATH and
 # LD_LIBRARY_PATH, so the unit runs it rather than restating that environment.
-DARKOS_LAUNCHER = DEFAULT_DARKOS_HOME / "raofflineproxy" / "bin" / "raofflineproxy"
+DARKOS_LAUNCHER = HOME / "raofflineproxy" / "bin" / "raofflineproxy"
 # dArkOS's own user. The menu runs as this account, so the service must too:
 # anything it creates in the config dir as root would be unwritable from the menu.
 DARKOS_USER = "ark"
+
+
+class DarkosPlatform(Platform):
+    id = "darkos"
+    name = "dArkOS"
+    support_label = "dArkOS"
+    update_asset_suffix = ".sh"
+
+    def detect(self) -> bool:
+        # dArkMoss keeps dArkOS's home directory, but spruce owns the service there.
+        if spruce.PLATFORM.detect():
+            return False
+        return HOME.exists()
+
+    def startup_script(self) -> Path | None:
+        return SERVICE_UNIT
+
+    def config_dir(self) -> Path | None:
+        return HOME / ".config" / "raofflineproxy"
+
+    def retroarch_cfg_candidates(self, config_dir: Path) -> tuple[Path, ...]:
+        return (HOME / ".config" / "retroarch" / "retroarch.cfg",)
+
+    def default_rom_root(self) -> Path | None:
+        return roms_root()
+
+    def autostart_enabled(self, config_data: dict) -> bool | None:
+        # systemd owns this: the unit's enabled state is the truth, not the config flag, so
+        # that toggling it outside the app is still reflected here.
+        return systemd_service_enabled()
+
+    def install_boot_hook(self, startup_script: Path, config_data: dict) -> None:
+        systemd_enable_service()
+
+    def remove_boot_hook(self, startup_script: Path) -> None:
+        systemd_remove_service()
+
+    def on_autostart_disabled(self) -> None:
+        systemd_disable_service()
+
+    def service_start(self, config_data: dict) -> dict | None:
+        return darkos_service_start()
+
+    def service_stop(self) -> dict | None:
+        return darkos_service_stop()
+
+    def service_status(self) -> dict | None:
+        return darkos_service_status()
+
+    def uninstall_launcher(self, service_mode: bool) -> Path | None:
+        return None if service_mode else DARKOS_LAUNCHER.parent / "raofflineproxy-uninstall"
+
+    def install_service_unit(self) -> bool:
+        systemd_install_service()
+        return True
+
+    def secondary_retroarch_cfg(self, config_data: dict | None = None) -> str | None:
+        configured = (config_data or {}).get("darkos_retroarch32_cfg")
+        if configured:
+            return str(configured)
+
+        env_override = os.environ.get("RAOFFLINEPROXY_DARKOS_RETROARCH32_CFG")
+        if env_override:
+            return env_override
+
+        if RETROARCH32_CFG.exists():
+            return str(RETROARCH32_CFG)
+
+        return None
+
+
+
+def _same_directory(left: Path, right: Path) -> bool:
+    try:
+        return left.samefile(right)
+    except OSError:
+        return False
+
+
+def roms_root() -> Path | None:
+    # ArkOS's "Switch to SD2 for Roms" rebinds /opt/system/Tools from the second
+    # card and rewrites every path to /roms2, but leaves /roms mounted, so its
+    # existence alone does not identify the library EmulationStation is showing.
+    # The Tools bind source does, and it is the same inode as the roms root it
+    # came from.
+    if _same_directory(TOOLS_MOUNT, SD2_ROMS_ROOT / "tools"):
+        return SD2_ROMS_ROOT
+    if ROMS_ROOT.is_dir():
+        return ROMS_ROOT
+    return None
 
 
 def _run_privileged(args: list[str]) -> tuple[bool, str]:
@@ -104,16 +205,16 @@ def darkos_systemd_unit() -> str:
 
 
 def systemd_install_service() -> None:
-    if not _write_privileged(DEFAULT_DARKOS_SERVICE_UNIT, darkos_systemd_unit()):
+    if not _write_privileged(SERVICE_UNIT, darkos_systemd_unit()):
         return
     _run_privileged(["systemctl", "daemon-reload"])
 
 
 def systemd_remove_service() -> None:
     _run_privileged(["systemctl", "disable", "--now", DARKOS_SERVICE_NAME])
-    if not _run_privileged(["rm", "-f", str(DEFAULT_DARKOS_SERVICE_UNIT)])[0]:
+    if not _run_privileged(["rm", "-f", str(SERVICE_UNIT)])[0]:
         try:
-            DEFAULT_DARKOS_SERVICE_UNIT.unlink(missing_ok=True)
+            SERVICE_UNIT.unlink(missing_ok=True)
         except OSError:
             pass
     _run_privileged(["systemctl", "daemon-reload"])
@@ -160,7 +261,7 @@ def systemd_service_start_time() -> int:
 
 
 def _ensure_unit_installed() -> None:
-    if not DEFAULT_DARKOS_SERVICE_UNIT.exists():
+    if not SERVICE_UNIT.exists():
         systemd_install_service()
 
 
@@ -189,6 +290,8 @@ def wait_until_listening(timeout: float = 60.0) -> bool:
     reports success while the very next emulator request is still refused,
     which is easy to hit on hardware slow to start an interpreter.
     """
+    from ..config import load_config, proxy_host, proxy_port
+
     config_data = load_config()
     address = (proxy_host(config_data), proxy_port(config_data))
     deadline = time.monotonic() + timeout
@@ -249,6 +352,8 @@ def _systemd_show(properties: list[str]) -> dict[str, str]:
 
 
 def darkos_service_status() -> dict:
+    from ..config import load_config, proxy_host, proxy_port
+
     config_data = load_config()
     props = _systemd_show(["ActiveState", "MainPID", "ActiveEnterTimestamp"])
 
@@ -270,3 +375,6 @@ def darkos_service_status() -> dict:
         "proxyHost": proxy_host(config_data),
         "proxyPort": proxy_port(config_data),
     }
+
+
+PLATFORM = DarkosPlatform()

@@ -8,13 +8,18 @@ from pathlib import Path
 from unittest import mock
 
 from linux.raofflineproxy import config
+from linux.raofflineproxy.platforms import rocknix as rocknix_platform
 from linux.raofflineproxy import main
 from linux.raofflineproxy import rom_browser
 from linux.raofflineproxy import smart_cache
 from linux.raofflineproxy import storage
+from platform_helpers import use_platform
 
 
 class LinuxSmartCacheTests(unittest.TestCase):
+    def setUp(self) -> None:
+        use_platform(self, rocknix_platform.PLATFORM)
+
     def test_load_content_history_paths_parses_existing_unique_files(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -91,9 +96,9 @@ class LinuxSmartCacheTests(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            original_default = config.DEFAULT_ROCKNIX_PPSSPP_INI
+            original_default = rocknix_platform.PPSSPP_INI
             try:
-                config.DEFAULT_ROCKNIX_PPSSPP_INI = ini_path
+                rocknix_platform.PPSSPP_INI = ini_path
 
                 paths = smart_cache.load_content_history_paths(
                     {"retroarch_cfg": str(cfg_path)}
@@ -101,7 +106,7 @@ class LinuxSmartCacheTests(unittest.TestCase):
 
                 self.assertEqual(paths, [rom_shared, rom_ppsspp_only])
             finally:
-                config.DEFAULT_ROCKNIX_PPSSPP_INI = original_default
+                rocknix_platform.PPSSPP_INI = original_default
 
     def test_should_offer_smart_cache_still_offers_when_uncached_history_entries_exist(
         self,
@@ -200,10 +205,10 @@ class LinuxSmartCacheTests(unittest.TestCase):
             rom_path.write_bytes(b"psp")
             ini_path.write_text(f"[Recent]\nFileName0 = {rom_path}\n", encoding="utf-8")
 
-            original_default = config.DEFAULT_ROCKNIX_PPSSPP_INI
+            original_default = rocknix_platform.PPSSPP_INI
             store = storage.Storage(database_path=db_path)
             try:
-                config.DEFAULT_ROCKNIX_PPSSPP_INI = ini_path
+                rocknix_platform.PPSSPP_INI = ini_path
 
                 status = smart_cache.should_offer_smart_cache(
                     store,
@@ -216,7 +221,7 @@ class LinuxSmartCacheTests(unittest.TestCase):
                 self.assertEqual(status.total_candidates, 1)
                 self.assertEqual(status.history_path, str(ini_path))
             finally:
-                config.DEFAULT_ROCKNIX_PPSSPP_INI = original_default
+                rocknix_platform.PPSSPP_INI = original_default
                 store.close()
 
     def test_read_dolphin_disc_code_reads_raw_iso_header(self) -> None:
@@ -268,15 +273,15 @@ class LinuxSmartCacheTests(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            original_default = config.DEFAULT_ROCKNIX_DOLPHIN_CONFIG_DIR
+            original_default = rocknix_platform.DOLPHIN_CONFIG_DIR
             try:
-                config.DEFAULT_ROCKNIX_DOLPHIN_CONFIG_DIR = config_dir
+                rocknix_platform.DOLPHIN_CONFIG_DIR = config_dir
 
                 paths = smart_cache._load_dolphin_recent_paths({})
 
                 self.assertEqual(paths, [rom_path])
             finally:
-                config.DEFAULT_ROCKNIX_DOLPHIN_CONFIG_DIR = original_default
+                rocknix_platform.DOLPHIN_CONFIG_DIR = original_default
 
     def test_load_dolphin_recent_paths_matches_wii_title_dir_to_library(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -295,15 +300,15 @@ class LinuxSmartCacheTests(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            original_default = config.DEFAULT_ROCKNIX_DOLPHIN_CONFIG_DIR
+            original_default = rocknix_platform.DOLPHIN_CONFIG_DIR
             try:
-                config.DEFAULT_ROCKNIX_DOLPHIN_CONFIG_DIR = config_dir
+                rocknix_platform.DOLPHIN_CONFIG_DIR = config_dir
 
                 paths = smart_cache._load_dolphin_recent_paths({})
 
                 self.assertEqual(paths, [rom_path])
             finally:
-                config.DEFAULT_ROCKNIX_DOLPHIN_CONFIG_DIR = original_default
+                rocknix_platform.DOLPHIN_CONFIG_DIR = original_default
 
     def test_load_dolphin_recent_paths_excludes_saves_outside_recency_window(
         self,
@@ -332,15 +337,15 @@ class LinuxSmartCacheTests(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            original_default = config.DEFAULT_ROCKNIX_DOLPHIN_CONFIG_DIR
+            original_default = rocknix_platform.DOLPHIN_CONFIG_DIR
             try:
-                config.DEFAULT_ROCKNIX_DOLPHIN_CONFIG_DIR = config_dir
+                rocknix_platform.DOLPHIN_CONFIG_DIR = config_dir
 
                 paths = smart_cache._load_dolphin_recent_paths({})
 
                 self.assertEqual(paths, [])
             finally:
-                config.DEFAULT_ROCKNIX_DOLPHIN_CONFIG_DIR = original_default
+                rocknix_platform.DOLPHIN_CONFIG_DIR = original_default
 
     def test_load_content_history_paths_merges_dolphin_recent_deduped(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -372,9 +377,9 @@ class LinuxSmartCacheTests(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            original_default = config.DEFAULT_ROCKNIX_DOLPHIN_CONFIG_DIR
+            original_default = rocknix_platform.DOLPHIN_CONFIG_DIR
             try:
-                config.DEFAULT_ROCKNIX_DOLPHIN_CONFIG_DIR = config_dir
+                rocknix_platform.DOLPHIN_CONFIG_DIR = config_dir
 
                 paths = smart_cache.load_content_history_paths(
                     {"retroarch_cfg": str(cfg_path)}
@@ -382,7 +387,7 @@ class LinuxSmartCacheTests(unittest.TestCase):
 
                 self.assertEqual(paths, [rom_path])
             finally:
-                config.DEFAULT_ROCKNIX_DOLPHIN_CONFIG_DIR = original_default
+                rocknix_platform.DOLPHIN_CONFIG_DIR = original_default
 
     def test_should_offer_smart_cache_false_when_offline(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

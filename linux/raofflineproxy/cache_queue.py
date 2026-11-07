@@ -8,7 +8,8 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 
 from . import cache_budget, cache_keys
-from .config import CONFIG_DIR, ensure_config_dir, running_on_windows
+from . import platforms
+from .config import CONFIG_DIR, ensure_config_dir
 from .storage import Storage
 
 try:
@@ -182,10 +183,9 @@ class _FileLock:
 
     @staticmethod
     def _acquire(handle, shared: bool, blocking: bool, should_abort) -> bool:
-        if running_on_windows():
-            from .windows import process as windows_process
-
-            return windows_process.acquire_file_lock(
+        backend = platforms.current().process_backend()
+        if backend is not None:
+            return backend.acquire_file_lock(
                 handle, shared, blocking, should_abort, LOCK_POLL_SECONDS
             )
         if fcntl is None:
@@ -225,10 +225,9 @@ class _HeldLock:
 
 
 def _unlock(handle) -> None:
-    if running_on_windows():
-        from .windows import process as windows_process
-
-        windows_process.unlock_file(handle.fileno())
+    backend = platforms.current().process_backend()
+    if backend is not None:
+        backend.unlock_file(handle.fileno())
     elif fcntl is not None:
         fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 

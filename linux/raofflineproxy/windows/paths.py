@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 """Where things live on Windows. config.py consults these only when
-running_on_windows() is true, so nothing here runs on the Linux devices."""
+the Windows platform is detected, so nothing here runs on the Linux devices."""
 
 import os
 from pathlib import Path

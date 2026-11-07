@@ -3,8 +3,9 @@ HardcoreMode is its hardcore setting."""
 
 from __future__ import annotations
 
+from .. import platforms
 from . import achievements_ini
-from .config import detect_flycast_cfg
+from ..utils import detect_emulator_path
 
 FLYCAST = achievements_ini.HostSetting(
     section="[achievements]",
@@ -14,6 +15,12 @@ FLYCAST = achievements_ini.HostSetting(
     previous_state_key="flycast_previous",
     path_state_key="flycast_cfg_path",
 )
+
+
+def detect_flycast_cfg(config_data: dict) -> str | None:
+    return detect_emulator_path(
+        config_data, "flycast_cfg", "RAOFFLINEPROXY_FLYCAST_CFG", platforms.current().flycast_cfg
+    )
 
 
 def patch_flycast_cfg(config_data: dict) -> dict:

@@ -52,16 +52,16 @@ class TestInstall:
     def test_muos_has_no_batocera_conf(self, installed):
         """/opt/muos/script/archive makes detect_batocera_conf() return None."""
         result = installed.app_python(
-            "from raofflineproxy import config;"
-            "print(config.detect_batocera_conf({}))",
+            "from raofflineproxy import batocera_conf;"
+            "print(batocera_conf.detect_batocera_conf({}))",
             check=True,
         )
         assert result.stdout.strip() == "None"
 
     def test_retroarch_cfg_resolves_to_the_muos_path(self, installed):
         result = installed.app_python(
-            "from raofflineproxy import config;"
-            "print(config.detect_retroarch_cfg())",
+            "from raofflineproxy.emulators import retroarch_cfg;"
+            "print(retroarch_cfg.detect_retroarch_cfg())",
             check=True,
         )
         assert result.stdout.strip() == installed.device.retroarch_cfg

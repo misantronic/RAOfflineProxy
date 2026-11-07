@@ -10,17 +10,12 @@ from pathlib import Path
 from .auth import resolve_credentials
 from .config import (
     CONFIG_FILE,
-    DEFAULT_ONION_APP_DIR,
     configure_logging,
-    detect_retroarch_cfg,
     load_config,
     proxy_value,
-    running_on_darkos,
-    running_on_onion,
 )
-from .darkos_service import systemd_install_service
-from . import usage_stats
-from .log_uploader import onion_os_version, onion_version_supported
+from . import platforms, usage_stats
+from .platforms import onion
 from .platform import (
     disable_autostart,
     enable_autostart,
@@ -35,24 +30,25 @@ from .batocera_conf import (
     revert_batocera_conf,
     store_batocera_previous,
 )
-from .ppsspp_cfg import (
+from .emulators.ppsspp_cfg import (
     patch_ppsspp_ini,
     revert_ppsspp_ini,
     store_ppsspp_previous,
 )
-from .dolphin_cfg import (
+from .emulators.dolphin_cfg import (
     patch_dolphin_ini,
     revert_dolphin_ini,
     store_dolphin_previous,
 )
-from .duckstation_cfg import (
+from .emulators.duckstation_cfg import (
     patch_duckstation_ini,
     revert_duckstation_ini,
     store_duckstation_previous,
 )
-from .flycast_cfg import patch_flycast_cfg, revert_flycast_cfg, store_flycast_previous
-from .pcsx2_cfg import patch_pcsx2_ini, revert_pcsx2_ini, store_pcsx2_previous
-from .retroarch_cfg import (
+from .emulators.flycast_cfg import patch_flycast_cfg, revert_flycast_cfg, store_flycast_previous
+from .emulators.pcsx2_cfg import patch_pcsx2_ini, revert_pcsx2_ini, store_pcsx2_previous
+from .emulators.retroarch_cfg import (
+    detect_retroarch_cfg,
     enforce_patched_cfg,
     enforce_secondary_retroarch_cfgs,
     patch_retroarch_cfg,
@@ -106,12 +102,9 @@ from .watch_folders import (
 from .state import load_online_state, load_patch_state, save_patch_state, save_online_state
 from .ui import write_status_image, write_text_image
 from .update import (
-    download_onion_update_archive,
-    install_onion_update_archive,
     update_status,
 )
 
-STALE_HOOK_PATH = Path("/userdata/system/scripts/RAOfflineProxy_game_hook.sh")
 LOGGER = logging.getLogger("raofflineproxy")
 
 
@@ -121,8 +114,7 @@ def should_abort_from_env() -> bool:
 
 
 def remove_stale_hook() -> None:
-    if STALE_HOOK_PATH.exists():
-        STALE_HOOK_PATH.unlink()
+    platforms.current().remove_stale_files()
 
 
 def _patch_emulator_configs(config_data: dict, cfg_path: str) -> list[str]:
@@ -194,12 +186,9 @@ def _patch_emulator_configs(config_data: dict, cfg_path: str) -> list[str]:
 
 
 def _apply_proxy(config_data: dict, cfg_path: str) -> list[str]:
-    if running_on_onion() and not onion_version_supported():
-        detected = onion_os_version() or "unknown"
-        raise RuntimeError(
-            f"Unsupported OnionOS build ({detected}). RAOfflineProxy requires Onion "
-            "v4.4.0-beta-20260120 or newer."
-        )
+    unsupported = platforms.current().unsupported_reason()
+    if unsupported is not None:
+        raise RuntimeError(unsupported)
 
     output: list[str] = []
 
@@ -481,8 +470,7 @@ def main() -> None:
             # Keeps the unit definition in one place: the installer calls this
             # rather than writing its own copy, so an upgrade always lands the
             # current template instead of whatever the old installer shipped.
-            if running_on_darkos():
-                systemd_install_service()
+            if platforms.current().install_service_unit():
                 print("Service unit installed")
             else:
                 print("No service unit to install on this platform")
@@ -1042,9 +1030,12 @@ def main() -> None:
             if not info.asset_url:
                 raise RuntimeError(f"No {args.platform} asset in the latest release")
 
+            target = platforms.by_id(args.platform)
+            if target is None or target.update_install_kind != "archive":
+                raise ValueError(f"install-update does not support {args.platform}")
+
             stop_service_process()
-            archive = download_onion_update_archive(info.asset_url)
-            install_onion_update_archive(archive, DEFAULT_ONION_APP_DIR, "App")
+            target.install_update(info.asset_url, lambda _message: None)
 
             result = {"installed": True, "version": info.latest_version}
             print(json.dumps(result, separators=(",", ":")) if args.as_json

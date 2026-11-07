@@ -56,7 +56,7 @@ class TestInstall:
 
     def test_resolves_the_darkos_retroarch_config(self, installed):
         result = installed.app_python(
-            "from raofflineproxy import config; print(config.detect_retroarch_cfg())"
+            "from raofflineproxy.emulators import retroarch_cfg; print(retroarch_cfg.detect_retroarch_cfg())"
         )
         assert installed.device.retroarch_cfg in result.stdout
 

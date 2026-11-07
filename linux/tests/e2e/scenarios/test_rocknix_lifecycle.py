@@ -59,12 +59,13 @@ class TestInstall:
 
     def test_detects_rocknix_and_its_config_paths(self, installed):
         result = installed.app_python(
-            "from raofflineproxy import config;"
-            "print(config.running_on_rocknix());"
-            "print(config.detect_retroarch_cfg());"
-            "print(config.detect_batocera_conf({}));"
-            "print(config.detect_ppsspp_ini({}));"
-            "print(config.detect_dolphin_ini({}));"
+            "from raofflineproxy import batocera_conf, config;from raofflineproxy.emulators import dolphin_cfg, ppsspp_cfg, retroarch_cfg;"
+            "from raofflineproxy.platforms import rocknix;"
+            "print(rocknix.PLATFORM.detect());"
+            "print(retroarch_cfg.detect_retroarch_cfg());"
+            "print(batocera_conf.detect_batocera_conf({}));"
+            "print(ppsspp_cfg.detect_ppsspp_ini({}));"
+            "print(dolphin_cfg.detect_dolphin_ini({}));"
             "print(config.resolve_config_dir())",
             check=True,
         )
@@ -80,15 +81,15 @@ class TestInstall:
     def test_system_cfg_stands_in_for_batocera_conf(self, installed):
         """ROCKNIX has no batocera.conf; system.cfg carries the same keys."""
         result = installed.app_python(
-            "from raofflineproxy import config;"
-            "print(config.detect_batocera_conf({}))",
+            "from raofflineproxy import batocera_conf;"
+            "print(batocera_conf.detect_batocera_conf({}))",
             check=True,
         )
         assert result.stdout.strip().endswith("/system/configs/system.cfg")
 
     def test_credentials_are_read_from_system_cfg(self, installed):
         result = installed.app_python(
-            "from raofflineproxy import retroarch_cfg as rc;"
+            "from raofflineproxy.emulators import retroarch_cfg as rc;"
             "print(rc.load_system_conf_token_credentials('%s'))"
             % installed.device.batocera_conf,
             check=True,

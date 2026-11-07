@@ -8,10 +8,9 @@ from .config import (
     CONFIG_FILE,
     DATABASE_FILE,
     LOG_FILE,
-    detect_retroarch_cfg,
     load_config,
 )
-from .retroarch_cfg import status_retroarch_cfg
+from .emulators.retroarch_cfg import detect_retroarch_cfg, status_retroarch_cfg
 from .state import load_patch_state, load_service_status
 from .storage import JSON_STORE_FILE
 

@@ -3,8 +3,9 @@ ChallengeMode is its hardcore setting."""
 
 from __future__ import annotations
 
+from .. import platforms
 from . import achievements_ini
-from .config import detect_duckstation_ini
+from ..utils import detect_emulator_path
 
 DUCKSTATION = achievements_ini.HostSetting(
     section="[Cheevos]",
@@ -14,6 +15,12 @@ DUCKSTATION = achievements_ini.HostSetting(
     previous_state_key="duckstation_previous",
     path_state_key="duckstation_ini_path",
 )
+
+
+def detect_duckstation_ini(config_data: dict) -> str | None:
+    return detect_emulator_path(
+        config_data, "duckstation_ini", "RAOFFLINEPROXY_DUCKSTATION_INI", platforms.current().duckstation_ini
+    )
 
 
 def patch_duckstation_ini(config_data: dict) -> dict:

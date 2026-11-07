@@ -9,43 +9,33 @@ import time
 from collections import OrderedDict
 from pathlib import Path
 
+from . import platforms
 from .batocera_conf import (
     patch_batocera_conf,
     revert_batocera_conf,
     store_batocera_previous,
 )
-from .ppsspp_cfg import (
+from .emulators.ppsspp_cfg import (
     patch_ppsspp_ini,
     revert_ppsspp_ini,
     store_ppsspp_previous,
 )
-from .dolphin_cfg import (
+from .emulators.dolphin_cfg import (
     patch_dolphin_ini,
     revert_dolphin_ini,
     store_dolphin_previous,
 )
-from .duckstation_cfg import (
+from .emulators.duckstation_cfg import (
     patch_duckstation_ini,
     revert_duckstation_ini,
     store_duckstation_previous,
 )
-from .flycast_cfg import patch_flycast_cfg, revert_flycast_cfg, store_flycast_previous
-from .pcsx2_cfg import patch_pcsx2_ini, revert_pcsx2_ini, store_pcsx2_previous
+from .emulators.flycast_cfg import patch_flycast_cfg, revert_flycast_cfg, store_flycast_previous
+from .emulators.pcsx2_cfg import patch_pcsx2_ini, revert_pcsx2_ini, store_pcsx2_previous
 from .config import (
     APP_VERSION,
     CONFIG_DIR,
-    DEFAULT_ALLIUM_APP_DIR,
-    DEFAULT_DARKOS_HOME,
-    DEFAULT_ONION_APP_DIR,
     load_config,
-    running_on_allium,
-    running_on_onion,
-    running_on_shared_miyoo_stack,
-    running_on_mini_sdl_stack,
-    running_on_rocknix,
-    running_on_spruce,
-    running_on_darkos,
-    running_on_windows,
     save_config,
 )
 from .platform import (
@@ -58,7 +48,7 @@ from .platform import (
 )
 from .pending_awards import delete_pending_award, list_pending_awards
 from .network import online_check
-from .retroarch_cfg import (
+from .emulators.retroarch_cfg import (
     enforce_patched_cfg,
     load_retroarch_credentials,
     patch_retroarch_cfg,
@@ -83,14 +73,6 @@ from .rom_browser import (
 )
 from .service import service_status, start_service_process, stop_service_process
 from .watch_folders import normalize_folder, unwatch_folder, watch_folder, watched_folders
-from .knulli_service import (
-    disable_service_autostart,
-    enable_service_autostart,
-    service_autostart_enabled,
-    service_mode_active,
-    start_service,
-    stop_service,
-)
 from .smart_cache import (
     PHASE_HASHING,
     cache_completion_message,
@@ -104,18 +86,8 @@ from .smart_cache import (
 from .state import load_patch_state, save_patch_state
 from .storage import Storage, current_millis
 from . import storage_corruption
-from .update import (
-    download_knulli_update_installer,
-    download_muos_update_archive,
-    download_onion_update_archive,
-    install_muos_update_archive,
-    install_onion_update_archive,
-    update_status,
-)
+from .update import update_status
 from .log_uploader import (
-    SUPPORTED_ONION_VERSION_PREFIX,
-    onion_os_version,
-    onion_version_supported,
     report_storage_corruption,
     upload_logs,
 )
@@ -145,12 +117,13 @@ from .menu_input import (
     read_keys,
 )
 
-if running_on_windows():
-    # No /dev/input on Windows: gamepads come through SDL instead, as the same codes.
-    from .windows.input import close_input_devices, open_input_devices, read_keys
+_window_backend = platforms.current().menu_window_backend()
+if _window_backend is not None:
+    close_input_devices = _window_backend.close_input_devices
+    open_input_devices = _window_backend.open_input_devices
+    read_keys = _window_backend.read_keys
 
 SDL_LOG_PATH = CONFIG_DIR / "menu-sdl.log"
-STALE_HOOK_PATH = Path("/userdata/system/scripts/RAOfflineProxy_game_hook.sh")
 BACKGROUND_COLOR = (0, 0, 0)
 PRIMARY_COLOR = (28, 81, 130)
 SECONDARY_COLOR = (210, 164, 72)
@@ -172,7 +145,7 @@ PREVIEW_RETRY_SECONDS = 2.0
 # Miyoo's single core would stall every step of the scroll.
 PREVIEW_SETTLE_SECONDS = 0.5
 PREVIEW_SURFACE_CACHE_SIZE = 48
-KNULLI_FONT_CANDIDATES = [
+FONT_NAME_CANDIDATES = [
     "DejaVu Sans Mono",
     "Monospace",
     "DejaVu Sans",
@@ -182,19 +155,6 @@ KNULLI_FONT_CANDIDATES = [
     "Noto Sans KR",
     "Noto Sans TC",
     "Noto Sans HK",
-]
-MUOS_FONT_REGULAR = Path("/usr/share/fonts/liberation/LiberationMono-Regular.ttf")
-MUOS_FONT_BOLD = Path("/usr/share/fonts/liberation/LiberationMono-Bold.ttf")
-# Font files loaded by explicit path (SDL_ttf reads them directly, so no
-# fontconfig is needed — ROCKNIX ships no fc-list, which makes
-# pygame.font.match_font() return nothing). Each entry is (regular, bold);
-# when a face has no dedicated bold file, bold is synthesized via set_bold.
-FONT_FILE_CANDIDATES = [
-    (MUOS_FONT_REGULAR, MUOS_FONT_BOLD),
-    (
-        Path("/usr/share/fonts/truetype/dejavu/DejaVuSansCondensed.ttf"),
-        Path("/usr/share/fonts/truetype/dejavu/DejaVuSansCondensed.ttf"),
-    ),
 ]
 LOGO_PATH = Path(__file__).resolve().parent / "logo-320.png"
 ASSETS_DIR = Path(__file__).resolve().parent / "assets"
@@ -225,13 +185,11 @@ SUPPORT_MONTHLY_TIERS: list[tuple[str, str, Path]] = [
     ("$10 / month", "monthly_10", ASSETS_DIR / "support_qr_monthly_10.png"),
     ("$15 / month", "monthly_15", ASSETS_DIR / "support_qr_monthly_15.png"),
 ]
-# Onion has no fontconfig and no reliable system-wide monospace font (its
-# only TTFs are bundled inside individual, optional third-party apps), so a
-# monospace face ships directly alongside this module rather than being
-# looked up on the filesystem.
-ONION_FONT_REGULAR = Path(__file__).resolve().parent / "font-mono.ttf"
-ONION_FONT_BOLD = Path(__file__).resolve().parent / "font-mono-bold.ttf"
-MUOS_SDCARD_ROOT = Path("/mnt/sdcard/ROMS")
+# Platforms without fontconfig or a reliable system-wide monospace font (Onion's only TTFs are
+# bundled inside individual, optional third-party apps) get a monospace face shipped directly
+# alongside this module rather than looked up on the filesystem.
+BUNDLED_FONT_REGULAR = Path(__file__).resolve().parent / "font-mono.ttf"
+BUNDLED_FONT_BOLD = Path(__file__).resolve().parent / "font-mono-bold.ttf"
 KEY_NAMES = {
     103: "KEY_UP",
     108: "KEY_DOWN",
@@ -280,112 +238,23 @@ CALIBRATION_EXCLUDED_KEYS = {
 }
 
 
-ONION_DEFAULT_PANEL_SIZE = (640, 480)
-ONION_SCREEN_RESOLUTION_FILE = Path("/tmp/screen_resolution")
-
-
-def _onion_panel_size() -> tuple[int, int]:
-    """The vendored "Mini" SDL2 driver ignores whatever size is passed to
-    SDL_SetDisplayMode/pygame.display.set_mode: it self-detects the real
-    framebuffer via its own `fbset` probe at init (640x480, or 750x560 on
-    devices whose fbset mode reports "750", e.g. the Miyoo Mini Flip) and
-    presents at that size
-    regardless. So the window/texture here must match what the driver will
-    actually use, or the two sizes fight each other. Onion's own
-    runtime.sh writes the same underlying panel probe result to
-    /tmp/screen_resolution, so read that rather than re-deriving it (and
-    rather than assuming 640x480, which is only one of Onion's panel
-    variants).
-    """
-    try:
-        raw = ONION_SCREEN_RESOLUTION_FILE.read_text(encoding="utf-8").strip()
-        width_str, height_str = raw.split("x", 1)
-        width, height = int(width_str), int(height_str)
-        if width > 0 and height > 0:
-            return (width, height)
-    except (OSError, ValueError):
-        pass
-    return ONION_DEFAULT_PANEL_SIZE
-
-
-def _init_onion_display(pygame):
-    """Onion's SDL2 video driver only presents through the SDL_Renderer +
-    streaming-texture path; SDL_UpdateWindowSurface (what pygame.display.flip
-    normally uses) silently no-ops there. Route flip() through a renderer
-    instead, keeping the surface pygame draws onto in RGB565 (the only pixel
-    format that doesn't crash the renderer's texture upload on this driver).
-    """
-    from pygame._sdl2.video import Renderer, Texture, Window
-
-    panel_size = _onion_panel_size()
-    pygame.display.set_mode(panel_size, 0)
-    window = Window.from_display_module()
-    renderer = Renderer(window, accelerated=-1, vsync=False)
-    draw_surface = pygame.Surface(panel_size, depth=16)
-
-    try:
-        texture = Texture(renderer, panel_size, streaming=True)
-        texture_surface = draw_surface
-        log_menu_sdl(f"onion display texture native size={panel_size[0]}x{panel_size[1]}")
-    except RuntimeError as exc:
-        # The vendored "Mini" SDL2 driver's swiftshader renderer caps
-        # streaming textures at 640x480 regardless of the actual panel
-        # (e.g. the Miyoo Mini Flip's 750x560 screen exceeds it). Present
-        # through a capped-size texture and let SDL_RenderCopy scale it
-        # back up to the real panel size. The renderer is sized from the
-        # live framebuffer at init, so this also trips when the panel is
-        # 560p but Onion launched the app in MainUI's 640x480 mode (i.e.
-        # the App/RAOfflineProxy/full_resolution marker is missing).
-        log_menu_sdl(
-            f"onion display texture {panel_size[0]}x{panel_size[1]} rejected "
-            f"({exc}), scaling through "
-            f"{ONION_DEFAULT_PANEL_SIZE[0]}x{ONION_DEFAULT_PANEL_SIZE[1]}"
-        )
-        texture_surface = pygame.Surface(ONION_DEFAULT_PANEL_SIZE, depth=16)
-        texture = Texture(renderer, ONION_DEFAULT_PANEL_SIZE, streaming=True)
-
-    def _present() -> None:
-        if texture_surface is draw_surface:
-            texture.update(draw_surface)
-        else:
-            pygame.transform.scale(draw_surface, texture_surface.get_size(), texture_surface)
-            texture.update(texture_surface)
-        renderer.clear()
-        texture.draw(dstrect=(0, 0, panel_size[0], panel_size[1]))
-        renderer.present()
-
-    pygame.display.flip = _present
-    return draw_surface
-
-
 def run_menu_sdl(command_runner: str) -> None:
     pygame = None
     log_menu_sdl(
         f"run_menu_sdl start python={sys.version.split()[0]} executable={sys.executable}"
     )
-    if running_on_windows():
-        from .windows.input import show_existing_menu
-
-        if show_existing_menu():
-            log_menu_sdl("menu already open; brought it to the front")
-            return
+    window_backend = platforms.current().menu_window_backend()
+    if window_backend is not None and window_backend.show_existing_menu():
+        log_menu_sdl("menu already open; brought it to the front")
+        return
     try:
         import pygame
 
         pygame.init()
         pygame.font.init()
 
-        if running_on_windows():
-            from .windows.input import open_menu_window
-
-            surface = open_menu_window(pygame, load_config())
-        elif running_on_mini_sdl_stack():
-            # No fallback: the vendored SDL2 carries no driver but "Mini", which presents
-            # only through this renderer path. A plain surface would come back as a menu
-            # that runs but never draws, so failing here and returning to the launcher is
-            # the better outcome.
-            surface = _init_onion_display(pygame)
-        else:
+        surface = platforms.current().open_display(pygame, log_menu_sdl)
+        if surface is None:
             try:
                 surface = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
             except pygame.error as exc:
@@ -414,9 +283,7 @@ def run_menu_sdl(command_runner: str) -> None:
 
         width, height = surface.get_size()
         log_menu_sdl(f"display set_mode surface_size={width}x{height}")
-        session_class = MenuSdlSession
-        if running_on_windows():
-            from .windows.menu import WindowsMenuSession as session_class
+        session_class = platforms.current().menu_session_class() or MenuSdlSession
         session = session_class(command_runner, surface, width, height, pygame)
         session.run()
     except Exception:
@@ -426,7 +293,7 @@ def run_menu_sdl(command_runner: str) -> None:
         # Before pygame.quit(), so the window is not still up while queued badge
         # downloads are cancelled.
         shutdown_image_downloads()
-        restart_muos_frontend()
+        platforms.current().restart_frontend()
         if pygame is not None:
             pygame.quit()
 
@@ -491,24 +358,7 @@ def log_action_failure(action: str, exc: Exception) -> None:
 
 
 def remove_stale_hook() -> None:
-    if STALE_HOOK_PATH.exists():
-        STALE_HOOK_PATH.unlink()
-
-
-def running_on_muos() -> bool:
-    return Path("/opt/muos/script/archive").exists()
-
-
-def restart_muos_frontend() -> None:
-    if not running_on_muos():
-        return
-
-    subprocess.Popen(
-        ["setsid", "-f", "/opt/muos/script/mux/frontend.sh", "appmenu"],
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-    )
+    platforms.current().remove_stale_files()
 
 
 def runtime_config() -> tuple[dict, str]:
@@ -583,9 +433,9 @@ class MenuSdlSession:
         self.pygame = pygame
         self.config_data = load_config()
         self.running = True
-        self.onion_unsupported = running_on_onion() and not onion_version_supported()
-        if self.onion_unsupported:
-            self.view = "unsupported_onion"
+        self.unsupported_notice = platforms.current().unsupported_notice()
+        if self.unsupported_notice is not None:
+            self.view = "unsupported_platform"
         else:
             self.view = "controller_calibration" if self.needs_controller_calibration() else "main"
         self.selected_index = 0
@@ -678,16 +528,17 @@ class MenuSdlSession:
         self.refresh_cached_games()
 
     def load_font(self, size: int, bold: bool = False):
-        if running_on_shared_miyoo_stack():
-            font_path = ONION_FONT_BOLD if bold else ONION_FONT_REGULAR
+        menu_font = platforms.current().menu_font
+        if menu_font == "bundled":
+            font_path = BUNDLED_FONT_BOLD if bold else BUNDLED_FONT_REGULAR
             if font_path.exists():
                 return self.pygame.font.Font(str(font_path), size)
             font = self.pygame.font.Font(None, size)
             font.set_bold(bold)
             return font
 
-        if running_on_muos() or running_on_rocknix():
-            for regular_path, bold_path in FONT_FILE_CANDIDATES:
+        if menu_font == "system":
+            for regular_path, bold_path in SYSTEM_FONT_FILES:
                 chosen = bold_path if bold else regular_path
                 synthesize_bold = False
                 if not chosen.exists():
@@ -702,7 +553,7 @@ class MenuSdlSession:
             font.set_bold(bold)
             return font
 
-        for font_name in KNULLI_FONT_CANDIDATES:
+        for font_name in FONT_NAME_CANDIDATES:
             font_path = self.pygame.font.match_font(font_name)
             if font_path is None:
                 continue
@@ -734,8 +585,8 @@ class MenuSdlSession:
     def render(self) -> None:
         self.surface.fill(BACKGROUND_COLOR)
 
-        if self.view == "unsupported_onion":
-            self.render_unsupported_onion_view()
+        if self.view == "unsupported_platform":
+            self.render_unsupported_view()
             maybe_dump_debug_frame(self.surface, self.pygame)
             self.pygame.display.flip()
             return
@@ -909,11 +760,7 @@ class MenuSdlSession:
             if getattr(self, "main_usage_consent", None) is True
             else USAGE_STATS_ENABLE_LABEL
         )
-        if (
-            ((self.is_knulli_platform() or running_on_darkos()) and not service_mode)
-            or running_on_muos()
-            or running_on_rocknix()
-        ):
+        if platforms.current().uninstall_launcher(service_mode) is not None:
             labels.append("Uninstall")
         labels.append("Support me")
         labels.append("Send Logs")
@@ -1103,7 +950,9 @@ class MenuSdlSession:
             "ONLINE" if bool(getattr(self, "main_online", False)) else "OFFLINE"
         )
         if getattr(self, "main_service_mode", False):
-            status = f"KNULLI SERVICE: {proxy_status} {connectivity_status}"
+            manager = platforms.current().service_manager()
+            label = manager.status_label if manager is not None else "SERVICE"
+            status = f"{label}: {proxy_status} {connectivity_status}"
         else:
             status = f"PROXY: {proxy_status} {connectivity_status}"
         if not logged_in:
@@ -1145,7 +994,7 @@ class MenuSdlSession:
             if self.view == "support_me_qr":
                 return None
             if self.view == "file_browser" and self.browser_at_switchable_root():
-                alt = resolve_rom_root(load_config()) if self.browser_root == MUOS_SDCARD_ROOT else MUOS_SDCARD_ROOT
+                alt = self.other_browser_root()
                 return f"L/R: switch to {alt}"
             cache_result = getattr(self, "cache_result", None)
             if cache_result is not None:
@@ -1191,14 +1040,16 @@ class MenuSdlSession:
         # leaving KEYDOWN live there is the safer default. Keep draining the
         # event queue regardless (QUIT still matters, and an undrained SDL
         # event queue can back up).
-        skip_keydown = running_on_mini_sdl_stack() and bool(getattr(self, "input_handles", None))
+        skip_keydown = platforms.current().reads_input_directly() and bool(
+            getattr(self, "input_handles", None)
+        )
         for event in self.pygame.event.get():
             if event.type == self.pygame.QUIT:
                 self.running = False
                 return
 
             if event.type == self.pygame.KEYDOWN:
-                if self.view == "unsupported_onion":
+                if self.view == "unsupported_platform":
                     self.running = False
                     return
                 if not skip_keydown:
@@ -1207,7 +1058,7 @@ class MenuSdlSession:
 
     def handle_raw_input(self) -> None:
         for key in read_keys(self.input_handles, self.last_key_press):
-            if self.view == "unsupported_onion":
+            if self.view == "unsupported_platform":
                 self.running = False
                 return
 
@@ -1580,9 +1431,6 @@ class MenuSdlSession:
         self.reset_selection()
         self.message = ("Cache cleared", time.monotonic() + 1.5)
 
-    def is_knulli_platform(self) -> bool:
-        return Path("/userdata/system").exists()
-
     def update_platform(self) -> str | None:
         """The release channel to check for updates, or None where there is none.
 
@@ -1590,19 +1438,7 @@ class MenuSdlSession:
         platform name that `update.validate_platform()` rejects, because every caller
         would then log a spurious "update check failed" line on each refresh.
         """
-        if running_on_muos():
-            return "muos"
-        if running_on_spruce():
-            return "spruce"
-        if running_on_onion():
-            return "onion"
-        if running_on_allium():
-            return "allium"
-        if running_on_rocknix():
-            return "rocknix"
-        if running_on_darkos():
-            return "darkos"
-        return "knulli"
+        return platforms.current().update_channel
 
     def calibration_complete(self) -> bool:
         return (
@@ -1611,9 +1447,7 @@ class MenuSdlSession:
         )
 
     def needs_controller_calibration(self) -> bool:
-        if running_on_windows():
-            # SDL's GameController mapping already puts A/B at BTN_SOUTH/BTN_EAST,
-            # which is_confirm_key/is_cancel_key default to.
+        if not platforms.current().needs_controller_calibration:
             return False
         return not self.calibration_complete()
 
@@ -1782,19 +1616,12 @@ class MenuSdlSession:
             self.view = "main"
             self.restore_view_position("main")
 
-    def render_unsupported_onion_view(self) -> None:
-        title = self.title_font.render("Unsupported Onion version", False, ERROR_COLOR)
+    def render_unsupported_view(self) -> None:
+        heading, message = self.unsupported_notice
+        title = self.title_font.render(heading, False, ERROR_COLOR)
         title_rect = title.get_rect(topleft=(LEFT_MARGIN, max(36, self.height // 12)))
         self.surface.blit(title, title_rect)
 
-        detected = onion_os_version() or "unknown"
-        message = (
-            f"This OnionOS build ({detected}) is not supported.\n"
-            f"RAOfflineProxy requires Onion {SUPPORTED_ONION_VERSION_PREFIX} or newer — "
-            "older builds ship a RetroArch achievements client that is not reliably "
-            "compatible with a custom host.\n"
-            "All functionality is disabled until Onion is updated."
-        )
         body_bottom = self.render_wrapped_status(message, title_rect.bottom + 20)
 
         hint = self.status_font.render("Press any key to exit", False, SELECTED_COLOR)
@@ -1822,25 +1649,27 @@ class MenuSdlSession:
             overlay = self.status_font.render(hint, False, SELECTED_COLOR)
             self.surface.blit(overlay, overlay.get_rect(topleft=(LEFT_MARGIN, self.height - 56)))
 
+    def other_browser_root(self) -> Path | None:
+        alternate = platforms.current().alternate_rom_root()
+        if alternate is None:
+            return None
+        if self.browser_root == alternate:
+            return resolve_rom_root(load_config())
+        return alternate
+
     def browser_at_switchable_root(self) -> bool:
-        if not running_on_muos():
+        if platforms.current().alternate_rom_root() is None:
             return False
         if self.view != "file_browser" or self.browser_dir is None or self.browser_root is None:
             return False
         if self.browser_dir != self.browser_root:
             return False
-        if MUOS_SDCARD_ROOT == self.browser_root:
-            return resolve_rom_root(load_config()).exists()
-        return MUOS_SDCARD_ROOT.exists()
+        return self.other_browser_root().exists()
 
     def toggle_browser_root(self) -> None:
         if not self.browser_at_switchable_root():
             return
-        current_root = self.browser_root
-        if current_root == MUOS_SDCARD_ROOT:
-            new_root = resolve_rom_root(load_config())
-        else:
-            new_root = MUOS_SDCARD_ROOT
+        new_root = self.other_browser_root()
         if not new_root.exists():
             self.message = (f"Not found: {new_root}", time.monotonic() + ERROR_SECONDS)
             return
@@ -2735,10 +2564,11 @@ class MenuSdlSession:
         self.main_online = online_check(self.config_data)
         self.main_logged_in = self.is_logged_in(self.config_data)
         self.main_usage_consent = usage_stats.load_consent(self.config_data)
-        self.main_service_mode = service_mode_active()
-        if self.main_service_mode:
+        manager = self.active_service_manager()
+        self.main_service_mode = manager is not None
+        if manager is not None:
             self.main_autostart_supported = True
-            self.main_autostart_enabled = service_autostart_enabled()
+            self.main_autostart_enabled = manager.autostart_enabled()
         else:
             self.main_autostart_supported = autostart_supported(self.config_data)
             self.main_autostart_enabled = (
@@ -3097,11 +2927,16 @@ class MenuSdlSession:
             self.proxy_running_checked_at = now
         return self.main_running
 
+    def active_service_manager(self):
+        manager = platforms.current().service_manager()
+        return manager if manager is not None and manager.active() else None
+
     def start_proxy(self) -> None:
         try:
             cfg_skipped = False
-            if service_mode_active():
-                start_service()
+            manager = self.active_service_manager()
+            if manager is not None:
+                manager.start()
             else:
                 cfg_skipped = start_proxy_inline()
             self.refresh_main_menu_state(force=True)
@@ -3122,8 +2957,9 @@ class MenuSdlSession:
 
     def stop_proxy(self) -> None:
         try:
-            if service_mode_active():
-                stop_service()
+            manager = self.active_service_manager()
+            if manager is not None:
+                manager.stop()
                 stop_service_process()
             else:
                 stop_proxy_inline()
@@ -3135,12 +2971,13 @@ class MenuSdlSession:
 
     def toggle_autostart(self, config_data: dict) -> None:
         try:
-            if service_mode_active():
-                if service_autostart_enabled():
-                    disable_service_autostart()
+            manager = self.active_service_manager()
+            if manager is not None:
+                if manager.autostart_enabled():
+                    manager.set_autostart(False)
                     self.message = ("Autostart disabled", time.monotonic() + 1.2)
                 else:
-                    enable_service_autostart()
+                    manager.set_autostart(True)
                     self.message = ("Autostart enabled", time.monotonic() + 1.2)
             elif is_autostart_enabled(config_data):
                 disable_autostart(config_data)
@@ -3177,18 +3014,6 @@ class MenuSdlSession:
         self.pygame.event.pump()
 
     def install_update(self) -> None:
-        if running_on_muos():
-            self.install_update_muos()
-            return
-        # Each target passes its own layout: Onion and spruce share App/RAOfflineProxy,
-        # Allium ships Apps/RAOfflineProxy.pak. Everything else about the flow is common.
-        if running_on_allium():
-            self.install_update_archive(DEFAULT_ALLIUM_APP_DIR, "Apps")
-            return
-        if running_on_onion() or running_on_spruce():
-            self.install_update_archive(DEFAULT_ONION_APP_DIR, "App")
-            return
-
         self.show_update_progress("Checking for update...")
         asset_url = self.resolve_update_asset_url()
         if not asset_url:
@@ -3199,86 +3024,21 @@ class MenuSdlSession:
         try:
             self.show_update_progress("Stopping proxy...")
             stop_proxy_inline()
-            self.show_update_progress("Downloading update...")
-            installer_path = download_knulli_update_installer(asset_url)
-            self.show_update_progress("Installing update...")
+            command = platforms.current().install_update(asset_url, self.show_update_progress)
             self.storage.close()
             close_input_devices(self.input_handles)
             self.pygame.quit()
-            os.execv(str(installer_path), [str(installer_path)])
-        except Exception as exc:
-            self.message = (f"Update install failed: {exc}", time.monotonic() + ERROR_SECONDS)
-            self.dismiss_update_prompt()
-
-    def install_update_archive(self, app_dir: Path, archive_root: str) -> None:
-        """Zip-archive update flow, shared by every target that ships one.
-
-        `archive_root` is where the app directory sits inside the archive — `App` for
-        Onion and spruce, `Apps` for Allium's .pak layout.
-        """
-        self.show_update_progress("Checking for update...")
-        asset_url = self.resolve_update_asset_url()
-        if not asset_url:
-            self.message = ("Update install failed: no installer URL", time.monotonic() + ERROR_SECONDS)
-            self.dismiss_update_prompt()
-            return
-
-        try:
-            self.show_update_progress("Stopping proxy...")
-            stop_proxy_inline()
-            self.show_update_progress("Downloading update...")
-            archive_path = download_onion_update_archive(asset_url)
-            self.show_update_progress("Installing update...")
-            install_onion_update_archive(archive_path, app_dir, archive_root)
-            self.storage.close()
-            close_input_devices(self.input_handles)
-            self.pygame.quit()
-            launch_script = str(app_dir / "launch.sh")
-            os.execv("/bin/sh", ["/bin/sh", launch_script, "menu-sdl"])
-        except Exception as exc:
-            self.message = (f"Update install failed: {exc}", time.monotonic() + ERROR_SECONDS)
-            self.dismiss_update_prompt()
-
-    def install_update_muos(self) -> None:
-        self.show_update_progress("Checking for update...")
-        asset_url = self.resolve_update_asset_url()
-        if not asset_url:
-            self.message = ("Update install failed: no installer URL", time.monotonic() + ERROR_SECONDS)
-            self.dismiss_update_prompt()
-            return
-
-        app_dir = Path("/run/muos/storage/application/RAOfflineProxy")
-        try:
-            self.show_update_progress("Stopping proxy...")
-            stop_proxy_inline()
-            # Download outside app_dir so the in-place swap never touches the archive.
-            archive_dest = app_dir.parent / ".raofflineproxy-update.muxapp"
-            self.show_update_progress("Downloading update...")
-            archive_path = download_muos_update_archive(asset_url, archive_dest)
-            self.show_update_progress("Installing update...")
-            install_muos_update_archive(archive_path, app_dir)
-            self.storage.close()
-            close_input_devices(self.input_handles)
-            self.pygame.quit()
-            # Relaunch the updated menu; the muOS frontend stays stopped (we are in-app).
-            launch_script = str(app_dir / "launch.sh")
-            os.execv("/bin/sh", ["/bin/sh", launch_script, "menu-sdl"])
+            os.execv(command[0], command)
         except Exception as exc:
             self.message = (f"Update install failed: {exc}", time.monotonic() + ERROR_SECONDS)
             self.dismiss_update_prompt()
 
     def uninstall(self) -> None:
-        if running_on_muos():
-            launcher = "/run/muos/storage/application/RAOfflineProxy/uninstall.sh"
-        elif running_on_darkos():
-            launcher = "/home/ark/raofflineproxy/bin/raofflineproxy-uninstall"
-        elif self.is_knulli_platform():
-            launcher = "/userdata/system/raofflineproxy/bin/raofflineproxy-uninstall"
-        elif running_on_rocknix():
-            launcher = "/storage/.local/share/raofflineproxy/bin/raofflineproxy-uninstall"
-        else:
+        launcher = platforms.current().uninstall_launcher(self.main_service_mode)
+        if launcher is None:
             self.message = ("Uninstall is not available on this platform", time.monotonic() + ERROR_SECONDS)
             return
+        launcher = str(launcher)
 
         try:
             self.storage.close()
