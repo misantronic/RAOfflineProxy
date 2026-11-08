@@ -338,10 +338,19 @@ class LinuxLogUploaderTests(unittest.TestCase):
             self.assertTrue(onion_platform.PLATFORM.version_supported())
             self.assertIsNone(onion_platform.PLATFORM.unsupported_reason())
 
+    def test_onion_version_supported_accepts_newer_build(self) -> None:
+        for content in ("v4.5.0-20261106-3d9f2add\n", "v4.4.1\n", "v5.0.0\n"):
+            with self._onion_version(content):
+                self.assertTrue(onion_platform.PLATFORM.version_supported(), content)
+                self.assertIsNone(onion_platform.PLATFORM.unsupported_reason())
+
     def test_onion_version_supported_rejects_older_build(self) -> None:
         with self._onion_version("v4.3.1-1\n"):
             self.assertFalse(onion_platform.PLATFORM.version_supported())
             self.assertIn("v4.3.1-1", onion_platform.PLATFORM.unsupported_reason())
+        for content in ("v4.3.9\n", "v3.9.0\n", "garbage\n"):
+            with self._onion_version(content):
+                self.assertFalse(onion_platform.PLATFORM.version_supported(), content)
 
     def test_onion_version_supported_rejects_missing_file(self) -> None:
         with self._onion_version(None):

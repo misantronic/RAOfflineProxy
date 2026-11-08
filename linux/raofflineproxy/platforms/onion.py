@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from . import miyoo, spruce
@@ -18,6 +19,10 @@ DEVICE_MODEL_FILE = Path("/tmp/deviceModel")
 # OnionOS v4.3.1-1 ships a bundled RetroArch build whose achievements client is not
 # reliably compatible with a custom host, so only the build after it is supported.
 SUPPORTED_VERSION_PREFIX = "v4.4.0"
+# Builds are versioned "v<major>.<minor>.<patch>[-...]": compare the numbers, so later
+# Onion versions (and forks such as RedOnion, "v4.5.0-...") are accepted too.
+MIN_SUPPORTED_VERSION = (4, 4, 0)
+_VERSION_RE = re.compile(r"v?(\d+)\.(\d+)\.(\d+)")
 
 
 def boot_hook_script() -> str:
@@ -88,7 +93,8 @@ class OnionPlatform(Platform):
 
     def version_supported(self) -> bool:
         version = self.os_version()
-        return bool(version) and version.lower().startswith(SUPPORTED_VERSION_PREFIX)
+        match = _VERSION_RE.match(version.strip().lower()) if version else None
+        return bool(match) and tuple(int(part) for part in match.groups()) >= MIN_SUPPORTED_VERSION
 
     def unsupported_reason(self) -> str | None:
         if self.version_supported():
