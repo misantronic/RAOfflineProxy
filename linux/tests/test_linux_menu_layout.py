@@ -2077,6 +2077,7 @@ class WatchBrowserTests(unittest.TestCase):
         session.browser_dir = folder
         session.browser_root = folder
         session.browser_entries = []
+        session.browser_listing_cache = {}
         session.browser_watched = set()
         session.storage = self.store
         session.message = None
@@ -2199,6 +2200,28 @@ class WatchBrowserTests(unittest.TestCase):
 
         self.assertEqual(labels[0], session.browser_action_label())
         self.assertIn("Cancel", labels)
+
+    def test_browser_lists_each_folder_once_until_the_browser_reopens(self) -> None:
+        session = self.make_session(Path("/roms"), menu_sdl.BROWSER_MODE_ADD)
+        session.restore_browser_position = lambda _path: None
+        session.reset_selection = lambda: None
+        calls: list[Path] = []
+
+        def listing(path: Path) -> list[Path]:
+            calls.append(path)
+            return [path / "game.gba"]
+
+        with patch.object(menu_sdl, "list_browser_entries", listing), patch.object(
+            menu_sdl, "load_config", lambda: {}
+        ):
+            menu_sdl.MenuSdlSession.set_browser_dir(session, Path("/roms/gba"))
+            menu_sdl.MenuSdlSession.set_browser_dir(session, Path("/roms"))
+            menu_sdl.MenuSdlSession.set_browser_dir(session, Path("/roms/gba"))
+            self.assertEqual(calls, [Path("/roms/gba"), Path("/roms")])
+
+            session.browser_listing_cache.clear()
+            menu_sdl.MenuSdlSession.set_browser_dir(session, Path("/roms/gba"))
+            self.assertEqual(len(calls), 3)
 
     def test_browser_without_roms_has_no_add_folder_row(self) -> None:
         session = self.make_session(Path("/roms"), menu_sdl.BROWSER_MODE_ADD)

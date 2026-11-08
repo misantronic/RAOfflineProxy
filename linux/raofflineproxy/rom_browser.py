@@ -3,6 +3,7 @@ from __future__ import annotations
 import enum
 import json
 import logging
+import os
 import shutil
 import tempfile
 import time
@@ -188,20 +189,31 @@ def cached_games_from_meta(metas: list[dict]) -> dict[int, CachedGameEntry]:
 def list_browser_entries(current_dir: Path) -> list[Path]:
     directories: list[Path] = []
     files: list[Path] = []
-    for entry in sorted(
-        current_dir.iterdir(), key=lambda path: (not path.is_dir(), path.name.lower())
-    ):
+    for entry in scan_sorted(current_dir):
         if entry.name.startswith("."):
             continue
-        if entry.is_dir():
+        if is_scan_entry_dir(entry):
             if entry.name in EXCLUDED_BROWSER_DIR_NAMES:
                 continue
-            if directory_has_supported_roms(entry):
-                directories.append(entry)
+            if directory_has_supported_roms(Path(entry.path)):
+                directories.append(Path(entry.path))
             continue
-        if is_supported_browser_file(entry):
-            files.append(entry)
+        if is_supported_browser_file(Path(entry.name)):
+            files.append(Path(entry.path))
     return directories + files
+
+
+def scan_sorted(current_dir: Path) -> list[os.DirEntry]:
+    """DirEntry answers is_dir() from the directory listing, so the browser needs no stat per entry."""
+    with os.scandir(current_dir) as scan:
+        return sorted(scan, key=lambda entry: (not is_scan_entry_dir(entry), entry.name.lower()))
+
+
+def is_scan_entry_dir(entry: os.DirEntry) -> bool:
+    try:
+        return entry.is_dir()
+    except OSError:
+        return False
 
 
 def list_browser_entries_fast(current_dir: Path) -> list[Path]:
@@ -328,17 +340,21 @@ def cached_game_id_for_hash(storage: Storage, hash_value: str) -> int | None:
 
 def directory_has_supported_roms(path: Path) -> bool:
     try:
-        for entry in path.iterdir():
-            if entry.name.startswith("."):
-                continue
-            if entry.is_file() and is_supported_browser_file(entry):
-                return True
-            if entry.is_dir() and directory_has_supported_roms(entry):
-                return True
-    except Exception:
+        with os.scandir(path) as scan:
+            entries = list(scan)
+    except OSError:
         return False
 
-    return False
+    subdirectories: list[Path] = []
+    for entry in entries:
+        if entry.name.startswith("."):
+            continue
+        if is_scan_entry_dir(entry):
+            subdirectories.append(Path(entry.path))
+        elif is_supported_browser_file(Path(entry.name)):
+            return True
+
+    return any(directory_has_supported_roms(subdirectory) for subdirectory in subdirectories)
 
 
 def is_supported_browser_file(path: Path) -> bool:
