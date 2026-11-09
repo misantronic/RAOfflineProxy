@@ -127,6 +127,8 @@
     <string name="dolphin_patch_success_saf">Dolphin patched successfully via folder access.</string>
     <string name="dolphin_patch_error_saf">Error patching Dolphin via folder access: %s</string>
     <string name="dolphin_patch_cfg_not_in_folder">RetroAchievements.ini not found in the granted folder. Please grant access to Dolphin\'s Android/data/org.dolphinemu.dolphinemu package folder.</string>
+    <string name="dolphin_consent_required">Dolphin has to allow RAOfflineProxy first.</string>
+    <string name="dolphin_consent_declined">Dolphin did not allow RAOfflineProxy, so the proxy was not started. Allow it when asked, or turn Dolphin off in the emulator list.</string>
     <string name="dolphin_patch_success">Dolphin patched successfully.</string>
     <string name="dolphin_patch_error_file">Error patching Dolphin config %1$s: %2$s</string>
     <string name="dolphin_patch_error_unavailable">Could not patch Dolphin automatically. Grant folder access if prompted and try again.</string>

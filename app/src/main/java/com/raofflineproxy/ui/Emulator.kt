@@ -2,6 +2,7 @@ package com.raofflineproxy.ui
 
 import android.content.Context
 import android.net.Uri
+import com.raofflineproxy.BuildConfig
 import com.raofflineproxy.PrefsConstants
 import com.raofflineproxy.R
 import com.raofflineproxy.proxy.LoginCredentials
@@ -67,7 +68,7 @@ enum class Emulator(
             "org.dolphinemu.dolphinemu.beta",
             "org.dolphinemu.dolphinemu.debug",
             "com.joeyos.dolphinemu"
-        ),
+        ) + if (BuildConfig.DEBUG) listOf("org.dolphinemu.dolphinemu.raoptest") else emptyList(),
         configOverride = ConfigOverride(
             shizukuKey = "dolphin",
             needsCredentials = true,

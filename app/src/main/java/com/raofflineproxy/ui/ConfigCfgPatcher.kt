@@ -12,7 +12,8 @@ data class ConfigPatchResult(
     val copyBackPath: String? = null,
     val hardcoreWasEnabled: Boolean = false,
     val credentials: ImportedCredentials? = null,
-    val skippedNotInstalled: Boolean = false
+    val skippedNotInstalled: Boolean = false,
+    val needsConsentPackage: String? = null
 )
 
 internal fun requireConfigOverride(emulator: Emulator): ConfigOverride =
