@@ -27,6 +27,13 @@ private const val DOLPHIN_GAME_SETTINGS_KEY = "HardcoreEnabled"
 internal const val DOLPHIN_SET_HOST_OVERRIDE_ACTION_SUFFIX = ".action.SET_RETROACHIEVEMENTS_HOST_OVERRIDE"
 internal const val DOLPHIN_CLEAR_HOST_OVERRIDE_ACTION_SUFFIX = ".action.CLEAR_RETROACHIEVEMENTS_HOST_OVERRIDE"
 internal const val DOLPHIN_HOST_OVERRIDE_EXTRA = "host"
+internal const val DOLPHIN_PROVIDER_AUTHORITY_SUFFIX = ".retroachievements"
+internal const val DOLPHIN_CONSENT_ACTION_SUFFIX = ".action.REQUEST_RETROACHIEVEMENTS_HOST_OVERRIDE_ACCESS"
+private const val DOLPHIN_PROVIDER_METHOD_SET = "set_host_override"
+private const val DOLPHIN_PROVIDER_METHOD_CLEAR = "clear_host_override"
+private const val DOLPHIN_PROVIDER_RESULT_STATUS = "status"
+private const val DOLPHIN_PROVIDER_STATUS_OK = "ok"
+private const val DOLPHIN_PROVIDER_STATUS_DENIED = "denied"
 private const val DOLPHIN_CFG_RELATIVE_PATH = "Config/RetroAchievements.ini"
 
 private val DOLPHIN_SOURCE_CANDIDATES by lazy {
@@ -126,6 +133,13 @@ private fun resolveInstalledDolphinPackages(context: Context): List<String> =
         runCatching { context.packageManager.getPackageInfo(packageName, 0) }.isSuccess
     }
 
+private fun dolphinProviderPackages(context: Context): List<String> =
+    resolveInstalledDolphinPackages(context).filter { packageName ->
+        runCatching {
+            context.packageManager.resolveContentProvider(packageName + DOLPHIN_PROVIDER_AUTHORITY_SUFFIX, 0)
+        }.getOrNull() != null
+    }
+
 private fun dolphinBroadcastOverridePackages(context: Context): List<String> =
     resolveInstalledDolphinPackages(context).filter { packageName ->
         resolvesDolphinBroadcast(context, packageName, "$packageName$DOLPHIN_SET_HOST_OVERRIDE_ACTION_SUFFIX")
@@ -133,12 +147,59 @@ private fun dolphinBroadcastOverridePackages(context: Context): List<String> =
     }
 
 internal fun supportsDolphinBroadcastOverride(context: Context): Boolean =
-    dolphinBroadcastOverridePackages(context).isNotEmpty()
+    dolphinProviderPackages(context).isNotEmpty() || dolphinBroadcastOverridePackages(context).isNotEmpty()
 
-private fun broadcastDolphinHostOverride(context: Context, packages: List<String>): ConfigPatchResult? {
-    if (packages.isEmpty()) return null
+internal enum class DolphinProviderStatus { Ok, Denied, Failed }
 
-    packages.forEach { packageName ->
+internal fun parseDolphinProviderStatus(status: String?): DolphinProviderStatus =
+    when (status) {
+        DOLPHIN_PROVIDER_STATUS_OK -> DolphinProviderStatus.Ok
+        DOLPHIN_PROVIDER_STATUS_DENIED -> DolphinProviderStatus.Denied
+        else -> DolphinProviderStatus.Failed
+    }
+
+private fun callDolphinProvider(
+    context: Context,
+    packageName: String,
+    method: String,
+    argument: String?
+): DolphinProviderStatus =
+    runCatching {
+        parseDolphinProviderStatus(
+            context.contentResolver.call(
+                Uri.parse("content://$packageName$DOLPHIN_PROVIDER_AUTHORITY_SUFFIX"),
+                method,
+                argument,
+                null
+            )?.getString(DOLPHIN_PROVIDER_RESULT_STATUS)
+        )
+    }.getOrElse {
+        Log.w(TAG, "provider call $method failed for $packageName", it)
+        DolphinProviderStatus.Failed
+    }
+
+private fun broadcastDolphinHostOverride(
+    context: Context,
+    providerPackages: List<String>,
+    broadcastPackages: List<String>
+): ConfigPatchResult? {
+    if (providerPackages.isEmpty() && broadcastPackages.isEmpty()) return null
+
+    providerPackages.forEach { packageName ->
+        when (callDolphinProvider(context, packageName, DOLPHIN_PROVIDER_METHOD_SET, proxyBase(proxyPort(context)))) {
+            DolphinProviderStatus.Ok -> Unit
+            DolphinProviderStatus.Denied -> return ConfigPatchResult(
+                success = false,
+                message = context.getString(R.string.dolphin_consent_required),
+                needsConsentPackage = packageName
+            )
+            DolphinProviderStatus.Failed -> return ConfigPatchResult(
+                success = false,
+                message = context.getString(R.string.dolphin_patch_error_unavailable)
+            )
+        }
+    }
+    broadcastPackages.forEach { packageName ->
         context.sendBroadcast(
             Intent("$packageName$DOLPHIN_SET_HOST_OVERRIDE_ACTION_SUFFIX")
                 .setPackage(packageName)
@@ -151,10 +212,23 @@ private fun broadcastDolphinHostOverride(context: Context, packages: List<String
     )
 }
 
-private fun clearDolphinHostOverride(context: Context, packages: List<String>): ConfigPatchResult? {
-    if (packages.isEmpty()) return null
+private fun clearDolphinHostOverride(
+    context: Context,
+    providerPackages: List<String>,
+    broadcastPackages: List<String>
+): ConfigPatchResult? {
+    if (providerPackages.isEmpty() && broadcastPackages.isEmpty()) return null
 
-    packages.forEach { packageName ->
+    providerPackages.forEach { packageName ->
+        // Denied means this app was never allowed to set an override, so there is nothing to clear.
+        if (callDolphinProvider(context, packageName, DOLPHIN_PROVIDER_METHOD_CLEAR, null) == DolphinProviderStatus.Failed) {
+            return ConfigPatchResult(
+                success = false,
+                message = context.getString(R.string.dolphin_revert_error_unavailable)
+            )
+        }
+    }
+    broadcastPackages.forEach { packageName ->
         context.sendBroadcast(
             Intent("$packageName$DOLPHIN_CLEAR_HOST_OVERRIDE_ACTION_SUFFIX")
                 .setPackage(packageName)
@@ -202,12 +276,14 @@ fun patchDolphinCfg(
     }
 
     val installedPackages = resolveInstalledDolphinPackages(context)
-    val broadcastPackages = dolphinBroadcastOverridePackages(context)
-    val broadcastResult = broadcastDolphinHostOverride(context, broadcastPackages)
+    val providerPackages = dolphinProviderPackages(context)
+    val broadcastPackages = dolphinBroadcastOverridePackages(context) - providerPackages.toSet()
+    val overridePackages = providerPackages + broadcastPackages
+    val overrideResult = broadcastDolphinHostOverride(context, providerPackages, broadcastPackages)
 
-    if (broadcastResult != null && broadcastPackages.containsAll(installedPackages)) {
-        Log.i(TAG, "patch: applied via broadcast override for all installed packages=$broadcastPackages")
-        return broadcastResult
+    if (overrideResult != null && (!overrideResult.success || overridePackages.containsAll(installedPackages))) {
+        Log.i(TAG, "patch: host override provider=$providerPackages broadcast=$broadcastPackages success=${overrideResult.success}")
+        return overrideResult
     }
 
     Log.i(TAG, "patch: starting treeUri=$treeUri proxy=${proxyValue(context)}")
@@ -227,7 +303,7 @@ fun patchDolphinCfg(
         detectHardcore = true,
         ensureBackup = true
     )
-    val globalResult = if (broadcastResult != null) combineDolphinResults(listOf(broadcastResult, fileResult)) else fileResult
+    val globalResult = if (overrideResult != null) combineDolphinResults(listOf(overrideResult, fileResult)) else fileResult
 
     if (!globalResult.success) {
         return globalResult
@@ -260,12 +336,14 @@ fun revertDolphinCfg(context: Context, treeUri: Uri?, restoreHardcore: Boolean =
     }
 
     val installedPackages = resolveInstalledDolphinPackages(context)
-    val broadcastPackages = dolphinBroadcastOverridePackages(context)
-    val broadcastResult = clearDolphinHostOverride(context, broadcastPackages)
+    val providerPackages = dolphinProviderPackages(context)
+    val broadcastPackages = dolphinBroadcastOverridePackages(context) - providerPackages.toSet()
+    val overridePackages = providerPackages + broadcastPackages
+    val overrideResult = clearDolphinHostOverride(context, providerPackages, broadcastPackages)
 
-    if (broadcastResult != null && broadcastPackages.containsAll(installedPackages)) {
-        Log.i(TAG, "revert: cleared via broadcast override for all installed packages=$broadcastPackages")
-        return broadcastResult
+    if (overrideResult != null && (!overrideResult.success || overridePackages.containsAll(installedPackages))) {
+        Log.i(TAG, "revert: host override cleared provider=$providerPackages broadcast=$broadcastPackages success=${overrideResult.success}")
+        return overrideResult
     }
 
     Log.i(TAG, "revert: starting treeUri=$treeUri restoreHardcore=$restoreHardcore")
@@ -279,7 +357,7 @@ fun revertDolphinCfg(context: Context, treeUri: Uri?, restoreHardcore: Boolean =
         detectHardcore = false,
         ensureBackup = false
     )
-    val globalResult = if (broadcastResult != null) combineDolphinResults(listOf(broadcastResult, fileResult)) else fileResult
+    val globalResult = if (overrideResult != null) combineDolphinResults(listOf(overrideResult, fileResult)) else fileResult
 
     val gameSettingsResult = revertDolphinGameSettingsHardcoreOverrides(context, treeUri)
     if (!gameSettingsResult.success) {

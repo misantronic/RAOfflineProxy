@@ -103,6 +103,11 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+    private val hostOverrideConsentLauncher =
+        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+            viewModel.onHostOverrideConsentResult(result.resultCode == RESULT_OK)
+        }
+
     private val safLauncher = registerForActivityResult(OpenAndroidDataTree()) { uri ->
         if (uri == null) {
             viewModel.onSafRejected(SafGrantTarget.RetroArch)
@@ -321,6 +326,8 @@ class MainActivity : AppCompatActivity() {
                     is MainUiEvent.ShowAppUpdate -> showAppUpdateDialog(event.update)
                     is MainUiEvent.RequestCompanionLibraryConsent ->
                         requestCompanionLibraryConsent(event.packages)
+                    is MainUiEvent.RequestHostOverrideConsent ->
+                        requestHostOverrideConsent(event.packageName)
                 }
             }
         }
@@ -847,6 +854,14 @@ class MainActivity : AppCompatActivity() {
         pendingConsentPackages.clear()
         pendingConsentPackages.addAll(packages)
         launchNextCompanionConsent()
+    }
+
+    private fun requestHostOverrideConsent(packageName: String) {
+        val intent = Intent(packageName + DOLPHIN_CONSENT_ACTION_SUFFIX).setPackage(packageName)
+        val launched = runCatching { hostOverrideConsentLauncher.launch(intent) }.isSuccess
+        if (!launched) {
+            viewModel.onHostOverrideConsentResult(granted = false)
+        }
     }
 
     private fun launchNextCompanionConsent() {
