@@ -83,11 +83,19 @@ def read_keys(handles: list[object], last_press: dict[int, float] | None = None)
     dict across calls to debounce across calls; omit it to only debounce
     within a single call.
     """
+    return [code for code, pressed in read_key_events(handles, last_press) if pressed]
+
+
+def read_key_events(
+    handles: list[object], last_press: dict[int, float] | None = None
+) -> list[tuple[int, bool]]:
+    """Like read_keys, but in arrival order and with releases as (code, False), so a
+    caller can tell which button is still held."""
     if not handles:
         return []
 
     last = last_press if last_press is not None else {}
-    keys: list[int] = []
+    events: list[tuple[int, bool]] = []
     readable, _, _ = select.select(handles, [], [], 0)
     for handle in readable:
         while True:
@@ -106,25 +114,78 @@ def read_keys(handles: list[object], last_press: dict[int, float] | None = None)
             timestamp = seconds + micros / 1_000_000
             if event_type == EV_KEY:
                 if value == 1:
-                    _emit_debounced(keys, last, code, timestamp)
+                    _emit_debounced(events, last, code, timestamp)
+                elif value == 0:
+                    events.append((code, False))
                 continue
             if event_type == EV_ABS:
                 if code == ABS_HAT0Y:
-                    if value < 0:
-                        _emit_debounced(keys, last, BTN_DPAD_UP, timestamp)
-                    elif value > 0:
-                        _emit_debounced(keys, last, BTN_DPAD_DOWN, timestamp)
+                    _emit_hat(events, last, value, BTN_DPAD_UP, BTN_DPAD_DOWN, timestamp)
                 if code == ABS_HAT0X:
-                    if value < 0:
-                        _emit_debounced(keys, last, BTN_DPAD_LEFT, timestamp)
-                    elif value > 0:
-                        _emit_debounced(keys, last, BTN_DPAD_RIGHT, timestamp)
-    return keys
+                    _emit_hat(events, last, value, BTN_DPAD_LEFT, BTN_DPAD_RIGHT, timestamp)
+    return events
 
 
-def _emit_debounced(keys: list[int], last: dict[int, float], code: int, timestamp: float) -> None:
+def _emit_hat(
+    events: list[tuple[int, bool]],
+    last: dict[int, float],
+    value: int,
+    negative_code: int,
+    positive_code: int,
+    timestamp: float,
+) -> None:
+    if value < 0:
+        _emit_debounced(events, last, negative_code, timestamp)
+    elif value > 0:
+        _emit_debounced(events, last, positive_code, timestamp)
+    else:
+        events.append((negative_code, False))
+        events.append((positive_code, False))
+
+
+def _emit_debounced(
+    events: list[tuple[int, bool]], last: dict[int, float], code: int, timestamp: float
+) -> None:
     previous = last.get(code)
     if previous is not None and timestamp - previous < DEBOUNCE_SECONDS:
         return
     last[code] = timestamp
-    keys.append(code)
+    events.append((code, True))
+
+
+KEY_REPEAT_DELAY_SECONDS = 0.4
+KEY_REPEAT_INTERVAL_SECONDS = 0.06
+
+
+class KeyRepeat:
+    """Steps a held up/down button through a long list. It does not rely on the
+    kernel's repeat events, which gpio-keys devices do not send."""
+
+    def __init__(
+        self,
+        delay: float = KEY_REPEAT_DELAY_SECONDS,
+        interval: float = KEY_REPEAT_INTERVAL_SECONDS,
+    ) -> None:
+        self.delay = delay
+        self.interval = interval
+        self.direction = 0
+        self.next_at = 0.0
+
+    def press(self, direction: int, now: float) -> None:
+        self.direction = direction
+        self.next_at = now + self.delay
+
+    def release(self, direction: int) -> None:
+        if self.direction == direction:
+            self.direction = 0
+
+    def cancel(self) -> None:
+        self.direction = 0
+
+    def due(self, now: float) -> int:
+        """The direction to step once now, or 0. At most one step per call, so a slow
+        frame never builds up a backlog of steps."""
+        if self.direction == 0 or now < self.next_at:
+            return 0
+        self.next_at = now + self.interval
+        return self.direction

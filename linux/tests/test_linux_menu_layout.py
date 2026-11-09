@@ -1043,6 +1043,114 @@ class MenuLayoutTests(unittest.TestCase):
 
         self.assertEqual(session.selected_index, 2)
 
+    def make_scroll_session(self, item_count: int, page_size: int = 8):
+        session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
+        session.selected_index = 0
+        session.scroll_offset = 0
+        session.key_repeat = menu_sdl.KeyRepeat(delay=0.4, interval=0.06)
+        session.current_labels = lambda running=None: [str(i) for i in range(item_count)]
+        session.item_start_y = lambda: 100
+        session.item_gap = lambda: 28
+        session.item_positions = lambda items, start_y, gap: list(range(len(items)))
+        session.visible_end_offset = lambda positions, offset, start_y: page_size
+        session.ensure_selection_visible = lambda items, start_y, gap: None
+        return session
+
+    def test_navigate_without_wrap_stops_at_the_ends(self) -> None:
+        session = self.make_scroll_session(3)
+
+        menu_sdl.MenuSdlSession.navigate(session, -1, wrap=False)
+        self.assertEqual(session.selected_index, 0)
+
+        session.selected_index = 2
+        menu_sdl.MenuSdlSession.navigate(session, 1, wrap=False)
+        self.assertEqual(session.selected_index, 2)
+
+        menu_sdl.MenuSdlSession.navigate(session, 1)
+        self.assertEqual(session.selected_index, 0)
+
+    def test_page_jumps_a_full_page_in_a_long_list(self) -> None:
+        session = self.make_scroll_session(30, page_size=8)
+
+        menu_sdl.MenuSdlSession.page(session, 1)
+        self.assertEqual(session.selected_index, 8)
+
+        menu_sdl.MenuSdlSession.page(session, -1)
+        self.assertEqual(session.selected_index, 0)
+
+    def test_page_stops_at_the_first_and_last_item(self) -> None:
+        session = self.make_scroll_session(30, page_size=8)
+
+        menu_sdl.MenuSdlSession.page(session, -1)
+        self.assertEqual(session.selected_index, 0)
+
+        session.selected_index = 27
+        menu_sdl.MenuSdlSession.page(session, 1)
+        self.assertEqual(session.selected_index, 29)
+        menu_sdl.MenuSdlSession.page(session, 1)
+        self.assertEqual(session.selected_index, 29)
+
+    def test_page_moves_one_item_when_the_list_fits_on_screen(self) -> None:
+        session = self.make_scroll_session(5, page_size=8)
+
+        menu_sdl.MenuSdlSession.page(session, 1)
+        self.assertEqual(session.selected_index, 1)
+
+        menu_sdl.MenuSdlSession.page(session, -1)
+        menu_sdl.MenuSdlSession.page(session, -1)
+        self.assertEqual(session.selected_index, 4)
+
+    def test_held_scroll_key_repeats_until_released(self) -> None:
+        session = self.make_scroll_session(30)
+        steps = []
+        session.navigate = lambda delta, wrap=True: steps.append((delta, wrap))
+
+        with patch.object(menu_sdl.time, "monotonic", lambda: 10.0):
+            menu_sdl.MenuSdlSession.scroll(session, 1)
+        with patch.object(menu_sdl.time, "monotonic", lambda: 10.2):
+            menu_sdl.MenuSdlSession.handle_key_repeat(session)
+        with patch.object(menu_sdl.time, "monotonic", lambda: 10.4):
+            menu_sdl.MenuSdlSession.handle_key_repeat(session)
+        menu_sdl.MenuSdlSession.release_scroll_key(session, up=False, down=True)
+        with patch.object(menu_sdl.time, "monotonic", lambda: 11.0):
+            menu_sdl.MenuSdlSession.handle_key_repeat(session)
+
+        self.assertEqual(steps, [(1, True), (1, False)])
+
+    def test_raw_input_holds_down_then_any_other_key_cancels_the_repeat(self) -> None:
+        session = self.make_scroll_session(30)
+        session.view = "cached_games"
+        session.handle_calibration_key = lambda _key: False
+        session.is_confirm_key = lambda _key: False
+        session.is_cancel_key = lambda _key: False
+        session.browser_at_switchable_root = lambda: False
+        batches = [
+            [(menu_sdl.KEY_DOWN, True)],
+            [(menu_sdl.KEY_RIGHT, True)],
+        ]
+        session.pending_key_events = lambda: batches.pop(0)
+
+        with patch.object(menu_sdl.time, "monotonic", lambda: 10.0):
+            menu_sdl.MenuSdlSession.handle_raw_input(session)
+            self.assertEqual(session.key_repeat.direction, 1)
+            menu_sdl.MenuSdlSession.handle_raw_input(session)
+
+        self.assertEqual(session.key_repeat.direction, 0)
+        self.assertEqual(session.selected_index, 9)
+
+    def test_raw_shoulder_buttons_page_when_they_do_not_switch_the_root(self) -> None:
+        session = self.make_scroll_session(30)
+        session.view = "cached_games"
+        session.handle_calibration_key = lambda _key: False
+        session.is_confirm_key = lambda _key: False
+        session.is_cancel_key = lambda _key: False
+        session.browser_at_switchable_root = lambda: False
+        session.pending_key_events = lambda: [(menu_sdl.BTN_TR, True)]
+
+        menu_sdl.MenuSdlSession.handle_raw_input(session)
+
+        self.assertEqual(session.selected_index, 8)
+
     def test_pending_awards_labels_do_not_include_blank_spacer_rows(self) -> None:
         session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
         session.view = "pending_awards"
@@ -1656,6 +1764,7 @@ class MenuLayoutTests(unittest.TestCase):
         class FakePygame:
             QUIT = 1
             KEYDOWN = 2
+            KEYUP = 5
             JOYHATMOTION = 3
             JOYBUTTONDOWN = 4
 

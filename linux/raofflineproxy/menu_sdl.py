@@ -112,8 +112,10 @@ from .menu_input import (
     KEY_S,
     KEY_SPACE,
     KEY_UP,
+    KeyRepeat,
     close_input_devices,
     open_input_devices,
+    read_key_events,
     read_keys,
 )
 
@@ -520,6 +522,7 @@ class MenuSdlSession:
         self._badge_surface_cache: dict[str, object] = {}
         self.input_handles = open_input_devices()
         self.last_key_press: dict[int, float] = {}
+        self.key_repeat = KeyRepeat()
         self.title_font = self.load_font(max(30, height // 19), bold=True)
         self.status_font = self.load_font(max(20, height // 30))
         self.item_font = self.load_font(max(22, height // 30), bold=False)
@@ -574,6 +577,7 @@ class MenuSdlSession:
             while self.running:
                 self.handle_events()
                 self.handle_raw_input()
+                self.handle_key_repeat()
                 self.refresh_cache_counts()
                 self.render()
                 if first_frame:
@@ -1058,8 +1062,25 @@ class MenuSdlSession:
                     self.handle_key(event.key)
                 continue
 
+            if event.type == self.pygame.KEYUP and not skip_keydown:
+                self.release_scroll_key(
+                    event.key == self.pygame.K_UP, event.key == self.pygame.K_DOWN
+                )
+
+    def pending_key_events(self) -> list[tuple[int, bool]]:
+        if _window_backend is not None:
+            return [(key, True) for key in read_keys(self.input_handles, self.last_key_press)]
+        return read_key_events(self.input_handles, self.last_key_press)
+
     def handle_raw_input(self) -> None:
-        for key in read_keys(self.input_handles, self.last_key_press):
+        for key, pressed in self.pending_key_events():
+            if not pressed:
+                self.release_scroll_key(
+                    key in {KEY_UP, BTN_DPAD_UP}, key in {KEY_DOWN, BTN_DPAD_DOWN}
+                )
+                continue
+
+            self.key_repeat.cancel()
             if self.view == "unsupported_platform":
                 self.running = False
                 return
@@ -1071,17 +1092,27 @@ class MenuSdlSession:
                 self.handle_key_logger_input(key)
                 continue
 
-            if key in {KEY_UP, KEY_LEFT, BTN_DPAD_UP, BTN_DPAD_LEFT}:
-                self.navigate(-1)
+            if key in {KEY_UP, BTN_DPAD_UP}:
+                self.scroll(-1, repeats=_window_backend is None)
                 continue
 
-            if key in {KEY_DOWN, KEY_RIGHT, BTN_DPAD_DOWN, BTN_DPAD_RIGHT}:
-                self.navigate(1)
+            if key in {KEY_DOWN, BTN_DPAD_DOWN}:
+                self.scroll(1, repeats=_window_backend is None)
+                continue
+
+            if key in {KEY_LEFT, BTN_DPAD_LEFT}:
+                self.page(-1)
+                continue
+
+            if key in {KEY_RIGHT, BTN_DPAD_RIGHT}:
+                self.page(1)
                 continue
 
             if key in {BTN_TL, BTN_TR}:
                 if self.browser_at_switchable_root():
                     self.toggle_browser_root()
+                else:
+                    self.page(-1 if key == BTN_TL else 1)
                 continue
 
             if self.is_confirm_key(key):
@@ -1095,11 +1126,18 @@ class MenuSdlSession:
         if self.view == "controller_calibration":
             return
 
-        if key in {self.pygame.K_UP, self.pygame.K_LEFT}:
-            self.navigate(-1)
+        self.key_repeat.cancel()
+        if key == self.pygame.K_UP:
+            self.scroll(-1)
             return
-        if key in {self.pygame.K_DOWN, self.pygame.K_RIGHT}:
-            self.navigate(1)
+        if key == self.pygame.K_DOWN:
+            self.scroll(1)
+            return
+        if key == self.pygame.K_LEFT:
+            self.page(-1)
+            return
+        if key == self.pygame.K_RIGHT:
+            self.page(1)
             return
         if key in {self.pygame.K_RETURN, self.pygame.K_SPACE, self.pygame.K_s}:
             self.activate_selected()
@@ -1107,12 +1145,45 @@ class MenuSdlSession:
         if key in {self.pygame.K_ESCAPE, self.pygame.K_BACKSPACE, self.pygame.K_q}:
             self.go_back()
 
-    def navigate(self, delta: int) -> None:
+    def navigate(self, delta: int, wrap: bool = True) -> None:
         items = self.current_labels()
         item_count = max(1, len(items))
-        self.selected_index = (self.selected_index + delta) % item_count
+        if wrap:
+            self.selected_index = (self.selected_index + delta) % item_count
+        else:
+            self.selected_index = max(0, min(item_count - 1, self.selected_index + delta))
         start_y = self.item_start_y()
         gap = self.item_gap()
+        self.ensure_selection_visible(items, start_y, gap)
+
+    def scroll(self, direction: int, repeats: bool = True) -> None:
+        self.navigate(direction)
+        if repeats:
+            self.key_repeat.press(direction, time.monotonic())
+
+    def release_scroll_key(self, up: bool, down: bool) -> None:
+        if up:
+            self.key_repeat.release(-1)
+        if down:
+            self.key_repeat.release(1)
+
+    def handle_key_repeat(self) -> None:
+        direction = self.key_repeat.due(time.monotonic())
+        if direction:
+            self.navigate(direction, wrap=False)
+
+    def page(self, direction: int) -> None:
+        items = self.current_labels()
+        start_y = self.item_start_y()
+        gap = self.item_gap()
+        positions = self.item_positions(items, start_y, gap)
+        page_size = max(1, self.visible_end_offset(positions, 0, start_y))
+        if len(items) <= page_size:
+            self.navigate(direction)
+            return
+        self.selected_index = max(
+            0, min(len(items) - 1, self.selected_index + direction * page_size)
+        )
         self.ensure_selection_visible(items, start_y, gap)
 
     def activate_selected(self) -> None:
