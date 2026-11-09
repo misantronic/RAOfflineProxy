@@ -14,7 +14,7 @@ PYTHON="$(command -v python || command -v python3)"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LINUX_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
-VERSION="${RAOFFLINEPROXY_APP_VERSION:-2.3.0-alpha1}"
+VERSION="${RAOFFLINEPROXY_APP_VERSION:-3.0.0-alpha1}"
 DIST_DIR="${SCRIPT_DIR}/dist/RAOfflineProxy"
 APP_DIR="${DIST_DIR}/app"
 PYTHON_DIR="${DIST_DIR}/python"

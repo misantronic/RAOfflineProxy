@@ -728,7 +728,7 @@ class TestUpdate:
         assert not (installed.folder / "python.old").exists() and not (installed.folder / "app.old").exists()
 
     def _serve_release(self, installed, tmp_path, checksum=None):
-        """A newer release (the same bundle, stamped 2.3.0-alpha99) on a local
+        """A newer release (the same bundle, stamped 3.0.0-alpha99) on a local
         server. checksum: None (no .sha256 asset), "good" or "bad"."""
         import functools
         import hashlib
@@ -739,15 +739,15 @@ class TestUpdate:
         shutil.copytree(installed.bundle, release / "RAOfflineProxy")
         config_py = release / "RAOfflineProxy" / "app" / "raofflineproxy" / "config.py"
         config_py.write_text(
-            config_py.read_text(encoding="utf-8").replace('or "2.3.0-alpha1"', 'or "2.3.0-alpha99"'),
+            config_py.read_text(encoding="utf-8").replace('or "3.0.0-alpha1"', 'or "3.0.0-alpha99"'),
             encoding="utf-8",
         )
-        shutil.make_archive(str(tmp_path / "RAOfflineProxy-Windows-v2.3.0-alpha99"), "zip", release)
+        shutil.make_archive(str(tmp_path / "RAOfflineProxy-Windows-v3.0.0-alpha99"), "zip", release)
         handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=str(tmp_path))
         server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
         threading.Thread(target=server.serve_forever, daemon=True).start()
         base = f"http://127.0.0.1:{server.server_port}"
-        name = "RAOfflineProxy-Windows-v2.3.0-alpha99.zip"
+        name = "RAOfflineProxy-Windows-v3.0.0-alpha99.zip"
         assets = [{"name": name, "browser_download_url": f"{base}/{name}"}]
         if checksum is not None:
             digest = hashlib.sha256((tmp_path / name).read_bytes()).hexdigest()
@@ -756,7 +756,7 @@ class TestUpdate:
             (tmp_path / f"{name}.sha256").write_text(f"{digest}  {name}\n")
             assets.append({"name": f"{name}.sha256", "browser_download_url": f"{base}/{name}.sha256"})
         (tmp_path / "releases.json").write_text(json.dumps([{
-            "tag_name": "v2.3.0-alpha99", "draft": False, "html_url": base, "assets": assets,
+            "tag_name": "v3.0.0-alpha99", "draft": False, "html_url": base, "assets": assets,
         }]))
         installed.write_config({"update_releases_url": f"{base}/releases.json"})
         return base, server
