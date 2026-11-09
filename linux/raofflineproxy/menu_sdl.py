@@ -457,6 +457,7 @@ class MenuSdlSession:
         self.browser_watched: set[str] = set()
         self.browser_entries: list[Path] = []
         self.browser_dir_has_roms = False
+        self.browser_listing_cache: dict[Path, list[Path]] = {}
         self.view_positions: dict[str, tuple[int, int]] = {}
         self.browser_positions: dict[str, tuple[int, int]] = {}
         self.smart_cache_prompt_available = False
@@ -1599,6 +1600,7 @@ class MenuSdlSession:
         try:
             self.save_view_position("cached_games")
             root = resolve_rom_root(load_config())
+            self.browser_listing_cache.clear()
             self.browser_mode = mode
             self.browser_root = root
             self.set_browser_dir(root, restore=True)
@@ -1726,7 +1728,7 @@ class MenuSdlSession:
 
     def set_browser_dir(self, path: Path, restore: bool = False) -> None:
         self.browser_dir = path
-        entries = list_browser_entries(path)
+        entries = list(self.browser_listing(path))
         self.browser_dir_has_roms = bool(entries)
         if self.browser_watch_mode():
             self.refresh_browser_watched()
@@ -1781,6 +1783,13 @@ class MenuSdlSession:
 
     def refresh_pending_awards(self) -> None:
         self.pending_awards = list_pending_awards(self.storage)
+
+    def browser_listing(self, path: Path) -> list[Path]:
+        listing = self.browser_listing_cache.get(path)
+        if listing is None:
+            listing = list_browser_entries(path)
+            self.browser_listing_cache[path] = listing
+        return listing
 
     def browser_has_cacheable_files(self) -> bool:
         return self.browser_dir is not None and self.browser_dir_has_roms
