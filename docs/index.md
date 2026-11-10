@@ -111,11 +111,10 @@ features:
         <div class="supported-platforms__item">
           <img class="supported-platforms__logo--rounded" src="/spruce.png" alt="spruce logo">
           <span>spruce</span>
-          <em class="supported-platforms__tag">experimental</em>
         </div>
         <div class="supported-platforms__item">
+          <img class="supported-platforms__logo--rounded" src="/logo-placeholder.svg" alt="Allium logo placeholder">
           <span>Allium</span>
-          <em class="supported-platforms__tag">experimental</em>
         </div>
         <div class="supported-platforms__item">
           <img class="supported-platforms__logo--rounded" src="/darkos.png" alt="dArkOS logo">
@@ -139,6 +138,7 @@ features:
           <span>PCSX2</span>
         </div>
         <div class="supported-platforms__item">
+          <div class="supported-platforms__emoji" role="img" aria-label="Duck">🦆</div>
           <span>DuckStation</span>
         </div>
         <div class="supported-platforms__item">

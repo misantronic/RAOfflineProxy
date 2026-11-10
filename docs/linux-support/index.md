@@ -18,8 +18,8 @@ The Linux version is for handheld Linux devices where you want the same basic of
 - muOS
 - ROCKNIX
 - spruce (built into spruceOS 4.5.0+)
-- Allium (experimental)
-- dArkOS (experimental)
+- Allium
+- dArkOS
 
 ## Specifics
 
@@ -59,7 +59,7 @@ spruce runs the proxy itself: it starts and stops it with its own network servic
 
 == Allium
 
-Allium support is experimental. It is currently compatible with [Allium v1.0.1](https://github.com/goweiwen/Allium/releases), tested on a Miyoo Mini Plus.
+It is currently compatible with [Allium v1.0.1](https://github.com/goweiwen/Allium/releases), tested on a Miyoo Mini Plus.
 
 Allium is a Miyoo-only launcher, so this target covers exactly the devices Allium itself runs on: the Miyoo Mini, Mini Plus and Mini Flip.
 

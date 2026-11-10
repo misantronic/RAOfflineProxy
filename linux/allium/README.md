@@ -1,7 +1,6 @@
 # RAOfflineProxy — Allium
 
-[Allium](https://github.com/goweiwen/Allium) bundle, derived from the Onion one. Support is
-**experimental**.
+[Allium](https://github.com/goweiwen/Allium) bundle, derived from the Onion one.
 
 Allium runs on the same Miyoo Mini armv7 hardware as Onion and spruce (same kernel, same
 `/config/lib` MI SDK, same `.tmp_update` boot chain), so this package reuses Onion's CPython

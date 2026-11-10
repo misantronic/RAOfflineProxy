@@ -33,7 +33,7 @@ That means support for another emulator would require emulator-specific implemen
 
 For that reason, emulators beyond RetroArch, Dolphin, PPSSPP, ARMSX2, WatermelonDS, and Flycast are currently **not supported**, even if they also expose RetroAchievements features.
 
-Experimental Linux work in this repository is also centered around **RetroArch**.
+The Linux port is also centered around **RetroArch**.
 
 ## Why not implement this natively?
 

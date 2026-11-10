@@ -151,8 +151,6 @@ RAOfflineProxy is built into [spruceOS v4.5.0](https://github.com/spruceUI/spruc
 
 == Allium
 
-> Allium support is currently experimental.
->
 > Tested on a Miyoo Mini Plus running [Allium v1.0.1](https://github.com/goweiwen/Allium/releases). Allium runs only on the Miyoo Mini, Mini Plus and Mini Flip, and this bundle covers all of them.
 
 1. Download the latest `RAOfflineProxy-Allium-*.zip` from [GitHub Releases](https://github.com/misantronic/RAOfflineProxy/releases)
@@ -168,8 +166,6 @@ RAOfflineProxy is built into [spruceOS v4.5.0](https://github.com/spruceUI/spruc
 
 == dArkOS
 
-> dArkOS support is currently experimental.
->
 > Community-contributed, tested on a Powkiddy RGB30 running [dArkOS 07282026](https://github.com/christianhaitian/dArkOS/releases) and a Miniloong Pocket 1 running dArkOS 08062026.
 
 1. Download the latest `RAOfflineProxy-DarkOS-*-Install.sh` from [GitHub Releases](https://github.com/misantronic/RAOfflineProxy/releases)
