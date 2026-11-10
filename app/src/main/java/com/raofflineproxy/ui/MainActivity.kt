@@ -62,6 +62,7 @@ class MainActivity : AppCompatActivity() {
     private var activeSafGrantTarget: SafGrantTarget? = null
     private var usageStatsDialogShown = false
     private var usageStatsDialog: AlertDialog? = null
+    private var supportPromptDialog: AlertDialog? = null
     private var smartCachePromptDialog: AlertDialog? = null
     private var smartCachePromptPending = false
     private var attemptedGenericAllFilesAccess = false
@@ -295,6 +296,7 @@ class MainActivity : AppCompatActivity() {
                     usageStatsDialogShown = true
                     showUsageStatsConsentDialog()
                 }
+                showSupportPromptIfDue(state)
 
                 if (pendingQuit && !state.proxyRunning && !state.proxyToggleInProgress) {
                     pendingQuit = false
@@ -338,6 +340,7 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         viewModel.refreshShizukuStatus()
+        viewModel.refreshSupportPrompt()
         if (viewModel.state.value.proxyRunning) {
             viewModel.validateToken()
         }
@@ -741,6 +744,17 @@ class MainActivity : AppCompatActivity() {
 
         dialog.setCanceledOnTouchOutside(false)
         dialog.show()
+    }
+
+    private fun showSupportPromptIfDue(state: MainUiState) {
+        val prompt = state.supportPrompt ?: return
+        val otherDialogShowing = usageStatsDialog?.isShowing == true ||
+            smartCachePromptDialog?.isShowing == true ||
+            supportPromptDialog?.isShowing == true
+        if (otherDialogShowing || state.needsSafGrant || state.usageStatsConsent == null) return
+        if (state.hideSupportButton || !state.hasLoginCredentials) return
+        viewModel.markSupportPromptShown(prompt)
+        supportPromptDialog = SupportDialog(this, viewModel, prompt).show()
     }
 
     private fun showUsageStatsConsentDialog() {

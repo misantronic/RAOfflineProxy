@@ -66,6 +66,11 @@
     <string name="donation_email_hint">Email address</string>
     <string name="donation_submit">Donate</string>
     <string name="donation_kofi_alt">Support on Ko-fi instead</string>
+    <string name="donation_quick_caption">One-time donation. Opens Stripe\'s secure checkout in your browser.</string>
+    <string name="donation_more_options">Monthly and more options</string>
+    <string name="support_prompt_message">You\'ve synced %1$d offline achievements with RAOfflineProxy. 🎉\n\nThe app is free and built by one person in their spare time. If it\'s useful to you, a small donation helps keep it going. Thank you!</string>
+    <string name="support_prompt_not_now">Not now</string>
+    <string name="support_prompt_never">Don\'t ask again</string>
     <string name="donation_test_mode">Test (Stripe sandbox, no real charge)</string>
     <string name="donation_email_required">Enter your email address</string>
     <string name="donation_email_invalid">Enter a valid email address</string>
@@ -311,7 +316,7 @@
     <string name="setting_usage_stats_label">Share anonymous usage statistics</string>
     <string name="setting_usage_stats_caption">Sends device model, app version and cache sync numbers once a day. Your username is never sent.</string>
     <string name="usage_stats_dialog_title">Help improve RAOfflineProxy</string>
-    <string name="usage_stats_dialog_message">Sharing anonymous statistics once a day would really help me understand how many people use RAOfflineProxy and how well caching works on their devices.\n\nSent: app version, device model, enabled emulators, and caching numbers (game counts, request counts, errors).\nNever sent: your username, password or achievements.\n\nYou can turn this off anytime in Settings.</string>
+    <string name="usage_stats_dialog_message">Sharing anonymous statistics once a day would really help me understand how many people use RAOfflineProxy and how well caching works on their devices.\n\nSent: app version, device model, enabled emulators, caching numbers (game counts, request counts, errors), and how often the support dialog is opened and used.\nNever sent: your username, password or achievements.\n\nYou can turn this off anytime in Settings.</string>
     <string name="usage_stats_dialog_accept">Share statistics</string>
     <string name="usage_stats_dialog_decline">No thanks</string>
     <string name="setting_show_locked_achievements_label">Show locked achievements</string>

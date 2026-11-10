@@ -27,6 +27,8 @@ import com.raofflineproxy.parseFormParams
 import com.raofflineproxy.probeRetroAchievements
 import com.raofflineproxy.proxyUserAgent
 import com.raofflineproxy.isLoopbackPortAvailable
+import com.raofflineproxy.donation.SupportPrompt
+import com.raofflineproxy.donation.dueSupportPrompt
 import com.raofflineproxy.data.AppDatabase
 import com.raofflineproxy.data.CacheEntry
 import com.raofflineproxy.data.CacheEntrySummary
@@ -154,6 +156,7 @@ data class MainUiState(
     val smartCachingEnabled: Boolean = true,
     val appUpdateCheckEnabled: Boolean = true,
     val hideSupportButton: Boolean = false,
+    val supportPrompt: SupportPrompt? = null,
     val showLockedAchievements: Boolean = false,
     val usageStatsConsent: Boolean? = null,
     val proxyPort: Int = PrefsConstants.DEFAULT_PROXY_PORT,
@@ -315,6 +318,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             smartCachingEnabled = loadSmartCachingEnabled(),
             appUpdateCheckEnabled = loadAppUpdateCheckEnabled(),
             hideSupportButton = loadHideSupportButtonEnabled(),
+            supportPrompt = loadDueSupportPrompt(),
             showLockedAchievements = loadShowLockedAchievementsEnabled(),
             usageStatsConsent = PrefsConstants.loadUsageStatsConsent(app),
             proxyPort = PrefsConstants.loadProxyPort(app),
@@ -333,7 +337,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     is FlushEvent.Completed -> {
                         SnackbarManager.showMessage(str(R.string.flush_completed_sent_only, event.flushed), SnackbarDuration.Indefinite)
                         _state.value = _state.value.copy(
-                            flushInProgress = false
+                            flushInProgress = false,
+                            supportPrompt = loadDueSupportPrompt()
                         )
                     }
                     is FlushEvent.ChainBroken -> {
@@ -2166,6 +2171,20 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         _state.value = _state.value.copy(hideSupportButton = enabled)
     }
 
+    fun refreshSupportPrompt() {
+        _state.value = _state.value.copy(supportPrompt = loadDueSupportPrompt())
+    }
+
+    fun markSupportPromptShown(prompt: SupportPrompt) {
+        PrefsConstants.saveSupportPromptMilestone(getApplication(), prompt.milestone)
+        _state.value = _state.value.copy(supportPrompt = null)
+    }
+
+    fun disableSupportPrompt() {
+        PrefsConstants.saveSupportPromptDisabled(getApplication(), true)
+        _state.value = _state.value.copy(supportPrompt = null)
+    }
+
     fun setShowLockedAchievementsEnabled(enabled: Boolean) {
         PrefsConstants.saveShowLockedAchievementsEnabled(getApplication(), enabled)
         _state.value = _state.value.copy(showLockedAchievements = enabled)
@@ -2439,6 +2458,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun loadAppUpdateCheckEnabled(): Boolean =
         PrefsConstants.loadAppUpdateCheckEnabled(getApplication())
+
+    private fun loadDueSupportPrompt(): SupportPrompt? {
+        val app = getApplication<Application>()
+        if (PrefsConstants.loadSupportPromptDisabled(app)) return null
+        return dueSupportPrompt(
+            PrefsConstants.loadSyncedAwardsTotal(app),
+            PrefsConstants.loadSupportPromptMilestone(app)
+        )
+    }
 
     private fun loadHideSupportButtonEnabled(): Boolean =
         PrefsConstants.loadHideSupportButtonEnabled(getApplication())

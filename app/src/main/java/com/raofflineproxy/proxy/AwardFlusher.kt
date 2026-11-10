@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Base64
 import android.util.Log
 import androidx.room.withTransaction
+import com.raofflineproxy.PrefsConstants
 import com.raofflineproxy.R
 import com.raofflineproxy.RA_HOST
 import com.raofflineproxy.RequestFailureNotifier
@@ -528,6 +529,7 @@ class AwardFlusher(
             Log.i(TAG, "Post-flush refresh complete")
         }
 
+        PrefsConstants.addSyncedAwards(context, flushed)
         _events.emit(
             FlushEvent.Completed(
                 flushed = flushed,
