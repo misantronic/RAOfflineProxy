@@ -23,7 +23,8 @@ except ModuleNotFoundError:
 LOGGER = logging.getLogger("raofflineproxy")
 GAME_META_INDEX_BATCH = 50
 INSERT_GAME_META = (
-    "INSERT OR REPLACE INTO cached_game_meta(cacheKey, gameId, title, imagePath) VALUES(?, ?, ?, ?)"
+    "INSERT OR REPLACE INTO cached_game_meta(cacheKey, gameId, title, imagePath, consoleId) "
+    "VALUES(?, ?, ?, ?, ?)"
 )
 
 VENDORED_SQLITE_DIR = Path(__file__).resolve().parent.parent / "vendor" / "sqlite"
@@ -141,7 +142,8 @@ class Storage:
                     cacheKey TEXT PRIMARY KEY,
                     gameId INTEGER,
                     title TEXT,
-                    imagePath TEXT
+                    imagePath TEXT,
+                    consoleId INTEGER
                 );
                 CREATE INDEX IF NOT EXISTS cached_game_meta_game_id ON cached_game_meta(gameId);
                 CREATE TRIGGER IF NOT EXISTS cached_game_meta_delete AFTER DELETE ON api_cache
@@ -171,6 +173,17 @@ class Storage:
                     "PRAGMA table_info(pending_awards)"
                 ).fetchall()
             }
+            meta_columns = {
+                row["name"]
+                for row in self._connection.execute(
+                    "PRAGMA table_info(cached_game_meta)"
+                ).fetchall()
+            }
+            if "consoleId" not in meta_columns:
+                self._connection.execute(
+                    "ALTER TABLE cached_game_meta ADD COLUMN consoleId INTEGER"
+                )
+
             if "status" not in columns:
                 self._connection.execute(
                     "ALTER TABLE pending_awards ADD COLUMN status TEXT NOT NULL DEFAULT 'pending'"
@@ -285,7 +298,8 @@ class Storage:
     def _index_missing_game_meta(self) -> None:
         """Indexes entries written before cached_game_meta existed, by the JSON import, or by an
         older version after a downgrade (its deletes and renames still reach the table through
-        the triggers). A library of 1000 games takes about half a minute, once."""
+        the triggers). Rows without a console id were written before that column existed and
+        are indexed again. A library of 1000 games takes about half a minute, once."""
         assert self._connection is not None
         with self._lock:
             row_ids = [
@@ -294,7 +308,9 @@ class Storage:
                     """
                     SELECT id FROM api_cache
                     WHERE (cacheKey LIKE 'patch:%' OR cacheKey LIKE 'achievementsets:%')
-                      AND cacheKey NOT IN (SELECT cacheKey FROM cached_game_meta)
+                      AND cacheKey NOT IN (
+                          SELECT cacheKey FROM cached_game_meta WHERE consoleId IS NOT NULL
+                      )
                     """
                 ).fetchall()
             ]
@@ -582,7 +598,10 @@ class Storage:
         minute per pass over 1000 games on an SD card)."""
         if self._use_sqlite:
             assert self._connection is not None
-            query = "SELECT cacheKey, gameId, title, imagePath FROM cached_game_meta WHERE gameId > 0"
+            query = (
+                "SELECT cacheKey, gameId, title, imagePath, consoleId "
+                "FROM cached_game_meta WHERE gameId > 0"
+            )
             params: tuple = ()
             if game_id is not None:
                 query += " AND gameId = ?"
@@ -1142,7 +1161,13 @@ def game_meta_row(cache_key: str, response_body: str) -> tuple:
     """Parsed before the write transaction starts: the menu and the proxy service share the
     database, and on FAT32 there is no WAL, so a held write lock blocks the other process."""
     meta = game_meta.game_meta_for_entry(cache_key, response_body) or {}
-    return (cache_key, meta.get("gameId"), meta.get("title"), meta.get("imagePath"))
+    return (
+        cache_key,
+        meta.get("gameId"),
+        meta.get("title"),
+        meta.get("imagePath"),
+        meta.get("consoleId") or 0,
+    )
 
 
 def current_millis() -> int:

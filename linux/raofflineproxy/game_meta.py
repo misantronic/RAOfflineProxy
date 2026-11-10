@@ -45,6 +45,7 @@ def _patch_meta(cache_key: str, response_body: str) -> dict | None:
         "gameId": game_id,
         "title": patch_data.get("Title") or f"Game {game_id}",
         "imagePath": patch_data.get("ImageIcon") or patch_data.get("ImageBoxArt"),
+        "consoleId": _console_id(patch_data.get("ConsoleID")),
     }
 
 
@@ -61,4 +62,12 @@ def _achievementsets_meta(cache_key: str, response_body: str) -> dict | None:
         "gameId": game_id,
         "title": payload.get("Title") or f"Game {game_id}",
         "imagePath": payload.get("ImageIcon") or payload.get("ImageIconUrl"),
+        "consoleId": _console_id(payload.get("ConsoleId")),
     }
+
+
+def _console_id(value) -> int:
+    try:
+        return max(0, int(value or 0))
+    except (TypeError, ValueError):
+        return 0

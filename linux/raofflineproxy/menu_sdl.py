@@ -57,6 +57,7 @@ from .emulators.retroarch_cfg import (
 )
 from .image_cache import shutdown_image_downloads
 from . import cache_budget, cache_keys, cache_queue, usage_report, usage_stats
+from .console_names import CONSOLE_NAMES, console_name
 from .rom_browser import (
     format_clock_time,
     AddRomResult,
@@ -424,6 +425,15 @@ def stop_proxy_inline() -> None:
         pass
 
 
+def group_games_by_platform(games: list) -> list[tuple[int, list]]:
+    """Games per console in name order; consoles without a name share one group at the end."""
+    groups: dict[int, list] = {}
+    for game in games:
+        console_id = getattr(game, "console_id", 0)
+        groups.setdefault(console_id if console_id in CONSOLE_NAMES else 0, []).append(game)
+    return sorted(groups.items(), key=lambda group: (group[0] == 0, console_name(group[0]).lower()))
+
+
 class MenuSdlSession:
     def __init__(
         self, command_runner: str, surface, width: int, height: int, pygame
@@ -449,6 +459,7 @@ class MenuSdlSession:
         self.queue_confirm_text: str | None = None
         self.queue_confirm_action = None
         self.queue_confirm_return_view = "cached_games"
+        self.platform_id: int | None = None
         self.pending_awards = []
         self.active_game = None
         self.active_pending_award = None
@@ -675,10 +686,16 @@ class MenuSdlSession:
             return []
 
         if self.view == "cached_games":
-            cached = [game.title for game in self.cached_games]
+            platforms_list = [
+                f"{console_name(console_id)} ({len(games)})"
+                for console_id, games in self.platform_groups()
+            ]
             if getattr(self, "main_online", False):
-                return ["Add ROMs", "Watch folders", "Start Smart Cache", *cached, "Clear cache", "Back"]
-            return [*cached, "Clear cache", "Back"]
+                return ["Add ROMs", "Watch folders", "Start Smart Cache", *platforms_list, "Clear cache", "Back"]
+            return [*platforms_list, "Clear cache", "Back"]
+
+        if self.view == "platform_games":
+            return [*(game.title for game in self.platform_games()), "Back"]
 
         if self.view == "pending_awards":
             labels = []
@@ -803,6 +820,8 @@ class MenuSdlSession:
             return "Controller Setup"
         if self.view == "cached_games":
             return "Cached Games"
+        if self.view == "platform_games":
+            return console_name(self.platform_id or 0)
         if self.view == "pending_awards":
             return "Pending Awards"
         if self.view == "pending_award_actions":
@@ -898,6 +917,8 @@ class MenuSdlSession:
                 return f"{status} (PAUSED, PROXY STOPPED)"
             queue_status = getattr(self, "queue_status", None)
             return f"{status} | {queue_status}" if queue_status else status
+        if self.view == "platform_games":
+            return f"CACHED: {len(self.platform_games())}"
         if self.view == "queue_confirm":
             return self.queue_confirm_text or ""
         if self.view == "pending_awards":
@@ -1194,6 +1215,10 @@ class MenuSdlSession:
             self.activate_cached_games_selected()
             return
 
+        if self.view == "platform_games":
+            self.activate_platform_games_selected()
+            return
+
         if self.view == "pending_awards":
             self.activate_pending_awards_selected()
             return
@@ -1399,14 +1424,54 @@ class MenuSdlSession:
             self.restore_view_position("main")
             return
 
-        game_index = self.selected_index - self.cached_games_header_count()
-        if 0 <= game_index < len(self.cached_games):
+        groups = self.platform_groups()
+        platform_index = self.selected_index - self.cached_games_header_count()
+        if 0 <= platform_index < len(groups):
             self.save_view_position("cached_games")
-            self.active_game = self.cached_games[game_index]
+            self.platform_id = groups[platform_index][0]
+            self.view = "platform_games"
+            self.view_positions.pop("platform_games", None)
+            self.reset_selection()
+            return
+
+    def platform_groups(self) -> list[tuple[int, list]]:
+        cached = getattr(self, "_platform_groups", None)
+        if cached is None or cached[0] is not self.cached_games:
+            cached = (self.cached_games, group_games_by_platform(self.cached_games))
+            self._platform_groups = cached
+        return cached[1]
+
+    def platform_games(self) -> list:
+        platform_id = getattr(self, "platform_id", None)
+        for console_id, games in self.platform_groups():
+            if console_id == platform_id:
+                return games
+        return []
+
+    def activate_platform_games_selected(self) -> None:
+        games = self.platform_games()
+        if 0 <= self.selected_index < len(games):
+            self.save_view_position("platform_games")
+            self.active_game = games[self.selected_index]
             self.refresh_active_game_unlocks()
             self.view = "game_actions"
             self.reset_selection()
             return
+        self.close_platform_games()
+
+    def close_platform_games(self) -> None:
+        self.platform_id = None
+        self.view = "cached_games"
+        self.restore_view_position("cached_games")
+
+    def return_to_game_list(self) -> None:
+        """Back to the platform the game was opened from, or to the platform list once that
+        platform has no games left."""
+        if self.platform_games():
+            self.view = "platform_games"
+            self.restore_view_position("platform_games")
+            return
+        self.close_platform_games()
 
     def activate_pending_awards_selected(self) -> None:
         back_index = len(self.pending_awards) * 2
@@ -1604,9 +1669,8 @@ class MenuSdlSession:
 
     def activate_game_actions_selected(self) -> None:
         if self.active_game is None:
-            self.view = "cached_games"
-            self.restore_view_position("cached_games")
             self.refresh_cached_games()
+            self.return_to_game_list()
             return
 
         if self.selected_index == 0:
@@ -1615,16 +1679,14 @@ class MenuSdlSession:
             self.active_game = None
             self.clear_active_game_unlocks()
             self.refresh_cached_games()
-            self.view = "cached_games"
-            self.restore_view_position("cached_games")
+            self.return_to_game_list()
             self.message = (f"Removed {removed_title}", time.monotonic() + 1.5)
             return
 
         if self.selected_index == len(self.game_actions_unlock_titles()) + 1:
             self.active_game = None
             self.clear_active_game_unlocks()
-            self.view = "cached_games"
-            self.restore_view_position("cached_games")
+            self.return_to_game_list()
 
     def activate_file_browser_selected(self) -> None:
         if self.browser_dir is None:
@@ -1831,7 +1893,7 @@ class MenuSdlSession:
     def refresh_cache_counts(self) -> None:
         """Follows the proxy service's background queue while the menu is open: cheap counts
         every few seconds, the full game list only once they changed."""
-        if self.view not in ("main", "cached_games"):
+        if self.view not in ("main", "cached_games", "platform_games"):
             return
         now = time.monotonic()
         if now - getattr(self, "cache_counts_checked_at", 0.0) < CACHE_COUNTS_REFRESH_SECONDS:
@@ -2110,8 +2172,11 @@ class MenuSdlSession:
         if self.view == "game_actions":
             self.active_game = None
             self.clear_active_game_unlocks()
-            self.view = "cached_games"
-            self.restore_view_position("cached_games")
+            self.return_to_game_list()
+            return
+
+        if self.view == "platform_games":
+            self.close_platform_games()
             return
 
         if self.view == "support_me":
@@ -2214,10 +2279,10 @@ class MenuSdlSession:
         self.surface.blit(self.logo_surface, logo_rect)
 
     def preview_target_game(self):
-        if self.view == "cached_games":
-            game_index = self.selected_index - self.cached_games_header_count()
-            if 0 <= game_index < len(self.cached_games):
-                return self.cached_games[game_index]
+        if self.view == "platform_games":
+            games = self.platform_games()
+            if 0 <= self.selected_index < len(games):
+                return games[self.selected_index]
             return None
 
         if (
@@ -2928,8 +2993,9 @@ class MenuSdlSession:
         header_count = (
             self.cached_games_header_count() if self.view == "cached_games" else 0
         )
+        group_count = len(self.platform_groups()) if self.view == "cached_games" else 0
         first_game_index = header_count
-        last_game_index = len(self.cached_games) + header_count - 1
+        last_game_index = group_count + header_count - 1
         for index, _label in enumerate(items):
             positions.append(current_y)
             current_y += gap
@@ -2937,8 +3003,10 @@ class MenuSdlSession:
                 current_y += GROUP_GAP
             if self.view == "cached_games" and index == last_game_index and index >= first_game_index:
                 current_y += GROUP_GAP
-            if self.view == "cached_games" and len(self.cached_games) == 0 and header_count > 0 and index == header_count - 1:
+            if self.view == "cached_games" and group_count == 0 and header_count > 0 and index == header_count - 1:
                 current_y -= GROUP_GAP
+            if self.view == "platform_games" and index == len(items) - 2:
+                current_y += GROUP_GAP
             if self.view == "game_actions" and index == 0:
                 current_y += GROUP_GAP
             if self.view == "game_actions" and index == len(items) - 2:

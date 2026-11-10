@@ -76,6 +76,7 @@ class CachedGameEntry:
     game_id: int
     title: str
     image_url: str | None = None
+    console_id: int = 0
 
 
 @dataclass
@@ -175,14 +176,18 @@ def cached_games_from_meta(metas: list[dict]) -> dict[int, CachedGameEntry]:
     """A game's patch names it; its achievementsets only name games cached without a patch."""
     games: dict[int, CachedGameEntry] = {}
     for meta in sorted(metas, key=lambda meta: not meta["cacheKey"].startswith(cache_keys.PREFIX_PATCH)):
-        games.setdefault(
+        console_id = int(meta.get("consoleId") or 0)
+        game = games.setdefault(
             int(meta["gameId"]),
             CachedGameEntry(
                 game_id=int(meta["gameId"]),
                 title=meta["title"] or f"Game {meta['gameId']}",
                 image_url=normalize_preview_url(meta["imagePath"]),
+                console_id=console_id,
             ),
         )
+        if not game.console_id:
+            game.console_id = console_id
     return games
 
 
