@@ -964,6 +964,7 @@ class MenuLayoutTests(unittest.TestCase):
         session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
         session.active_game = type("Game", (), {"game_id": 10701, "title": "Tetris"})()
         session.selected_index = 3
+        session.cached_games = []
         session.refresh_cached_games = lambda: None
         session.restore_view_position = lambda _view: None
 
@@ -1292,32 +1293,32 @@ class MenuLayoutTests(unittest.TestCase):
         session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
         session.view = "cached_games"
         session.main_online = True
-        session.cached_games = [type("Game", (), {"title": "Tetris", "game_id": 1})()]
+        session.cached_games = [type("Game", (), {"title": "Tetris", "game_id": 1, "console_id": 4})()]
 
         self.assertEqual(
             menu_sdl.MenuSdlSession.labels(session, running=False),
-            ["Add ROMs", "Watch folders", "Start Smart Cache", "Tetris", "Clear cache", "Back"],
+            ["Add ROMs", "Watch folders", "Start Smart Cache", "Game Boy (1)", "Clear cache", "Back"],
         )
 
-    def test_preview_target_game_matches_selected_row_when_offline(self) -> None:
+    def test_preview_target_game_matches_selected_row_of_the_platform(self) -> None:
         session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
-        session.view = "cached_games"
-        session.main_online = False
-        games = [type("Game", (), {"title": t, "game_id": i})() for i, t in enumerate("ABCD")]
+        session.view = "platform_games"
+        session.main_online = True
+        games = [type("Game", (), {"title": t, "game_id": i, "console_id": 4})() for i, t in enumerate("ABCD")]
         session.cached_games = games
+        session.platform_id = 4
         session.selected_index = 3
 
         self.assertIs(menu_sdl.MenuSdlSession.preview_target_game(session), games[3])
 
-    def test_preview_target_game_skips_header_rows_when_online(self) -> None:
+    def test_preview_target_game_is_empty_on_the_platform_list(self) -> None:
         session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
         session.view = "cached_games"
-        session.main_online = True
-        games = [type("Game", (), {"title": t, "game_id": i})() for i, t in enumerate("ABCD")]
-        session.cached_games = games
-        session.selected_index = 4
+        session.main_online = False
+        session.cached_games = [type("Game", (), {"title": "A", "game_id": 1, "console_id": 4})()]
+        session.selected_index = 0
 
-        self.assertIs(menu_sdl.MenuSdlSession.preview_target_game(session), games[1])
+        self.assertIsNone(menu_sdl.MenuSdlSession.preview_target_game(session))
 
     def test_proxy_running_outside_main_reads_service_status_at_most_once_per_interval(self) -> None:
         session = menu_sdl.MenuSdlSession.__new__(menu_sdl.MenuSdlSession)
