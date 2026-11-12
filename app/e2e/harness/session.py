@@ -55,16 +55,17 @@ SEEDED_PREFS = """<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
     <boolean name="app_update_check_enabled" value="false" />
     <boolean name="enable_smart_caching" value="false" />
     <boolean name="hide_support_button" value="true" />
+    <boolean name="support_prompt_disabled" value="true" />
     <boolean name="usage_stats_consent" value="false" />
 </map>
 """
 
-# The same seed with usage stats agreed to (consent version 1), for the scenario
+# The same seed with usage stats agreed to (consent version 2), for the scenario
 # that checks what a report contains.
 CONSENTED_PREFS = SEEDED_PREFS.replace(
     '<boolean name="usage_stats_consent" value="false" />',
     '<boolean name="usage_stats_consent" value="true" />\n'
-    '    <int name="usage_stats_consent_version" value="1" />',
+    '    <int name="usage_stats_consent_version" value="2" />',
 )
 
 def retroarch_cfg(hardcore: bool, custom_host: str = "") -> str:

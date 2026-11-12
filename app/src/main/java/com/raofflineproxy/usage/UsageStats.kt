@@ -31,6 +31,10 @@ internal object UsageStats {
         update { it.withBatch(result, durationMs) }
     }
 
+    fun recordFeature(key: String) {
+        update { it.withCount(key) }
+    }
+
     @Synchronized
     fun snapshot(context: Context): UsageCounters = load(prefs(context))
 

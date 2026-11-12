@@ -198,7 +198,7 @@ class TestUsageStats:
         assert ping["os"] == "Android"
         assert ping["build"] == "e2e"
         assert ping["schema_version"] == 1
-        assert ping["consent_version"] == 1
+        assert ping["consent_version"] == 2
         assert len(ping["client_id"]) == 64
         assert USER not in str(ping).lower(), "username leaked into the report"
         assert TOKEN not in str(ping), "token leaked into the report"
