@@ -7,6 +7,7 @@ import android.util.Log
 import com.raofflineproxy.data.AppDatabase
 import com.raofflineproxy.proxy.AwardFlusher
 import com.raofflineproxy.proxy.CacheQueue
+import com.raofflineproxy.proxyValue
 import kotlinx.coroutines.runBlocking
 
 private const val TAG = "RAProxy/ProxyControl"
@@ -55,7 +56,8 @@ internal object ProxyControl {
             nextWindowAt = CachingNotifications.nextQueueBatchAt.value,
             pendingAwardsCount = pendingAwards,
             pendingAwardsState = PendingAwardsState.resolve(pendingAwards, sync.syncing, running, online, sync.lastError),
-            pendingAwardsError = sync.lastError
+            pendingAwardsError = sync.lastError,
+            host = proxyValue(context)
         )
     }
 }

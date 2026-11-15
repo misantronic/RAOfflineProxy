@@ -132,13 +132,15 @@ class ProxyControlTest {
                 nextWindowAt = 1_759_230_000_000L,
                 pendingAwardsCount = 4,
                 pendingAwardsState = PendingAwardsState.Blocked,
-                pendingAwardsError = AwardSyncError.Auth
+                pendingAwardsError = AwardSyncError.Auth,
+                host = "127.0.0.1:8080"
             ).toJson()
         )
         assertEquals(PROXY_STATUS_VERSION, json.getInt("version"))
         assertTrue(json.getBoolean("running"))
         assertTrue(json.getBoolean("shouldBeRunning"))
         assertTrue(json.getBoolean("online"))
+        assertEquals("127.0.0.1:8080", json.getString("host"))
         val queue = json.getJSONObject("queue")
         assertEquals(342, queue.getInt("count"))
         assertEquals("waiting", queue.getString("state"))
@@ -160,7 +162,8 @@ class ProxyControlTest {
             nextWindowAt = 1_759_230_000_000L,
             pendingAwardsCount = 0,
             pendingAwardsState = PendingAwardsState.Idle,
-            pendingAwardsError = null
+            pendingAwardsError = null,
+            host = "127.0.0.1:8080"
         )
         assertTrue(JSONObject(blocked.toJson()).getJSONObject("queue").isNull("nextWindowAt"))
 
@@ -179,7 +182,8 @@ class ProxyControlTest {
             nextWindowAt = null,
             pendingAwardsCount = 2,
             pendingAwardsState = PendingAwardsState.Waiting,
-            pendingAwardsError = AwardSyncError.UploadFailed
+            pendingAwardsError = AwardSyncError.UploadFailed,
+            host = "127.0.0.1:8080"
         )
         assertTrue(JSONObject(status.toJson()).getJSONObject("pendingAwards").isNull("error"))
 

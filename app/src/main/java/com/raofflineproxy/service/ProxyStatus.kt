@@ -3,7 +3,7 @@ package com.raofflineproxy.service
 import com.raofflineproxy.proxy.AwardSyncError
 import org.json.JSONObject
 
-internal const val PROXY_STATUS_VERSION = 2
+internal const val PROXY_STATUS_VERSION = 3
 
 internal enum class QueueState(val wire: String) {
     Idle("idle"),
@@ -60,13 +60,15 @@ internal data class ProxyStatus(
     val nextWindowAt: Long?,
     val pendingAwardsCount: Int,
     val pendingAwardsState: PendingAwardsState,
-    val pendingAwardsError: AwardSyncError?
+    val pendingAwardsError: AwardSyncError?,
+    val host: String
 ) {
     fun toJson(): String = JSONObject()
         .put("version", PROXY_STATUS_VERSION)
         .put("running", running)
         .put("shouldBeRunning", shouldBeRunning)
         .put("online", online)
+        .put("host", host)
         .put(
             "queue",
             JSONObject()

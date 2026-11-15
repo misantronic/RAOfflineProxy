@@ -75,10 +75,11 @@ Since Android 12, an app in the background may not start a foreground service. W
 
 ```json
 {
-  "version": 2,
+  "version": 3,
   "running": true,
   "shouldBeRunning": true,
   "online": true,
+  "host": "127.0.0.1:8080",
   "queue": { "count": 342, "state": "waiting", "nextWindowAt": 1759230000000 },
   "pendingAwards": { "count": 3, "state": "syncing", "error": null }
 }
@@ -86,10 +87,11 @@ Since Android 12, an app in the background may not start a foreground service. W
 
 | Field | Meaning |
 |---|---|
-| `version` | `2` since `pendingAwards` was added |
+| `version` | `3` since `host` was added, `2` since `pendingAwards` was added |
 | `running` | The proxy accepts connections |
 | `shouldBeRunning` | RAOfflineProxy intends the proxy to run. `true` while `running` is `false` means it's starting or about to restart |
 | `online` | RetroAchievements is reachable |
+| `host` | Where the proxy listens, as `host:port`. An emulator that asks the proxy itself uses it as its RetroAchievements host while `running` is `true` |
 | `queue.count` | Games waiting in the [caching queue](/caching-games) |
 | `queue.state` | See below |
 | `queue.nextWindowAt` | Epoch milliseconds of the next caching batch while `waiting`, otherwise `null` |
