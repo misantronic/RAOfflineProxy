@@ -14,7 +14,12 @@ class CredentialSourceGateTest {
     )
 
     private val broadcastOnly = Emulator.entries.filter {
-        it !in listOf(Emulator.RetroArch, Emulator.Dolphin, Emulator.Ppsspp)
+        it !in listOf(Emulator.RetroArch, Emulator.Dolphin, Emulator.Ppsspp, Emulator.DuckStation)
+    }
+
+    @Test
+    fun noCachedCredentials_withDuckStationEnabled_hasCredentialSource() {
+        assertTrue(hasCredentialSource(false, supportWithEnabled(Emulator.DuckStation)))
     }
 
     @Test

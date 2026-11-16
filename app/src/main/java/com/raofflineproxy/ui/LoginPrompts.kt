@@ -8,7 +8,8 @@ internal fun hasCredentialSource(
 ): Boolean = hasCachedCredentials ||
     emulatorSupport.isEnabled(Emulator.RetroArch) ||
     emulatorSupport.isEnabled(Emulator.Dolphin) ||
-    emulatorSupport.isEnabled(Emulator.Ppsspp)
+    emulatorSupport.isEnabled(Emulator.Ppsspp) ||
+    emulatorSupport.isEnabled(Emulator.DuckStation)
 
 internal fun needsLoginChoice(
     hasCachedCredentials: Boolean,
