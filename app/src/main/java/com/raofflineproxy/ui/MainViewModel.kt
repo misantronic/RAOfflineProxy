@@ -132,8 +132,6 @@ sealed interface MainUiEvent {
     /** A companion emulator has a library provider but has not been allowed to share it.
      *  Carries the emulator packages to ask, in order. */
     data class RequestCompanionLibraryConsent(val packages: List<String>) : MainUiEvent
-    /** An emulator exposes a host-override provider but has not been allowed to serve this app. */
-    data class RequestHostOverrideConsent(val packageName: String) : MainUiEvent
 }
 
 private sealed interface PendingCredentialAction {
@@ -703,16 +701,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun onHostOverrideConsentResult(granted: Boolean) {
-        if (!pendingProxyStart) return
-        if (granted) {
-            startProxyInternal(loadSafUri())
-        } else {
-            pendingProxyStart = false
-            SnackbarManager.showError(str(R.string.dolphin_consent_declined))
-        }
-    }
-
     fun onPpssppShizukuRootModeSelected(usesCustomRoot: Boolean) {
         val app = getApplication<Application>()
         pendingPpssppShizukuRootModePrompt = false
@@ -1174,10 +1162,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     ConfigPatchResult(success = true, message = "Dolphin disabled.", skippedNotInstalled = true)
                 }
                 if (emulatorSupport.isEnabled(Emulator.Dolphin)) {
-                    if (dolphinResult.needsConsentPackage != null) {
-                        _events.tryEmit(MainUiEvent.RequestHostOverrideConsent(dolphinResult.needsConsentPackage))
-                        return@launch
-                    } else if (dolphinResult.needsSafGrant) {
+                    if (dolphinResult.needsSafGrant) {
                         PrefsConstants.clearDolphinSafUri(app)
                         _state.value = _state.value.copy(
                             needsSafGrant = true,
