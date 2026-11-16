@@ -181,7 +181,6 @@ enum class Emulator(
             patchErrorRes = R.string.joey64_patch_error_unavailable,
             revertSuccessRes = R.string.joey64_revert_success,
             revertErrorRes = R.string.joey64_revert_error_unavailable,
-            // Joey64 only takes hosts on the device (127.0.0.1, localhost, [::1]).
             defaultReceiverClass = "com.joeysretro.joey64.achievements.RetroAchievementsHostOverrideReceiver"
         )
     ),
