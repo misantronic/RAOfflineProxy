@@ -51,7 +51,7 @@ If you opt in, the app sends one small report per day to a backend operated by t
 - An anonymous ID, see below
 - App version, device model (for example "AYN Thor"), Android version and which emulators are enabled. On Linux handhelds: the firmware name and version (for example "ROCKNIX"), the device model and which emulators the proxy is set up for. On Windows: the Windows version (for example "Windows 11 24H2"), the PC or handheld model and which emulators the proxy is set up for
 - Rounded ranges of how many games are cached or queued, how old the oldest queued game is, and how many offline awards are pending (for example "100-249", never exact lists)
-- Counters since the last report: how many requests the app sent to RetroAchievements (split by emulator traffic, award sync, background caching and app actions), the busiest 30-minute window, and how many requests failed or were rate-limited, plus how many caching batches ran and how long they took
+- Counters since the last report: how many requests the app sent to RetroAchievements (split by emulator traffic, award sync, background caching and app actions), the busiest 30-minute window, and how many requests failed or were rate-limited, plus how many caching batches ran and how long they took, and how often the "Support me" dialog was shown, opened and used to start a donation (only the number of times, never amounts or payment details)
 
 The report never contains your RetroAchievements username, password, token, game titles, game IDs, ROM hashes or achievements.
 

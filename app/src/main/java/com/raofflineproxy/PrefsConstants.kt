@@ -37,11 +37,14 @@ object PrefsConstants {
     const val KEY_APP_UPDATE_LAST_PROMPTED_AT = "app_update_last_prompted_at"
     const val KEY_HIDE_SUPPORT_BUTTON = "hide_support_button"
     const val KEY_SHOW_LOCKED_ACHIEVEMENTS = "show_locked_achievements"
+    const val KEY_SYNCED_AWARDS_TOTAL = "synced_awards_total"
+    const val KEY_SUPPORT_PROMPT_MILESTONE = "support_prompt_milestone"
+    const val KEY_SUPPORT_PROMPT_DISABLED = "support_prompt_disabled"
     const val KEY_USAGE_STATS_CONSENT = "usage_stats_consent"
     const val KEY_USAGE_STATS_CONSENT_VERSION = "usage_stats_consent_version"
     // Bump when the usage report starts collecting a new kind of data, so users who agreed to the
     // old scope are asked again. Users who declined are not asked again.
-    const val USAGE_STATS_CONSENT_VERSION = 1
+    const val USAGE_STATS_CONSENT_VERSION = 2
     private const val KEY_LAST_SEEN_VERSION_CODE = "last_seen_version_code"
     private const val KEY_AVAILABLE_APP_UPDATE = "available_app_update"
 
@@ -308,6 +311,35 @@ object PrefsConstants {
     fun saveHideSupportButtonEnabled(context: Context, enabled: Boolean) {
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .edit { putBoolean(KEY_HIDE_SUPPORT_BUTTON, enabled) }
+    }
+
+    fun loadSyncedAwardsTotal(context: Context): Int =
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getInt(KEY_SYNCED_AWARDS_TOTAL, 0)
+
+    @Synchronized
+    fun addSyncedAwards(context: Context, count: Int) {
+        if (count <= 0) return
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        prefs.edit { putInt(KEY_SYNCED_AWARDS_TOTAL, prefs.getInt(KEY_SYNCED_AWARDS_TOTAL, 0) + count) }
+    }
+
+    fun loadSupportPromptMilestone(context: Context): Int =
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getInt(KEY_SUPPORT_PROMPT_MILESTONE, 0)
+
+    fun saveSupportPromptMilestone(context: Context, milestone: Int) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit { putInt(KEY_SUPPORT_PROMPT_MILESTONE, milestone) }
+    }
+
+    fun loadSupportPromptDisabled(context: Context): Boolean =
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getBoolean(KEY_SUPPORT_PROMPT_DISABLED, false)
+
+    fun saveSupportPromptDisabled(context: Context, disabled: Boolean) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit { putBoolean(KEY_SUPPORT_PROMPT_DISABLED, disabled) }
     }
 
     fun loadShowLockedAchievementsEnabled(context: Context): Boolean =

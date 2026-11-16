@@ -25,6 +25,10 @@ internal object UsageCounterKeys {
     const val QUEUE_NO_MATCH = "queue_no_match"
     const val QUEUE_EMPTIED = "queue_emptied"
     const val QUEUE_FAILED = "queue_failed"
+    const val FEATURE_SUPPORT_OPENED = "feature_support_opened"
+    const val FEATURE_SUPPORT_STARTED = "feature_support_started"
+    const val FEATURE_SUPPORT_PROMPT_SHOWN = "feature_support_prompt_shown"
+    const val FEATURE_SUPPORT_PROMPT_STARTED = "feature_support_prompt_started"
 
     val INTERNAL = setOf(WINDOW_START, WINDOW_REQUESTS)
 
@@ -78,6 +82,9 @@ internal data class UsageCounters(val values: Map<String, Long> = emptyMap()) {
         if (result.stop == DrainStop.Empty) next.increment(UsageCounterKeys.QUEUE_EMPTIED)
         return UsageCounters(next)
     }
+
+    fun withCount(key: String): UsageCounters =
+        UsageCounters(values.toMutableMap().apply { increment(key) })
 
     fun reportable(): Map<String, Long> =
         values.filterKeys { it !in UsageCounterKeys.INTERNAL }.filterValues { it > 0 }

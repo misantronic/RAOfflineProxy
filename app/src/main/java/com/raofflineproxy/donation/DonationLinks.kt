@@ -24,6 +24,11 @@ object DonationLinks {
         DonationAmountOption("$15", "https://buy.stripe.com/eVq14p7L55yy7zV2l9bwk0k", 1500)
     )
 
+    private val QUICK_ONE_TIME_CENTS = listOf(300, 500, 1000)
+
+    val QUICK_ONE_TIME: List<DonationAmountOption> =
+        QUICK_ONE_TIME_CENTS.mapNotNull { cents -> ONE_TIME.firstOrNull { it.amountCents == cents } }
+
     // Indexes into MONTHLY/ONE_TIME that the amount dropdowns preselect.
     const val MONTHLY_DEFAULT_INDEX = 1 // "$3 / month"
     const val ONE_TIME_DEFAULT_INDEX = 1 // "$5"
