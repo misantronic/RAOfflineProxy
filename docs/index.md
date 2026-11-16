@@ -80,6 +80,10 @@ features:
           <span>Mupen64Plus AE (fork)</span>
         </div>
         <div class="supported-platforms__item">
+          <img class="supported-platforms__logo--rounded" src="/joey64.png" alt="Joey64 logo">
+          <span>Joey64</span>
+        </div>
+        <div class="supported-platforms__item">
           <img class="supported-platforms__logo--rounded" src="/argosy-launcher.png" alt="Argosy Launcher logo">
           <span>Argosy Launcher</span>
         </div>

@@ -80,6 +80,7 @@
     <string name="emulator_flycast">Flycast</string>
     <string name="emulator_watermelonds">WatermelonDS</string>
     <string name="emulator_mupen64">Mupen64Plus</string>
+    <string name="emulator_joey64">Joey64</string>
     <string name="emulator_emucorex">EmuCoreX</string>
     <string name="emulator_armsx1">ARMSX1</string>
     <string name="emulator_nethersx2">NetherSX2</string>
@@ -147,6 +148,8 @@
     <string name="watermelonds_patch_error_unavailable">Could not patch WatermelonDS automatically. Make sure a supported WatermelonDS build is installed and try again.</string>
     <string name="mupen64_patch_success">Mupen64Plus patched successfully.</string>
     <string name="mupen64_patch_error_unavailable">Could not patch Mupen64Plus automatically. Make sure a supported Mupen64Plus build is installed and try again.</string>
+    <string name="joey64_patch_success">Joey64 patched successfully.</string>
+    <string name="joey64_patch_error_unavailable">Could not patch Joey64 automatically. Make sure Joey64 is installed and try again.</string>
     <string name="emucorex_patch_success">EmuCoreX patched successfully.</string>
     <string name="emucorex_patch_error_unavailable">Could not patch EmuCoreX automatically. Make sure a supported EmuCoreX build is installed and try again.</string>
     <string name="armsx1_patch_success">ARMSX1 patched successfully.</string>
@@ -182,6 +185,8 @@
     <string name="watermelonds_revert_error_unavailable">Could not revert WatermelonDS automatically. Reopen the app and try again.</string>
     <string name="mupen64_revert_success">Mupen64Plus reverted successfully.</string>
     <string name="mupen64_revert_error_unavailable">Could not revert Mupen64Plus automatically. Reopen the app and try again.</string>
+    <string name="joey64_revert_success">Joey64 reverted successfully.</string>
+    <string name="joey64_revert_error_unavailable">Could not revert Joey64 automatically. Reopen the app and try again.</string>
     <string name="emucorex_revert_success">EmuCoreX reverted successfully.</string>
     <string name="emucorex_revert_error_unavailable">Could not revert EmuCoreX automatically. Reopen the app and try again.</string>
     <string name="armsx1_revert_success">ARMSX1 reverted successfully.</string>
