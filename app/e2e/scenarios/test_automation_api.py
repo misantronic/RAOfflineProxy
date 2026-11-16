@@ -19,7 +19,7 @@ HARDCORE_KEY = "cheevos_hardcore_mode_enable"
 CUSTOM_HOST_KEY = "cheevos_custom_host"
 AUTOSTART_PREF = "autostart_proxy"
 BACKGROUND_FGS_RESTRICTED_SDK = 31
-STATUS_VERSION = 2
+STATUS_VERSION = 3
 MSLUG_HASH = "b43c8b4ec999588c04dad79bb8bcc745"
 MSLUG_GAME_ID = 1447
 
@@ -39,6 +39,7 @@ class TestStatus:
         status = android.status()
 
         assert status["version"] == STATUS_VERSION
+        assert status["host"] == "127.0.0.1:8080"
         assert status["running"] is False
         assert status["shouldBeRunning"] is False
         assert status["queue"] == {"count": 0, "state": "idle", "nextWindowAt": None}
