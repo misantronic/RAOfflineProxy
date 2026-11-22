@@ -9,8 +9,8 @@ system partition.
 The build reuses the aarch64 pygame vendor payload from the ROCKNIX bundle:
 
 ```bash
-./linux/rocknix/fetch_vendor.sh
-./linux/banana/build_bundle.sh
+git submodule update --init --recursive
+nix-shell shell.nix --run './linux/rocknix/fetch_vendor.sh && ./linux/banana/build_bundle.sh'
 ```
 
 The ZIP is written to `linux/banana/dist/`.
@@ -29,7 +29,7 @@ The proxy stores its state under `/data/banana/raofflineproxy` and listens only
 on `127.0.0.1:18080`. BananaOS does not assign an address to loopback by
 default, so the launcher checks for `127.0.0.1/8` and only adds it when missing.
 
-When GBA DS is installed, proxy startup snapshots and updates one of these
+When GBA DS is installed, proxy startup updates one of these
 configs with `ra_host = http://127.0.0.1:18080`:
 
 - `/data/store/apps/gbads/gba-ds.cfg` for the App Store app
