@@ -10,7 +10,8 @@ The build reuses the aarch64 pygame vendor payload from the ROCKNIX bundle:
 
 ```bash
 git submodule update --init --recursive
-nix-shell shell.nix --run './linux/rocknix/fetch_vendor.sh && ./linux/banana/build_bundle.sh'
+./linux/rocknix/fetch_vendor.sh
+./linux/banana/build_bundle.sh
 ```
 
 The ZIP is written to `linux/banana/dist/`.
