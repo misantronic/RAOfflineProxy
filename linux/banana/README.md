@@ -25,6 +25,11 @@ The proxy stores its state under `/data/banana/raofflineproxy` and listens only
 on `127.0.0.1:18080`. BananaOS does not assign an address to loopback by
 default, so the launcher checks for `127.0.0.1/8` and only adds it when missing.
 
+When the GBA DS App Store app is installed, proxy startup snapshots and updates
+`/data/store/apps/gbads/gba-ds.cfg` with `ra_host = http://127.0.0.1:18080`.
+Stopping the proxy restores the original file. The file is left untouched when
+GBA DS is not installed.
+
 ## GBA DS
 
 GBA DS uses its own embedded RetroAchievements client and does not inherit
