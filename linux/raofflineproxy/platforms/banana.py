@@ -22,27 +22,22 @@ GBADS_CONFIGS = (
 )
 
 
-def _rewrite_gbads_config(content: str) -> str:
-    replacement = f"ra_host = {GBADS_HOST}"
+def _rewrite_gbads_config(content: str, host: str | None) -> str:
+    replacement = f"ra_host = {host}" if host is not None else None
     lines: list[str] = []
     replaced = False
     for line in content.splitlines():
         if re.match(r"^\s*#?\s*ra_host\s*=", line):
-            if not replaced:
+            if replacement is not None and not replaced:
                 lines.append(replacement)
                 replaced = True
             continue
         lines.append(line)
-    if not replaced:
+    if replacement is not None and not replaced:
         if lines and lines[-1] != "":
             lines.append("")
         lines.append(replacement)
     return "\n".join(lines) + "\n"
-
-
-def _backup_path(config_path: Path) -> Path:
-    name = config_path.parent.name or "gbads"
-    return CONFIG_DIR / f"{name}.gba-ds.cfg.raofflineproxy-original"
 
 
 def patch_gbads_config(config_path: Path) -> None:
@@ -50,12 +45,8 @@ def patch_gbads_config(config_path: Path) -> None:
         return
 
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-    backup_path = _backup_path(config_path)
-    if not backup_path.exists():
-        shutil.copy2(config_path, backup_path)
-
     original = config_path.read_text(encoding="utf-8", errors="replace")
-    updated = _rewrite_gbads_config(original)
+    updated = _rewrite_gbads_config(original, GBADS_HOST)
     if updated == original:
         return
 
@@ -77,17 +68,30 @@ def patch_gbads_config(config_path: Path) -> None:
     LOGGER.info("Patched GBA DS RetroAchievements host: %s", config_path)
 
 
-def restore_gbads_config(config_path: Path) -> None:
-    backup_path = _backup_path(config_path)
-    if not backup_path.is_file():
+def remove_gbads_config(config_path: Path) -> None:
+    if not config_path.is_file():
         return
-    try:
-        shutil.copy2(backup_path, config_path)
-        backup_path.unlink()
-        LOGGER.info("Restored GBA DS RetroAchievements config: %s", config_path)
-    except OSError:
-        LOGGER.exception("Failed to restore GBA DS configuration")
 
+    original = config_path.read_text(encoding="utf-8", errors="replace")
+    updated = _rewrite_gbads_config(original, None)
+    if updated == original:
+        return
+
+    fd, temporary = tempfile.mkstemp(
+        prefix=".gba-ds.cfg.", dir=str(config_path.parent), text=True
+    )
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(updated)
+        shutil.copymode(config_path, temporary)
+        os.replace(temporary, config_path)
+        LOGGER.info("Removed GBA DS RetroAchievements host: %s", config_path)
+    except Exception:
+        try:
+            os.unlink(temporary)
+        except OSError:
+            pass
+        raise
 
 class BananaPlatform(Platform):
     id = "bananaos"
@@ -118,7 +122,10 @@ class BananaPlatform(Platform):
 
     def on_proxy_stopped(self) -> None:
         for config_path in GBADS_CONFIGS:
-            restore_gbads_config(config_path)
+            try:
+                remove_gbads_config(config_path)
+            except OSError:
+                LOGGER.exception("Failed to remove GBA DS configuration: %s", config_path)
 
 
 PLATFORM = BananaPlatform()

@@ -35,8 +35,9 @@ configs with `ra_host = http://127.0.0.1:18080`:
 - `/data/store/apps/gbads/gba-ds.cfg` for the App Store app
 - `/data/roms/ports/gba-ds/gba-ds.cfg` for a manually extracted release
 
-Stopping the proxy restores the original file. The configs are left untouched
-when GBA DS is not installed.
+Stopping the proxy removes only the `ra_host` setting. All other GBA DS
+settings are left untouched. The configs are left untouched when GBA DS is not
+installed.
 
 ## GBA DS
 
