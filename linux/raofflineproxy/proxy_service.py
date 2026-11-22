@@ -21,7 +21,6 @@ from .config import (
     DATABASE_FILE,
     FALLBACK_USER_AGENT,
     RA_MEDIA_HOST,
-    allow_non_loopback,
     image_caching_enabled,
     proxy_host,
     proxy_port,
@@ -232,10 +231,7 @@ class ProxyRequestHandler(BaseHTTPRequestHandler):
         LOGGER.debug(format, *args)
 
     def _handle_request(self) -> None:
-        if (
-            self.client_address[0] not in {"127.0.0.1", "::1"}
-            and not self.server.allow_non_loopback
-        ):
+        if self.client_address[0] not in {"127.0.0.1", "::1"}:
             LOGGER.warning("Rejected non-loopback client: %s", self.client_address[0])
             self.wfile.write(error_json(403, "loopback_only"))
             return
@@ -283,9 +279,8 @@ class ProxyRuntimeServer(ThreadingTCPServer):
         self.has_internet = False
         self.activity = GameActivityTracker()
         self.flush_lock = threading.Lock()
-        self.allow_non_loopback = allow_non_loopback(self.config_data)
         self.pending_award_lock = threading.Lock()
-        host = proxy_bind_host(self.config_data)
+        host = proxy_host(self.config_data)
         port = proxy_port(self.config_data)
         inherited = adopt_listen_socket()
         super().__init__(
@@ -1330,7 +1325,6 @@ def run_proxy_service(
     server = ProxyRuntimeServer(config_data, storage)
     LOGGER.info(
         "Proxy listening bind_host=%s client_host=%s port=%s",
-        proxy_bind_host(config_data),
         proxy_host(config_data),
         proxy_port(config_data),
     )

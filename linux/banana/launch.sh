@@ -24,15 +24,17 @@ export LD_LIBRARY_PATH="$LIB_DIR${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 
 mkdir -p "$CONFIG_DIR"
 if [ ! -f "$CONFIG_DIR/config.json" ]; then
-  printf '%s\n' '{"proxy_bind_host":"0.0.0.0","allow_non_loopback":true,"proxy_host":"127.0.0.1","proxy_port":18080,"retroarch_cfg":"/data/retroarch/retroarch.cfg"}' > "$CONFIG_DIR/config.json"
+  printf '%s\n' '{"proxy_host":"127.0.0.1","proxy_port":18080,"retroarch_cfg":"/data/retroarch/retroarch.cfg"}' > "$CONFIG_DIR/config.json"
 fi
 
 enable_loopback() {
-  if command -v ip >/dev/null 2>&1; then
-    ip link set lo up 2>/dev/null || true
-    ip addr add 127.0.0.1/8 dev lo 2>/dev/null || true
-  elif command -v ifconfig >/dev/null 2>&1; then
-    ifconfig lo 127.0.0.1 netmask 255.0.0.0 up 2>/dev/null || true
+    if command -v ip >/dev/null 2>&1; then
+        ip -4 addr show dev lo 2>/dev/null | grep -q '127\.0\.0\.1/' && return 0
+        ip link set lo up 2>/dev/null || true
+        ip addr add 127.0.0.1/8 dev lo 2>/dev/null || true
+    elif command -v ifconfig >/dev/null 2>&1; then
+        ifconfig lo 2>/dev/null | grep -q '127\.0\.0\.1' && return 0
+        ifconfig lo 127.0.0.1 netmask 255.0.0.0 up 2>/dev/null || true
   fi
 }
 

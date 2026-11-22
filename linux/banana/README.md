@@ -21,11 +21,9 @@ Extract the ZIP into the BananaOS card's `roms/ports` directory. Start
 `RAOfflineProxy` from the Ports shelf. It starts the proxy in the background
 and opens the SDL menu.
 
-The proxy stores its state under `/data/banana/raofflineproxy` and listens on
-port `18080`. BananaOS does not configure loopback by default, so the launcher
-brings up `lo`, binds the service on `0.0.0.0`, and permits local non-loopback
-clients. The logical client host remains `127.0.0.1` for RetroArch config
-patching.
+The proxy stores its state under `/data/banana/raofflineproxy` and listens only
+on `127.0.0.1:18080`. BananaOS does not assign an address to loopback by
+default, so the launcher checks for `127.0.0.1/8` and only adds it when missing.
 
 ## GBA DS
 
