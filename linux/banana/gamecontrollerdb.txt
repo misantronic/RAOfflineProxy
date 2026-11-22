@@ -1,0 +1,10 @@
+# SDL controller mappings read by GBA DS at start (before the system's own).
+# The RG DS / RG DS Plus built-in controls, as ROCKNIX maps them
+# (ROCKNIX/distribution, projects/ROCKNIX/packages/apps/gamecontrollerdb, GPL-2.0):
+# needed on systems that ship no mapping for them, such as BananaOS.
+03009b4d4b4800000111000000010000,retrogame_joypad,platform:Linux,x:b2,a:b0,b:b1,y:b3,back:b8,start:b9,dpleft:b15,dpdown:b14,dpright:b16,dpup:b13,leftshoulder:b4,lefttrigger:b6,rightshoulder:b5,righttrigger:b7,leftstick:b11,rightstick:b12,leftx:a0,lefty:a1,rightx:a2,righty:a3,
+19009b4d4b4800000111000000010000,retrogame_joypad,platform:Linux,x:b2,a:b0,b:b1,y:b3,back:b8,guide:b10,start:b9,dpleft:b15,dpdown:b14,dpright:b16,dpup:b13,leftshoulder:b4,lefttrigger:b6,rightshoulder:b5,righttrigger:b7,leftstick:b11,rightstick:b12,leftx:a0,lefty:a1,rightx:a2,righty:a3,
+# The RG DS Plus's Stock Linux OS (ANBERNIC-rk3568-keys), from Map Buttons on the
+# device (Oct 23, 2026): face buttons by position as GBA DS reads them (a bottom,
+# b right, x top, y left). guide is raw 8; launch.sh makes raw 13 a HOME button too.
+1900b655010000000100000000010000,ANBERNIC-rk3568-keys,dpup:h0.1,dpdown:h0.4,dpleft:h0.8,dpright:h0.2,b:b0,a:b1,x:b3,y:b2,leftshoulder:b4,rightshoulder:b5,lefttrigger:b10,righttrigger:b11,back:b6,start:b7,guide:b8,leftstick:b9,lefty:a1,leftx:a0~,crc:55b6,platform:Linux,
