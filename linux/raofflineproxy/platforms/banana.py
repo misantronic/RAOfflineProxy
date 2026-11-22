@@ -15,9 +15,11 @@ BANANA_MARKER = Path("/etc/banana")
 CONFIG_DIR = Path("/data/banana/raofflineproxy")
 RETROARCH_CFG = Path("/data/retroarch/retroarch.cfg")
 ROMS_ROOT = Path("/data/roms")
-GBADS_CFG = Path("/data/store/apps/gbads/gba-ds.cfg")
-GBADS_BACKUP = CONFIG_DIR / "gba-ds.cfg.raofflineproxy-original"
 GBADS_HOST = "http://127.0.0.1:18080"
+GBADS_CONFIGS = (
+    Path("/data/store/apps/gbads/gba-ds.cfg"),
+    Path("/data/roms/ports/gba-ds/gba-ds.cfg"),
+)
 
 
 def _rewrite_gbads_config(content: str) -> str:
@@ -38,27 +40,33 @@ def _rewrite_gbads_config(content: str) -> str:
     return "\n".join(lines) + "\n"
 
 
-def patch_gbads_config() -> None:
-    if not GBADS_CFG.is_file():
+def _backup_path(config_path: Path) -> Path:
+    name = config_path.parent.name or "gbads"
+    return CONFIG_DIR / f"{name}.gba-ds.cfg.raofflineproxy-original"
+
+
+def patch_gbads_config(config_path: Path) -> None:
+    if not config_path.is_file():
         return
 
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-    if not GBADS_BACKUP.exists():
-        shutil.copy2(GBADS_CFG, GBADS_BACKUP)
+    backup_path = _backup_path(config_path)
+    if not backup_path.exists():
+        shutil.copy2(config_path, backup_path)
 
-    original = GBADS_CFG.read_text(encoding="utf-8", errors="replace")
+    original = config_path.read_text(encoding="utf-8", errors="replace")
     updated = _rewrite_gbads_config(original)
     if updated == original:
         return
 
     fd, temporary = tempfile.mkstemp(
-        prefix=".gba-ds.cfg.", dir=str(GBADS_CFG.parent), text=True
+        prefix=".gba-ds.cfg.", dir=str(config_path.parent), text=True
     )
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as handle:
             handle.write(updated)
-        shutil.copymode(GBADS_CFG, temporary)
-        os.replace(temporary, GBADS_CFG)
+        shutil.copymode(config_path, temporary)
+        os.replace(temporary, config_path)
     except Exception:
         try:
             os.unlink(temporary)
@@ -66,16 +74,17 @@ def patch_gbads_config() -> None:
             pass
         raise
 
-    LOGGER.info("Patched GBA DS RetroAchievements host: %s", GBADS_CFG)
+    LOGGER.info("Patched GBA DS RetroAchievements host: %s", config_path)
 
 
-def restore_gbads_config() -> None:
-    if not GBADS_BACKUP.is_file():
+def restore_gbads_config(config_path: Path) -> None:
+    backup_path = _backup_path(config_path)
+    if not backup_path.is_file():
         return
     try:
-        shutil.copy2(GBADS_BACKUP, GBADS_CFG)
-        GBADS_BACKUP.unlink()
-        LOGGER.info("Restored GBA DS RetroAchievements config: %s", GBADS_CFG)
+        shutil.copy2(backup_path, config_path)
+        backup_path.unlink()
+        LOGGER.info("Restored GBA DS RetroAchievements config: %s", config_path)
     except OSError:
         LOGGER.exception("Failed to restore GBA DS configuration")
 
@@ -101,13 +110,15 @@ class BananaPlatform(Platform):
         return ROMS_ROOT if ROMS_ROOT.is_dir() else None
 
     def on_proxy_started(self, config_data: dict) -> None:
-        try:
-            patch_gbads_config()
-        except OSError:
-            LOGGER.exception("Failed to patch GBA DS configuration")
+        for config_path in GBADS_CONFIGS:
+            try:
+                patch_gbads_config(config_path)
+            except OSError:
+                LOGGER.exception("Failed to patch GBA DS configuration: %s", config_path)
 
     def on_proxy_stopped(self) -> None:
-        restore_gbads_config()
+        for config_path in GBADS_CONFIGS:
+            restore_gbads_config(config_path)
 
 
 PLATFORM = BananaPlatform()

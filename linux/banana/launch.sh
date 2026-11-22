@@ -28,6 +28,9 @@ if [ ! -f "$CONFIG_DIR/config.json" ]; then
 fi
 
 enable_loopback() {
+    # BananaOS 0.5.0 brings lo up during boot but does not assign 127.0.0.1/8.
+    # Keep this idempotent so newer BananaOS releases that fix that omission
+    # need no special handling here.
     if command -v ip >/dev/null 2>&1; then
         ip -4 addr show dev lo 2>/dev/null | grep -q '127\.0\.0\.1/' && return 0
         ip link set lo up 2>/dev/null || true

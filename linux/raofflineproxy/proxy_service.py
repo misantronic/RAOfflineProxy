@@ -1324,7 +1324,7 @@ def run_proxy_service(
     # the whole session. Once the socket listens, those connections queue.
     server = ProxyRuntimeServer(config_data, storage)
     LOGGER.info(
-        "Proxy listening bind_host=%s client_host=%s port=%s",
+        "Proxy listening host=%s port=%s",
         proxy_host(config_data),
         proxy_port(config_data),
     )
