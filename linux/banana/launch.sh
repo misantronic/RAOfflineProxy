@@ -41,26 +41,6 @@ run_core() {
   return "${PIPESTATUS[0]}"
 }
 
-diagnose() {
-  {
-    echo "=== RAOfflineProxy BananaOS diagnostic ==="
-    date
-    echo "python: $($PYTHON -V 2>&1)"
-    echo "retroarch_cfg_exists: $([ -f "$RETROARCH_CFG" ] && echo yes || echo no)"
-    echo "--- socket bind probes ---"
-    "$PYTHON" -c 'import socket
-for host in ("127.0.0.1", "0.0.0.0"):
-  for port in (18080, 19080, 28080):
-    try:
-      s=socket.socket(socket.AF_INET, socket.SOCK_STREAM); s.bind((host, port)); s.close(); print(f"bind {host}:{port}: ok")
-    except OSError as exc:
-      print(f"bind {host}:{port}: {exc}")'
-    echo "--- import checks ---"
-    "$PYTHON" -c 'import raofflineproxy.main; print("raofflineproxy: ok")'
-    "$PYTHON" -c 'import pygame; print(f"pygame: {pygame.version.ver}")'
-  } 2>&1 | tee -a "$LOG_FILE"
-}
-
 case "${1:-start}" in
   start)
     enable_loopback
@@ -77,9 +57,6 @@ case "${1:-start}" in
   status)
     run_core service-status
     ;;
-  diagnose)
-    diagnose
-    ;;
   menu)
     enable_loopback
     export SDL_VIDEODRIVER="${SDL_VIDEODRIVER:-kmsdrm}"
@@ -94,7 +71,7 @@ case "${1:-start}" in
     run_core menu-sdl
     ;;
   *)
-    echo "Usage: $0 {start|stop|restart|status|diagnose|menu}" >&2
+    echo "Usage: $0 {start|stop|restart|status|menu}" >&2
     exit 2
     ;;
 esac

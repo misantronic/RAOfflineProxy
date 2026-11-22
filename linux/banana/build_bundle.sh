@@ -32,7 +32,6 @@ cp -R "${VENDOR_DIR}/pygame/." "${APP_DIR}/pygame/"
 cp -R "${VENDOR_DIR}/pygame_ce.libs/." "${APP_DIR}/pygame_ce.libs/"
 cp "${SCRIPT_DIR}/gamecontrollerdb.txt" "${BUILD_DIR}/raofflineproxy/gamecontrollerdb.txt"
 cp "${SCRIPT_DIR}/RAOfflineProxy.sh" "${BUILD_DIR}/RAOfflineProxy.sh"
-cp "${SCRIPT_DIR}/RAOfflineProxy-Diagnose.sh" "${BUILD_DIR}/RAOfflineProxy Diagnose.sh"
 cp "${SCRIPT_DIR}/README.md" "${BUILD_DIR}/README.md"
 cp "${LINUX_DIR}/../docs/public/logo-320.png" "${BUILD_DIR}/images/RAOfflineProxy.png"
 cp "${SCRIPT_DIR}/launch.sh" "${BUILD_DIR}/raofflineproxy/launch.sh"
@@ -44,7 +43,6 @@ find "${APP_DIR}/pygame" -name "__pycache__" -type d -prune -exec rm -rf {} +
 find "${APP_DIR}/pygame" -name "*.pyc" -delete
 
 chmod +x "${BUILD_DIR}/RAOfflineProxy.sh"
-chmod +x "${BUILD_DIR}/RAOfflineProxy Diagnose.sh"
 chmod +x "${BUILD_DIR}/raofflineproxy/launch.sh"
 
 mkdir -p "${DIST_DIR}"
