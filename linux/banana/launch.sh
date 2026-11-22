@@ -29,16 +29,16 @@ fi
 
 enable_loopback() {
     # BananaOS 0.5.0 brings lo up during boot but does not assign 127.0.0.1/8.
-    # Keep this idempotent so newer BananaOS releases that fix that omission
-    # need no special handling here.
+    # Check every interface first: a future image or user configuration may
+    # already assign the address somewhere other than lo.
     if command -v ip >/dev/null 2>&1; then
-        ip -4 addr show dev lo 2>/dev/null | grep -q '127\.0\.0\.1/' && return 0
+        ip -4 addr show 2>/dev/null | grep -q 'inet 127\.0\.0\.1/' && return 0
         ip link set lo up 2>/dev/null || true
         ip addr add 127.0.0.1/8 dev lo 2>/dev/null || true
     elif command -v ifconfig >/dev/null 2>&1; then
-        ifconfig lo 2>/dev/null | grep -q '127\.0\.0\.1' && return 0
+        ifconfig -a 2>/dev/null | grep -q '127\.0\.0\.1' && return 0
         ifconfig lo 127.0.0.1 netmask 255.0.0.0 up 2>/dev/null || true
-  fi
+    fi
 }
 
 run_core() {
