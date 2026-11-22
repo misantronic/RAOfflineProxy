@@ -123,6 +123,14 @@ def proxy_host(config_data: dict) -> str:
     return str(config_data.get("proxy_host") or "127.0.0.1")
 
 
+def proxy_bind_host(config_data: dict) -> str:
+    return str(config_data.get("proxy_bind_host") or proxy_host(config_data))
+
+
+def allow_non_loopback(config_data: dict) -> bool:
+    return bool(config_data.get("allow_non_loopback", False))
+
+
 def proxy_value(config_data: dict) -> str:
     return f"{proxy_host(config_data)}:{proxy_port(config_data)}"
 

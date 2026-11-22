@@ -16,6 +16,7 @@ from .config import (
     LOG_FILE,
     MAX_PROXY_PORT,
     configure_logging,
+    proxy_bind_host,
     proxy_host,
     proxy_port,
     save_config,
@@ -245,7 +246,7 @@ def port_is_available(config_data: dict) -> bool:
             backend.make_probe_exclusive(probe)
         else:
             probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        probe.bind((proxy_host(config_data), proxy_port(config_data)))
+        probe.bind((proxy_bind_host(config_data), proxy_port(config_data)))
     except OSError:
         return False
     finally:

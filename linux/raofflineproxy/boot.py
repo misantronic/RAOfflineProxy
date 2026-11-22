@@ -24,10 +24,10 @@ PREBIND_COMMANDS = ("boot-reconcile", "start-proxy")
 
 
 def prebind_listen_socket() -> socket.socket | None:
-    from .config import load_config, proxy_host, proxy_port
+    from .config import load_config, proxy_bind_host, proxy_port
 
     config_data = load_config()
-    address = (proxy_host(config_data), proxy_port(config_data))
+    address = (proxy_bind_host(config_data), proxy_port(config_data))
 
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     try:
