@@ -26,6 +26,12 @@ Extract the ZIP into the BananaOS card's `roms/ports` directory. Start
 `RAOfflineProxy` from the Ports shelf. It starts the proxy in the background
 and opens the SDL menu.
 
+## Autostart
+
+Automatic boot autostart is not currently enabled. The proxy starts when
+`RAOfflineProxy` is launched from the Ports shelf and remains available in the
+background until it is stopped or the device reboots.
+
 The proxy stores its state under `/data/banana/raofflineproxy` and listens only
 on `127.0.0.1:18080`. BananaOS does not assign an address to loopback by
 default, so the launcher checks for `127.0.0.1/8` and only adds it when missing.
