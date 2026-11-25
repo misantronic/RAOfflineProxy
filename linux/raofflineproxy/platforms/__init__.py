@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from . import allium, darkos, generic, knulli, muos, onion, rocknix, spruce, windows
+from . import allium, banana, darkos, generic, knulli, muos, onion, rocknix, spruce, windows
 from .base import Platform
 
 # Detection order matters: the first platform that matches wins. Several firmwares leave
@@ -8,6 +8,7 @@ from .base import Platform
 PLATFORMS: tuple[Platform, ...] = (
     windows.PLATFORM,
     allium.PLATFORM,
+    banana.PLATFORM,
     spruce.PLATFORM,
     onion.PLATFORM,
     muos.PLATFORM,

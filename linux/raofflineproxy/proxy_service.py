@@ -232,6 +232,7 @@ class ProxyRequestHandler(BaseHTTPRequestHandler):
 
     def _handle_request(self) -> None:
         if self.client_address[0] not in {"127.0.0.1", "::1"}:
+            LOGGER.warning("Rejected non-loopback client: %s", self.client_address[0])
             self.wfile.write(error_json(403, "loopback_only"))
             return
 

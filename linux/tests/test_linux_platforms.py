@@ -8,6 +8,7 @@ from linux.raofflineproxy.emulators import retroarch_cfg
 from linux.raofflineproxy.platforms import miyoo
 from linux.raofflineproxy.platforms import (
     allium,
+    banana,
     darkos,
     generic,
     knulli,
@@ -54,7 +55,7 @@ class CurrentPlatformTests(unittest.TestCase):
         self.assertIsNone(platforms.by_id("nope"))
 
     def test_all_platforms_are_registered(self) -> None:
-        modules = (allium, darkos, knulli, muos, onion, rocknix, spruce, windows)
+        modules = (allium, banana, darkos, knulli, muos, onion, rocknix, spruce, windows)
         self.assertEqual({module.PLATFORM for module in modules}, set(platforms.PLATFORMS))
 
 
@@ -62,7 +63,7 @@ class RetroarchCfgTests(unittest.TestCase):
     def test_every_platform_resolves_a_retroarch_cfg(self) -> None:
         # A detected platform without cfg candidates once made the lookup raise instead of
         # falling back, which broke dArkOS.
-        for module in (allium, darkos, knulli, muos, onion, rocknix, spruce, windows, generic):
+        for module in (allium, banana, darkos, knulli, muos, onion, rocknix, spruce, windows, generic):
             with self.subTest(platform=module.PLATFORM.id):
                 for candidate in platforms.PLATFORMS:
                     patcher = patch.object(

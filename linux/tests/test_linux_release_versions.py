@@ -80,7 +80,8 @@ class ReleaseVersionConsistencyTests(unittest.TestCase):
     def test_all_known_targets_are_discovered(self) -> None:
         found = {path.parent.name for path in _build_bundles()}
         self.assertEqual(
-            found, {"allium", "darkos", "knulli", "muos", "onion", "rocknix", "spruce", "windows"}
+            found,
+            {"allium", "banana", "darkos", "knulli", "muos", "onion", "rocknix", "spruce", "windows"},
         )
 
 
