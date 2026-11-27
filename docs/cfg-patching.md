@@ -34,7 +34,7 @@ PPSSPP supports two patching paths depending on the installed build. RAOfflinePr
 
 == Other Emulators
 
-**ARMSX1**, **ARMSX2**, **Flycast**, **WatermelonDS**, **Mupen64Plus AE**, **Joey64**, **EmuCoreX**, **NetherSX2**, and **SeedlessDS** all expose a RetroAchievements host-override broadcast receiver. To redirect achievement traffic to the local proxy, RAOfflineProxy sends a targeted broadcast to the installed package instead of editing a config file:
+**ARMSX1**, **ARMSX2**, **Flycast**, **WatermelonDS**, **Mupen64Plus AE**, **Joey64**, **EmuCoreX**, **NetherSX2**, **SeedlessDS**, and **GBA DS** all expose a RetroAchievements host-override broadcast receiver. To redirect achievement traffic to the local proxy, RAOfflineProxy sends a targeted broadcast to the installed package instead of editing a config file:
 
 - The RetroAchievements host override is set to the proxy on your device
 - The emulator writes the change to its own configuration and applies it on the next game load
@@ -134,6 +134,6 @@ Which side turns it off depends on how the emulator is patched:
 - **PPSSPP** on the broadcast path, **Flycast**, and **WatermelonDS**: the emulator disables hardcore itself while the custom host is active and restores your setting once the override is cleared, so RAOfflineProxy never writes the setting
 - **ARMSX2**: hardcore is deliberately left under your own control, so turn it off in the emulator before starting the proxy
 - **ARMSX1** and **Mupen64Plus AE (fork)**: have no hardcore mode at all, so there is nothing to disable. ARMSX1 is softcore-only by construction: its achievements client is hardwired to softcore and the hardcore toggle was removed from its UI
-- **Joey64**: softcore only for now. Its Hardcore setting stays locked until RetroAchievements approves the app, so there is nothing to disable yet.
+- **Joey64** and **GBA DS**: softcore only for now. Their Hardcore setting stays locked or hidden until RetroAchievements approves the app, so there is nothing to disable yet.
 
 If you are unsure how your emulator behaves, turn hardcore off in the emulator yourself before starting the proxy.

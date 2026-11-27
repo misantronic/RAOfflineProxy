@@ -224,6 +224,19 @@ enum class Emulator(
             revertErrorRes = R.string.seedlessds_revert_error_unavailable,
             defaultReceiverClass = "com.seedlessds.app.ra.RaHostOverrideReceiver"
         )
+    ),
+    GbaDs(
+        displayName = "GBA DS",
+        labelRes = R.string.emulator_gbads,
+        prefsId = "gbads",
+        packageCandidates = listOf("io.github.kyannon.gbads"),
+        broadcastOverride = BroadcastOverride(
+            patchSuccessRes = R.string.gbads_patch_success,
+            patchErrorRes = R.string.gbads_patch_error_unavailable,
+            revertSuccessRes = R.string.gbads_revert_success,
+            revertErrorRes = R.string.gbads_revert_error_unavailable,
+            defaultReceiverClass = "io.github.kyannon.gbads.RetroAchievementsHostOverrideReceiver"
+        )
     );
 
     val enabledPrefsKey: String get() = "enable_$prefsId"
